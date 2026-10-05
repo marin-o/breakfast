@@ -48,6 +48,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.iron.breakfast.data.BreakfastStore
@@ -332,9 +333,14 @@ private fun SavedEntryCard(entry: MealEntry, vm: BreakfastViewModel, feedbackEna
     }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(entry.foodName, fontWeight = FontWeight.SemiBold)
-            Text("${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}  •  ${entry.nutritionSnapshot.calories.rounded()} kcal")
-            Text(entry.conversionProvenance + if (entry.approximateConversion) " (approx.)" else "", style = MaterialTheme.typography.labelSmall)
+            Column(
+                modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(entry.foodName, fontWeight = FontWeight.SemiBold)
+                Text("${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}  •  ${entry.nutritionSnapshot.calories.rounded()} kcal")
+                Text(entry.conversionProvenance + if (entry.approximateConversion) " (approx.)" else "", style = MaterialTheme.typography.labelSmall)
+            }
             if (feedbackEnabled) {
                 HorizontalDivider()
                 Text("Two quick alternatives", style = MaterialTheme.typography.labelMedium)
