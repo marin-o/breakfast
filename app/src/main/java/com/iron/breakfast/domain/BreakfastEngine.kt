@@ -90,6 +90,14 @@ class BreakfastEngine(private val store: BreakfastStore) {
 
     fun foods(): List<FoodRecord> = store.foods()
 
+    fun persistedMeal(): SavedMeal {
+        val entries = store.entries()
+        return SavedMeal(
+            entries = entries,
+            totals = entries.fold(NutritionValues.ZERO) { total, entry -> total + entry.nutritionSnapshot }
+        )
+    }
+
     fun totalsForToday(): NutritionValues = store.entries()
         .fold(NutritionValues.ZERO) { total, entry -> total + entry.nutritionSnapshot }
 }

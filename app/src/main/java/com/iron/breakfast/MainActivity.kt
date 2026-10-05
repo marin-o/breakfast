@@ -88,6 +88,8 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     var reinforcedEntryIds by mutableStateOf(emptySet<String>())
         private set
+    var feedbackEntryIds by mutableStateOf(emptySet<String>())
+        private set
     var savedAt by mutableStateOf(0L)
         private set
     var feedbackDeadlineMs by mutableStateOf(0L)
@@ -96,6 +98,11 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     var replacementError by mutableStateOf<String?>(null)
         private set
+
+    init {
+        val persisted = engine.persistedMeal()
+        if (persisted.entries.isNotEmpty()) savedMeal = persisted
+    }
 
     fun onInputChanged(value: String) {
         input = value
@@ -106,7 +113,8 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
     fun done() {
         if (input.isBlank()) return
         val meal = engine.save(input)
-        savedMeal = meal
+        savedMeal = engine.persistedMeal().copy(unresolvedSegments = meal.unresolvedSegments)
+        feedbackEntryIds = meal.entries.mapTo(mutableSetOf()) { it.id }
         savedAt = System.currentTimeMillis()
         feedbackDeadlineMs = savedAt + 30_000
         feedbackVisible = meal.entries.isNotEmpty()
@@ -139,7 +147,7 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun selectFood(entry: MealEntry, food: FoodRecord): Boolean {
-        if (!feedbackWindowOpen() || entry.id in reinforcedEntryIds) return false
+        if (!feedbackWindowOpen() || entry.id !in feedbackEntryIds || entry.id in reinforcedEntryIds) return false
         val replacement = engine.replaceEntry(entry.id, food.id)
         val updated = when (replacement) {
             is ReplacementResult.Success -> replacement.entry
@@ -170,10 +178,11 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun alternatives(entry: MealEntry): List<RankedFood> =
-        if (feedbackWindowOpen()) engine.alternativesFor(entry) else emptyList()
+        if (feedbackWindowOpen() && entry.id in feedbackEntryIds) engine.alternativesFor(entry) else emptyList()
 
     fun expireFeedback() {
         feedbackVisible = false
+        feedbackEntryIds = emptySet()
         closeSearch()
         searchResults = emptyList()
     }
@@ -261,11 +270,11 @@ fun BreakfastApp(vm: BreakfastViewModel = viewModel()) {
                         Text("Done — save breakfast")
                     }
                 }
-                if (vm.savedMeal != null && (vm.feedbackVisible || vm.savedMeal!!.unresolvedSegments.isNotEmpty())) {
-                    if (vm.feedbackVisible && vm.savedMeal!!.entries.isNotEmpty()) {
+                if (vm.savedMeal != null) {
+                    if (vm.savedMeal!!.entries.isNotEmpty()) {
                         item { SavedSummary(vm.savedMeal!!.totals) }
                         items(vm.savedMeal!!.entries, key = { it.id }) { entry ->
-                            SavedEntryCard(entry, vm)
+                            SavedEntryCard(entry, vm, entry.id in vm.feedbackEntryIds && vm.feedbackVisible)
                         }
                     }
                     if (vm.savedMeal!!.unresolvedSegments.isNotEmpty()) {
@@ -312,27 +321,29 @@ private fun SavedSummary(totals: NutritionValues) {
 }
 
 @Composable
-private fun SavedEntryCard(entry: MealEntry, vm: BreakfastViewModel) {
-    val alternatives = vm.alternatives(entry)
+private fun SavedEntryCard(entry: MealEntry, vm: BreakfastViewModel, feedbackEnabled: Boolean) {
+    val alternatives = if (feedbackEnabled) vm.alternatives(entry) else emptyList()
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(entry.foodName, fontWeight = FontWeight.SemiBold)
             Text("${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}  •  ${entry.nutritionSnapshot.calories.rounded()} kcal")
             Text(entry.conversionProvenance + if (entry.approximateConversion) " (approx.)" else "", style = MaterialTheme.typography.labelSmall)
-            HorizontalDivider()
-            Text("Two quick alternatives", style = MaterialTheme.typography.labelMedium)
-            alternatives.forEach { candidate ->
-                TextButton(onClick = { vm.selectFood(entry, candidate.food) }, enabled = entry.id !in vm.reinforcedEntryIds) {
-                    Text("Use ${candidate.food.name}")
+            if (feedbackEnabled) {
+                HorizontalDivider()
+                Text("Two quick alternatives", style = MaterialTheme.typography.labelMedium)
+                alternatives.forEach { candidate ->
+                    TextButton(onClick = { vm.selectFood(entry, candidate.food) }, enabled = entry.id !in vm.reinforcedEntryIds) {
+                        Text("Use ${candidate.food.name}")
+                    }
                 }
-            }
-            OutlinedButton(onClick = { vm.showSearch(entry.id) }, enabled = entry.id !in vm.reinforcedEntryIds) {
-                Icon(Icons.Default.Search, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Search catalogue")
-            }
-            TextButton(onClick = { vm.confirm(entry) }, enabled = entry.id !in vm.reinforcedEntryIds) {
-                Text(if (entry.id in vm.reinforcedEntryIds) "Preference saved" else "Confirm ${entry.foodName}")
+                OutlinedButton(onClick = { vm.showSearch(entry.id) }, enabled = entry.id !in vm.reinforcedEntryIds) {
+                    Icon(Icons.Default.Search, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Search catalogue")
+                }
+                TextButton(onClick = { vm.confirm(entry) }, enabled = entry.id !in vm.reinforcedEntryIds) {
+                    Text(if (entry.id in vm.reinforcedEntryIds) "Preference saved" else "Confirm ${entry.foodName}")
+                }
             }
         }
     }
