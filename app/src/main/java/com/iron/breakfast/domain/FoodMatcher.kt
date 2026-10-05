@@ -67,6 +67,10 @@ class FoodMatcher(
 
     companion object {
         private val STOP_WORDS = setOf("a", "the", "with", "and", "of", "my")
-        private val MODIFIERS = setOf("oat", "oats", "small", "large", "smooth", "crunchy", "2.8", "3.2", "домашно", "домашен")
+        private val MODIFIERS = setOf(
+            "oat", "oats", "small", "large", "smooth", "crunchy", "raw", "cooked", "roasted", "grilled",
+            "boneless", "skinless", "drained", "canned", "yellow", "green", "red", "orange", "white",
+            "roma", "grape", "baby", "mature", "light", "restaurant", "2.8", "3.2", "домашно", "домашен"
+        )
     }
 }

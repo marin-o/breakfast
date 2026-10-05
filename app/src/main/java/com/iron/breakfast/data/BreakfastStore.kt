@@ -3,6 +3,7 @@ package com.iron.breakfast.data
 import android.content.Context
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.Preference
 import kotlinx.serialization.Serializable
@@ -36,10 +37,20 @@ object StorageMigrations {
                 val mergedConversions = existing.conversions + fixture.conversions.filter { candidate ->
                     existing.conversions.none { it.unit == candidate.unit }
                 }
-                existing.copy(conversions = mergedConversions)
+                existing.copy(
+                    conversions = mergedConversions,
+                    sourceId = existing.sourceId ?: fixture.sourceId,
+                    sourceName = existing.sourceName ?: fixture.sourceName,
+                    sourceRelease = existing.sourceRelease ?: fixture.sourceRelease,
+                    preparation = existing.preparation ?: fixture.preparation
+                )
             }
         }
-        return model.copy(foods = migratedFoods)
+        val existingIds = model.foods.mapTo(mutableSetOf()) { it.id }
+        val missingFixtures = fixtures.filter {
+            it.origin == FoodOrigin.GENERIC && it.id !in existingIds
+        }
+        return model.copy(foods = migratedFoods + missingFixtures)
     }
 }
 

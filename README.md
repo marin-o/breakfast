@@ -15,7 +15,13 @@ $env:GRADLE_USER_HOME = './_stack/gradle-home'
 & './_stack/gradle/gradle-8.9/bin/gradle.bat' testDebugUnitTest assembleDebug
 ```
 
-The debug APK is produced at `app/build/outputs/apk/debug/app-debug.apk`. Install it with the existing platform-tools `adb` when a device is attached.
+The debug APK is produced at `app/build/outputs/apk/debug/app-debug.apk`. Install it with the existing platform-tools `adb` when a device is attached. This preserves the app's existing local data when using `adb install -r`.
+
+## Fixture catalogue
+
+The prototype includes 28 additional generic records from the USDA FoodData Central Foundation Foods JSON release dated 2026-04-30. Each record keeps its FDC source ID, source release, preparation state, and per-100-gram calories, protein, carbohydrate, and fat values. The expansion covers raw chicken, beef, pork, salmon, drained tuna; raw broccoli, carrots, cucumber, Roma and grape tomatoes, bell peppers, spinach, onions, green and red cabbage, zucchini, lettuce, and eggplant; plus ketchup, prepared yellow mustard, and canned tomato sauce. Meat records are explicitly raw because the user weighs meat before cooking, and unqualified meat queries therefore resolve to raw records. Household spoon and piece conversions were not added without a verified source portion.
+
+The pinned Foundation export is a small build-time source snapshot; the app has no runtime USDA dependency or API key. Turkey breast, mayonnaise, soy sauce, barbecue sauce, and a raw mushroom record were omitted because this snapshot did not provide matching records with an explicit preparation and complete macro set. Source: [USDA FoodData Central downloads](https://fdc.nal.usda.gov/download-datasets/). Existing installs receive missing fixture IDs through an additive migration that preserves custom foods, aliases, preferences, and saved nutrition snapshots.
 
 ## Focused checks
 

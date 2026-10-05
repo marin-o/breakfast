@@ -63,7 +63,11 @@ data class FoodRecord(
     val nutrition: NutritionBasis,
     val conversions: List<ServingConversion> = emptyList(),
     val defaultAmount: Double = 1.0,
-    val defaultUnit: MeasureUnit = MeasureUnit.PIECE
+    val defaultUnit: MeasureUnit = MeasureUnit.PIECE,
+    val sourceId: String? = null,
+    val sourceName: String? = null,
+    val sourceRelease: String? = null,
+    val preparation: String? = null
 ) {
     fun allNames(): List<String> = listOf(name) + aliases
 }
