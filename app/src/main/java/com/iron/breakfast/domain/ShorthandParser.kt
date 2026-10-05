@@ -21,7 +21,7 @@ class ShorthandParser {
         val numericMatch = numberPattern.findAll(raw).firstOrNull { candidate ->
             val amountText = candidate.groupValues[1]
             val unitText = candidate.groupValues.getOrNull(2).orEmpty()
-            !amountText.contains('/') || unitText.isNotBlank()
+            !isCompositionRatio(candidate, raw) || unitText.isNotBlank()
         }
         val match = halfMatch ?: numericMatch
         if (match == null) {
@@ -61,6 +61,16 @@ class ShorthandParser {
         val numerator = parts[0].toDoubleOrNull() ?: return 0.0
         val denominator = parts[1].toDoubleOrNull() ?: return 0.0
         return if (denominator == 0.0) 0.0 else numerator / denominator
+    }
+
+    private fun isCompositionRatio(match: MatchResult, raw: String): Boolean {
+        val amountText = match.groupValues[1]
+        if ('/' !in amountText || match.groupValues.getOrNull(2).orEmpty().isNotBlank()) return false
+        val numerator = amountText.substringBefore('/').trim().toDoubleOrNull() ?: return false
+        val following = raw.substring(match.range.last + 1).trim()
+        return numerator >= 10.0 || following.matches(
+            Regex("(?i)^(?:raw|cooked|roasted|grilled|boneless|skinless|lean|fat)\\b.*")
+        )
     }
 }
 

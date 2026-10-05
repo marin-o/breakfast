@@ -28,6 +28,11 @@ class FoodMatcher(
                 token in MODIFIERS || token.endsWith("%") || token.matches(Regex("\\d+(?:[.]\\d+)?"))
             }
             if (explicitModifiers.any { it !in names && it !in category }) return@mapNotNull null
+            val identityTokens = inputTokens.filterNot { it in MODIFIERS || it.endsWith("%") || it.matches(Regex("\\d+(?:[.]\\d+)?")) }
+            val identityMatches = identityTokens.count { token -> token in names || token in category }
+            val exactName = food.allNames().any { normalize(it) == normalize(phrase) }
+            if (identityTokens.isNotEmpty() && identityMatches == 0) return@mapNotNull null
+            if (identityTokens.isEmpty() && !exactName) return@mapNotNull null
 
             val matchingTokens = inputTokens.count { token -> token in names || token in category }
             if (matchingTokens == 0) return@mapNotNull null

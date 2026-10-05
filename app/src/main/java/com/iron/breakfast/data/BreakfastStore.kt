@@ -38,11 +38,13 @@ object StorageMigrations {
                     existing.conversions.none { it.unit == candidate.unit }
                 }
                 existing.copy(
+                    aliases = (existing.aliases + fixture.aliases).distinct(),
                     conversions = mergedConversions,
                     sourceId = existing.sourceId ?: fixture.sourceId,
                     sourceName = existing.sourceName ?: fixture.sourceName,
                     sourceRelease = existing.sourceRelease ?: fixture.sourceRelease,
-                    preparation = existing.preparation ?: fixture.preparation
+                    preparation = existing.preparation ?: fixture.preparation,
+                    sourceDescription = existing.sourceDescription ?: fixture.sourceDescription
                 )
             }
         }

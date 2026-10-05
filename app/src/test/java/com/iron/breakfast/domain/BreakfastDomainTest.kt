@@ -40,6 +40,10 @@ class BreakfastDomainTest {
         assertEquals(100.0, parsed.amount)
         assertEquals(MeasureUnit.GRAM, parsed.unit)
         assertEquals("Ground beef 90/10 raw", FoodMatcher(FoodCatalog.fixtures).best(parsed.foodPhrase)?.food?.name)
+
+        assertEquals(0.5, parser.parse("1/2 banana").amount)
+        assertEquals(null, parser.parse("1/2 banana").unit)
+        assertEquals(0.5, parser.parse("banana 1/2").amount)
     }
 
     @Test
@@ -71,6 +75,7 @@ class BreakfastDomainTest {
         assertEquals("Chicken breast raw", matcher.best("skinless chicken")?.food?.name)
         assertEquals("Tuna canned drained", matcher.best("light tuna")?.food?.name)
         assertEquals("Ketchup", matcher.best("restaurant ketchup")?.food?.name)
+        assertEquals(null, matcher.best("boneless salmon"))
         assertEquals(null, matcher.best("cooked chicken"))
 
         val calculation = NutritionCalculator().calculate(chicken, 100.0, MeasureUnit.GRAM)
@@ -155,7 +160,8 @@ class BreakfastDomainTest {
 
         val migrated = StorageMigrations.addFixtureConversions(original)
         val migratedFixture = migrated.foods.first { it.id == peanutButter.id }
-        assertEquals(listOf("my pb"), migratedFixture.aliases)
+        assertEquals("my pb", migratedFixture.aliases.first())
+        assertTrue("peanut butter" in migratedFixture.aliases)
         assertTrue(migratedFixture.conversions.any { it.unit == MeasureUnit.TEASPOON })
         assertEquals(userFood, migrated.foods.first { it.id == "user_pb" })
         assertEquals(original.preferences, migrated.preferences)
@@ -166,9 +172,11 @@ class BreakfastDomainTest {
     fun fixtureMigrationAppendsNewFoodsWithoutReplacingStoredFoods() {
         val storedFixture = FoodCatalog.fixtures.first { it.id == "milk_28" }
             .copy(aliases = listOf("my milk"))
+        val legacyChicken = FoodCatalog.fixtures.first { it.id == "usda_2646170_chicken_breast_raw" }
+            .copy(aliases = listOf("my chicken"), sourceDescription = null)
         val userFood = storedFixture.copy(id = "user_milk", name = "My milk")
         val original = StorageModel(
-            foods = listOf(storedFixture, userFood),
+            foods = listOf(storedFixture, userFood, legacyChicken),
             entries = emptyList(),
             preferences = listOf(Preference("user_milk", explicitCount = 2, lastReinforcedEpochMs = 7L))
         )
@@ -180,7 +188,13 @@ class BreakfastDomainTest {
         assertTrue(migrated.foods.any { it.id == "usda_174277_soy_sauce" })
         assertTrue(migrated.foods.any { it.id == "usda_174523_barbecue_sauce" })
         assertTrue(migrated.foods.none { it.id == "custom_grandmas_ajvar" })
-        assertEquals(listOf("my milk"), migrated.foods.first { it.id == "milk_28" }.aliases)
+        val migratedMilk = migrated.foods.first { it.id == "milk_28" }
+        assertEquals("my milk", migratedMilk.aliases.first())
+        assertTrue("milk" in migratedMilk.aliases)
+        val migratedChicken = migrated.foods.first { it.id == legacyChicken.id }
+        assertTrue("my chicken" in migratedChicken.aliases)
+        assertTrue("skinless chicken" in migratedChicken.aliases)
+        assertEquals("Chicken, breast, boneless, skinless, raw", migratedChicken.sourceDescription)
         assertEquals(userFood, migrated.foods.first { it.id == "user_milk" })
         assertEquals(original.preferences, migrated.preferences)
         assertEquals(original.entries, migrated.entries)
