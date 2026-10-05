@@ -37,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -253,7 +254,8 @@ fun BreakfastApp(vm: BreakfastViewModel = viewModel()) {
                     val current = vm.input.substringAfterLast(',').trim()
                     if (current.isNotEmpty()) {
                         Spacer(Modifier.height(4.dp))
-                        Text(vm.quantityHighlight(current), style = MaterialTheme.typography.bodyLarge)
+                        val highlighted = remember(current) { vm.quantityHighlight(current) }
+                        Text(highlighted, style = MaterialTheme.typography.bodyLarge)
                         Text("Quantity is highlighted while you type; spaces do not commit a food.", style = MaterialTheme.typography.labelSmall)
                     }
                 }
@@ -322,7 +324,9 @@ private fun SavedSummary(totals: NutritionValues) {
 
 @Composable
 private fun SavedEntryCard(entry: MealEntry, vm: BreakfastViewModel, feedbackEnabled: Boolean) {
-    val alternatives = if (feedbackEnabled) vm.alternatives(entry) else emptyList()
+    val alternatives = remember(feedbackEnabled, entry.id, entry.foodId, entry.sourcePhrase) {
+        if (feedbackEnabled) vm.alternatives(entry) else emptyList()
+    }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(entry.foodName, fontWeight = FontWeight.SemiBold)

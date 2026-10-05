@@ -6,9 +6,21 @@ import com.iron.breakfast.data.StorageModel
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.system.measureNanoTime
 
 class BreakfastDomainTest {
     private val parser = ShorthandParser()
+
+    @Test
+    fun suggestionHotPathStaysBoundedWithExpandedCatalog() {
+        val matcher = FoodMatcher(FoodCatalog.fixtures)
+        repeat(20) { matcher.suggestions("ground beef 90/10 raw 100 g") }
+        val elapsed = measureNanoTime {
+            repeat(1_000) { matcher.suggestions("ground beef 90/10 raw 100 g") }
+        }
+        println("suggestion-hot-path-ms=" + elapsed / 1_000_000.0)
+        assertTrue(elapsed < 1_000_000_000L)
+    }
 
     @Test
     fun parsesQuantityFirstAndFractionAfterFood() {

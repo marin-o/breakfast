@@ -6,8 +6,17 @@ import java.util.UUID
 class BreakfastEngine(private val store: BreakfastStore) {
     private val parser = ShorthandParser()
     private val calculator = NutritionCalculator()
+    private var matcherCatalog: List<FoodRecord>? = null
+    private var cachedMatcher: FoodMatcher? = null
 
-    private fun matcher() = FoodMatcher(store.foods())
+    private fun matcher(): FoodMatcher {
+        val foods = store.foods()
+        if (cachedMatcher == null || foods !== matcherCatalog) {
+            matcherCatalog = foods
+            cachedMatcher = FoodMatcher(foods)
+        }
+        return cachedMatcher!!
+    }
 
     fun parse(input: String): ParsedSegment = parser.parse(input)
 
