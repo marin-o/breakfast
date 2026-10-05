@@ -87,6 +87,26 @@ class BreakfastDomainTest {
     }
 
     @Test
+    fun entriesRecoveryPayloadSurvivesStoreReload() {
+        val food = FoodCatalog.fixtures.first()
+        val entry = MealEntry(
+            id = "restart-entry",
+            foodId = food.id,
+            foodName = food.name,
+            enteredAmount = 100.0,
+            enteredUnit = MeasureUnit.MILLILITER,
+            resolvedBaseAmount = 100.0,
+            nutritionSnapshot = NutritionValues(54.0, 3.2, 4.8, 2.8),
+            conversionProvenance = "restart test",
+            approximateConversion = false,
+            savedAtEpochMs = 456L
+        )
+        val persistedEntries = StorageCodec.encodeEntries(listOf(entry))
+        assertEquals(listOf(entry), StorageCodec.decodeEntriesOrNull(persistedEntries))
+        assertEquals(null, StorageCodec.decodeEntriesOrNull("malformed"))
+    }
+
+    @Test
     fun fixtureMigrationAddsConversionsWithoutOverwritingUserData() {
         val peanutButter = FoodCatalog.fixtures.first { it.id == "peanut_butter_smooth" }
         val oldFixture = peanutButter.copy(

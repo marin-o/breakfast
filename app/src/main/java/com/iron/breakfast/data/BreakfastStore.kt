@@ -6,6 +6,7 @@ import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.Preference
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 
 @Serializable
@@ -20,9 +21,18 @@ object StorageCodec {
 
     fun encode(model: StorageModel): String = json.encodeToString(StorageModel.serializer(), model)
 
-    fun decode(value: String): StorageModel = runCatching {
+    fun encodeEntries(entries: List<MealEntry>): String =
+        json.encodeToString(ListSerializer(MealEntry.serializer()), entries)
+
+    fun decodeOrNull(value: String): StorageModel? = runCatching {
         json.decodeFromString(StorageModel.serializer(), value)
-    }.getOrDefault(StorageModel())
+    }.getOrNull()
+
+    fun decode(value: String): StorageModel = decodeOrNull(value) ?: StorageModel()
+
+    fun decodeEntriesOrNull(value: String): List<MealEntry>? = runCatching {
+        json.decodeFromString(ListSerializer(MealEntry.serializer()), value)
+    }.getOrNull()
 }
 
 object StorageMigrations {
@@ -45,7 +55,7 @@ object StorageMigrations {
 
 class BreakfastStore(context: Context) {
     private val preferences = context.getSharedPreferences("breakfast_store", Context.MODE_PRIVATE)
-    private var model = StorageCodec.decode(preferences.getString(KEY, "") ?: "")
+    private var model = loadModel()
 
     init {
         var changed = false
@@ -97,10 +107,24 @@ class BreakfastStore(context: Context) {
     }
 
     private fun persist() {
-        preferences.edit().putString(KEY, StorageCodec.encode(model)).apply()
+        preferences.edit()
+            .putString(KEY, StorageCodec.encode(model))
+            .putString(ENTRIES_KEY, StorageCodec.encodeEntries(model.entries))
+            .commit()
+    }
+
+    private fun loadModel(): StorageModel {
+        val raw = preferences.getString(KEY, null)
+        val decoded = raw?.let(StorageCodec::decodeOrNull)
+        if (decoded != null) return decoded
+        val recoveredEntries = preferences.getString(ENTRIES_KEY, null)
+            ?.let(StorageCodec::decodeEntriesOrNull)
+            ?: emptyList()
+        return StorageModel(entries = recoveredEntries)
     }
 
     companion object {
         private const val KEY = "breakfast_payload"
+        private const val ENTRIES_KEY = "breakfast_entries_v1"
     }
 }
