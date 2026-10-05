@@ -34,6 +34,15 @@ class BreakfastDomainTest {
     }
 
     @Test
+    fun keepsCompositionRatiosInFoodPhraseAndUsesLaterExplicitQuantity() {
+        val parsed = parser.parse("ground beef 90/10 raw 100 g")
+        assertEquals("ground beef 90/10 raw", parsed.foodPhrase)
+        assertEquals(100.0, parsed.amount)
+        assertEquals(MeasureUnit.GRAM, parsed.unit)
+        assertEquals("Ground beef 90/10 raw", FoodMatcher(FoodCatalog.fixtures).best(parsed.foodPhrase)?.food?.name)
+    }
+
+    @Test
     fun explicitModifiersConstrainCandidates() {
         val matcher = FoodMatcher(FoodCatalog.fixtures)
         assertEquals("Oat milk", matcher.best("oat milk")?.food?.name)
@@ -59,6 +68,9 @@ class BreakfastDomainTest {
         val matcher = FoodMatcher(FoodCatalog.fixtures)
         assertEquals("Chicken breast raw", matcher.best("chicken")?.food?.name)
         assertEquals("Red bell pepper raw", matcher.best("red pepper")?.food?.name)
+        assertEquals("Chicken breast raw", matcher.best("skinless chicken")?.food?.name)
+        assertEquals("Tuna canned drained", matcher.best("light tuna")?.food?.name)
+        assertEquals("Ketchup", matcher.best("restaurant ketchup")?.food?.name)
         assertEquals(null, matcher.best("cooked chicken"))
 
         val calculation = NutritionCalculator().calculate(chicken, 100.0, MeasureUnit.GRAM)
@@ -83,11 +95,29 @@ class BreakfastDomainTest {
         val unsupported = NutritionCalculator().calculate(milk, 1.0, MeasureUnit.PIECE)
         assertTrue(!unsupported.supported)
         assertEquals(0.0, unsupported.nutrition.calories)
+
+        val mustard = FoodCatalog.fixtures.first { it.id == "usda_326698_mustard" }
+        val mustardTeaspoon = NutritionCalculator().calculate(mustard, 1.0, MeasureUnit.TEASPOON)
+        assertTrue(mustardTeaspoon.supported)
+        assertEquals(6.0, mustardTeaspoon.resolvedBaseAmount, 0.01)
+    }
+
+    @Test
+    fun srLegacySaucesKeepSourceMetadataAndPortions() {
+        val mayonnaise = FoodCatalog.fixtures.first { it.id == "usda_171009_mayonnaise" }
+        val soySauce = FoodCatalog.fixtures.first { it.id == "usda_174277_soy_sauce" }
+        val barbecue = FoodCatalog.fixtures.first { it.id == "usda_174523_barbecue_sauce" }
+
+        assertEquals("USDA FoodData Central SR Legacy", mayonnaise.sourceName)
+        assertEquals("2018-04", mayonnaise.sourceRelease)
+        assertEquals(13.8, NutritionCalculator().calculate(mayonnaise, 1.0, MeasureUnit.TABLESPOON).resolvedBaseAmount, 0.01)
+        assertEquals(5.3, NutritionCalculator().calculate(soySauce, 1.0, MeasureUnit.TEASPOON).resolvedBaseAmount, 0.01)
+        assertEquals(17.0, NutritionCalculator().calculate(barbecue, 1.0, MeasureUnit.TABLESPOON).resolvedBaseAmount, 0.01)
     }
 
     @Test
     fun storageCodecRoundTripsEntriesPreferencesAndFoods() {
-        val food = FoodCatalog.fixtures.first()
+        val food = FoodCatalog.fixtures.first { it.id == "usda_2646170_chicken_breast_raw" }
         val entry = MealEntry(
             id = "entry-1",
             foodId = food.id,
@@ -104,6 +134,9 @@ class BreakfastDomainTest {
         val original = StorageModel(listOf(food), listOf(entry), listOf(Preference(food.id, 2, 123L)))
         val restored = StorageCodec.decode(StorageCodec.encode(original))
         assertEquals(original, restored)
+        assertEquals("2646170", restored.foods.first().sourceId)
+        assertEquals("2026-04-30", restored.foods.first().sourceRelease)
+        assertEquals("Chicken, breast, boneless, skinless, raw", restored.foods.first().sourceDescription)
     }
 
     @Test
@@ -143,6 +176,9 @@ class BreakfastDomainTest {
         val migrated = StorageMigrations.addFixtureConversions(original)
 
         assertTrue(migrated.foods.any { it.id == "usda_2646170_chicken_breast_raw" })
+        assertTrue(migrated.foods.any { it.id == "usda_171009_mayonnaise" })
+        assertTrue(migrated.foods.any { it.id == "usda_174277_soy_sauce" })
+        assertTrue(migrated.foods.any { it.id == "usda_174523_barbecue_sauce" })
         assertTrue(migrated.foods.none { it.id == "custom_grandmas_ajvar" })
         assertEquals(listOf("my milk"), migrated.foods.first { it.id == "milk_28" }.aliases)
         assertEquals(userFood, migrated.foods.first { it.id == "user_milk" })

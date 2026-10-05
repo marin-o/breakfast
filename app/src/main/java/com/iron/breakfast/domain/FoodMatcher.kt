@@ -21,7 +21,8 @@ class FoodMatcher(
         if (inputTokens.isEmpty()) return emptyList()
 
         return catalog.mapNotNull { food ->
-            val names = food.allNames().joinToString(" ").lowercase(Locale.ROOT)
+            val names = (food.allNames() + listOfNotNull(food.preparation, food.sourceDescription))
+                .joinToString(" ").lowercase(Locale.ROOT)
             val category = food.category.lowercase(Locale.ROOT)
             val explicitModifiers = inputTokens.filter { token ->
                 token in MODIFIERS || token.endsWith("%") || token.matches(Regex("\\d+(?:[.]\\d+)?"))

@@ -18,7 +18,12 @@ class ShorthandParser {
         if (raw.isEmpty()) return ParsedSegment(raw, "", null, null, null, null)
 
         val halfMatch = halfPattern.find(raw)
-        val match = halfMatch ?: numberPattern.find(raw)
+        val numericMatch = numberPattern.findAll(raw).firstOrNull { candidate ->
+            val amountText = candidate.groupValues[1]
+            val unitText = candidate.groupValues.getOrNull(2).orEmpty()
+            !amountText.contains('/') || unitText.isNotBlank()
+        }
+        val match = halfMatch ?: numericMatch
         if (match == null) {
             return ParsedSegment(raw, raw, null, null, null, null)
         }
@@ -32,7 +37,7 @@ class ShorthandParser {
         val amount = parseAmount(amountText)
         val unit = unitText.toMeasureUnit()
         val foodPhrase = (raw.removeRange(match.range)).replace(Regex("\\s+"), " ").trim()
-        val modifiers = Regex("(?i)(?:\\b\\d+(?:[.,]\\d+)?%|\\b(?:small|large|oat|smooth|crunchy)\\b)")
+        val modifiers = Regex("(?i)(?:\\b\\d+(?:[.,]\\d+)?%|\\b(?:small|large|oat|smooth|crunchy|raw|cooked|roasted|boneless|skinless|drained|canned)\\b)")
             .findAll(foodPhrase)
             .map { it.value.lowercase(Locale.ROOT) }
             .toList()

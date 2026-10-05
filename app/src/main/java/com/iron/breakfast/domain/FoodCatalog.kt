@@ -112,19 +112,21 @@ object FoodCatalog {
             id = "usda_2646170_chicken_breast_raw",
             sourceId = 2646170,
             name = "Chicken breast raw",
-            aliases = listOf("chicken", "chicken breast", "пилешко", "пилешки гради"),
+            aliases = listOf("chicken", "chicken breast", "skinless chicken", "boneless chicken", "пилешко", "пилешки гради"),
             category = "meat poultry raw",
             nutrition = NutritionValues(106.0, 22.5, 0.0, 1.93),
-            preparation = "raw"
+            preparation = "raw",
+            sourceDescription = "Chicken, breast, boneless, skinless, raw"
         ),
         foundationFood(
             id = "usda_2646171_chicken_thigh_raw",
             sourceId = 2646171,
             name = "Chicken thigh raw",
-            aliases = listOf("chicken thigh", "пилешки батак", "пилешки бут"),
+            aliases = listOf("chicken thigh", "skinless chicken thigh", "boneless chicken thigh", "пилешки батак", "пилешки бут"),
             category = "meat poultry raw",
             nutrition = NutritionValues(144.0, 18.6, 0.0, 7.92),
-            preparation = "raw"
+            preparation = "raw",
+            sourceDescription = "Chicken, thigh, boneless, skinless, raw"
         ),
         foundationFood(
             id = "usda_2514743_ground_beef_raw",
@@ -184,10 +186,11 @@ object FoodCatalog {
             id = "usda_334194_tuna_canned",
             sourceId = 334194,
             name = "Tuna canned drained",
-            aliases = listOf("tuna", "canned tuna", "туна"),
+            aliases = listOf("tuna", "light tuna", "canned tuna", "туна"),
             category = "fish canned",
             nutrition = NutritionValues(90.0, 19.0, 0.08, 0.94),
-            preparation = "canned, water-packed, drained"
+            preparation = "canned, water-packed, drained",
+            sourceDescription = "Fish, tuna, light, canned in water, drained solids"
         ),
         foundationFood(
             id = "usda_747447_broccoli_raw",
@@ -340,7 +343,8 @@ object FoodCatalog {
             aliases = listOf("ketchup", "кетчап"),
             category = "sauce",
             nutrition = NutritionValues(117.0, 1.11, 26.8, 0.55),
-            preparation = "restaurant formulation"
+            preparation = "restaurant formulation",
+            sourceDescription = "Ketchup, restaurant"
         ),
         foundationFood(
             id = "usda_326698_mustard",
@@ -349,7 +353,10 @@ object FoodCatalog {
             aliases = listOf("mustard", "yellow mustard", "сенф"),
             category = "sauce",
             nutrition = NutritionValues(61.0, 4.25, 5.3, 3.38),
-            preparation = "prepared yellow"
+            preparation = "prepared yellow",
+            conversions = listOf(
+                ServingConversion(MeasureUnit.TEASPOON, 6.0, "USDA Foundation 326698 portion: 1 tsp = 6 g")
+            )
         ),
         foundationFood(
             id = "usda_2685579_tomato_sauce",
@@ -359,6 +366,52 @@ object FoodCatalog {
             category = "sauce",
             nutrition = NutritionValues(34.2, 1.35, 6.33, 0.382),
             preparation = "canned, with salt added"
+        ),
+        foundationFood(
+            id = "usda_171009_mayonnaise",
+            sourceId = 171009,
+            name = "Mayonnaise regular",
+            aliases = listOf("mayonnaise", "mayo", "мајонез"),
+            category = "sauce",
+            nutrition = NutritionValues(680.0, 0.96, 0.57, 74.8),
+            preparation = "regular",
+            sourceDescription = "Salad dressing, mayonnaise, regular",
+            conversions = listOf(
+                ServingConversion(MeasureUnit.TABLESPOON, 13.8, "USDA SR Legacy 171009 portion: 1 tbsp = 13.8 g")
+            ),
+            sourceName = "USDA FoodData Central SR Legacy",
+            sourceRelease = "2018-04"
+        ),
+        foundationFood(
+            id = "usda_174277_soy_sauce",
+            sourceId = 174277,
+            name = "Soy sauce shoyu",
+            aliases = listOf("soy sauce", "shoyu", "соја сос", "соја"),
+            category = "sauce",
+            nutrition = NutritionValues(53.0, 8.14, 4.93, 0.57),
+            preparation = "shoyu",
+            sourceDescription = "Soy sauce made from soy and wheat (shoyu)",
+            conversions = listOf(
+                ServingConversion(MeasureUnit.TABLESPOON, 16.0, "USDA SR Legacy 174277 portion: 1 tbsp = 16 g"),
+                ServingConversion(MeasureUnit.TEASPOON, 5.3, "USDA SR Legacy 174277 portion: 1 tsp = 5.3 g")
+            ),
+            sourceName = "USDA FoodData Central SR Legacy",
+            sourceRelease = "2018-04"
+        ),
+        foundationFood(
+            id = "usda_174523_barbecue_sauce",
+            sourceId = 174523,
+            name = "Barbecue sauce",
+            aliases = listOf("barbecue sauce", "bbq sauce", "сос за скара"),
+            category = "sauce",
+            nutrition = NutritionValues(172.0, 0.82, 40.8, 0.63),
+            preparation = "regular",
+            sourceDescription = "Sauce, barbecue",
+            conversions = listOf(
+                ServingConversion(MeasureUnit.TABLESPOON, 17.0, "USDA SR Legacy 174523 portion: 1 tbsp = 17 g")
+            ),
+            sourceName = "USDA FoodData Central SR Legacy",
+            sourceRelease = "2018-04"
         ),
         FoodRecord(
             id = "custom_home_milk",
@@ -397,7 +450,11 @@ object FoodCatalog {
         aliases: List<String>,
         category: String,
         nutrition: NutritionValues,
-        preparation: String
+        preparation: String,
+        sourceDescription: String? = null,
+        conversions: List<ServingConversion> = emptyList(),
+        sourceName: String = "USDA FoodData Central Foundation Foods",
+        sourceRelease: String = "2026-04-30"
     ): FoodRecord = FoodRecord(
         id = id,
         name = name,
@@ -405,11 +462,13 @@ object FoodCatalog {
         category = category,
         origin = FoodOrigin.GENERIC,
         nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, nutrition),
+        conversions = conversions,
         defaultAmount = 100.0,
         defaultUnit = MeasureUnit.GRAM,
         sourceId = sourceId.toString(),
-        sourceName = "USDA FoodData Central Foundation Foods",
-        sourceRelease = "2026-04-30",
-        preparation = preparation
+        sourceName = sourceName,
+        sourceRelease = sourceRelease,
+        preparation = preparation,
+        sourceDescription = sourceDescription
     )
 }
