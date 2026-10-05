@@ -7,7 +7,7 @@ class ShorthandParser {
         "(?i)\\bhalf\\s+a?\\s*(g|grams?|ml|milliliters?|tbsp|tablespoons?|tsp|teaspoons?|pieces?)?\\b"
     )
     private val numberPattern = Regex(
-        "(?i)\\b(\\d+(?:[.,]\\d+)?(?:\\s+\\d+/\\d+)?|\\d+/\\d+)\\s*" +
+        "(?i)\\b(\\d+\\s+\\d+/\\d+|\\d+/\\d+|\\d+(?:[.,]\\d+)?)(?![.,\\d]|\\s*%)\\s*" +
             "(g|grams?|ml|milliliters?|tbsp|tablespoons?|tsp|teaspoons?|pieces?)?\\b"
     )
 
@@ -32,7 +32,11 @@ class ShorthandParser {
         val amount = parseAmount(amountText)
         val unit = unitText.toMeasureUnit()
         val foodPhrase = (raw.removeRange(match.range)).replace(Regex("\\s+"), " ").trim()
-        return ParsedSegment(raw, foodPhrase, amount, unit, match.range.first, match.range.last + 1)
+        val modifiers = Regex("(?i)(?:\\b\\d+(?:[.,]\\d+)?%|\\b(?:small|large|oat|smooth|crunchy)\\b)")
+            .findAll(foodPhrase)
+            .map { it.value.lowercase(Locale.ROOT) }
+            .toList()
+        return ParsedSegment(raw, foodPhrase, amount, unit, match.range.first, match.range.last + 1, modifiers)
     }
 
     private fun parseAmount(text: String): Double {

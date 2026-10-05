@@ -26,6 +26,10 @@ class BreakfastDomainTest {
     fun parsesCommaSegmentsAndMixedFraction() {
         assertEquals(listOf("1 1/2 tbsp oats", "banana"), parser.split("1 1/2 tbsp oats, banana"))
         assertEquals(1.5, parser.parse("1 1/2 tbsp oats").amount)
+        assertEquals(0.5, parser.parse("1/2 tbsp peanut butter").amount)
+        assertEquals("milk 3.2%", parser.parse("milk 3.2%").foodPhrase)
+        assertEquals("milk 3.2%", parser.parse("milk 3.2% 100 ml").foodPhrase)
+        assertEquals(100.0, parser.parse("milk 3.2% 100 ml").amount)
     }
 
     @Test
@@ -34,6 +38,12 @@ class BreakfastDomainTest {
         assertEquals("Oat milk", matcher.best("oat milk")?.food?.name)
         assertTrue(matcher.suggestions("crunchy peanut butter").all { it.food.name.contains("crunchy", true) })
         assertEquals("Домашно млеко", matcher.best("домашно млеко")?.food?.name)
+        assertEquals("Milk 3.2%", matcher.best("milk 3.2%")?.food?.name)
+
+        val generic = FoodCatalog.fixtures.first { it.id == "custom_grandmas_ajvar" }
+            .copy(id = "generic_spread", name = "Spread", aliases = listOf("spread"), origin = FoodOrigin.GENERIC)
+        val custom = generic.copy(id = "custom_spread", name = "Home spread", origin = FoodOrigin.CUSTOM)
+        assertEquals("Home spread", FoodMatcher(listOf(generic, custom)).best("spread")?.food?.name)
     }
 
     @Test
@@ -43,6 +53,15 @@ class BreakfastDomainTest {
         assertEquals(30.0, result.resolvedBaseAmount)
         assertEquals(16.2, result.nutrition.calories, 0.01)
         assertTrue(result.provenance.contains("15 ml"))
+
+        val peanutButter = FoodCatalog.fixtures.first { it.id == "peanut_butter_smooth" }
+        val teaspoon = NutritionCalculator().calculate(peanutButter, 1.0, MeasureUnit.TEASPOON)
+        assertTrue(teaspoon.supported)
+        assertEquals(5.3, teaspoon.resolvedBaseAmount, 0.01)
+
+        val unsupported = NutritionCalculator().calculate(milk, 1.0, MeasureUnit.PIECE)
+        assertTrue(!unsupported.supported)
+        assertEquals(0.0, unsupported.nutrition.calories)
     }
 
     @Test
@@ -58,7 +77,8 @@ class BreakfastDomainTest {
             nutritionSnapshot = NutritionValues(16.2, 0.96, 1.44, 0.84),
             conversionProvenance = "15 ml household tablespoon",
             approximateConversion = false,
-            savedAtEpochMs = 123L
+            savedAtEpochMs = 123L,
+            sourcePhrase = "1 tbsp smooth peanut butter"
         )
         val original = StorageModel(listOf(food), listOf(entry), listOf(Preference(food.id, 2, 123L)))
         val restored = StorageCodec.decode(StorageCodec.encode(original))

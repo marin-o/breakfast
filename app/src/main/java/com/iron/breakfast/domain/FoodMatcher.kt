@@ -1,7 +1,6 @@
 package com.iron.breakfast.domain
 
 import java.util.Locale
-import kotlin.math.max
 
 class FoodMatcher(
     private val catalog: List<FoodRecord>,
@@ -24,23 +23,27 @@ class FoodMatcher(
         return catalog.mapNotNull { food ->
             val names = food.allNames().joinToString(" ").lowercase(Locale.ROOT)
             val category = food.category.lowercase(Locale.ROOT)
-            val explicitModifiers = inputTokens.filter { it in MODIFIERS }
+            val explicitModifiers = inputTokens.filter { token ->
+                token in MODIFIERS || token.endsWith("%") || token.matches(Regex("\\d+(?:[.]\\d+)?"))
+            }
             if (explicitModifiers.any { it !in names && it !in category }) return@mapNotNull null
 
             val matchingTokens = inputTokens.count { token -> token in names || token in category }
             if (matchingTokens == 0) return@mapNotNull null
             val aliasExact = food.aliases.any { normalize(it) == normalize(phrase) }
             val tokenScore = matchingTokens.toDouble() / inputTokens.size * 10.0
-            val preferenceScore = preferences[food.id]?.score(nowMs()) ?: 0.0
+            val preferenceScore = (preferences[food.id]?.score(nowMs()) ?: 0.0) * 3.0
             val explicitScore = if (aliasExact) 100.0 else 0.0
             val categoryScore = if (inputTokens.any { it in category }) 0.8 else 0.0
+            val originScore = if (food.origin == FoodOrigin.CUSTOM) 2.0 else 0.0
             RankedFood(
                 food = food,
-                score = explicitScore + tokenScore + categoryScore + preferenceScore,
+                score = explicitScore + tokenScore + categoryScore + originScore + preferenceScore,
                 reasons = buildList {
                     if (aliasExact) add("explicit alias")
                     if (matchingTokens > 0) add("${matchingTokens}/${inputTokens.size} name/category tokens")
                     if (preferenceScore > 0) add("explicit preference")
+                    if (originScore > 0) add("custom food")
                     if (explicitModifiers.isNotEmpty()) add("modifier constrained")
                 }
             )

@@ -4,10 +4,8 @@ import android.app.Application
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,15 +16,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -92,6 +89,10 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     var savedAt by mutableStateOf(0L)
         private set
+    var feedbackDeadlineMs by mutableStateOf(0L)
+        private set
+    var searchTargetEntryId by mutableStateOf<String?>(null)
+        private set
 
     fun onInputChanged(value: String) {
         input = value
@@ -101,14 +102,19 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun done() {
         if (input.isBlank()) return
-        savedMeal = engine.save(input)
+        val meal = engine.save(input)
+        savedMeal = meal
         savedAt = System.currentTimeMillis()
-        feedbackVisible = true
-        input = ""
+        feedbackDeadlineMs = savedAt + 30_000
+        feedbackVisible = meal.entries.isNotEmpty()
+        input = meal.unresolvedSegments.joinToString(", ")
         liveSuggestions = emptyList()
+        closeSearch()
     }
 
-    fun showSearch() {
+    fun showSearch(entryId: String) {
+        if (!feedbackWindowOpen()) return
+        searchTargetEntryId = entryId
         searchOpen = true
         searchQuery = ""
         searchResults = emptyList()
@@ -116,30 +122,56 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun closeSearch() {
         searchOpen = false
+        searchTargetEntryId = null
         searchQuery = ""
         searchResults = emptyList()
     }
 
     fun onSearchChanged(value: String) {
+        if (!feedbackWindowOpen()) return
         searchQuery = value
         searchResults = if (value.isBlank()) emptyList() else engine.search(value)
     }
 
-    fun reinforce(entry: MealEntry, food: FoodRecord? = null) {
-        if (entry.id in reinforcedEntryIds) return
-        engine.reinforce(food?.id ?: entry.foodId)
+    fun selectFood(entry: MealEntry, food: FoodRecord) {
+        if (!feedbackWindowOpen() || entry.id in reinforcedEntryIds) return
+        val updated = engine.replaceEntry(entry.id, food.id) ?: return
+        val current = savedMeal ?: return
+        val updatedEntries = current.entries.map { if (it.id == updated.id) updated else it }
+        savedMeal = current.copy(
+            entries = updatedEntries,
+            totals = updatedEntries.fold(NutritionValues.ZERO) { total, item -> total + item.nutritionSnapshot }
+        )
+        engine.reinforce(food.id)
         reinforcedEntryIds = reinforcedEntryIds + entry.id
     }
 
-    fun reinforceFromSearch(food: FoodRecord) {
-        engine.reinforce(food.id)
+    fun selectFromSearch(food: FoodRecord) {
+        val entry = savedMeal?.entries?.firstOrNull { it.id == searchTargetEntryId } ?: return
+        selectFood(entry, food)
+        closeSearch()
+    }
+
+    fun confirm(entry: MealEntry) {
+        engine.foods().firstOrNull { it.id == entry.foodId }?.let { selectFood(entry, it) }
     }
 
     fun alternatives(entry: MealEntry): List<RankedFood> =
-        engine.search(entry.foodName).filterNot { it.food.id == entry.foodId }.take(2)
+        if (feedbackWindowOpen()) engine.alternativesFor(entry) else emptyList()
 
     fun expireFeedback() {
         feedbackVisible = false
+        closeSearch()
+        searchResults = emptyList()
+    }
+
+    private fun feedbackWindowOpen(): Boolean {
+        if (!feedbackVisible || feedbackDeadlineMs <= 0L) return false
+        if (System.currentTimeMillis() >= feedbackDeadlineMs) {
+            expireFeedback()
+            return false
+        }
+        return true
     }
 
     fun quantityHighlight(segment: String): AnnotatedString {
@@ -159,9 +191,12 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BreakfastApp(vm: BreakfastViewModel = viewModel()) {
-    LaunchedEffect(vm.savedAt) {
-        if (vm.savedAt > 0) {
-            delay(30_000)
+    LaunchedEffect(vm.feedbackDeadlineMs) {
+        val remaining = (vm.feedbackDeadlineMs - System.currentTimeMillis()).coerceAtLeast(0L)
+        if (remaining > 0L) {
+            delay(remaining)
+            vm.expireFeedback()
+        } else if (vm.feedbackDeadlineMs > 0L) {
             vm.expireFeedback()
         }
     }
@@ -213,13 +248,30 @@ fun BreakfastApp(vm: BreakfastViewModel = viewModel()) {
                         Text("Done — save breakfast")
                     }
                 }
-                if (vm.feedbackVisible && vm.savedMeal != null) {
-                    item { SavedSummary(vm.savedMeal!!.totals) }
-                    items(vm.savedMeal!!.entries, key = { it.id }) { entry ->
-                        SavedEntryCard(entry, vm)
+                if (vm.savedMeal != null && (vm.feedbackVisible || vm.savedMeal!!.unresolvedSegments.isNotEmpty())) {
+                    if (vm.savedMeal!!.entries.isNotEmpty()) {
+                        item { SavedSummary(vm.savedMeal!!.totals) }
+                        items(vm.savedMeal!!.entries, key = { it.id }) { entry ->
+                            SavedEntryCard(entry, vm)
+                        }
+                    }
+                    if (vm.savedMeal!!.unresolvedSegments.isNotEmpty()) {
+                        item {
+                            Card(modifier = Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(14.dp)) {
+                                    Text("Needs a match", fontWeight = FontWeight.SemiBold)
+                                    Text("Still in the input: ${vm.savedMeal!!.unresolvedSegments.joinToString(", ")}")
+                                    Text("Edit the text or use Search after saving a matching segment.", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
                     }
                     item {
-                        OutlinedButton(onClick = vm::showSearch, modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { vm.savedMeal?.entries?.firstOrNull()?.id?.let(vm::showSearch) },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = vm.savedMeal!!.entries.isNotEmpty() && vm.feedbackVisible
+                        ) {
                             Icon(Icons.Default.Search, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
                             Text("Search catalogue")
@@ -263,14 +315,14 @@ private fun SavedEntryCard(entry: MealEntry, vm: BreakfastViewModel) {
             Text(entry.foodName, fontWeight = FontWeight.SemiBold)
             Text("${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}  •  ${entry.nutritionSnapshot.calories.rounded()} kcal")
             Text(entry.conversionProvenance + if (entry.approximateConversion) " (approx.)" else "", style = MaterialTheme.typography.labelSmall)
-            Divider()
+            HorizontalDivider()
             Text("Two quick alternatives", style = MaterialTheme.typography.labelMedium)
             alternatives.forEach { candidate ->
-                TextButton(onClick = { vm.reinforce(entry, candidate.food) }, enabled = entry.id !in vm.reinforcedEntryIds) {
+                TextButton(onClick = { vm.selectFood(entry, candidate.food) }, enabled = entry.id !in vm.reinforcedEntryIds) {
                     Text("Use ${candidate.food.name}")
                 }
             }
-            TextButton(onClick = { vm.reinforce(entry) }, enabled = entry.id !in vm.reinforcedEntryIds) {
+            TextButton(onClick = { vm.confirm(entry) }, enabled = entry.id !in vm.reinforcedEntryIds) {
                 Text(if (entry.id in vm.reinforcedEntryIds) "Preference saved" else "Confirm ${entry.foodName}")
             }
         }
@@ -295,7 +347,7 @@ private fun SearchPanel(vm: BreakfastViewModel) {
             )
             vm.searchResults.forEach { result ->
                 Row(
-                    modifier = Modifier.fillMaxWidth().clickable { vm.reinforceFromSearch(result.food) }.padding(vertical = 8.dp),
+                    modifier = Modifier.fillMaxWidth().clickable { vm.selectFromSearch(result.food) }.padding(vertical = 8.dp),
                     verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
                 ) {
                     Column(Modifier.weight(1f)) {

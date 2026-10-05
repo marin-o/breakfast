@@ -9,7 +9,10 @@ object FoodCatalog {
             category = "milk dairy",
             origin = FoodOrigin.GENERIC,
             nutrition = NutritionBasis(100.0, MeasureUnit.MILLILITER, NutritionValues(54.0, 3.2, 4.8, 2.8)),
-            conversions = listOf(ServingConversion(MeasureUnit.TABLESPOON, 15.0, "15 ml household tablespoon")),
+            conversions = listOf(
+                ServingConversion(MeasureUnit.TABLESPOON, 15.0, "15 ml household tablespoon"),
+                ServingConversion(MeasureUnit.TEASPOON, 5.0, "5 ml household teaspoon")
+            ),
             defaultAmount = 100.0,
             defaultUnit = MeasureUnit.MILLILITER
         ),
@@ -20,7 +23,10 @@ object FoodCatalog {
             category = "milk dairy",
             origin = FoodOrigin.GENERIC,
             nutrition = NutritionBasis(100.0, MeasureUnit.MILLILITER, NutritionValues(61.0, 3.2, 4.7, 3.2)),
-            conversions = listOf(ServingConversion(MeasureUnit.TABLESPOON, 15.0, "15 ml household tablespoon")),
+            conversions = listOf(
+                ServingConversion(MeasureUnit.TABLESPOON, 15.0, "15 ml household tablespoon"),
+                ServingConversion(MeasureUnit.TEASPOON, 5.0, "5 ml household teaspoon")
+            ),
             defaultAmount = 100.0,
             defaultUnit = MeasureUnit.MILLILITER
         ),
@@ -31,7 +37,10 @@ object FoodCatalog {
             category = "milk plant",
             origin = FoodOrigin.GENERIC,
             nutrition = NutritionBasis(100.0, MeasureUnit.MILLILITER, NutritionValues(46.0, 1.0, 6.7, 1.5)),
-            conversions = listOf(ServingConversion(MeasureUnit.TABLESPOON, 15.0, "15 ml household tablespoon")),
+            conversions = listOf(
+                ServingConversion(MeasureUnit.TABLESPOON, 15.0, "15 ml household tablespoon"),
+                ServingConversion(MeasureUnit.TEASPOON, 5.0, "5 ml household teaspoon")
+            ),
             defaultAmount = 100.0,
             defaultUnit = MeasureUnit.MILLILITER
         ),
@@ -42,7 +51,10 @@ object FoodCatalog {
             category = "nut spread",
             origin = FoodOrigin.GENERIC,
             nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(588.0, 25.1, 20.0, 50.0)),
-            conversions = listOf(ServingConversion(MeasureUnit.TABLESPOON, 16.0, "standard tablespoon", false)),
+            conversions = listOf(
+                ServingConversion(MeasureUnit.TABLESPOON, 16.0, "standard tablespoon", false),
+                ServingConversion(MeasureUnit.TEASPOON, 5.3, "standard teaspoon", false)
+            ),
             defaultAmount = 1.0,
             defaultUnit = MeasureUnit.TABLESPOON
         ),
@@ -53,7 +65,10 @@ object FoodCatalog {
             category = "nut spread",
             origin = FoodOrigin.GENERIC,
             nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(590.0, 24.0, 21.0, 50.5)),
-            conversions = listOf(ServingConversion(MeasureUnit.TABLESPOON, 16.0, "standard tablespoon", false)),
+            conversions = listOf(
+                ServingConversion(MeasureUnit.TABLESPOON, 16.0, "standard tablespoon", false),
+                ServingConversion(MeasureUnit.TEASPOON, 5.3, "standard teaspoon", false)
+            ),
             defaultAmount = 1.0,
             defaultUnit = MeasureUnit.TABLESPOON
         ),
@@ -64,7 +79,10 @@ object FoodCatalog {
             category = "grain",
             origin = FoodOrigin.GENERIC,
             nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(389.0, 16.9, 66.3, 6.9)),
-            conversions = listOf(ServingConversion(MeasureUnit.TABLESPOON, 6.5, "generic tablespoon estimate", true)),
+            conversions = listOf(
+                ServingConversion(MeasureUnit.TABLESPOON, 6.5, "generic tablespoon estimate", true),
+                ServingConversion(MeasureUnit.TEASPOON, 2.2, "generic teaspoon estimate", true)
+            ),
             defaultAmount = 40.0,
             defaultUnit = MeasureUnit.GRAM
         ),
@@ -97,7 +115,10 @@ object FoodCatalog {
             category = "milk custom",
             origin = FoodOrigin.CUSTOM,
             nutrition = NutritionBasis(100.0, MeasureUnit.MILLILITER, NutritionValues(64.0, 3.3, 4.8, 3.7)),
-            conversions = listOf(ServingConversion(MeasureUnit.TABLESPOON, 15.0, "15 ml household tablespoon")),
+            conversions = listOf(
+                ServingConversion(MeasureUnit.TABLESPOON, 15.0, "15 ml household tablespoon"),
+                ServingConversion(MeasureUnit.TEASPOON, 5.0, "5 ml household teaspoon")
+            ),
             defaultAmount = 100.0,
             defaultUnit = MeasureUnit.MILLILITER
         ),
@@ -108,7 +129,10 @@ object FoodCatalog {
             category = "spread custom",
             origin = FoodOrigin.CUSTOM,
             nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(82.0, 1.2, 8.0, 4.8)),
-            conversions = listOf(ServingConversion(MeasureUnit.TABLESPOON, 18.0, "generic spread tablespoon estimate", true)),
+            conversions = listOf(
+                ServingConversion(MeasureUnit.TABLESPOON, 18.0, "generic spread tablespoon estimate", true),
+                ServingConversion(MeasureUnit.TEASPOON, 6.0, "generic spread teaspoon estimate", true)
+            ),
             defaultAmount = 1.0,
             defaultUnit = MeasureUnit.TABLESPOON
         )

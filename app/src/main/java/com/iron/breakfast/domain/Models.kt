@@ -92,14 +92,16 @@ data class MealEntry(
     val nutritionSnapshot: NutritionValues,
     val conversionProvenance: String,
     val approximateConversion: Boolean,
-    val savedAtEpochMs: Long
+    val savedAtEpochMs: Long,
+    val sourcePhrase: String = foodName
 )
 
 data class Calculation(
     val nutrition: NutritionValues,
     val resolvedBaseAmount: Double,
     val provenance: String,
-    val approximate: Boolean
+    val approximate: Boolean,
+    val supported: Boolean
 )
 
 data class ParsedSegment(
@@ -108,7 +110,8 @@ data class ParsedSegment(
     val amount: Double?,
     val unit: MeasureUnit?,
     val quantityStart: Int?,
-    val quantityEnd: Int?
+    val quantityEnd: Int?,
+    val explicitModifiers: List<String> = emptyList()
 )
 
 data class RankedFood(
@@ -119,5 +122,6 @@ data class RankedFood(
 
 data class SavedMeal(
     val entries: List<MealEntry>,
-    val totals: NutritionValues
+    val totals: NutritionValues,
+    val unresolvedSegments: List<String> = emptyList()
 )

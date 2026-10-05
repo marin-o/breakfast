@@ -18,13 +18,29 @@ class BreakfastEngine(private val store: BreakfastStore) {
 
     fun search(query: String): List<RankedFood> = matcher().suggestions(query, store.preferenceMap(), 20)
 
+    fun alternativesFor(entry: MealEntry): List<RankedFood> {
+        val phrase = parser.parse(entry.sourcePhrase).foodPhrase.ifBlank { entry.foodName }
+        return matcher().suggestions(phrase, store.preferenceMap(), 3)
+            .filterNot { it.food.id == entry.foodId }
+            .take(2)
+    }
+
     fun save(input: String, nowMs: Long = System.currentTimeMillis()): SavedMeal {
+        val unresolved = mutableListOf<String>()
         val entries = parser.split(input).mapNotNull { raw ->
             val parsed = parser.parse(raw)
-            val match = matcher().best(parsed.foodPhrase, store.preferenceMap()) ?: return@mapNotNull null
+            val match = matcher().best(parsed.foodPhrase, store.preferenceMap())
+            if (match == null) {
+                unresolved += raw
+                return@mapNotNull null
+            }
             val amount = parsed.amount ?: match.food.defaultAmount
             val unit = parsed.unit ?: match.food.defaultUnit
             val calculation = calculator.calculate(match.food, amount, unit)
+            if (!calculation.supported) {
+                unresolved += raw
+                return@mapNotNull null
+            }
             MealEntry(
                 id = UUID.randomUUID().toString(),
                 foodId = match.food.id,
@@ -35,11 +51,33 @@ class BreakfastEngine(private val store: BreakfastStore) {
                 nutritionSnapshot = calculation.nutrition,
                 conversionProvenance = calculation.provenance,
                 approximateConversion = calculation.approximate,
-                savedAtEpochMs = nowMs
+                savedAtEpochMs = nowMs,
+                sourcePhrase = raw
             )
         }
-        store.saveEntries(entries)
-        return SavedMeal(entries, entries.fold(NutritionValues.ZERO) { total, entry -> total + entry.nutritionSnapshot })
+        if (entries.isNotEmpty()) store.saveEntries(entries)
+        return SavedMeal(
+            entries = entries,
+            totals = entries.fold(NutritionValues.ZERO) { total, entry -> total + entry.nutritionSnapshot },
+            unresolvedSegments = unresolved
+        )
+    }
+
+    fun replaceEntry(entryId: String, foodId: String): MealEntry? {
+        val old = store.entries().firstOrNull { it.id == entryId } ?: return null
+        val food = store.foods().firstOrNull { it.id == foodId } ?: return null
+        val calculation = calculator.calculate(food, old.enteredAmount, old.enteredUnit)
+        if (!calculation.supported) return null
+        val updated = old.copy(
+            foodId = food.id,
+            foodName = food.name,
+            resolvedBaseAmount = calculation.resolvedBaseAmount,
+            nutritionSnapshot = calculation.nutrition,
+            conversionProvenance = calculation.provenance,
+            approximateConversion = calculation.approximate
+        )
+        store.replaceEntry(updated)
+        return updated
     }
 
     fun reinforce(foodId: String) = store.reinforce(foodId)

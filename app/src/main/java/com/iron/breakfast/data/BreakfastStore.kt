@@ -49,6 +49,13 @@ class BreakfastStore(context: Context) {
         persist()
     }
 
+    fun replaceEntry(updated: MealEntry) {
+        model = model.copy(entries = model.entries.map { entry ->
+            if (entry.id == updated.id) updated else entry
+        })
+        persist()
+    }
+
     fun reinforce(foodId: String) {
         val existing = preferenceMap()[foodId] ?: Preference(foodId)
         val updated = existing.copy(
