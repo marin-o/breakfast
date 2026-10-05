@@ -63,11 +63,17 @@ class BreakfastEngine(private val store: BreakfastStore) {
         )
     }
 
-    fun replaceEntry(entryId: String, foodId: String): MealEntry? {
-        val old = store.entries().firstOrNull { it.id == entryId } ?: return null
-        val food = store.foods().firstOrNull { it.id == foodId } ?: return null
+    fun replaceEntry(entryId: String, foodId: String): ReplacementResult {
+        val old = store.entries().firstOrNull { it.id == entryId }
+            ?: return ReplacementResult.Failure("That saved entry is no longer available.")
+        val food = store.foods().firstOrNull { it.id == foodId }
+            ?: return ReplacementResult.Failure("That catalogue record is no longer available.")
         val calculation = calculator.calculate(food, old.enteredAmount, old.enteredUnit)
-        if (!calculation.supported) return null
+        if (!calculation.supported) {
+            return ReplacementResult.Failure(
+                "${food.name} has no ${old.enteredUnit.displayLabel()} conversion. Re-enter this segment with a compatible amount such as ml or g."
+            )
+        }
         val updated = old.copy(
             foodId = food.id,
             foodName = food.name,
@@ -77,7 +83,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
             approximateConversion = calculation.approximate
         )
         store.replaceEntry(updated)
-        return updated
+        return ReplacementResult.Success(updated)
     }
 
     fun reinforce(foodId: String) = store.reinforce(foodId)

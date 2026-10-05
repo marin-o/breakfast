@@ -2,11 +2,9 @@ package com.iron.breakfast.data
 
 import android.content.Context
 import com.iron.breakfast.domain.FoodRecord
-import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.Preference
-import com.iron.breakfast.domain.NutritionValues
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -27,13 +25,40 @@ object StorageCodec {
     }.getOrDefault(StorageModel())
 }
 
+object StorageMigrations {
+    fun addFixtureConversions(model: StorageModel, fixtures: List<FoodRecord> = FoodCatalog.fixtures): StorageModel {
+        val fixtureByKey = fixtures.associateBy { it.id }
+        val migratedFoods = model.foods.map { existing ->
+            val fixture = fixtureByKey[existing.id]
+            if (fixture == null || existing.name != fixture.name || existing.origin != fixture.origin) {
+                existing
+            } else {
+                val mergedConversions = existing.conversions + fixture.conversions.filter { candidate ->
+                    existing.conversions.none { it.unit == candidate.unit }
+                }
+                existing.copy(conversions = mergedConversions)
+            }
+        }
+        return model.copy(foods = migratedFoods)
+    }
+}
+
 class BreakfastStore(context: Context) {
     private val preferences = context.getSharedPreferences("breakfast_store", Context.MODE_PRIVATE)
     private var model = StorageCodec.decode(preferences.getString(KEY, "") ?: "")
 
     init {
+        var changed = false
         if (model.foods.isEmpty()) {
             model = model.copy(foods = FoodCatalog.fixtures)
+            changed = true
+        }
+        val migrated = StorageMigrations.addFixtureConversions(model)
+        if (migrated != model) {
+            model = migrated
+            changed = true
+        }
+        if (changed) {
             persist()
         }
     }

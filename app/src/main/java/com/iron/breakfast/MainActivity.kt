@@ -55,6 +55,7 @@ import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.RankedFood
+import com.iron.breakfast.domain.ReplacementResult
 import com.iron.breakfast.domain.ShorthandParser
 import com.iron.breakfast.domain.displayLabel
 import kotlinx.coroutines.delay
@@ -93,6 +94,8 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     var searchTargetEntryId by mutableStateOf<String?>(null)
         private set
+    var replacementError by mutableStateOf<String?>(null)
+        private set
 
     fun onInputChanged(value: String) {
         input = value
@@ -115,6 +118,7 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
     fun showSearch(entryId: String) {
         if (!feedbackWindowOpen()) return
         searchTargetEntryId = entryId
+        replacementError = null
         searchOpen = true
         searchQuery = ""
         searchResults = emptyList()
@@ -123,6 +127,7 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
     fun closeSearch() {
         searchOpen = false
         searchTargetEntryId = null
+        replacementError = null
         searchQuery = ""
         searchResults = emptyList()
     }
@@ -133,10 +138,17 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
         searchResults = if (value.isBlank()) emptyList() else engine.search(value)
     }
 
-    fun selectFood(entry: MealEntry, food: FoodRecord) {
-        if (!feedbackWindowOpen() || entry.id in reinforcedEntryIds) return
-        val updated = engine.replaceEntry(entry.id, food.id) ?: return
-        val current = savedMeal ?: return
+    fun selectFood(entry: MealEntry, food: FoodRecord): Boolean {
+        if (!feedbackWindowOpen() || entry.id in reinforcedEntryIds) return false
+        val replacement = engine.replaceEntry(entry.id, food.id)
+        val updated = when (replacement) {
+            is ReplacementResult.Success -> replacement.entry
+            is ReplacementResult.Failure -> {
+                replacementError = replacement.reason
+                return false
+            }
+        }
+        val current = savedMeal ?: return false
         val updatedEntries = current.entries.map { if (it.id == updated.id) updated else it }
         savedMeal = current.copy(
             entries = updatedEntries,
@@ -144,12 +156,13 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
         )
         engine.reinforce(food.id)
         reinforcedEntryIds = reinforcedEntryIds + entry.id
+        replacementError = null
+        return true
     }
 
     fun selectFromSearch(food: FoodRecord) {
         val entry = savedMeal?.entries?.firstOrNull { it.id == searchTargetEntryId } ?: return
-        selectFood(entry, food)
-        closeSearch()
+        if (selectFood(entry, food)) closeSearch()
     }
 
     fun confirm(entry: MealEntry) {
@@ -249,7 +262,7 @@ fun BreakfastApp(vm: BreakfastViewModel = viewModel()) {
                     }
                 }
                 if (vm.savedMeal != null && (vm.feedbackVisible || vm.savedMeal!!.unresolvedSegments.isNotEmpty())) {
-                    if (vm.savedMeal!!.entries.isNotEmpty()) {
+                    if (vm.feedbackVisible && vm.savedMeal!!.entries.isNotEmpty()) {
                         item { SavedSummary(vm.savedMeal!!.totals) }
                         items(vm.savedMeal!!.entries, key = { it.id }) { entry ->
                             SavedEntryCard(entry, vm)
@@ -266,20 +279,11 @@ fun BreakfastApp(vm: BreakfastViewModel = viewModel()) {
                             }
                         }
                     }
-                    item {
-                        OutlinedButton(
-                            onClick = { vm.savedMeal?.entries?.firstOrNull()?.id?.let(vm::showSearch) },
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = vm.savedMeal!!.entries.isNotEmpty() && vm.feedbackVisible
-                        ) {
-                            Icon(Icons.Default.Search, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Search catalogue")
-                        }
-                        Text("Alternatives and Confirm disappear after 30 seconds or when the app restarts.", style = MaterialTheme.typography.labelSmall)
+                    if (vm.feedbackVisible && vm.savedMeal!!.entries.isNotEmpty()) {
+                        item { Text("Alternatives, Search, and Confirm disappear after 30 seconds or when the app restarts.", style = MaterialTheme.typography.labelSmall) }
                     }
                 }
-                if (vm.searchOpen) {
+                if (vm.searchOpen && vm.feedbackVisible) {
                     item { SearchPanel(vm) }
                 }
                 item { Spacer(Modifier.height(24.dp)) }
@@ -322,6 +326,11 @@ private fun SavedEntryCard(entry: MealEntry, vm: BreakfastViewModel) {
                     Text("Use ${candidate.food.name}")
                 }
             }
+            OutlinedButton(onClick = { vm.showSearch(entry.id) }, enabled = entry.id !in vm.reinforcedEntryIds) {
+                Icon(Icons.Default.Search, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Search catalogue")
+            }
             TextButton(onClick = { vm.confirm(entry) }, enabled = entry.id !in vm.reinforcedEntryIds) {
                 Text(if (entry.id in vm.reinforcedEntryIds) "Preference saved" else "Confirm ${entry.foodName}")
             }
@@ -336,6 +345,14 @@ private fun SearchPanel(vm: BreakfastViewModel) {
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text("Local catalogue search", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 IconButton(onClick = vm::closeSearch) { Text("×") }
+            }
+            vm.searchTargetEntryId?.let { targetId ->
+                vm.savedMeal?.entries?.firstOrNull { it.id == targetId }?.let { target ->
+                    Text("Replacing ${target.foodName}", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+            vm.replacementError?.let { reason ->
+                Text(reason, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
             OutlinedTextField(
                 value = vm.searchQuery,

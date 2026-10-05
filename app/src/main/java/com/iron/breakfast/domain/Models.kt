@@ -104,6 +104,11 @@ data class Calculation(
     val supported: Boolean
 )
 
+sealed class ReplacementResult {
+    data class Success(val entry: MealEntry) : ReplacementResult()
+    data class Failure(val reason: String) : ReplacementResult()
+}
+
 data class ParsedSegment(
     val raw: String,
     val foodPhrase: String,

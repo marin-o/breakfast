@@ -1,6 +1,7 @@
 package com.iron.breakfast.domain
 
 import com.iron.breakfast.data.StorageCodec
+import com.iron.breakfast.data.StorageMigrations
 import com.iron.breakfast.data.StorageModel
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -83,5 +84,28 @@ class BreakfastDomainTest {
         val original = StorageModel(listOf(food), listOf(entry), listOf(Preference(food.id, 2, 123L)))
         val restored = StorageCodec.decode(StorageCodec.encode(original))
         assertEquals(original, restored)
+    }
+
+    @Test
+    fun fixtureMigrationAddsConversionsWithoutOverwritingUserData() {
+        val peanutButter = FoodCatalog.fixtures.first { it.id == "peanut_butter_smooth" }
+        val oldFixture = peanutButter.copy(
+            aliases = listOf("my pb"),
+            conversions = peanutButter.conversions.filter { it.unit == MeasureUnit.TABLESPOON }
+        )
+        val userFood = peanutButter.copy(id = "user_pb", name = "My peanut butter", aliases = listOf("my jar"))
+        val original = StorageModel(
+            foods = listOf(oldFixture, userFood),
+            entries = emptyList(),
+            preferences = listOf(Preference("user_pb", explicitCount = 3, lastReinforcedEpochMs = 99L))
+        )
+
+        val migrated = StorageMigrations.addFixtureConversions(original)
+        val migratedFixture = migrated.foods.first { it.id == peanutButter.id }
+        assertEquals(listOf("my pb"), migratedFixture.aliases)
+        assertTrue(migratedFixture.conversions.any { it.unit == MeasureUnit.TEASPOON })
+        assertEquals(userFood, migrated.foods.first { it.id == "user_pb" })
+        assertEquals(original.preferences, migrated.preferences)
+        assertEquals(original.entries, migrated.entries)
     }
 }
