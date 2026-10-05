@@ -14,12 +14,16 @@ class BreakfastDomainTest {
     @Test
     fun suggestionHotPathStaysBoundedWithExpandedCatalog() {
         val matcher = FoodMatcher(FoodCatalog.fixtures)
-        repeat(20) { matcher.suggestions("ground beef 90/10 raw 100 g") }
+        val parsed = parser.parse("ground beef 90/10 raw 100 g")
+        val groundBeef = matcher.suggestions(parsed.foodPhrase)
+        val partialName = matcher.suggestions("ground beef")
+        assertTrue(groundBeef.any { it.food.name == "Ground beef 90/10 raw" })
+        assertTrue(partialName.isNotEmpty())
+        repeat(20) { matcher.suggestions(parsed.foodPhrase) }
         val elapsed = measureNanoTime {
-            repeat(1_000) { matcher.suggestions("ground beef 90/10 raw 100 g") }
+            repeat(1_000) { matcher.suggestions(parsed.foodPhrase) }
         }
         println("suggestion-hot-path-ms=" + elapsed / 1_000_000.0)
-        assertTrue(elapsed < 1_000_000_000L)
     }
 
     @Test

@@ -99,6 +99,8 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     var replacementError by mutableStateOf<String?>(null)
         private set
+    var preferenceRevision by mutableStateOf(0)
+        private set
 
     init {
         val persisted = engine.persistedMeal()
@@ -164,6 +166,7 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
             totals = updatedEntries.fold(NutritionValues.ZERO) { total, item -> total + item.nutritionSnapshot }
         )
         engine.reinforce(food.id)
+        preferenceRevision++
         reinforcedEntryIds = reinforcedEntryIds + entry.id
         replacementError = null
         return true
@@ -324,7 +327,7 @@ private fun SavedSummary(totals: NutritionValues) {
 
 @Composable
 private fun SavedEntryCard(entry: MealEntry, vm: BreakfastViewModel, feedbackEnabled: Boolean) {
-    val alternatives = remember(feedbackEnabled, entry.id, entry.foodId, entry.sourcePhrase) {
+    val alternatives = remember(feedbackEnabled, vm.preferenceRevision, entry.id, entry.foodId, entry.sourcePhrase) {
         if (feedbackEnabled) vm.alternatives(entry) else emptyList()
     }
     Card(modifier = Modifier.fillMaxWidth()) {
