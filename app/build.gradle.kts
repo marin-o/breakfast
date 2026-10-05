@@ -25,6 +25,12 @@ android {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+        create("perf") {
+            initWith(getByName("release"))
+            isDebuggable = false
+            isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
 
     compileOptions {
