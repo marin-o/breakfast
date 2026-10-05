@@ -35,6 +35,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,6 +70,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@Stable
 class BreakfastViewModel(application: Application) : AndroidViewModel(application) {
     private val engine = BreakfastEngine(BreakfastStore(application))
     private val parser = ShorthandParser()
