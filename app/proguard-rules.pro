@@ -1,0 +1,1 @@
+# Prototype keeps minification disabled.

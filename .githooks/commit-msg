@@ -1,0 +1,22 @@
+#!/bin/sh
+message_file="$1"
+message=$(sed -n 's/^[[:space:]]*//p' "$message_file" | sed -n '/./{p;q;}')
+
+case "$message" in
+  feat:*|fix:*|docs:*|refactor:*|test:*|chore:*|build:*|ci:*|perf:*|style:*|revert:*)
+    exit 0
+    ;;
+  feat\(*\):*|fix\(*\):*|docs\(*\):*|refactor\(*\):*|test\(*\):*|chore\(*\):*|build\(*\):*|ci\(*\):*|perf\(*\):*|style\(*\):*|revert\(*\):*)
+    exit 0
+    ;;
+  feat!*|fix!*|docs!*|refactor!*|test!*|chore!*|build!*|ci!*|perf!*|style!*|revert!*)
+    exit 0
+    ;;
+  feat\(*\)!*|fix\(*\)!*|docs\(*\)!*|refactor\(*\)!*|test\(*\)!*|chore\(*\)!*|build\(*\)!*|ci\(*\)!*|perf\(*\)!*|style\(*\)!*|revert\(*\)!*)
+    exit 0
+    ;;
+  *)
+    echo "Commit rejected: use Conventional Commits, e.g. feat: add breakfast parser" >&2
+    exit 1
+    ;;
+esac
