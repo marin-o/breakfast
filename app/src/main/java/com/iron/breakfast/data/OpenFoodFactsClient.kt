@@ -22,14 +22,29 @@ sealed interface OffResult {
     data class Error(val message: String) : OffResult
 }
 
+sealed interface OffSearchResult {
+    data class Success(val foods: List<FoodRecord>) : OffSearchResult
+    data object Unavailable : OffSearchResult
+    data class Error(val message: String) : OffSearchResult
+}
+
 /** Explicit-submit adapter. It is deliberately independent of matching and Room. */
 class OpenFoodFactsClient {
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun search(query: String): List<FoodRecord> {
+    fun search(query: String): OffSearchResult {
         val url = URL("https://world.openfoodfacts.org/cgi/search.pl?search_terms=" + URLEncoder.encode(query, "UTF-8") + "&search_simple=1&action=process&json=1&page_size=20&fields=code,product_name,brands,nutriments,nutrition_data_per,product_quantity,product_quantity_unit,quantity")
-        val root = request(url) ?: return emptyList()
-        return root["products"]?.jsonArray?.mapNotNull { parseProduct(it.jsonObject) } ?: emptyList()
+        val connection = open(url) ?: return OffSearchResult.Unavailable
+        return try {
+            if (connection.responseCode !in 200..299) return OffSearchResult.Unavailable
+            parseSearchResponse(connection.inputStream.bufferedReader().readText())
+        } catch (_: java.io.IOException) {
+            OffSearchResult.Unavailable
+        } catch (_: Exception) {
+            OffSearchResult.Error("Open Food Facts returned unreadable data; try again or add manually.")
+        } finally {
+            connection.disconnect()
+        }
     }
 
     fun barcode(code: String): OffResult {
@@ -43,13 +58,16 @@ class OpenFoodFactsClient {
         } catch (_: Exception) { OffResult.Unavailable } finally { connection.disconnect() }
     }
 
-    private fun request(url: URL): kotlinx.serialization.json.JsonObject? {
-        return try {
-            val c = open(url) ?: return null
-            if (c.responseCode !in 200..299) { c.disconnect(); return null }
-            json.parseToJsonElement(c.inputStream.bufferedReader().readText()).jsonObject.also { c.disconnect() }
-        } catch (_: Exception) { null }
+    private fun parseSearchResponse(raw: String): OffSearchResult = try {
+        val root = json.parseToJsonElement(raw).jsonObject
+        val products = root["products"]?.jsonArray
+            ?: return OffSearchResult.Error("Open Food Facts returned no product list; try again or add manually.")
+        OffSearchResult.Success(products.mapNotNull { parseProduct(it.jsonObject) })
+    } catch (_: Exception) {
+        OffSearchResult.Error("Open Food Facts returned unreadable data; try again or add manually.")
     }
+
+    internal fun parseSearchResponseForTesting(raw: String): OffSearchResult = parseSearchResponse(raw)
 
     private fun open(url: URL): HttpURLConnection? = try {
         (url.openConnection() as HttpURLConnection).apply {

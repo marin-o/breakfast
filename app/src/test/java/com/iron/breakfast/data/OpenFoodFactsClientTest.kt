@@ -3,9 +3,29 @@ package com.iron.breakfast.data
 import com.iron.breakfast.domain.MeasureUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OpenFoodFactsClientTest {
+    @Test fun searchParsingKeepsSuccessfulEmptyDistinctFromMalformedResponse() {
+        val client = OpenFoodFactsClient()
+        assertTrue(client.parseSearchResponseForTesting("{\"products\":[]}") is OffSearchResult.Success)
+        assertEquals(0, (client.parseSearchResponseForTesting("{\"products\":[]}") as OffSearchResult.Success).foods.size)
+        assertTrue(client.parseSearchResponseForTesting("{\"error\":\"backend unavailable\"}") is OffSearchResult.Error)
+        assertTrue(client.parseSearchResponseForTesting("not-json") is OffSearchResult.Error)
+    }
+
+    @Test fun searchParsingRetainsOnlyEligibleNutritionRecords() {
+        val raw = """
+            {"products":[
+              {"code":"1","product_name":"Pesto","product_quantity_unit":"g","nutriments":{"energy-kcal_100g":400}},
+              {"code":"2","product_name":"Unknown","product_quantity_unit":"g","nutriments":{"energy-kcal":42}}
+            ]}
+        """.trimIndent()
+        val result = OpenFoodFactsClient().parseSearchResponseForTesting(raw) as OffSearchResult.Success
+        assertEquals(listOf("Pesto"), result.foods.map { it.name })
+    }
+
     @Test fun usesLiquidQuantityUnitForNormalizedPer100gValuesAndKeepsMissingMacrosUnknown() {
         val food = OpenFoodFactsClient().parseProductForTesting("""{"product_name":"Drink","product_quantity":"1000","product_quantity_unit":"ml","nutrition_data_per":"100g","nutriments":{"energy-kcal_100g":42,"fat_100g":1.5}}""", "123")
         requireNotNull(food)
