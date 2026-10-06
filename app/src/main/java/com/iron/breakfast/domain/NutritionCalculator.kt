@@ -4,7 +4,8 @@ class NutritionCalculator {
     fun calculate(food: FoodRecord, amount: Double, enteredUnit: MeasureUnit?): Calculation {
         val unit = enteredUnit ?: food.defaultUnit
         val conversion = food.conversions.firstOrNull { it.unit == unit }
-        val supported = unit == food.nutrition.unit || conversion != null
+        val fallback = conversion ?: fallbackConversion(food.nutrition, unit)
+        val supported = unit == food.nutrition.unit || fallback != null
         if (!supported) {
             return Calculation(
                 nutrition = NutritionValues.ZERO,
@@ -14,18 +15,44 @@ class NutritionCalculator {
                 supported = false
             )
         }
-        val resolvedAmount = if (unit == food.nutrition.unit) amount else amount * conversion!!.baseUnitsPerServing
+        val resolvedAmount = if (unit == food.nutrition.unit) amount else amount * fallback!!.baseUnitsPerServing
         val ratio = resolvedAmount / food.nutrition.amount
         return Calculation(
             nutrition = food.nutrition.values * ratio,
             resolvedBaseAmount = resolvedAmount,
             provenance = when {
                 unit == food.nutrition.unit -> "entered ${unit.displayLabel()} on ${food.nutrition.amount}${food.nutrition.unit.displayLabel()} basis"
-                conversion != null -> conversion.provenance
+                fallback != null -> fallback.provenance
                 else -> "unsupported conversion"
             },
-            approximate = conversion?.approximate ?: false,
+            approximate = fallback?.approximate ?: false,
             supported = true
         )
     }
+
+    private fun fallbackConversion(basis: NutritionBasis, enteredUnit: MeasureUnit): ServingConversion? {
+        val baseUnits = when (enteredUnit) {
+            MeasureUnit.TABLESPOON -> 15.0
+            MeasureUnit.TEASPOON -> 5.0
+            else -> return null
+        }
+        val basisLabel = "per-${basis.amount.prettyAmount()} ${basis.unit.displayLabel()}"
+        return when (basis.unit) {
+            MeasureUnit.MILLILITER -> ServingConversion(
+                enteredUnit,
+                baseUnits,
+                "Approximate fallback: 1 ${enteredUnit.displayLabel()} = ${baseUnits.prettyAmount()} ml household measure (NIST); applied to $basisLabel nutrition basis",
+                approximate = true
+            )
+            MeasureUnit.GRAM -> ServingConversion(
+                enteredUnit,
+                baseUnits,
+                "Approximate fallback: 1 ${enteredUnit.displayLabel()} = ${baseUnits.prettyAmount()} g rough estimate; density varies; applied to $basisLabel nutrition basis",
+                approximate = true
+            )
+            else -> null
+        }
+    }
+
+    private fun Double.prettyAmount(): String = if (this % 1.0 == 0.0) toInt().toString() else toString()
 }

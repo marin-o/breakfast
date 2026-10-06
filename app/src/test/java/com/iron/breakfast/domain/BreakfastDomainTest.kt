@@ -124,6 +124,69 @@ class BreakfastDomainTest {
     }
 
     @Test
+    fun unsupportedTablespoonsUseBasisAwareApproximateFallback() {
+        val pestoMl = FoodRecord(
+            id = "off-pesto-ml",
+            name = "Branded pesto",
+            aliases = listOf("pesto"),
+            category = "Open Food Facts",
+            origin = FoodOrigin.GENERIC,
+            nutrition = NutritionBasis(100.0, MeasureUnit.MILLILITER, NutritionValues(400.0, 5.0, 8.0, 38.0)),
+            defaultAmount = 100.0,
+            defaultUnit = MeasureUnit.MILLILITER
+        )
+        val calculator = NutritionCalculator()
+
+        val tablespoon = calculator.calculate(pestoMl, 1.0, MeasureUnit.TABLESPOON)
+        assertTrue(tablespoon.supported)
+        assertTrue(tablespoon.approximate)
+        assertEquals(15.0, tablespoon.resolvedBaseAmount, 0.01)
+        assertEquals(60.0, tablespoon.nutrition.calories, 0.01)
+        assertTrue(tablespoon.provenance.contains("15 ml"))
+        assertTrue(tablespoon.provenance.contains("Approximate"))
+
+        val teaspoon = calculator.calculate(pestoMl, 1.0, MeasureUnit.TEASPOON)
+        assertEquals(5.0, teaspoon.resolvedBaseAmount, 0.01)
+        assertTrue(teaspoon.approximate)
+
+        val unsupportedPiece = calculator.calculate(pestoMl, 1.0, MeasureUnit.PIECE)
+        assertTrue(!unsupportedPiece.supported)
+    }
+
+    @Test
+    fun explicitProductConversionWinsOverFallbackAndGramBasisGetsRoughEstimate() {
+        val brandedPesto = FoodRecord(
+            id = "off-pesto-g",
+            name = "Branded pesto",
+            aliases = listOf("pesto"),
+            category = "Open Food Facts",
+            origin = FoodOrigin.GENERIC,
+            nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(500.0, 4.0, 10.0, 48.0)),
+            conversions = listOf(ServingConversion(MeasureUnit.TABLESPOON, 18.0, "Product label: 1 tbsp = 18 g")),
+            defaultAmount = 100.0,
+            defaultUnit = MeasureUnit.GRAM
+        )
+        val calculator = NutritionCalculator()
+        val explicit = calculator.calculate(brandedPesto, 1.0, MeasureUnit.TABLESPOON)
+        assertEquals(18.0, explicit.resolvedBaseAmount, 0.01)
+        assertTrue(!explicit.approximate)
+        assertEquals("Product label: 1 tbsp = 18 g", explicit.provenance)
+
+        val noProductConversion = brandedPesto.copy(conversions = emptyList())
+        val fallback = calculator.calculate(noProductConversion, 1.0, MeasureUnit.TABLESPOON)
+        assertEquals(15.0, fallback.resolvedBaseAmount, 0.01)
+        assertTrue(fallback.approximate)
+        assertTrue(fallback.provenance.contains("density varies"))
+
+        val nonHundredBasis = noProductConversion.copy(
+            nutrition = noProductConversion.nutrition.copy(amount = 30.0)
+        )
+        val nonHundredFallback = calculator.calculate(nonHundredBasis, 1.0, MeasureUnit.TABLESPOON)
+        assertTrue(nonHundredFallback.provenance.contains("per-30 g nutrition basis"))
+        assertTrue(!nonHundredFallback.provenance.contains("per-100 g nutrition basis"))
+    }
+
+    @Test
     fun srLegacySaucesKeepSourceMetadataAndPortions() {
         val mayonnaise = FoodCatalog.fixtures.first { it.id == "usda_171009_mayonnaise" }
         val soySauce = FoodCatalog.fixtures.first { it.id == "usda_174277_soy_sauce" }

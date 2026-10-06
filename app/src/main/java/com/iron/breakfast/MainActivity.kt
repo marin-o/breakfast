@@ -79,9 +79,12 @@ import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.NutritionBasis
+import com.iron.breakfast.domain.Calculation
+import com.iron.breakfast.domain.NutritionCalculator
 import com.iron.breakfast.domain.RankedFood
 import com.iron.breakfast.domain.ReplacementResult
 import com.iron.breakfast.domain.ShorthandParser
+import com.iron.breakfast.domain.toMeasureUnit
 import com.iron.breakfast.domain.dayKeyForEpochMs
 import com.iron.breakfast.domain.displayLabel
 import kotlinx.coroutines.Dispatchers
@@ -101,6 +104,7 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
     private val engine = BreakfastEngine(BreakfastStore(application))
     private val off = OpenFoodFactsClient()
     private val parser = ShorthandParser()
+    private val calculator = NutritionCalculator()
     var input by mutableStateOf(""); private set
     var foods by mutableStateOf<List<FoodRecord>>(emptyList()); private set
     var entries by mutableStateOf<List<MealEntry>>(emptyList()); private set
@@ -288,8 +292,68 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
     }
-    fun chooseProduct(food: FoodRecord) { selectedProduct = food; searchOpen = false; productAmount = "100"; productUnit = if (food.nutrition.unit == MeasureUnit.MILLILITER) "ml" else "g"; productName = food.name; productCalories = food.nutrition.values.calories.toString(); productProtein = food.nutrition.values.protein?.toString().orEmpty(); productCarbs = food.nutrition.values.carbohydrates?.toString().orEmpty(); productFat = food.nutrition.values.fat?.toString().orEmpty() }
-    fun addSelected() { val food = selectedProduct ?: return; if (!ready || busy) return; val amount = productAmount.toDoubleOrNull(); val unit = if (productUnit.trim().lowercase() == "ml") MeasureUnit.MILLILITER else MeasureUnit.GRAM; val target = slot ?: run { notice = "Open a meal before adding this food."; return }; val resolvesQueue = resolutionContinuation && unknownQueueTarget == target; val kcal = productCalories.toDoubleOrNull(); if (amount == null || !amount.isFinite() || amount <= 0.0 || kcal == null || !kcal.isFinite() || kcal < 0.0) { notice = "Enter a positive amount and valid calories."; return }; val draft = food.copy(name = productName.trim().ifBlank { food.name }, nutrition = NutritionBasis(food.nutrition.amount, food.nutrition.unit, NutritionValues(kcal, productProtein.toDoubleOrNull(), productCarbs.toDoubleOrNull(), productFat.toDoubleOrNull()))); busy = true; viewModelScope.launch { runCatching { engine.cacheFoodAndLog(draft, amount, unit, target) }.onSuccess { selectedProduct = null; if (resolvesQueue) advanceUnknownQueue() else resolutionContinuation = false; refresh(); notice = "Added to ${target.label()}" }.onFailure { notice = it.message ?: "This amount cannot be logged." }.also { busy = false } } }
+    fun chooseProduct(food: FoodRecord) {
+        selectedProduct = food
+        searchOpen = false
+        val prefill = unknownQueue.firstOrNull()
+            ?.takeIf { resolutionContinuation }
+            ?.let { productPrefill(it, food) }
+            ?: ProductPrefill(100.0, food.nutrition.unit)
+        productAmount = prefill.amount.toString()
+        productUnit = prefill.unit.displayLabel()
+        productName = food.name
+        productCalories = food.nutrition.values.calories.toString()
+        productProtein = food.nutrition.values.protein?.toString().orEmpty()
+        productCarbs = food.nutrition.values.carbohydrates?.toString().orEmpty()
+        productFat = food.nutrition.values.fat?.toString().orEmpty()
+    }
+    fun productCalculation(food: FoodRecord): Calculation? = productDraft(food)?.calculation
+    fun addSelected() {
+        val food = selectedProduct ?: return
+        if (!ready || busy) return
+        val target = slot ?: run { notice = "Open a meal before adding this food."; return }
+        val draft = productDraft(food) ?: run {
+            notice = "Enter a positive amount, a supported unit, and valid calories."
+            return
+        }
+        val resolvesQueue = resolutionContinuation && unknownQueueTarget == target
+        busy = true
+        viewModelScope.launch {
+            runCatching { engine.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target) }
+                .onSuccess {
+                    selectedProduct = null
+                    if (resolvesQueue) advanceUnknownQueue() else resolutionContinuation = false
+                    refresh()
+                    notice = "Added to ${target.label()}"
+                }
+                .onFailure { notice = it.message ?: "This amount cannot be logged." }
+                .also { busy = false }
+        }
+    }
+
+    private fun productDraft(food: FoodRecord): ProductDraft? {
+        val amount = productAmount.toDoubleOrNull()
+        val unit = parseProductUnit(productUnit)
+        val kcal = productCalories.toDoubleOrNull()
+        if (amount == null || !amount.isFinite() || amount <= 0.0 || unit == null ||
+            kcal == null || !kcal.isFinite() || kcal < 0.0
+        ) return null
+        val draftFood = food.copy(
+            name = productName.trim().ifBlank { food.name },
+            nutrition = NutritionBasis(
+                food.nutrition.amount,
+                food.nutrition.unit,
+                NutritionValues(
+                    kcal,
+                    productProtein.toDoubleOrNull(),
+                    productCarbs.toDoubleOrNull(),
+                    productFat.toDoubleOrNull()
+                )
+            )
+        )
+        val calculation = calculator.calculate(draftFood, amount, unit)
+        return ProductDraft(draftFood, amount, unit, calculation).takeIf { calculation.supported }
+    }
     fun beginScan() { scannerOpen = true }
     fun endScan() { scannerOpen = false }
     fun onBarcode(code: String) { scannerOpen = false; viewModelScope.launch(Dispatchers.IO) { val local = engine.foodByBarcode(code); if (local != null) { withContext(Dispatchers.Main) { chooseProduct(local) }; return@launch }; when (val result = off.barcode(code)) { is OffResult.Found -> withContext(Dispatchers.Main) { chooseProduct(result.food) }; is OffResult.Ineligible -> withContext(Dispatchers.Main) { notice = "Nutrition is incomplete. Review it as a personal food."; openCustom(result.name.orEmpty(), result.brand.orEmpty(), result.barcode) }; OffResult.Missing -> withContext(Dispatchers.Main) { notice = "Product not found. Add it manually with barcode $code"; openCustom(barcode = code) }; OffResult.Unavailable -> withContext(Dispatchers.Main) { notice = "No connection. Add the product manually."; openCustom(barcode = code) }; is OffResult.Error -> withContext(Dispatchers.Main) { notice = result.message } } } }
@@ -311,6 +375,25 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
         }.onFailure { notice = it.message ?: "Could not save this food." }.also { busy = false } }
     }
 }
+
+internal data class ProductPrefill(val amount: Double, val unit: MeasureUnit)
+
+internal fun productPrefill(raw: String, food: FoodRecord): ProductPrefill {
+    val parsed = ShorthandParser().parse(raw)
+    return ProductPrefill(
+        amount = parsed.amount ?: 100.0,
+        unit = parsed.unit ?: food.nutrition.unit
+    )
+}
+
+internal fun parseProductUnit(value: String): MeasureUnit? = value.trim().toMeasureUnit()
+
+private data class ProductDraft(
+    val food: FoodRecord,
+    val amount: Double,
+    val unit: MeasureUnit,
+    val calculation: Calculation
+)
 
 internal fun mealMarkerSlots(value: String): List<MealSlot> = ShorthandParser().split(value).mapNotNull { token ->
     when (token.trim().lowercase(Locale.ROOT)) {
@@ -438,7 +521,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
 
 @Composable private fun EntryRow(entry: MealEntry, vm: BreakfastViewModel) {
     var offset by remember { mutableStateOf(0f) }
-    Card(Modifier.fillMaxWidth().pointerInput(entry.id) { detectHorizontalDragGestures(onDragEnd = { if (offset < -120f) vm.delete(entry); offset = 0f }) { _, drag -> offset += drag } }.clickable { vm.beginEdit(entry) }) { Column(Modifier.padding(12.dp)) { Text(entry.foodName, style = MaterialTheme.typography.titleMedium); Text("${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}  ·  ${entry.nutritionSnapshot.calories.pretty()} kcal"); Text("P ${entry.nutritionSnapshot.protein.macro()}  C ${entry.nutritionSnapshot.carbohydrates.macro()}  F ${entry.nutritionSnapshot.fat.macro()}", color = MaterialTheme.colorScheme.onSurfaceVariant); if (vm.feedbackOpen(entry)) { vm.alternatives(entry).forEach { candidate -> TextButton({ vm.chooseAlternative(entry, candidate.food) }) { Text("Use ${candidate.food.name}") } }; TextButton({ vm.confirm(entry) }) { Text("Confirm ${entry.foodName}") }; Text("Correction controls expire after 30 seconds.", style = MaterialTheme.typography.labelSmall) } } }
+    Card(Modifier.fillMaxWidth().pointerInput(entry.id) { detectHorizontalDragGestures(onDragEnd = { if (offset < -120f) vm.delete(entry); offset = 0f }) { _, drag -> offset += drag } }.clickable { vm.beginEdit(entry) }) { Column(Modifier.padding(12.dp)) { Text(entry.foodName, style = MaterialTheme.typography.titleMedium); Text("${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}  ·  ${entry.nutritionSnapshot.calories.pretty()} kcal"); Text("P ${entry.nutritionSnapshot.protein.macro()}  C ${entry.nutritionSnapshot.carbohydrates.macro()}  F ${entry.nutritionSnapshot.fat.macro()}", color = MaterialTheme.colorScheme.onSurfaceVariant); if (entry.approximateConversion) Text("Approximate: ${entry.conversionProvenance}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); if (vm.feedbackOpen(entry)) { vm.alternatives(entry).forEach { candidate -> TextButton({ vm.chooseAlternative(entry, candidate.food) }) { Text("Use ${candidate.food.name}") } }; TextButton({ vm.confirm(entry) }) { Text("Confirm ${entry.foodName}") }; Text("Correction controls expire after 30 seconds.", style = MaterialTheme.typography.labelSmall) } } }
 }
 
 @Composable private fun CustomDialog(vm: BreakfastViewModel) {
@@ -475,8 +558,8 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
 }
 
 @Composable private fun ProductDialog(vm: BreakfastViewModel, food: FoodRecord) {
-    val liveCalories = vm.productCalories.toDoubleOrNull()?.let { calories -> vm.productAmount.toDoubleOrNull()?.let { amount -> calories * amount / 100.0 } }
-    AlertDialog(onDismissRequest = vm::clearSelectedProduct, confirmButton = { Button(vm::addSelected) { Text("Add to ${vm.slot?.label() ?: "meal"}") } }, dismissButton = { Row { TextButton({ vm.clearSelectedProduct(); vm.openSearch(fromResolver = vm.resolutionContinuation) }) { Text("Find better match") }; TextButton({ vm.clearSelectedProduct(); vm.beginScan() }) { Text("Rescan") }; TextButton(vm::clearSelectedProduct) { Text("Back") } } }, title = { Text("Product details") }, text = { Column(Modifier.verticalScroll(rememberScrollState())) { OutlinedTextField(vm.productName, vm::onProductName, label = { Text("Name") }); food.brand?.let { Text(it) }; OutlinedTextField(vm.productCalories, vm::onProductCalories, label = { Text("Calories per 100 ${food.nutrition.unit.label}") }); OutlinedTextField(vm.productProtein, vm::onProductProtein, label = { Text("Protein g (blank = unknown)") }); OutlinedTextField(vm.productCarbs, vm::onProductCarbs, label = { Text("Carbs g (blank = unknown)") }); OutlinedTextField(vm.productFat, vm::onProductFat, label = { Text("Fat g (blank = unknown)") }); OutlinedTextField(vm.productAmount, vm::onProductAmount, label = { Text("Amount") }); OutlinedTextField(vm.productUnit, vm::onProductUnit, label = { Text("Unit: g or ml") }); Text("Preview: ${liveCalories?.pretty() ?: "—"} kcal", style = MaterialTheme.typography.titleMedium) } })
+    val calculation = vm.productCalculation(food)
+    AlertDialog(onDismissRequest = vm::clearSelectedProduct, confirmButton = { Button(vm::addSelected) { Text("Add to ${vm.slot?.label() ?: "meal"}") } }, dismissButton = { Row { TextButton({ vm.clearSelectedProduct(); vm.openSearch(fromResolver = vm.resolutionContinuation) }) { Text("Find better match") }; TextButton({ vm.clearSelectedProduct(); vm.beginScan() }) { Text("Rescan") }; TextButton(vm::clearSelectedProduct) { Text("Back") } } }, title = { Text("Product details") }, text = { Column(Modifier.verticalScroll(rememberScrollState())) { OutlinedTextField(vm.productName, vm::onProductName, label = { Text("Name") }); food.brand?.let { Text(it) }; OutlinedTextField(vm.productCalories, vm::onProductCalories, label = { Text("Calories per 100 ${food.nutrition.unit.label}") }); OutlinedTextField(vm.productProtein, vm::onProductProtein, label = { Text("Protein g (blank = unknown)") }); OutlinedTextField(vm.productCarbs, vm::onProductCarbs, label = { Text("Carbs g (blank = unknown)") }); OutlinedTextField(vm.productFat, vm::onProductFat, label = { Text("Fat g (blank = unknown)") }); OutlinedTextField(vm.productAmount, vm::onProductAmount, label = { Text("Amount") }); OutlinedTextField(vm.productUnit, vm::onProductUnit, label = { Text("Unit: g, ml, tbsp, tsp, or piece") }); Text("Preview: ${calculation?.nutrition?.calories?.pretty() ?: "—"} kcal", style = MaterialTheme.typography.titleMedium); calculation?.let { Text("${if (it.approximate) "Approximate conversion: " else "Conversion: "}${it.provenance}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
