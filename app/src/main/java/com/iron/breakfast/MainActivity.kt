@@ -148,7 +148,10 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
         unknownQueueTarget = null
         resolutionContinuation = false
         resolverOpen = false
-        if (clearDraft) input = ""
+        if (clearDraft) {
+            input = ""
+            mealDraftError = null
+        }
     }
     fun openMeal(s: MealSlot) { abandonUnknownResolution(); slot = s; input = ""; editingEntryId = null; mealDraftError = null }
     fun closeMeal() { abandonUnknownResolution(clearDraft = true); slot = null; input = ""; editingEntryId = null; mealDraftError = null }
@@ -426,8 +429,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { vm.submit() }),
-            label = { Text("Add foods") },
-            placeholder = { Text("100g chicken, 1 tomato") }
+            label = { Text("Add foods") }
         )
         vm.mealDraftError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(vm::submit, Modifier.fillMaxWidth()) { Text(if (vm.editingEntryId == null) "Add to ${target.label()}" else "Save entry edit") }
