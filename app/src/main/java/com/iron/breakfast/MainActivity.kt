@@ -14,7 +14,10 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +26,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -30,6 +34,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Button
@@ -50,15 +55,27 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.activity.compose.BackHandler
 import androidx.core.content.ContextCompat
@@ -88,10 +105,14 @@ import com.iron.breakfast.domain.toMeasureUnit
 import com.iron.breakfast.domain.dayKeyForEpochMs
 import com.iron.breakfast.domain.displayLabel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.abs
+import kotlin.math.hypot
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -99,6 +120,10 @@ class MainActivity : ComponentActivity() {
         setContent { IronApp() }
     }
 }
+
+enum class EntryEditMode { NONE, QUICK, FULL }
+
+private enum class EntryGesturePhase { UP, HORIZONTAL, VERTICAL, CONSUMED }
 
 class BreakfastViewModel(application: Application) : AndroidViewModel(application) {
     private val engine = BreakfastEngine(BreakfastStore(application))
@@ -134,7 +159,14 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
     var ready by mutableStateOf(false); private set
     var busy by mutableStateOf(false); private set
     var initializationError by mutableStateOf<String?>(null); private set
+    var entryEditMode by mutableStateOf(EntryEditMode.NONE); private set
     var editingEntryId by mutableStateOf<String?>(null); private set
+    var editingFoodName by mutableStateOf<String?>(null); private set
+    var editInvalid by mutableStateOf(false); private set
+    var editInvalidSignal by mutableStateOf(0); private set
+    var quickEditHintVisible by mutableStateOf(false); private set
+    private var editSession = 0L
+    private var quickHintSession = 0L
     var unknownQueue by mutableStateOf<List<String>>(emptyList()); private set
     var unknownQueueTarget by mutableStateOf<MealSlot?>(null); private set
     var resolutionContinuation by mutableStateOf(false); private set
@@ -157,12 +189,71 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
             mealDraftError = null
         }
     }
-    fun openMeal(s: MealSlot) { abandonUnknownResolution(); slot = s; input = ""; editingEntryId = null; mealDraftError = null }
-    fun closeMeal() { abandonUnknownResolution(clearDraft = true); slot = null; input = ""; editingEntryId = null; mealDraftError = null }
+    fun openMeal(s: MealSlot) { abandonUnknownResolution(); slot = s; cancelEdit(); mealDraftError = null }
+    fun closeMeal() { abandonUnknownResolution(clearDraft = true); slot = null; cancelEdit() }
     fun onInput(v: String) { input = v }
-    fun beginEdit(entry: MealEntry) { editingEntryId = entry.id; input = "${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()} ${entry.foodName}" }
+    fun beginQuickEdit(entry: MealEntry) {
+        if (busy) return
+        editSession += 1
+        editingEntryId = entry.id
+        editingFoodName = entry.foodName
+        entryEditMode = EntryEditMode.QUICK
+        input = "${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}"
+        mealDraftError = null
+        editInvalid = false
+        quickEditHintVisible = true
+        val hintSession = ++quickHintSession
+        viewModelScope.launch {
+            delay(2_500)
+            if (quickHintSession == hintSession && entryEditMode == EntryEditMode.QUICK) quickEditHintVisible = false
+        }
+    }
+    /** Kept as the entry-point name for callers that predate the two edit modes. */
+    fun beginEdit(entry: MealEntry) = beginQuickEdit(entry)
+    fun beginFullEdit(entry: MealEntry) {
+        if (busy) return
+        editSession += 1
+        editingEntryId = entry.id
+        editingFoodName = null
+        entryEditMode = EntryEditMode.FULL
+        input = "${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()} ${entry.foodName}"
+        mealDraftError = null
+        editInvalid = false
+        quickHintSession += 1
+        quickEditHintVisible = false
+    }
+    fun cancelEdit() {
+        editSession += 1
+        entryEditMode = EntryEditMode.NONE
+        editingEntryId = null
+        editingFoodName = null
+        input = ""
+        editInvalid = false
+        quickHintSession += 1
+        quickEditHintVisible = false
+        mealDraftError = null
+    }
+    private fun markEditInvalid(message: String) {
+        mealDraftError = message
+        editInvalid = true
+        val signal = editInvalidSignal + 1
+        editInvalidSignal = signal
+        viewModelScope.launch {
+            delay(1_400)
+            if (editInvalidSignal == signal) editInvalid = false
+        }
+    }
     fun submit() {
         if (!ready || busy) return
+        if (entryEditMode != EntryEditMode.NONE) {
+            if (input.isBlank()) {
+                cancelEdit()
+                return
+            }
+            val target = slot ?: return
+            submitToMeal(target)
+            return
+        }
         if (input.isBlank()) { mealDraftError = "Add at least one food."; return }
         val target = slot ?: run {
             val markers = mealMarkers(input)
@@ -186,9 +277,27 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
         if (!ready || busy) return
         val captured = input
         val editing = editingEntryId
-        if (editing != null) {
+        val mode = entryEditMode
+        if (editing != null && mode != EntryEditMode.NONE) {
+            val session = editSession
             busy = true
-            viewModelScope.launch { runCatching { engine.replaceEntryFromText(editing, input) }.onSuccess { result -> if (result is ReplacementResult.Success) { refresh(); editingEntryId = null; input = ""; mealDraftError = null } }.onFailure { mealDraftError = it.message ?: "Could not edit this entry." }.also { busy = false } }
+            viewModelScope.launch {
+                runCatching {
+                    if (mode == EntryEditMode.QUICK) engine.replaceEntryAmountUnit(editing, input)
+                    else engine.replaceEntryFromText(editing, input)
+                }.onSuccess { result ->
+                    if (entryEditMode != mode || editingEntryId != editing || editSession != session) return@onSuccess
+                    when (result) {
+                        is ReplacementResult.Success -> { refresh(); cancelEdit() }
+                        is ReplacementResult.Failure -> markEditInvalid(result.reason)
+                    }
+                }.onFailure {
+                    if (entryEditMode == mode && editingEntryId == editing && editSession == session) {
+                        markEditInvalid(it.message ?: "Could not edit this entry.")
+                    }
+                }
+                    .also { busy = false }
+            }
             return
         }
         val cleaned = removeMealMarker(input, target)
@@ -496,32 +605,182 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
 }
 
 @Composable private fun MealComposer(vm: BreakfastViewModel, target: MealSlot) {
+    val editing = vm.entryEditMode != EntryEditMode.NONE
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val annotation = when {
+        vm.editInvalid -> "Invalid input"
+        editing -> "Editing"
+        vm.input.isNotBlank() -> "Adding"
+        else -> null
+    }
+    var shakeOffset by remember { mutableStateOf(0) }
+    LaunchedEffect(vm.editInvalidSignal) {
+        if (vm.editInvalidSignal == 0) return@LaunchedEffect
+        repeat(6) { index ->
+            shakeOffset = if (index % 2 == 0) 5 else -5
+            delay(45)
+        }
+        shakeOffset = 0
+    }
+    LaunchedEffect(editing) {
+        if (editing) focusRequester.requestFocus() else focusManager.clearFocus()
+    }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         HorizontalDivider()
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            TextButton({ vm.openCustom() }) { Text("Custom") }
-            TextButton(vm::openSearch) { Text("Search") }
-            TextButton(vm::beginScan) { Text("Scan") }
+        if (!editing) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                TextButton({ vm.openCustom() }) { Text("Custom") }
+                TextButton(vm::openSearch) { Text("Search") }
+                TextButton(vm::beginScan) { Text("Scan") }
+            }
         }
-        OutlinedTextField(
-            vm.input,
-            vm::onInput,
-            Modifier.fillMaxWidth().onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { vm.submit(); true } else false
-            },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { vm.submit() }),
-            label = { Text("Add foods") }
-        )
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .offset(x = shakeOffset.dp)
+                .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), RoundedCornerShape(4.dp))
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            annotation?.let {
+                Text(
+                    it,
+                    Modifier.align(Alignment.TopEnd)
+                        .offset(y = (-18).dp)
+                        .background(MaterialTheme.colorScheme.background)
+                        .padding(horizontal = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (vm.editInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                )
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                BasicTextField(
+                    value = vm.input,
+                    onValueChange = vm::onInput,
+                    modifier = Modifier.weight(1f).focusRequester(focusRequester).onPreviewKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { vm.submit(); true } else false
+                    },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { vm.submit() }),
+                    decorationBox = { innerTextField ->
+                        Box {
+                            if (vm.input.isBlank()) {
+                                Text(
+                                    if (editing) "Amount and unit" else "Add foods",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            innerTextField()
+                        }
+                    }
+                )
+                if (vm.entryEditMode == EntryEditMode.QUICK) {
+                    Text(
+                        vm.editingFoodName.orEmpty(),
+                        Modifier.weight(1f).padding(start = 8.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+        if (vm.quickEditHintVisible) {
+            Text("Hold a food to change it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         vm.mealDraftError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Button(vm::submit, Modifier.fillMaxWidth()) { Text(if (vm.editingEntryId == null) "Add to ${target.label()}" else "Save entry edit") }
+        Button(vm::submit, Modifier.fillMaxWidth()) { Text(if (!editing) "Add to ${target.label()}" else "Save entry edit") }
+        if (editing) TextButton(vm::cancelEdit, Modifier.fillMaxWidth()) { Text("Cancel edit") }
     }
 }
 
 @Composable private fun EntryRow(entry: MealEntry, vm: BreakfastViewModel) {
-    var offset by remember { mutableStateOf(0f) }
-    Card(Modifier.fillMaxWidth().pointerInput(entry.id) { detectHorizontalDragGestures(onDragEnd = { if (offset < -120f) vm.delete(entry); offset = 0f }) { _, drag -> offset += drag } }.clickable { vm.beginEdit(entry) }) { Column(Modifier.padding(12.dp)) { Text(entry.foodName, style = MaterialTheme.typography.titleMedium); Text("${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}  ·  ${entry.nutritionSnapshot.calories.pretty()} kcal"); Text("P ${entry.nutritionSnapshot.protein.macro()}  C ${entry.nutritionSnapshot.carbohydrates.macro()}  F ${entry.nutritionSnapshot.fat.macro()}", color = MaterialTheme.colorScheme.onSurfaceVariant); if (entry.approximateConversion) Text("Approximate: ${entry.conversionProvenance}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); if (vm.feedbackOpen(entry)) { vm.alternatives(entry).forEach { candidate -> TextButton({ vm.chooseAlternative(entry, candidate.food) }) { Text("Use ${candidate.food.name}") } }; TextButton({ vm.confirm(entry) }) { Text("Confirm ${entry.foodName}") }; Text("Correction controls expire after 30 seconds.", style = MaterialTheme.typography.labelSmall) } } }
+    val viewConfiguration = LocalViewConfiguration.current
+    Card(
+        Modifier
+            .fillMaxWidth()
+            .semantics {
+                onClick(label = "Quick edit ${entry.foodName}") { vm.beginQuickEdit(entry); true }
+                customActions = listOf(
+                    CustomAccessibilityAction("Edit food and amount") { vm.beginFullEdit(entry); true },
+                    CustomAccessibilityAction("Delete ${entry.foodName}") { vm.delete(entry); true }
+                )
+            }
+            .pointerInput(entry.id) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = true)
+                    var phase = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id }
+                                ?: return@withTimeoutOrNull EntryGesturePhase.UP
+                            if (change.isConsumed) return@withTimeoutOrNull EntryGesturePhase.CONSUMED
+                            val dx = change.position.x - down.position.x
+                            val dy = change.position.y - down.position.y
+                            if (!change.pressed) return@withTimeoutOrNull EntryGesturePhase.UP
+                            if (hypot(dx.toDouble(), dy.toDouble()).toFloat() > viewConfiguration.touchSlop) {
+                                if (abs(dx) > abs(dy)) {
+                                    change.consume()
+                                    return@withTimeoutOrNull EntryGesturePhase.HORIZONTAL
+                                }
+                                return@withTimeoutOrNull EntryGesturePhase.VERTICAL
+                            }
+                        }
+                    }
+                    if (phase == null && !down.isConsumed) {
+                        vm.beginFullEdit(entry)
+                        phase = EntryGesturePhase.UP
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (change.isConsumed) break
+                            if (!change.pressed) {
+                                change.consume()
+                                break
+                            }
+                            change.consume()
+                        }
+                    } else if (phase == EntryGesturePhase.HORIZONTAL) {
+                        var finalDx = 0f
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (change.isConsumed) break
+                            finalDx = change.position.x - down.position.x
+                            if (!change.pressed) {
+                                if (finalDx < -120f) vm.delete(entry)
+                                change.consume()
+                                break
+                            }
+                            change.consume()
+                        }
+                    } else if (phase == EntryGesturePhase.UP) {
+                        vm.beginQuickEdit(entry)
+                    } else if (phase == EntryGesturePhase.VERTICAL) {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (change.isConsumed) break
+                            if (!change.pressed) break
+                        }
+                    }
+                }
+            }
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Text(entry.foodName, style = MaterialTheme.typography.titleMedium)
+            Text("${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}  ·  ${entry.nutritionSnapshot.calories.pretty()} kcal")
+            Text("P ${entry.nutritionSnapshot.protein.macro()}  C ${entry.nutritionSnapshot.carbohydrates.macro()}  F ${entry.nutritionSnapshot.fat.macro()}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (entry.approximateConversion) Text("Approximate: ${entry.conversionProvenance}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (vm.feedbackOpen(entry)) {
+                vm.alternatives(entry).forEach { candidate -> TextButton({ vm.chooseAlternative(entry, candidate.food) }) { Text("Use ${candidate.food.name}") } }
+                TextButton({ vm.confirm(entry) }) { Text("Confirm ${entry.foodName}") }
+                Text("Correction controls expire after 30 seconds.", style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
 }
 
 @Composable private fun CustomDialog(vm: BreakfastViewModel) {

@@ -5,6 +5,7 @@ import com.iron.breakfast.data.StorageMigrations
 import com.iron.breakfast.data.StorageModel
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.system.measureNanoTime
 
@@ -37,6 +38,16 @@ class BreakfastDomainTest {
         assertEquals("peanut butter", second.foodPhrase)
         assertEquals(0.5, second.amount)
         assertEquals(MeasureUnit.TABLESPOON, second.unit)
+    }
+
+    @Test
+    fun quickEditAmountUnitParsingIsStrict() {
+        assertEquals(ParsedAmountUnit(100.0, MeasureUnit.GRAM), parseStrictAmountUnit("100 g"))
+        assertEquals(ParsedAmountUnit(0.5, MeasureUnit.TABLESPOON), parseStrictAmountUnit("1/2 tbsp"))
+        assertNull(parseStrictAmountUnit("100"))
+        assertNull(parseStrictAmountUnit("100 g oats"))
+        assertNull(parseStrictAmountUnit("0 g"))
+        assertNull(parseStrictAmountUnit("100 bananas"))
     }
 
     @Test

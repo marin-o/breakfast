@@ -103,6 +103,37 @@ class BreakfastEngine(private val store: BreakfastStore) {
         return ReplacementResult.Success(updated)
     }
 
+    /**
+     * Recalculates a saved entry for its original food record, changing only
+     * the entered amount and unit. The parser is deliberately strict here:
+     * quick edit must contain an amount and a supported unit, and it must not
+     * be allowed to fall back to the food's defaults.
+     */
+    suspend fun replaceEntryAmountUnit(entryId: String, text: String): ReplacementResult {
+        val old = store.entries().firstOrNull { it.id == entryId }
+            ?: return ReplacementResult.Failure("That entry is no longer available.")
+        val parsed = parseStrictAmountUnit(text)
+            ?: return ReplacementResult.Failure("Enter a positive amount and a supported unit, such as 100 g or 1 tbsp.")
+        val food = store.foods().firstOrNull { it.id == old.foodId }
+            ?: return ReplacementResult.Failure("The original food for this entry is no longer available.")
+        val calculation = calculator.calculate(food, parsed.amount, parsed.unit)
+        if (!calculation.supported) {
+            return ReplacementResult.Failure(
+                "That amount/unit is not supported for ${food.name}."
+            )
+        }
+        val updated = old.copy(
+            enteredAmount = parsed.amount,
+            enteredUnit = parsed.unit,
+            resolvedBaseAmount = calculation.resolvedBaseAmount,
+            nutritionSnapshot = calculation.nutrition,
+            conversionProvenance = calculation.provenance,
+            approximateConversion = calculation.approximate
+        )
+        store.replaceEntry(updated)
+        return ReplacementResult.Success(updated)
+    }
+
     suspend fun replaceEntryFromText(entryId: String, text: String): ReplacementResult {
         val old = store.entries().firstOrNull { it.id == entryId } ?: return ReplacementResult.Failure("That entry is no longer available.")
         val parsed = parser.parse(text)
@@ -206,4 +237,17 @@ class BreakfastEngine(private val store: BreakfastStore) {
 
     fun totalsForToday(): NutritionValues = store.entries()
         .fold(NutritionValues.ZERO) { total, entry -> total + entry.nutritionSnapshot }
+}
+
+data class ParsedAmountUnit(val amount: Double, val unit: MeasureUnit)
+
+/** Strict amount/unit parsing used by saved-entry quick edit. */
+fun parseStrictAmountUnit(text: String): ParsedAmountUnit? {
+    val parsed = ShorthandParser().parse(text)
+    val amount = parsed.amount
+    val unit = parsed.unit
+    if (parsed.foodPhrase.isNotBlank() || amount == null || unit == null ||
+        !amount.isFinite() || amount <= 0.0
+    ) return null
+    return ParsedAmountUnit(amount, unit)
 }
