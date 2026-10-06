@@ -634,26 +634,20 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
                 TextButton(vm::openSearch) { Text("Search") }
                 TextButton(vm::beginScan) { Text("Scan") }
             }
+        } else {
+            Spacer(Modifier.height(16.dp))
         }
         Box(
             Modifier
                 .fillMaxWidth()
                 .offset(x = shakeOffset.dp)
-                .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), RoundedCornerShape(4.dp))
-                .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-            annotation?.let {
-                Text(
-                    it,
-                    Modifier.align(Alignment.TopEnd)
-                        .offset(y = (-18).dp)
-                        .background(MaterialTheme.colorScheme.background)
-                        .padding(horizontal = 4.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (vm.editInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                )
-            }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth()
+                    .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 BasicTextField(
                     value = vm.input,
                     onValueChange = vm::onInput,
@@ -685,6 +679,17 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+            }
+            annotation?.let {
+                Text(
+                    it,
+                    Modifier.align(Alignment.TopEnd)
+                        .offset(y = (-8).dp)
+                        .background(MaterialTheme.colorScheme.background)
+                        .padding(horizontal = 8.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (vm.editInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                )
             }
         }
         if (vm.quickEditHintVisible) {
