@@ -103,9 +103,98 @@ class BreakfastEngine(private val store: BreakfastStore) {
         return ReplacementResult.Success(updated)
     }
 
+    suspend fun replaceEntryFromText(entryId: String, text: String): ReplacementResult {
+        val old = store.entries().firstOrNull { it.id == entryId } ?: return ReplacementResult.Failure("That entry is no longer available.")
+        val parsed = parser.parse(text)
+        val match = matcher().best(parsed.foodPhrase, store.preferenceMap()) ?: return ReplacementResult.Failure("No matching food.")
+        val amount = parsed.amount ?: old.enteredAmount
+        val unit = parsed.unit ?: old.enteredUnit
+        val calculation = calculator.calculate(match.food, amount, unit)
+        if (!calculation.supported) return ReplacementResult.Failure("That amount/unit is not supported for ${match.food.name}.")
+        val updated = old.copy(foodId = match.food.id, foodName = match.food.name, enteredAmount = amount, enteredUnit = unit,
+            resolvedBaseAmount = calculation.resolvedBaseAmount, nutritionSnapshot = calculation.nutrition,
+            conversionProvenance = calculation.provenance, approximateConversion = calculation.approximate, sourcePhrase = text)
+        store.replaceEntry(updated)
+        return ReplacementResult.Success(updated)
+    }
+
     suspend fun reinforce(foodId: String) = store.reinforce(foodId)
 
     fun foods(): List<FoodRecord> = store.foods()
+
+    suspend fun foodByBarcode(barcode: String): FoodRecord? = store.foodByBarcode(barcode)
+
+    suspend fun deleteEntry(id: String) = store.deleteEntry(id)
+
+    suspend fun restoreEntry(entry: MealEntry) = store.saveEntries(listOf(entry))
+
+    suspend fun saveCustomAndLog(
+        name: String,
+        brand: String?,
+        barcode: String?,
+        alias: String? = null,
+        nutrition: NutritionValues,
+        basisAmount: Double,
+        basisUnit: MeasureUnit,
+        mealSlot: MealSlot,
+        amount: Double,
+        amountUnit: MeasureUnit,
+        nowMs: Long = System.currentTimeMillis()
+    ): MealEntry {
+        require(name.isNotBlank()) { "Name is required" }
+        require(basisAmount.isFinite() && basisAmount > 0.0) { "Nutrition basis must be positive" }
+        require(amount.isFinite() && amount > 0.0) { "Amount must be positive" }
+        require(nutrition.calories.isFinite() && nutrition.calories >= 0.0) { "Calories are required" }
+        val id = "custom-" + UUID.randomUUID()
+        val food = FoodRecord(
+            id = id,
+            name = name.trim(),
+            aliases = alias?.split(',')?.map(String::trim)?.filter(String::isNotBlank).orEmpty(),
+            category = "Personal food",
+            origin = FoodOrigin.CUSTOM,
+            nutrition = NutritionBasis(basisAmount, basisUnit, nutrition),
+            conversions = listOf(ServingConversion(basisUnit, basisAmount, "custom basis")),
+            defaultAmount = amount,
+            defaultUnit = amountUnit,
+            brand = brand?.trim()?.ifBlank { null },
+            barcode = barcode?.trim()?.ifBlank { null }
+        )
+        val calculation = calculator.calculate(food, amount, amountUnit)
+        require(calculation.supported) { "Amount unit is incompatible with the nutrition basis" }
+        val entry = MealEntry(UUID.randomUUID().toString(), id, food.name, amount, amountUnit,
+            calculation.resolvedBaseAmount, calculation.nutrition, calculation.provenance,
+            calculation.approximate, nowMs, name.trim(), mealSlot, dayKeyForEpochMs(nowMs))
+        store.addFoodAndEntry(food, entry)
+        matcherCatalog = null
+        return entry
+    }
+
+    suspend fun saveCustomFood(
+        name: String, brand: String?, barcode: String?, alias: String? = null, nutrition: NutritionValues,
+        basisAmount: Double, basisUnit: MeasureUnit
+    ): FoodRecord {
+        require(name.isNotBlank()) { "Name is required" }
+        require(basisAmount.isFinite() && basisAmount > 0.0) { "Nutrition basis must be positive" }
+        require(nutrition.calories.isFinite() && nutrition.calories >= 0.0) { "Calories are required" }
+        val food = FoodRecord("custom-" + UUID.randomUUID(), name.trim(), alias?.split(',')?.map(String::trim)?.filter(String::isNotBlank).orEmpty(), "Personal food", FoodOrigin.CUSTOM,
+            NutritionBasis(basisAmount, basisUnit, nutrition), listOf(ServingConversion(basisUnit, basisAmount, "custom basis")),
+            basisAmount, basisUnit, brand = brand?.trim()?.ifBlank { null }, barcode = barcode?.trim()?.ifBlank { null })
+        store.upsertFood(food)
+        matcherCatalog = null
+        return food
+    }
+
+    suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, mealSlot: MealSlot): MealEntry {
+        val calculation = calculator.calculate(food, amount, unit)
+        require(calculation.supported) { "Amount unit is incompatible with the nutrition basis" }
+        val now = System.currentTimeMillis()
+        val entry = MealEntry(UUID.randomUUID().toString(), food.id, food.name, amount, unit,
+            calculation.resolvedBaseAmount, calculation.nutrition, calculation.provenance,
+            calculation.approximate, now, food.name, mealSlot, dayKeyForEpochMs(now))
+        store.addFoodAndEntry(food, entry)
+        matcherCatalog = null
+        return entry
+    }
 
     fun persistedMeal(): SavedMeal {
         val entries = store.entries()

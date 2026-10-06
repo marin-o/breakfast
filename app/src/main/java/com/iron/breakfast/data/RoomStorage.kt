@@ -21,7 +21,7 @@ import com.iron.breakfast.domain.Preference
 import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.dayKeyForEpochMs
 
-@Entity(tableName = "foods")
+@Entity(tableName = "foods", indices = [androidx.room.Index(value = ["barcode"]), androidx.room.Index(value = ["brand"])])
 data class FoodEntity(
     @PrimaryKey val id: String,
     val name: String,
@@ -39,7 +39,9 @@ data class FoodEntity(
     @ColumnInfo(name = "source_name") val sourceName: String?,
     @ColumnInfo(name = "source_release") val sourceRelease: String?,
     val preparation: String?,
-    @ColumnInfo(name = "source_description") val sourceDescription: String?
+    @ColumnInfo(name = "source_description") val sourceDescription: String?,
+    val brand: String?,
+    val barcode: String?
 )
 
 @Entity(tableName = "food_aliases", primaryKeys = ["foodId", "alias"])
@@ -91,6 +93,9 @@ interface FoodDao {
 
     @Query("SELECT * FROM foods")
     suspend fun all(): List<FoodEntity>
+
+    @Query("SELECT * FROM foods WHERE barcode = :barcode LIMIT 1")
+    suspend fun byBarcode(barcode: String): FoodEntity?
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(foods: List<FoodEntity>)
@@ -152,7 +157,7 @@ interface MealEntryDao {
         PreferenceEntity::class,
         MealEntryEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = true
 )
 abstract class BreakfastDatabase : RoomDatabase() {
@@ -161,6 +166,15 @@ abstract class BreakfastDatabase : RoomDatabase() {
     abstract fun servingConversionDao(): ServingConversionDao
     abstract fun preferenceDao(): PreferenceDao
     abstract fun mealEntryDao(): MealEntryDao
+}
+
+val ROOM_MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE foods ADD COLUMN brand TEXT")
+        db.execSQL("ALTER TABLE foods ADD COLUMN barcode TEXT")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_foods_barcode ON foods(barcode)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_foods_brand ON foods(brand)")
+    }
 }
 
 internal fun fixtureRowsMissingFrom(existingIds: Set<String>): List<FoodRecord> =
@@ -183,7 +197,9 @@ fun FoodRecord.toEntity(): FoodEntity = FoodEntity(
     sourceName = sourceName,
     sourceRelease = sourceRelease,
     preparation = preparation,
-    sourceDescription = sourceDescription
+    sourceDescription = sourceDescription,
+    brand = brand,
+    barcode = barcode
 )
 
 fun FoodRecord.toAliasEntities(): List<FoodAliasEntity> = aliases.distinct().map { alias ->
@@ -226,8 +242,10 @@ fun FoodEntity.toDomain(
     sourceName = sourceName,
     sourceRelease = sourceRelease,
     preparation = preparation,
-    sourceDescription = sourceDescription
-)
+        sourceDescription = sourceDescription,
+        brand = brand,
+        barcode = barcode
+    )
 
 fun Preference.toEntity() = PreferenceEntity(foodId, explicitCount, lastReinforcedEpochMs)
 

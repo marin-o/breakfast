@@ -74,7 +74,7 @@ class BreakfastStore(context: Context) {
         context.applicationContext,
         BreakfastDatabase::class.java,
         "breakfast.db"
-    ).build()
+    ).addMigrations(ROOM_MIGRATION_1_2).build()
     private val writeMutex = Mutex()
 
     @Volatile
@@ -155,6 +155,45 @@ class BreakfastStore(context: Context) {
                     database.servingConversionDao().deleteForFood(food.id)
                     database.foodAliasDao().insertAll(food.toAliasEntities())
                     database.servingConversionDao().insertAll(food.toConversionEntities())
+                }
+                model = readSnapshot()
+            }
+        }
+    }
+
+    suspend fun foodByBarcode(barcode: String): FoodRecord? {
+        requireReady()
+        return withContext(Dispatchers.IO) {
+            val entity = database.foodDao().byBarcode(barcode) ?: return@withContext null
+            val aliases = database.foodAliasDao().all().filter { it.foodId == entity.id }.map { it.alias }
+            val conversions = database.servingConversionDao().all().filter { it.foodId == entity.id }.map {
+                ServingConversion(MeasureUnit.valueOf(it.unit), it.baseUnitsPerServing, it.provenance, it.approximate)
+            }
+            entity.toDomain(aliases, conversions)
+        }
+    }
+
+    suspend fun deleteEntry(id: String) {
+        requireReady()
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                database.withTransaction { database.openHelper.writableDatabase.execSQL("DELETE FROM meal_entries WHERE id = ?", arrayOf(id)) }
+                model = readSnapshot()
+            }
+        }
+    }
+
+    suspend fun addFoodAndEntry(food: FoodRecord, entry: MealEntry) {
+        requireReady()
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                database.withTransaction {
+                    database.foodDao().upsert(food.toEntity())
+                    database.foodAliasDao().deleteForFood(food.id)
+                    database.servingConversionDao().deleteForFood(food.id)
+                    database.foodAliasDao().insertAll(food.toAliasEntities())
+                    database.servingConversionDao().insertAll(food.toConversionEntities())
+                    database.mealEntryDao().replace(entry.toEntity())
                 }
                 model = readSnapshot()
             }

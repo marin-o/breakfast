@@ -2,9 +2,12 @@ package com.iron.breakfast.data
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.testing.MigrationTestHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.room.withTransaction
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
@@ -22,6 +25,7 @@ class BreakfastDatabaseTest {
     private lateinit var context: Context
     private lateinit var databaseName: String
     private lateinit var database: BreakfastDatabase
+    private lateinit var migrationHelper: MigrationTestHelper
 
     @Before
     fun setUp() {
@@ -30,6 +34,7 @@ class BreakfastDatabaseTest {
         database = Room.databaseBuilder(context, BreakfastDatabase::class.java, databaseName)
             .allowMainThreadQueries()
             .build()
+        migrationHelper = MigrationTestHelper(InstrumentationRegistry.getInstrumentation(), BreakfastDatabase::class.java, emptyList(), FrameworkSQLiteOpenHelperFactory())
     }
 
     @After
@@ -87,6 +92,28 @@ class BreakfastDatabaseTest {
         assertEquals(edited.name, database.foodDao().all().single().name)
         assertEquals(listOf("edited alias"), database.foodAliasDao().all().map { it.alias })
         assertTrue(database.servingConversionDao().all().isEmpty())
+    }
+
+    @Test
+    fun migration1To2PreservesPopulatedRows() {
+        val name = "migration-${System.nanoTime()}.db"
+        val old = migrationHelper.createDatabase(name, 1)
+        old.execSQL("CREATE TABLE IF NOT EXISTS foods (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL, origin TEXT NOT NULL, nutrition_amount REAL NOT NULL, nutrition_unit TEXT NOT NULL, calories REAL NOT NULL, protein REAL, carbohydrates REAL, fat REAL, default_amount REAL NOT NULL, default_unit TEXT NOT NULL, source_id TEXT, source_name TEXT, source_release TEXT, preparation TEXT, source_description TEXT)")
+        old.execSQL("CREATE TABLE IF NOT EXISTS food_aliases (foodId TEXT NOT NULL, alias TEXT NOT NULL, PRIMARY KEY(foodId, alias))")
+        old.execSQL("CREATE TABLE IF NOT EXISTS serving_conversions (foodId TEXT NOT NULL, unit TEXT NOT NULL, base_units_per_serving REAL NOT NULL, provenance TEXT NOT NULL, approximate INTEGER NOT NULL, PRIMARY KEY(foodId, unit))")
+        old.execSQL("CREATE TABLE IF NOT EXISTS preferences (foodId TEXT NOT NULL PRIMARY KEY, explicit_count INTEGER NOT NULL, last_reinforced_epoch_ms INTEGER NOT NULL)")
+        old.execSQL("CREATE TABLE IF NOT EXISTS meal_entries (id TEXT NOT NULL PRIMARY KEY, food_id TEXT NOT NULL, food_name TEXT NOT NULL, entered_amount REAL NOT NULL, entered_unit TEXT NOT NULL, resolved_base_amount REAL NOT NULL, snapshot_calories REAL NOT NULL, snapshot_protein REAL, snapshot_carbohydrates REAL, snapshot_fat REAL, conversion_provenance TEXT NOT NULL, approximate_conversion INTEGER NOT NULL, saved_at_epoch_ms INTEGER NOT NULL, source_phrase TEXT NOT NULL, meal_slot TEXT NOT NULL, day_key TEXT NOT NULL)")
+        old.execSQL("INSERT INTO foods VALUES ('legacy','Legacy food','test','CUSTOM',100.0,'GRAM',250.0,NULL,12.0,5.0,100.0,'GRAM',NULL,NULL,NULL,NULL,NULL)")
+        old.execSQL("INSERT INTO food_aliases VALUES ('legacy','old alias')")
+        old.execSQL("INSERT INTO serving_conversions VALUES ('legacy','GRAM',100.0,'legacy',0)")
+        old.execSQL("INSERT INTO preferences VALUES ('legacy',3,1234)")
+        old.execSQL("INSERT INTO meal_entries VALUES ('entry','legacy','Legacy food',100.0,'GRAM',100.0,250.0,NULL,12.0,5.0,'legacy',0,1234,'legacy','BREAKFAST','1970-01-01')")
+        old.close()
+        val migrated = migrationHelper.runMigrationsAndValidate(name, 2, true, ROOM_MIGRATION_1_2)
+        assertEquals(1, migrated.query("SELECT COUNT(*) FROM foods").use { it.moveToFirst(); it.getInt(0) })
+        assertEquals("old alias", migrated.query("SELECT alias FROM food_aliases").use { it.moveToFirst(); it.getString(0) })
+        assertEquals(1, migrated.query("SELECT COUNT(*) FROM meal_entries").use { it.moveToFirst(); it.getInt(0) })
+        migrated.close(); context.deleteDatabase(name)
     }
 
     private suspend fun seed(foods: List<com.iron.breakfast.domain.FoodRecord>) {

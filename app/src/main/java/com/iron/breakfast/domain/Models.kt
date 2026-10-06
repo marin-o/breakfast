@@ -79,7 +79,9 @@ data class FoodRecord(
     val sourceName: String? = null,
     val sourceRelease: String? = null,
     val preparation: String? = null,
-    val sourceDescription: String? = null
+    val sourceDescription: String? = null,
+    val brand: String? = null,
+    val barcode: String? = null
 ) {
     fun allNames(): List<String> = listOf(name) + aliases
 }

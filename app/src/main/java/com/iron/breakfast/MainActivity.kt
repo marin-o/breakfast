@@ -1,11 +1,22 @@
 package com.iron.breakfast
 
+import android.Manifest
 import android.app.Application
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,19 +24,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -34,439 +41,311 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.BarcodeScanner
+import com.google.mlkit.vision.common.InputImage
 import com.iron.breakfast.data.BreakfastStore
+import com.iron.breakfast.data.OffResult
+import com.iron.breakfast.data.OpenFoodFactsClient
 import com.iron.breakfast.domain.BreakfastEngine
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
+import com.iron.breakfast.domain.MealSlot
+import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionValues
+import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.RankedFood
 import com.iron.breakfast.domain.ReplacementResult
 import com.iron.breakfast.domain.ShorthandParser
+import com.iron.breakfast.domain.dayKeyForEpochMs
 import com.iron.breakfast.domain.displayLabel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { BreakfastApp() }
+        setContent { IronApp() }
     }
 }
 
 class BreakfastViewModel(application: Application) : AndroidViewModel(application) {
     private val engine = BreakfastEngine(BreakfastStore(application))
+    private val off = OpenFoodFactsClient()
     private val parser = ShorthandParser()
+    var input by mutableStateOf(""); private set
+    var foods by mutableStateOf<List<FoodRecord>>(emptyList()); private set
+    var entries by mutableStateOf<List<MealEntry>>(emptyList()); private set
+    var slot by mutableStateOf<MealSlot?>(null); private set
+    var customOpen by mutableStateOf(false); private set
+    var customSeedName by mutableStateOf(""); private set
+    var customSeedBrand by mutableStateOf(""); private set
+    var customSeedBarcode by mutableStateOf(""); private set
+    var searchOpen by mutableStateOf(false); private set
+    var searchQuery by mutableStateOf(""); private set
+    var offResults by mutableStateOf<List<FoodRecord>>(emptyList()); private set
+    var searchBusy by mutableStateOf(false); private set
+    var scannerOpen by mutableStateOf(false); private set
+    var selectedProduct by mutableStateOf<FoodRecord?>(null); private set
+    var productAmount by mutableStateOf("100"); private set
+    var productUnit by mutableStateOf("g"); private set
+    var productName by mutableStateOf(""); private set
+    var productCalories by mutableStateOf(""); private set
+    var productProtein by mutableStateOf(""); private set
+    var productCarbs by mutableStateOf(""); private set
+    var productFat by mutableStateOf(""); private set
+    var notice by mutableStateOf<String?>(null); private set
+    var undoEntry by mutableStateOf<MealEntry?>(null); private set
+    var mealDraftError by mutableStateOf<String?>(null); private set
+    var ready by mutableStateOf(false); private set
+    var busy by mutableStateOf(false); private set
+    var initializationError by mutableStateOf<String?>(null); private set
+    var editingEntryId by mutableStateOf<String?>(null); private set
+    var unknownQueue by mutableStateOf<List<String>>(emptyList()); private set
+    var resolverOpen by mutableStateOf(false); private set
+    var resolverQuery by mutableStateOf(""); private set
+    var resolverResults by mutableStateOf<List<RankedFood>>(emptyList()); private set
+    var feedbackUntil by mutableStateOf(0L); private set
+    var feedbackIds by mutableStateOf<Set<String>>(emptySet()); private set
 
-    var input by mutableStateOf("")
-        private set
-    var liveSuggestions by mutableStateOf(emptyList<RankedFood>())
-        private set
-    var savedMeal by mutableStateOf<com.iron.breakfast.domain.SavedMeal?>(null)
-        private set
-    var feedbackVisible by mutableStateOf(false)
-        private set
-    var searchOpen by mutableStateOf(false)
-        private set
-    var searchQuery by mutableStateOf("")
-        private set
-    var searchResults by mutableStateOf(emptyList<RankedFood>())
-        private set
-    var reinforcedEntryIds by mutableStateOf(emptySet<String>())
-        private set
-    var feedbackEntryIds by mutableStateOf(emptySet<String>())
-        private set
-    var savedAt by mutableStateOf(0L)
-        private set
-    var feedbackDeadlineMs by mutableStateOf(0L)
-        private set
-    var searchTargetEntryId by mutableStateOf<String?>(null)
-        private set
-    var replacementError by mutableStateOf<String?>(null)
-        private set
-    var preferenceRevision by mutableStateOf(0)
-        private set
-    var submissionInFlight by mutableStateOf(false)
-        private set
-    var correctionInFlightEntryIds by mutableStateOf(emptySet<String>())
-        private set
-
-    init {
+    init { viewModelScope.launch { runCatching { engine.initialize(); refresh() }.onSuccess { ready = true }.onFailure { initializationError = "Storage could not be opened: ${it.message}" } } }
+    private fun refresh() { foods = engine.foods(); entries = engine.persistedMeal().entries }
+    fun reloadToday() { if (ready) refresh() }
+    fun openMeal(s: MealSlot) { slot = s; input = ""; editingEntryId = null; mealDraftError = null }
+    fun closeMeal() { slot = null; input = ""; editingEntryId = null; mealDraftError = null }
+    fun onInput(v: String) { input = v }
+    fun beginEdit(entry: MealEntry) { editingEntryId = entry.id; input = "${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()} ${entry.foodName}" }
+    fun submit() {
+        if (!ready || busy) return
+        val captured = input
+        val target = slot ?: parseMealMarker(input) ?: run { mealDraftError = "Choose Breakfast, Lunch, Dinner, or Snacks."; return }
+        val editing = editingEntryId
+        if (editing != null) {
+            busy = true
+            viewModelScope.launch { runCatching { engine.replaceEntryFromText(editing, input) }.onSuccess { result -> if (result is ReplacementResult.Success) { refresh(); editingEntryId = null; input = ""; mealDraftError = null } }.onFailure { mealDraftError = it.message ?: "Could not edit this entry." }.also { busy = false } }
+            return
+        }
+        val cleaned = removeMealMarker(input, target)
+        if (cleaned.isBlank()) { mealDraftError = "Add at least one food."; return }
+        busy = true
         viewModelScope.launch {
-            engine.initialize()
-            val persisted = engine.persistedMeal()
-            if (persisted.entries.isNotEmpty()) savedMeal = persisted
+            runCatching { engine.save(cleaned, mealSlot = target) }.onSuccess { saved ->
+                refresh(); if (input == captured) input = saved.unresolvedSegments.joinToString(", "); unknownQueue = saved.unresolvedSegments; resolverOpen = saved.unresolvedSegments.isNotEmpty(); mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
+                feedbackIds = saved.entries.mapTo(mutableSetOf()) { it.id }; feedbackUntil = System.currentTimeMillis() + 30_000L
+                if (slot == null) slot = target
+            }.onFailure { mealDraftError = it.message ?: "Could not save this meal." }.also { busy = false }
         }
     }
-
-    fun onInputChanged(value: String) {
-        input = value
-        val currentSegment = value.substringAfterLast(',').trim()
-        liveSuggestions = if (currentSegment.isBlank()) emptyList() else engine.suggestions(currentSegment)
+    private fun parseMealMarker(value: String): MealSlot? {
+        val parts = parser.split(value)
+        val markers = parts.mapNotNull { marker(it) }
+        return if (markers.size == 1) markers.first() else null
     }
-
-    fun done() {
-        if (input.isBlank() || submissionInFlight) return
-        val submittedInput = input
-        submissionInFlight = true
-        viewModelScope.launch {
-            try {
-                engine.initialize()
-                val meal = engine.save(submittedInput)
-                savedMeal = engine.persistedMeal().copy(unresolvedSegments = meal.unresolvedSegments)
-                feedbackEntryIds = meal.entries.mapTo(mutableSetOf()) { it.id }
-                savedAt = System.currentTimeMillis()
-                feedbackDeadlineMs = savedAt + 30_000
-                feedbackVisible = meal.entries.isNotEmpty()
-                if (input == submittedInput) {
-                    input = meal.unresolvedSegments.joinToString(", ")
-                    liveSuggestions = emptyList()
-                } else {
-                    val currentSegment = input.substringAfterLast(',').trim()
-                    liveSuggestions = if (currentSegment.isBlank()) emptyList() else engine.suggestions(currentSegment)
-                }
-                closeSearch()
-            } catch (_: Throwable) {
-                // Keep the captured draft available when persistence fails; the reservation is released below.
-            } finally {
-                submissionInFlight = false
-            }
-        }
+    private fun removeMealMarker(value: String, target: MealSlot): String = parser.split(value).filterNot { marker(it) == target }.joinToString(", ")
+    private fun marker(value: String): MealSlot? = when (value.trim().lowercase(Locale.ROOT)) {
+        "breakfast" -> MealSlot.BREAKFAST; "lunch" -> MealSlot.LUNCH; "dinner" -> MealSlot.DINNER; "snacks", "snack" -> MealSlot.SNACKS; else -> null
     }
-
-    fun showSearch(entryId: String) {
-        if (!feedbackWindowOpen()) return
-        searchTargetEntryId = entryId
-        replacementError = null
-        searchOpen = true
-        searchQuery = ""
-        searchResults = emptyList()
-    }
-
-    fun closeSearch() {
-        searchOpen = false
-        searchTargetEntryId = null
-        replacementError = null
-        searchQuery = ""
-        searchResults = emptyList()
-    }
-
-    fun onSearchChanged(value: String) {
-        if (!feedbackWindowOpen()) return
-        searchQuery = value
-        searchResults = if (value.isBlank()) emptyList() else engine.search(value)
-    }
-
-    fun selectFood(entry: MealEntry, food: FoodRecord) {
-        if (!feedbackWindowOpen() || entry.id !in feedbackEntryIds || entry.id in reinforcedEntryIds ||
-            entry.id in correctionInFlightEntryIds
-        ) return
-        correctionInFlightEntryIds = correctionInFlightEntryIds + entry.id
-        viewModelScope.launch {
-            try {
-                applyFoodSelection(entry, food)
-            } finally {
-                correctionInFlightEntryIds = correctionInFlightEntryIds - entry.id
-            }
-        }
-    }
-
-    fun selectFromSearch(food: FoodRecord) {
-        val entry = savedMeal?.entries?.firstOrNull { it.id == searchTargetEntryId } ?: return
-        if (!feedbackWindowOpen() || entry.id in reinforcedEntryIds || entry.id in correctionInFlightEntryIds) return
-        correctionInFlightEntryIds = correctionInFlightEntryIds + entry.id
-        viewModelScope.launch {
-            try {
-                if (applyFoodSelection(entry, food) && searchTargetEntryId == entry.id) closeSearch()
-            } finally {
-                correctionInFlightEntryIds = correctionInFlightEntryIds - entry.id
-            }
-        }
-    }
-
-    private suspend fun applyFoodSelection(entry: MealEntry, food: FoodRecord): Boolean {
-        val replacement = engine.replaceEntry(entry.id, food.id)
-        val updated = when (replacement) {
-            is ReplacementResult.Success -> replacement.entry
-            is ReplacementResult.Failure -> {
-                replacementError = replacement.reason
-                return false
-            }
-        }
-        val current = savedMeal ?: return false
-        val updatedEntries = current.entries.map { if (it.id == updated.id) updated else it }
-        savedMeal = current.copy(
-            entries = updatedEntries,
-            totals = updatedEntries.fold(NutritionValues.ZERO) { total, item -> total + item.nutritionSnapshot }
-        )
-        engine.reinforce(food.id)
-        preferenceRevision++
-        reinforcedEntryIds = reinforcedEntryIds + entry.id
-        replacementError = null
-        return true
-    }
-
-    fun confirm(entry: MealEntry) {
-        engine.foods().firstOrNull { it.id == entry.foodId }?.let { selectFood(entry, it) }
-    }
-
-    fun alternatives(entry: MealEntry): List<RankedFood> =
-        if (feedbackWindowOpen() && entry.id in feedbackEntryIds) engine.alternativesFor(entry) else emptyList()
-
-    fun expireFeedback() {
-        feedbackVisible = false
-        feedbackEntryIds = emptySet()
-        closeSearch()
-        searchResults = emptyList()
-    }
-
-    private fun feedbackWindowOpen(): Boolean {
-        if (!feedbackVisible || feedbackDeadlineMs <= 0L) return false
-        if (System.currentTimeMillis() >= feedbackDeadlineMs) {
-            expireFeedback()
-            return false
-        }
-        return true
-    }
-
-    fun quantityHighlight(segment: String): AnnotatedString {
-        val parsed = parser.parse(segment)
-        val builder = AnnotatedString.Builder(segment)
-        if (parsed.quantityStart != null && parsed.quantityEnd != null) {
-            builder.addStyle(
-                SpanStyle(background = Color(0xFFFFE8A1), fontWeight = FontWeight.Bold),
-                parsed.quantityStart,
-                parsed.quantityEnd.coerceAtMost(segment.length)
-            )
-        }
-        return builder.toAnnotatedString()
+    fun delete(entry: MealEntry) { if (!ready || busy) return; busy = true; viewModelScope.launch { runCatching { engine.deleteEntry(entry.id) }.onSuccess { undoEntry = entry; refresh() }.also { busy = false } } }
+    fun undo() { val e = undoEntry ?: return; if (!ready || busy) return; busy = true; viewModelScope.launch { runCatching { engine.restoreEntry(e) }.onSuccess { undoEntry = null; refresh() }.also { busy = false } } }
+    fun openCustom(name: String = "", brand: String = "", barcode: String = "") { customSeedName = name; customSeedBrand = brand; customSeedBarcode = barcode; customOpen = true }
+    fun closeCustom() { customOpen = false }
+    fun dismissNotice() { notice = null }
+    fun clearSelectedProduct() { selectedProduct = null }
+    fun onProductAmount(v: String) { productAmount = v }
+    fun onProductUnit(v: String) { productUnit = v }
+    fun onProductName(v: String) { productName = v }
+    fun onProductCalories(v: String) { productCalories = v }
+    fun onProductProtein(v: String) { productProtein = v }
+    fun onProductCarbs(v: String) { productCarbs = v }
+    fun onProductFat(v: String) { productFat = v }
+    fun editInput(v: String) { input = v }
+    fun openSearch() { searchOpen = true; searchQuery = ""; offResults = emptyList() }
+    fun closeSearch() { searchOpen = false }
+    fun onSearch(v: String) { searchQuery = v }
+    fun onResolverQuery(v: String) { resolverQuery = v; resolverResults = if (v.isBlank()) emptyList() else engine.search(v) }
+    fun resolveUnknown(food: FoodRecord) { val raw = unknownQueue.firstOrNull() ?: return; val target = slot ?: return; val parsed = parser.parse(raw); val amount = parsed.amount ?: food.defaultAmount; val unit = parsed.unit ?: food.defaultUnit; if (!ready || busy) return; busy = true; viewModelScope.launch { runCatching { engine.cacheFoodAndLog(food, amount, unit, target) }.onSuccess { unknownQueue = unknownQueue.drop(1); resolverQuery = ""; resolverResults = emptyList(); refresh(); if (unknownQueue.isEmpty()) resolverOpen = false }.onFailure { notice = it.message ?: "Could not resolve this food." }.also { busy = false } } }
+    fun discardUnknowns() { unknownQueue = emptyList(); resolverOpen = false }
+    fun feedbackOpen(entry: MealEntry): Boolean = entry.id in feedbackIds && System.currentTimeMillis() < feedbackUntil
+    fun alternatives(entry: MealEntry): List<RankedFood> = if (feedbackOpen(entry)) engine.alternativesFor(entry) else emptyList()
+    fun confirm(entry: MealEntry) { if (!ready || busy || !feedbackOpen(entry)) return; busy = true; viewModelScope.launch { runCatching { engine.reinforce(entry.foodId) }.onSuccess { feedbackIds = feedbackIds - entry.id }.also { busy = false } } }
+    fun chooseAlternative(entry: MealEntry, food: FoodRecord) { if (!ready || busy || !feedbackOpen(entry)) return; busy = true; viewModelScope.launch { runCatching { engine.replaceEntry(entry.id, food.id); engine.reinforce(food.id) }.onSuccess { feedbackIds = feedbackIds - entry.id; refresh() }.also { busy = false } } }
+    fun expireFeedback() { feedbackUntil = 0L; feedbackIds = emptySet() }
+    fun holdFeedback() { if (resolverOpen && feedbackUntil > 0L) feedbackUntil += 1000L }
+    fun submitSearch() { if (!ready || searchQuery.isBlank() || searchBusy) return; val captured = searchQuery; searchBusy = true; viewModelScope.launch(Dispatchers.IO) { val r = off.search(captured); withContext(Dispatchers.Main) { if (searchQuery == captured) { offResults = r; if (r.isEmpty()) notice = "No Open Food Facts result. Add it manually." }; searchBusy = false } } }
+    fun chooseProduct(food: FoodRecord) { selectedProduct = food; searchOpen = false; productAmount = "100"; productUnit = if (food.nutrition.unit == MeasureUnit.MILLILITER) "ml" else "g"; productName = food.name; productCalories = food.nutrition.values.calories.toString(); productProtein = food.nutrition.values.protein?.toString().orEmpty(); productCarbs = food.nutrition.values.carbohydrates?.toString().orEmpty(); productFat = food.nutrition.values.fat?.toString().orEmpty() }
+    fun addSelected() { val food = selectedProduct ?: return; if (!ready || busy) return; val amount = productAmount.toDoubleOrNull(); val unit = if (productUnit.trim().lowercase() == "ml") MeasureUnit.MILLILITER else MeasureUnit.GRAM; val target = slot ?: run { notice = "Open a meal before adding this food."; return }; val kcal = productCalories.toDoubleOrNull(); if (amount == null || !amount.isFinite() || amount <= 0.0 || kcal == null || !kcal.isFinite() || kcal < 0.0) { notice = "Enter a positive amount and valid calories."; return }; val draft = food.copy(name = productName.trim().ifBlank { food.name }, nutrition = NutritionBasis(food.nutrition.amount, food.nutrition.unit, NutritionValues(kcal, productProtein.toDoubleOrNull(), productCarbs.toDoubleOrNull(), productFat.toDoubleOrNull()))); busy = true; viewModelScope.launch { runCatching { engine.cacheFoodAndLog(draft, amount, unit, target) }.onSuccess { selectedProduct = null; refresh(); notice = "Added to ${target.label()}" }.onFailure { notice = it.message ?: "This amount cannot be logged." }.also { busy = false } } }
+    fun beginScan() { scannerOpen = true }
+    fun endScan() { scannerOpen = false }
+    fun onBarcode(code: String) { scannerOpen = false; viewModelScope.launch(Dispatchers.IO) { val local = engine.foodByBarcode(code); if (local != null) { withContext(Dispatchers.Main) { chooseProduct(local) }; return@launch }; when (val result = off.barcode(code)) { is OffResult.Found -> withContext(Dispatchers.Main) { chooseProduct(result.food) }; is OffResult.Ineligible -> withContext(Dispatchers.Main) { notice = "Nutrition is incomplete. Review it as a personal food."; openCustom(result.name.orEmpty(), result.brand.orEmpty(), result.barcode) }; OffResult.Missing -> withContext(Dispatchers.Main) { notice = "Product not found. Add it manually with barcode $code"; openCustom(barcode = code) }; OffResult.Unavailable -> withContext(Dispatchers.Main) { notice = "No connection. Add the product manually."; openCustom(barcode = code) }; is OffResult.Error -> withContext(Dispatchers.Main) { notice = result.message } } } }
+    fun saveCustom(name: String, brand: String, barcode: String, alias: String, shorthand: String, basisAmountText: String, basisUnitText: String, calories: String, protein: String, carbs: String, fat: String) {
+        fun shorthandNumber(label: String) = Regex("(?i)([0-9]+(?:[.,][0-9]+)?)\\s*g?\\s*$label").find(shorthand)?.groupValues?.getOrNull(1)?.replace(',', '.')?.toDoubleOrNull()
+        val kcal = calories.toDoubleOrNull() ?: shorthandNumber("kcal"); val proteinValue = protein.toDoubleOrNull() ?: shorthandNumber("protein"); val carbsValue = carbs.toDoubleOrNull() ?: shorthandNumber("(?:carb|carbs)"); val fatValue = fat.toDoubleOrNull() ?: shorthandNumber("fat")
+        if (name.isBlank() || kcal == null) { notice = "Name and calories are required."; return }
+        val basisAmount = basisAmountText.toDoubleOrNull() ?: 100.0
+        val basisUnit = if (basisUnitText.trim().lowercase() == "ml") MeasureUnit.MILLILITER else MeasureUnit.GRAM
+        val nutrition = NutritionValues(kcal, proteinValue, carbsValue, fatValue)
+        if (!nutrition.calories.isFinite() || nutrition.calories < 0.0 || nutrition.calories > 10000.0 || listOf(nutrition.protein, nutrition.carbohydrates, nutrition.fat).any { it != null && (!it.isFinite() || it < 0.0 || it > 1000.0) }) { notice = "Nutrition values must be finite and nonnegative."; return }
+        if (!ready || busy || !basisAmount.isFinite() || basisAmount <= 0.0) { notice = "Enter a positive nutrition basis."; return }
+        busy = true; viewModelScope.launch { runCatching { val target = slot; if (target != null) engine.saveCustomAndLog(name, brand, barcode, alias, nutrition, basisAmount, basisUnit, target, basisAmount, basisUnit) else engine.saveCustomFood(name, brand, barcode, alias, nutrition, basisAmount, basisUnit) }.onSuccess { refresh(); customOpen = false; if (unknownQueue.isNotEmpty()) { unknownQueue = unknownQueue.drop(1); resolverOpen = unknownQueue.isNotEmpty() }; notice = if (slot != null) "Saved to ${slot!!.label()} and your food library." else "Saved to your food library." }.onFailure { notice = it.message ?: "Could not save this food." }.also { busy = false } }
     }
 }
+
+private fun MealSlot.label() = name.lowercase().replaceFirstChar { it.titlecase() }
+private fun Double.pretty() = if (this % 1 == 0.0) "%.0f".format(Locale.ROOT, this) else "%.1f".format(Locale.ROOT, this)
+private fun Double?.macro() = this?.let { "${it.pretty()} g" } ?: "—"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BreakfastApp(vm: BreakfastViewModel = viewModel()) {
-    LaunchedEffect(vm.feedbackDeadlineMs) {
-        val remaining = (vm.feedbackDeadlineMs - System.currentTimeMillis()).coerceAtLeast(0L)
-        if (remaining > 0L) {
-            delay(remaining)
-            vm.expireFeedback()
-        } else if (vm.feedbackDeadlineMs > 0L) {
-            vm.expireFeedback()
-        }
+fun IronApp(vm: BreakfastViewModel = viewModel()) {
+    LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); vm.reloadToday() } }
+    LaunchedEffect(vm.feedbackUntil, vm.resolverOpen) { while (vm.feedbackUntil > 0L) { kotlinx.coroutines.delay(1000); if (vm.resolverOpen) vm.holdFeedback() else if (System.currentTimeMillis() >= vm.feedbackUntil) { vm.expireFeedback(); break } } }
+    if (vm.scannerOpen) { BarcodeScanner(vm); return }
+    Scaffold(
+        topBar = { TopAppBar(title = { Text(vm.slot?.label() ?: "Iron") }) },
+        bottomBar = { vm.slot?.let { MealComposer(vm, it) } }
+    ) { pad ->
+        if (vm.slot == null) Home(vm, Modifier.padding(pad)) else MealDetail(vm, Modifier.padding(pad))
     }
-    MaterialTheme {
-        Scaffold(
-            topBar = { TopAppBar(title = { Text("Breakfast") }) }
-        ) { padding ->
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                item { Spacer(Modifier.height(4.dp)) }
-                item {
-                    Text("Log a breakfast", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Use commas between foods. Examples: 2 tbsp oats, half a tbsp peanut butter, banana",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                item {
-                    OutlinedTextField(
-                        value = vm.input,
-                        onValueChange = vm::onInputChanged,
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 2,
-                        label = { Text("Food shorthand") },
-                        placeholder = { Text("2 tbsp oats, 100 ml milk") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { vm.done() })
-                    )
-                    val current = vm.input.substringAfterLast(',').trim()
-                    if (current.isNotEmpty()) {
-                        Spacer(Modifier.height(4.dp))
-                        val highlighted = remember(current) { vm.quantityHighlight(current) }
-                        Text(highlighted, style = MaterialTheme.typography.bodyLarge)
-                        Text("Quantity is highlighted while you type; spaces do not commit a food.", style = MaterialTheme.typography.labelSmall)
-                    }
-                }
-                if (vm.liveSuggestions.isNotEmpty()) {
-                    item {
-                        Text("Suggestions", fontWeight = FontWeight.Medium)
-                        vm.liveSuggestions.forEach { ranked ->
-                            SuggestionRow(ranked)
-                        }
-                    }
-                }
-                item {
-                    Button(
-                        onClick = vm::done,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = vm.input.isNotBlank() && !vm.submissionInFlight
-                    ) {
-                        Text("Done — save breakfast")
-                    }
-                }
-                if (vm.savedMeal != null) {
-                    if (vm.savedMeal!!.entries.isNotEmpty()) {
-                        item { SavedSummary(vm.savedMeal!!.totals) }
-                        items(vm.savedMeal!!.entries, key = { it.id }) { entry ->
-                            SavedEntryCard(entry, vm, entry.id in vm.feedbackEntryIds && vm.feedbackVisible)
-                        }
-                    }
-                    if (vm.savedMeal!!.unresolvedSegments.isNotEmpty()) {
-                        item {
-                            Card(modifier = Modifier.fillMaxWidth()) {
-                                Column(Modifier.padding(14.dp)) {
-                                    Text("Needs a match", fontWeight = FontWeight.SemiBold)
-                                    Text("Still in the input: ${vm.savedMeal!!.unresolvedSegments.joinToString(", ")}")
-                                    Text("Edit the text or use Search after saving a matching segment.", style = MaterialTheme.typography.labelSmall)
-                                }
-                            }
-                        }
-                    }
-                    if (vm.feedbackVisible && vm.savedMeal!!.entries.isNotEmpty()) {
-                        item { Text("Alternatives, Search, and Confirm disappear after 30 seconds or when the app restarts.", style = MaterialTheme.typography.labelSmall) }
-                    }
-                }
-                if (vm.searchOpen && vm.feedbackVisible) {
-                    item { SearchPanel(vm) }
-                }
-                item { Spacer(Modifier.height(24.dp)) }
-            }
-        }
+    if (vm.customOpen) CustomDialog(vm)
+    if (vm.searchOpen) SearchDialog(vm)
+    if (vm.resolverOpen) UnknownResolver(vm)
+    vm.selectedProduct?.let { ProductDialog(vm, it) }
+    vm.notice?.let { message -> AlertDialog(onDismissRequest = vm::dismissNotice, confirmButton = { TextButton(vm::dismissNotice) { Text("OK") } }, text = { Text(message) }) }
+    vm.initializationError?.let { message -> AlertDialog(onDismissRequest = {}, confirmButton = {}, title = { Text("Storage unavailable") }, text = { Text(message) }) }
+}
+
+@Composable private fun Home(vm: BreakfastViewModel, modifier: Modifier) {
+    val today = vm.entries.filter { it.dayKey == dayKeyForEpochMs(System.currentTimeMillis()) }
+    LazyColumn(modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item { Spacer(Modifier.height(8.dp)); Text("Today", style = MaterialTheme.typography.headlineMedium); Text("Log a food with a meal marker, or open a meal card.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        item { OutlinedTextField(vm.input, vm::onInput, Modifier.fillMaxWidth(), minLines = 2, label = { Text("Food shorthand") }, placeholder = { Text("breakfast, 100g oats") }) }
+        item { Button({ vm.submit() }, Modifier.fillMaxWidth()) { Text("Save with a meal marker") } }
+        vm.mealDraftError?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
+        MealSlot.entries.forEach { s -> item { MealCard(s, today.filter { it.mealSlot == s }, vm) } }
+        item { OutlinedButton({ vm.openCustom() }, Modifier.fillMaxWidth()) { Text("Create a personal food") } }
+        vm.undoEntry?.let { item { TextButton({ vm.undo() }) { Text("Undo delete ${it.foodName}") } } }
+        item { Spacer(Modifier.height(24.dp)) }
     }
 }
 
-@Composable
-private fun SuggestionRow(ranked: RankedFood) {
-    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-        Text(ranked.food.name, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(ranked.reasons.firstOrNull().orEmpty(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+@Composable private fun MealCard(slot: MealSlot, entries: List<MealEntry>, vm: BreakfastViewModel) {
+    val total = entries.fold(NutritionValues.ZERO) { a, e -> a + e.nutritionSnapshot }
+    Card(Modifier.fillMaxWidth().clickable { vm.openMeal(slot) }) { Column(Modifier.padding(14.dp)) {
+        Text(slot.label(), style = MaterialTheme.typography.titleLarge); Text("${total.calories.pretty()} kcal  •  P ${total.protein.macro()}  C ${total.carbohydrates.macro()}  F ${total.fat.macro()}")
+        entries.forEach { Text("${it.foodName}  ·  ${it.enteredAmount.pretty()} ${it.enteredUnit.displayLabel()}  ·  ${it.nutritionSnapshot.calories.pretty()} kcal") }
+    } }
+}
+
+@Composable private fun MealDetail(vm: BreakfastViewModel, modifier: Modifier) {
+    val target = vm.slot ?: return; val entries = vm.entries.filter { it.dayKey == dayKeyForEpochMs(System.currentTimeMillis()) && it.mealSlot == target }; val total = entries.fold(NutritionValues.ZERO) { a, e -> a + e.nutritionSnapshot }
+    LazyColumn(modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item { Spacer(Modifier.height(8.dp)); Text(target.label(), style = MaterialTheme.typography.headlineMedium); Text("${total.calories.pretty()} kcal  •  P ${total.protein.macro()}  C ${total.carbohydrates.macro()}  F ${total.fat.macro()}") }
+        items(entries, key = { it.id }) { entry -> EntryRow(entry, vm) }
+        item { vm.undoEntry?.let { TextButton({ vm.undo() }) { Text("Undo delete ${it.foodName}") } }; TextButton({ vm.closeMeal() }) { Text("Back to today") }; Spacer(Modifier.height(16.dp)) }
     }
 }
 
-@Composable
-private fun SavedSummary(totals: NutritionValues) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Text("Saved", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text("${totals.calories.rounded()} kcal", style = MaterialTheme.typography.headlineSmall)
-            Text(
-                "Protein ${totals.protein.displayMacro()}  •  " +
-                    "Carbs ${totals.carbohydrates.displayMacro()}  •  " +
-                    "Fat ${totals.fat.displayMacro()}"
-            )
+@Composable private fun MealComposer(vm: BreakfastViewModel, target: MealSlot) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        HorizontalDivider()
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            TextButton({ vm.openCustom() }) { Text("Custom") }
+            TextButton(vm::openSearch) { Text("Search") }
+            TextButton(vm::beginScan) { Text("Scan") }
         }
+        OutlinedTextField(vm.input, vm::onInput, Modifier.fillMaxWidth(), maxLines = 3, label = { Text("Add foods") }, placeholder = { Text("100g chicken, 1 tomato") })
+        vm.mealDraftError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        Button(vm::submit, Modifier.fillMaxWidth()) { Text(if (vm.editingEntryId == null) "Add to ${target.label()}" else "Save entry edit") }
     }
 }
 
-@Composable
-private fun SavedEntryCard(entry: MealEntry, vm: BreakfastViewModel, feedbackEnabled: Boolean) {
-    val alternatives = remember(feedbackEnabled, vm.preferenceRevision, entry.id, entry.foodId, entry.sourcePhrase) {
-        if (feedbackEnabled) vm.alternatives(entry) else emptyList()
-    }
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Column(
-                modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(entry.foodName, fontWeight = FontWeight.SemiBold)
-                Text("${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}  •  ${entry.nutritionSnapshot.calories.rounded()} kcal")
-                Text(entry.conversionProvenance + if (entry.approximateConversion) " (approx.)" else "", style = MaterialTheme.typography.labelSmall)
-            }
-            if (feedbackEnabled) {
-                HorizontalDivider()
-                Text("Two quick alternatives", style = MaterialTheme.typography.labelMedium)
-                alternatives.forEach { candidate ->
-                    TextButton(
-                        onClick = { vm.selectFood(entry, candidate.food) },
-                        enabled = entry.id !in vm.reinforcedEntryIds && entry.id !in vm.correctionInFlightEntryIds
-                    ) {
-                        Text("Use ${candidate.food.name}")
-                    }
+@Composable private fun EntryRow(entry: MealEntry, vm: BreakfastViewModel) {
+    var offset by remember { mutableStateOf(0f) }
+    Card(Modifier.fillMaxWidth().pointerInput(entry.id) { detectHorizontalDragGestures(onDragEnd = { if (offset < -120f) vm.delete(entry); offset = 0f }) { _, drag -> offset += drag } }.clickable { vm.beginEdit(entry) }) { Column(Modifier.padding(12.dp)) { Text(entry.foodName, style = MaterialTheme.typography.titleMedium); Text("${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}  ·  ${entry.nutritionSnapshot.calories.pretty()} kcal"); Text("P ${entry.nutritionSnapshot.protein.macro()}  C ${entry.nutritionSnapshot.carbohydrates.macro()}  F ${entry.nutritionSnapshot.fat.macro()}", color = MaterialTheme.colorScheme.onSurfaceVariant); if (vm.feedbackOpen(entry)) { vm.alternatives(entry).forEach { candidate -> TextButton({ vm.chooseAlternative(entry, candidate.food) }) { Text("Use ${candidate.food.name}") } }; TextButton({ vm.confirm(entry) }) { Text("Confirm ${entry.foodName}") }; Text("Correction controls expire after 30 seconds.", style = MaterialTheme.typography.labelSmall) } } }
+}
+
+@Composable private fun CustomDialog(vm: BreakfastViewModel) {
+    var name by remember { mutableStateOf(vm.customSeedName) }; var brand by remember { mutableStateOf(vm.customSeedBrand) }; var barcode by remember { mutableStateOf(vm.customSeedBarcode) }; var alias by remember { mutableStateOf("") }; var shorthand by remember { mutableStateOf("") }; var basisAmount by remember { mutableStateOf("100") }; var basisUnit by remember { mutableStateOf("g") }; var calories by remember { mutableStateOf("") }; var protein by remember { mutableStateOf("") }; var carbs by remember { mutableStateOf("") }; var fat by remember { mutableStateOf("") }
+    AlertDialog(onDismissRequest = vm::closeCustom, confirmButton = { Button({ vm.saveCustom(name, brand, barcode, alias, shorthand, basisAmount, basisUnit, calories, protein, carbs, fat) }) { Text("Save food") } }, dismissButton = { TextButton(vm::closeCustom) { Text("Cancel") } }, title = { Text("Create personal food") }, text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) { OutlinedTextField(name, { name = it }, label = { Text("Name") }); OutlinedTextField(brand, { brand = it }, label = { Text("Brand (optional)") }); OutlinedTextField(alias, { alias = it }, label = { Text("Alias (optional)") }); OutlinedTextField(barcode, { barcode = it }, label = { Text("Barcode (optional)") }); OutlinedTextField(shorthand, { shorthand = it }, label = { Text("Nutrition shorthand (optional)") }, placeholder = { Text("450 kcal, 12g protein, 20g carbs") }); Text("Nutrition basis (per 100 g by default)", style = MaterialTheme.typography.labelMedium); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { OutlinedTextField(basisAmount, { basisAmount = it }, label = { Text("Amount") }, modifier = Modifier.weight(1f)); OutlinedTextField(basisUnit, { basisUnit = it }, label = { Text("Unit g/ml") }, modifier = Modifier.weight(1f)) }; OutlinedTextField(calories, { calories = it }, label = { Text("Calories *") }); OutlinedTextField(protein, { protein = it }, label = { Text("Protein g (optional)") }); OutlinedTextField(carbs, { carbs = it }, label = { Text("Carbs g (optional)") }); OutlinedTextField(fat, { fat = it }, label = { Text("Fat g (optional)") }) } })
+}
+
+@Composable private fun SearchDialog(vm: BreakfastViewModel) {
+    AlertDialog(onDismissRequest = vm::closeSearch, confirmButton = { Button(vm::submitSearch, enabled = !vm.searchBusy) { Text(if (vm.searchBusy) "Searching…" else "Search") } }, dismissButton = { TextButton(vm::closeSearch) { Text("Cancel") } }, title = { Text("Open Food Facts") }, text = { Column(Modifier.verticalScroll(rememberScrollState())) { OutlinedTextField(vm.searchQuery, vm::onSearch, label = { Text("Search (submitted only)") }); vm.offResults.forEach { food -> TextButton({ vm.chooseProduct(food) }) { Text("${food.name}${food.brand?.let { " · $it" } ?: ""}") } }; if (vm.offResults.isEmpty() && vm.searchQuery.isNotBlank() && !vm.searchBusy) TextButton({ vm.closeSearch(); vm.openCustom() }) { Text("No result — create a personal food") } } })
+}
+
+@Composable private fun UnknownResolver(vm: BreakfastViewModel) {
+    val current = vm.unknownQueue.firstOrNull().orEmpty()
+    AlertDialog(onDismissRequest = vm::discardUnknowns, confirmButton = { TextButton(vm::discardUnknowns) { Text("Discard remaining") } }, title = { Text("Match food (${vm.unknownQueue.size} left)") }, text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(current); OutlinedTextField(vm.resolverQuery, vm::onResolverQuery, label = { Text("Search your foods") }); vm.resolverResults.forEach { result -> TextButton({ vm.resolveUnknown(result.food) }) { Text("Use ${result.food.name}") } }; TextButton({ vm.openSearch() }) { Text("Search Open Food Facts") }; TextButton({ vm.openCustom() }) { Text("Create personal food") } } })
+}
+
+@Composable private fun ProductDialog(vm: BreakfastViewModel, food: FoodRecord) {
+    val liveCalories = vm.productCalories.toDoubleOrNull()?.let { calories -> vm.productAmount.toDoubleOrNull()?.let { amount -> calories * amount / 100.0 } }
+    AlertDialog(onDismissRequest = vm::clearSelectedProduct, confirmButton = { Button(vm::addSelected) { Text("Add to ${vm.slot?.label() ?: "meal"}") } }, dismissButton = { Row { TextButton({ vm.clearSelectedProduct(); vm.openSearch() }) { Text("Find better match") }; TextButton({ vm.clearSelectedProduct(); vm.beginScan() }) { Text("Rescan") }; TextButton(vm::clearSelectedProduct) { Text("Back") } } }, title = { Text("Product details") }, text = { Column(Modifier.verticalScroll(rememberScrollState())) { OutlinedTextField(vm.productName, vm::onProductName, label = { Text("Name") }); food.brand?.let { Text(it) }; OutlinedTextField(vm.productCalories, vm::onProductCalories, label = { Text("Calories per 100 ${food.nutrition.unit.label}") }); OutlinedTextField(vm.productProtein, vm::onProductProtein, label = { Text("Protein g (blank = unknown)") }); OutlinedTextField(vm.productCarbs, vm::onProductCarbs, label = { Text("Carbs g (blank = unknown)") }); OutlinedTextField(vm.productFat, vm::onProductFat, label = { Text("Fat g (blank = unknown)") }); OutlinedTextField(vm.productAmount, vm::onProductAmount, label = { Text("Amount") }); OutlinedTextField(vm.productUnit, vm::onProductUnit, label = { Text("Unit: g or ml") }); Text("Preview: ${liveCalories?.pretty() ?: "—"} kcal", style = MaterialTheme.typography.titleMedium) } })
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable private fun BarcodeScanner(vm: BreakfastViewModel) {
+    val context = LocalContext.current
+    val session = remember { ScannerSession() }
+    DisposableEffect(Unit) { onDispose { session.dispose() } }
+    var hasPermission by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasPermission = granted; if (!granted) { vm.endScan(); vm.openCustom() } }
+    LaunchedEffect(Unit) { if (!hasPermission) launcher.launch(Manifest.permission.CAMERA) }
+    Scaffold(topBar = { TopAppBar(title = { Text("Scan barcode") }) }) { pad ->
+        if (hasPermission) AndroidView(factory = { ctx -> PreviewView(ctx).also { view ->
+            val providerFuture = ProcessCameraProvider.getInstance(ctx)
+            providerFuture.addListener({ runCatching {
+                if (session.disposed.get()) return@runCatching
+                val provider = providerFuture.get()
+                val preview = Preview.Builder().build().also { it.surfaceProvider = view.surfaceProvider }
+                val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
+                val scanner = BarcodeScanning.getClient(); var delivered = false
+                session.provider = provider; session.preview = preview; session.analysis = analysis; session.scanner = scanner
+                analysis.setAnalyzer(ContextCompat.getMainExecutor(ctx)) { proxy ->
+                    val image = proxy.image
+                    if (image == null || delivered || session.disposed.get()) { proxy.close(); return@setAnalyzer }
+                    scanner.process(InputImage.fromMediaImage(image, proxy.imageInfo.rotationDegrees)).addOnSuccessListener { codes ->
+                        codes.firstOrNull()?.rawValue?.let { code -> if (!delivered && !session.disposed.get()) { delivered = true; vm.onBarcode(code) } }
+                    }.addOnCompleteListener { proxy.close() }
                 }
-                OutlinedButton(
-                    onClick = { vm.showSearch(entry.id) },
-                    enabled = entry.id !in vm.reinforcedEntryIds && entry.id !in vm.correctionInFlightEntryIds
-                ) {
-                    Icon(Icons.Default.Search, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Search catalogue")
-                }
-                TextButton(
-                    onClick = { vm.confirm(entry) },
-                    enabled = entry.id !in vm.reinforcedEntryIds && entry.id !in vm.correctionInFlightEntryIds
-                ) {
-                    Text(if (entry.id in vm.reinforcedEntryIds) "Preference saved" else "Confirm ${entry.foodName}")
-                }
-            }
-        }
+                provider.bindToLifecycle(context as ComponentActivity, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+            }.onFailure { if (!session.disposed.get()) { session.dispose(); vm.endScan(); vm.openCustom() } } }, ContextCompat.getMainExecutor(ctx))
+        } }, Modifier.fillMaxSize().padding(pad))
+        else Box(Modifier.fillMaxSize().padding(pad)) { Text("Camera permission is required to scan.") }
     }
 }
 
-@Composable
-private fun SearchPanel(vm: BreakfastViewModel) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text("Local catalogue search", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                IconButton(onClick = vm::closeSearch) { Text("×") }
-            }
-            vm.searchTargetEntryId?.let { targetId ->
-                vm.savedMeal?.entries?.firstOrNull { it.id == targetId }?.let { target ->
-                    Text("Replacing ${target.foodName}", style = MaterialTheme.typography.labelMedium)
-                }
-            }
-            vm.replacementError?.let { reason ->
-                Text(reason, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            }
-            OutlinedTextField(
-                value = vm.searchQuery,
-                onValueChange = vm::onSearchChanged,
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                placeholder = { Text("milk, овес, peanut...") }
-            )
-            vm.searchResults.forEach { result ->
-                Row(
-                    modifier = Modifier.fillMaxWidth().clickable { vm.selectFromSearch(result.food) }.padding(vertical = 8.dp),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(result.food.name)
-                        Text(result.food.category, style = MaterialTheme.typography.labelSmall)
-                    }
-                    Text("Select", color = MaterialTheme.colorScheme.primary)
-                }
-            }
-        }
+private class ScannerSession {
+    val disposed = AtomicBoolean(false)
+    @Volatile var provider: ProcessCameraProvider? = null
+    @Volatile var preview: Preview? = null
+    @Volatile var analysis: ImageAnalysis? = null
+    @Volatile var scanner: BarcodeScanner? = null
+
+    fun dispose() {
+        if (!disposed.compareAndSet(false, true)) return
+        analysis?.clearAnalyzer()
+        scanner?.close()
+        val currentPreview = preview
+        val currentAnalysis = analysis
+        if (currentPreview != null && currentAnalysis != null) provider?.unbind(currentPreview, currentAnalysis)
     }
 }
-
-private fun Double.rounded(): String = String.format(Locale.ROOT, "%.0f", this)
-
-private fun Double?.displayMacro(): String = this?.let { "${it.rounded()} g" } ?: "—"
-
-private fun Double.pretty(): String = if (this % 1.0 == 0.0) String.format(Locale.ROOT, "%.0f", this) else String.format(Locale.ROOT, "%.2f", this)
