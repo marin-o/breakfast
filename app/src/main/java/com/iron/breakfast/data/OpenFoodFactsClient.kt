@@ -33,11 +33,23 @@ class OpenFoodFactsClient {
     private val json = Json { ignoreUnknownKeys = true }
 
     fun search(query: String): OffSearchResult {
-        val url = URL("https://world.openfoodfacts.org/cgi/search.pl?search_terms=" + URLEncoder.encode(query, "UTF-8") + "&search_simple=1&action=process&json=1&page_size=20&fields=code,product_name,brands,nutriments,nutrition_data_per,product_quantity,product_quantity_unit,quantity")
+        val legacyUrl = URL("https://world.openfoodfacts.org/cgi/search.pl?search_terms=" + URLEncoder.encode(query, "UTF-8") + "&search_simple=1&action=process&json=1&page_size=20&fields=code,product_name,brands,nutriments,nutrition_data_per,product_quantity,product_quantity_unit,quantity")
+        return when (val legacy = requestSearch(legacyUrl, ::parseSearchResponse)) {
+            OffSearchResult.Unavailable -> searchAlicious(query)
+            else -> legacy
+        }
+    }
+
+    private fun searchAlicious(query: String): OffSearchResult {
+        val url = URL("https://search.openfoodfacts.org/search?q=" + URLEncoder.encode(query, "UTF-8") + "&page=1&page_size=20&fields=" + URLEncoder.encode("code,product_name,brands,nutriments,quantity", "UTF-8"))
+        return requestSearch(url, ::parseSearchAliciousResponse)
+    }
+
+    private fun requestSearch(url: URL, parser: (String) -> OffSearchResult): OffSearchResult {
         val connection = open(url) ?: return OffSearchResult.Unavailable
         return try {
             if (connection.responseCode !in 200..299) return OffSearchResult.Unavailable
-            parseSearchResponse(connection.inputStream.bufferedReader().readText())
+            parser(connection.inputStream.bufferedReader().readText())
         } catch (_: java.io.IOException) {
             OffSearchResult.Unavailable
         } catch (_: Exception) {
@@ -60,14 +72,26 @@ class OpenFoodFactsClient {
 
     private fun parseSearchResponse(raw: String): OffSearchResult = try {
         val root = json.parseToJsonElement(raw).jsonObject
-        val products = root["products"]?.jsonArray
-            ?: return OffSearchResult.Error("Open Food Facts returned no product list; try again or add manually.")
-        OffSearchResult.Success(products.mapNotNull { parseProduct(it.jsonObject) })
+        parseSearchArray(root, "products", "Open Food Facts returned no product list; try again or add manually.")
     } catch (_: Exception) {
         OffSearchResult.Error("Open Food Facts returned unreadable data; try again or add manually.")
     }
 
+    private fun parseSearchAliciousResponse(raw: String): OffSearchResult = try {
+        val root = json.parseToJsonElement(raw).jsonObject
+        parseSearchArray(root, "hits", "Open Food Facts search returned no hit list; try again or add manually.")
+    } catch (_: Exception) {
+        OffSearchResult.Error("Open Food Facts returned unreadable data; try again or add manually.")
+    }
+
+    private fun parseSearchArray(root: kotlinx.serialization.json.JsonObject, key: String, missingMessage: String): OffSearchResult {
+        val values = root[key]?.let { runCatching { it.jsonArray }.getOrNull() }
+            ?: return OffSearchResult.Error(missingMessage)
+        return OffSearchResult.Success(values.mapNotNull { element -> runCatching { parseProduct(element.jsonObject) }.getOrNull() })
+    }
+
     internal fun parseSearchResponseForTesting(raw: String): OffSearchResult = parseSearchResponse(raw)
+    internal fun parseSearchAliciousResponseForTesting(raw: String): OffSearchResult = parseSearchAliciousResponse(raw)
 
     private fun open(url: URL): HttpURLConnection? = try {
         (url.openConnection() as HttpURLConnection).apply {
@@ -86,7 +110,7 @@ class OpenFoodFactsClient {
         val basisUnit = when (p.string("product_quantity_unit")?.trim()?.lowercase()) {
             "g" -> MeasureUnit.GRAM
             "ml" -> MeasureUnit.MILLILITER
-            else -> return null
+            else -> quantityUnit(p.string("quantity")) ?: return null
         }
         val calories = when {
             n.containsKey("energy-kcal_100g") -> n.number("energy-kcal_100g") ?: return null
@@ -119,6 +143,22 @@ class OpenFoodFactsClient {
     internal fun parseProductForTesting(raw: String, fallbackBarcode: String? = null): FoodRecord? =
         json.parseToJsonElement(raw).jsonObject.let { parseProduct(it, fallbackBarcode) }
 
-    private fun kotlinx.serialization.json.JsonObject.string(key: String) = this[key]?.jsonPrimitive?.contentOrNull
+    private fun quantityUnit(quantity: String?): MeasureUnit? {
+        val units = Regex("(?i)(?:^|\\s|\\d)(g|ml)(?:$|\\s|[.,])")
+            .findAll(quantity.orEmpty())
+            .mapNotNull { it.groupValues.getOrNull(1)?.lowercase() }
+            .toSet()
+        return when (units) {
+            setOf("g") -> MeasureUnit.GRAM
+            setOf("ml") -> MeasureUnit.MILLILITER
+            else -> null
+        }
+    }
+
+    private fun kotlinx.serialization.json.JsonObject.string(key: String): String? = when (val value = this[key]) {
+        is kotlinx.serialization.json.JsonPrimitive -> value.contentOrNull
+        is kotlinx.serialization.json.JsonArray -> value.mapNotNull { it.jsonPrimitive.contentOrNull }.joinToString(", ").ifBlank { null }
+        else -> null
+    }
     private fun kotlinx.serialization.json.JsonObject.number(key: String) = this[key]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
 }

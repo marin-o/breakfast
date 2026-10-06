@@ -26,6 +26,33 @@ class OpenFoodFactsClientTest {
         assertEquals(listOf("Pesto"), result.foods.map { it.name })
     }
 
+    @Test fun searchAliciousHitsUseExplicitGramQuantityAndSkipAmbiguousUnits() {
+        val raw = """
+            {"hits":[
+              {"code":"1","product_name":"Pesto","brands":["Brand"],"quantity":"200g","nutriments":{"energy-kcal_100g":400}},
+              {"code":"2","product_name":"Pesto bites","quantity":"1pcs","nutriments":{"energy-kcal_100g":300}},
+              {"code":"3","product_name":"Pesto drink","quantity":"250ml","nutriments":{"energy-kcal_100g":80}}
+            ]}
+        """.trimIndent()
+        val result = OpenFoodFactsClient().parseSearchAliciousResponseForTesting(raw) as OffSearchResult.Success
+        assertEquals(listOf("Pesto", "Pesto drink"), result.foods.map { it.name })
+        assertEquals(MeasureUnit.GRAM, result.foods[0].nutrition.unit)
+        assertEquals(MeasureUnit.MILLILITER, result.foods[1].nutrition.unit)
+        assertEquals("Brand", result.foods[0].brand)
+    }
+
+    @Test fun searchAliciousQuantityRejectsMixedUnitsButAllowsRepeatedSameUnit() {
+        val raw = """
+            {"hits":[
+              {"code":"1","product_name":"Mixed unit","quantity":"250 ml / 300 g","nutriments":{"energy-kcal_100g":100}},
+              {"code":"2","product_name":"Repeated grams","quantity":"100g + 200 g","nutriments":{"energy-kcal_100g":200}}
+            ]}
+        """.trimIndent()
+        val result = OpenFoodFactsClient().parseSearchAliciousResponseForTesting(raw) as OffSearchResult.Success
+        assertEquals(listOf("Repeated grams"), result.foods.map { it.name })
+        assertEquals(MeasureUnit.GRAM, result.foods.single().nutrition.unit)
+    }
+
     @Test fun usesLiquidQuantityUnitForNormalizedPer100gValuesAndKeepsMissingMacrosUnknown() {
         val food = OpenFoodFactsClient().parseProductForTesting("""{"product_name":"Drink","product_quantity":"1000","product_quantity_unit":"ml","nutrition_data_per":"100g","nutriments":{"energy-kcal_100g":42,"fat_100g":1.5}}""", "123")
         requireNotNull(food)
