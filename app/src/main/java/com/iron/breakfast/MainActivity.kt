@@ -684,7 +684,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
                 Text(
                     it,
                     Modifier.align(Alignment.TopEnd)
-                        .offset(y = (-8).dp)
+                        .offset(x = (-12).dp, y = (-8).dp)
                         .background(MaterialTheme.colorScheme.background)
                         .padding(horizontal = 8.dp),
                     style = MaterialTheme.typography.labelSmall,
