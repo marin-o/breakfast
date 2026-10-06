@@ -97,7 +97,7 @@ class BreakfastDomainTest {
         val calculation = NutritionCalculator().calculate(chicken, 100.0, MeasureUnit.GRAM)
         assertTrue(calculation.supported)
         assertEquals(106.0, calculation.nutrition.calories, 0.01)
-        assertEquals(22.5, calculation.nutrition.protein, 0.01)
+        assertEquals(22.5, calculation.nutrition.protein ?: -1.0, 0.01)
     }
 
     @Test

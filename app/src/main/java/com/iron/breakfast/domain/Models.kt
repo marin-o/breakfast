@@ -1,11 +1,16 @@
 package com.iron.breakfast.domain
 
 import kotlinx.serialization.Serializable
+import java.time.Instant
+import java.time.ZoneId
 import kotlin.math.exp
 import kotlin.math.ln1p
 
 @Serializable
 enum class FoodOrigin { GENERIC, CUSTOM }
+
+@Serializable
+enum class MealSlot { BREAKFAST, LUNCH, DINNER, SNACKS }
 
 @Serializable
 enum class MeasureUnit(val label: String) {
@@ -15,27 +20,33 @@ enum class MeasureUnit(val label: String) {
 @Serializable
 data class NutritionValues(
     val calories: Double,
-    val protein: Double,
-    val carbohydrates: Double,
-    val fat: Double
+    val protein: Double?,
+    val carbohydrates: Double?,
+    val fat: Double?
 ) {
     operator fun times(factor: Double) = NutritionValues(
         calories * factor,
-        protein * factor,
-        carbohydrates * factor,
-        fat * factor
+        protein?.times(factor),
+        carbohydrates?.times(factor),
+        fat?.times(factor)
     )
 
     operator fun plus(other: NutritionValues) = NutritionValues(
         calories + other.calories,
-        protein + other.protein,
-        carbohydrates + other.carbohydrates,
-        fat + other.fat
+        protein.sumIfSupplied(other.protein),
+        carbohydrates.sumIfSupplied(other.carbohydrates),
+        fat.sumIfSupplied(other.fat)
     )
 
     companion object {
         val ZERO = NutritionValues(0.0, 0.0, 0.0, 0.0)
     }
+}
+
+private fun Double?.sumIfSupplied(other: Double?): Double? = when {
+    this == null -> other
+    other == null -> this
+    else -> this + other
 }
 
 @Serializable
@@ -98,8 +109,13 @@ data class MealEntry(
     val conversionProvenance: String,
     val approximateConversion: Boolean,
     val savedAtEpochMs: Long,
-    val sourcePhrase: String = foodName
+    val sourcePhrase: String = foodName,
+    val mealSlot: MealSlot = MealSlot.BREAKFAST,
+    val dayKey: String = dayKeyForEpochMs(savedAtEpochMs)
 )
+
+fun dayKeyForEpochMs(epochMs: Long): String =
+    Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalDate().toString()
 
 data class Calculation(
     val nutrition: NutritionValues,

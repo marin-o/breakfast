@@ -50,6 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.iron.breakfast.data.BreakfastStore
 import com.iron.breakfast.domain.BreakfastEngine
@@ -61,6 +62,7 @@ import com.iron.breakfast.domain.ReplacementResult
 import com.iron.breakfast.domain.ShorthandParser
 import com.iron.breakfast.domain.displayLabel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
@@ -102,10 +104,17 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     var preferenceRevision by mutableStateOf(0)
         private set
+    var submissionInFlight by mutableStateOf(false)
+        private set
+    var correctionInFlightEntryIds by mutableStateOf(emptySet<String>())
+        private set
 
     init {
-        val persisted = engine.persistedMeal()
-        if (persisted.entries.isNotEmpty()) savedMeal = persisted
+        viewModelScope.launch {
+            engine.initialize()
+            val persisted = engine.persistedMeal()
+            if (persisted.entries.isNotEmpty()) savedMeal = persisted
+        }
     }
 
     fun onInputChanged(value: String) {
@@ -115,16 +124,32 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun done() {
-        if (input.isBlank()) return
-        val meal = engine.save(input)
-        savedMeal = engine.persistedMeal().copy(unresolvedSegments = meal.unresolvedSegments)
-        feedbackEntryIds = meal.entries.mapTo(mutableSetOf()) { it.id }
-        savedAt = System.currentTimeMillis()
-        feedbackDeadlineMs = savedAt + 30_000
-        feedbackVisible = meal.entries.isNotEmpty()
-        input = meal.unresolvedSegments.joinToString(", ")
-        liveSuggestions = emptyList()
-        closeSearch()
+        if (input.isBlank() || submissionInFlight) return
+        val submittedInput = input
+        submissionInFlight = true
+        viewModelScope.launch {
+            try {
+                engine.initialize()
+                val meal = engine.save(submittedInput)
+                savedMeal = engine.persistedMeal().copy(unresolvedSegments = meal.unresolvedSegments)
+                feedbackEntryIds = meal.entries.mapTo(mutableSetOf()) { it.id }
+                savedAt = System.currentTimeMillis()
+                feedbackDeadlineMs = savedAt + 30_000
+                feedbackVisible = meal.entries.isNotEmpty()
+                if (input == submittedInput) {
+                    input = meal.unresolvedSegments.joinToString(", ")
+                    liveSuggestions = emptyList()
+                } else {
+                    val currentSegment = input.substringAfterLast(',').trim()
+                    liveSuggestions = if (currentSegment.isBlank()) emptyList() else engine.suggestions(currentSegment)
+                }
+                closeSearch()
+            } catch (_: Throwable) {
+                // Keep the captured draft available when persistence fails; the reservation is released below.
+            } finally {
+                submissionInFlight = false
+            }
+        }
     }
 
     fun showSearch(entryId: String) {
@@ -150,8 +175,34 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
         searchResults = if (value.isBlank()) emptyList() else engine.search(value)
     }
 
-    fun selectFood(entry: MealEntry, food: FoodRecord): Boolean {
-        if (!feedbackWindowOpen() || entry.id !in feedbackEntryIds || entry.id in reinforcedEntryIds) return false
+    fun selectFood(entry: MealEntry, food: FoodRecord) {
+        if (!feedbackWindowOpen() || entry.id !in feedbackEntryIds || entry.id in reinforcedEntryIds ||
+            entry.id in correctionInFlightEntryIds
+        ) return
+        correctionInFlightEntryIds = correctionInFlightEntryIds + entry.id
+        viewModelScope.launch {
+            try {
+                applyFoodSelection(entry, food)
+            } finally {
+                correctionInFlightEntryIds = correctionInFlightEntryIds - entry.id
+            }
+        }
+    }
+
+    fun selectFromSearch(food: FoodRecord) {
+        val entry = savedMeal?.entries?.firstOrNull { it.id == searchTargetEntryId } ?: return
+        if (!feedbackWindowOpen() || entry.id in reinforcedEntryIds || entry.id in correctionInFlightEntryIds) return
+        correctionInFlightEntryIds = correctionInFlightEntryIds + entry.id
+        viewModelScope.launch {
+            try {
+                if (applyFoodSelection(entry, food) && searchTargetEntryId == entry.id) closeSearch()
+            } finally {
+                correctionInFlightEntryIds = correctionInFlightEntryIds - entry.id
+            }
+        }
+    }
+
+    private suspend fun applyFoodSelection(entry: MealEntry, food: FoodRecord): Boolean {
         val replacement = engine.replaceEntry(entry.id, food.id)
         val updated = when (replacement) {
             is ReplacementResult.Success -> replacement.entry
@@ -171,11 +222,6 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
         reinforcedEntryIds = reinforcedEntryIds + entry.id
         replacementError = null
         return true
-    }
-
-    fun selectFromSearch(food: FoodRecord) {
-        val entry = savedMeal?.entries?.firstOrNull { it.id == searchTargetEntryId } ?: return
-        if (selectFood(entry, food)) closeSearch()
     }
 
     fun confirm(entry: MealEntry) {
@@ -272,7 +318,11 @@ fun BreakfastApp(vm: BreakfastViewModel = viewModel()) {
                     }
                 }
                 item {
-                    Button(onClick = vm::done, modifier = Modifier.fillMaxWidth(), enabled = vm.input.isNotBlank()) {
+                    Button(
+                        onClick = vm::done,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = vm.input.isNotBlank() && !vm.submissionInFlight
+                    ) {
                         Text("Done — save breakfast")
                     }
                 }
@@ -321,7 +371,11 @@ private fun SavedSummary(totals: NutritionValues) {
         Column(Modifier.padding(16.dp)) {
             Text("Saved", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text("${totals.calories.rounded()} kcal", style = MaterialTheme.typography.headlineSmall)
-            Text("Protein ${totals.protein.rounded()} g  •  Carbs ${totals.carbohydrates.rounded()} g  •  Fat ${totals.fat.rounded()} g")
+            Text(
+                "Protein ${totals.protein.displayMacro()}  •  " +
+                    "Carbs ${totals.carbohydrates.displayMacro()}  •  " +
+                    "Fat ${totals.fat.displayMacro()}"
+            )
         }
     }
 }
@@ -345,16 +399,25 @@ private fun SavedEntryCard(entry: MealEntry, vm: BreakfastViewModel, feedbackEna
                 HorizontalDivider()
                 Text("Two quick alternatives", style = MaterialTheme.typography.labelMedium)
                 alternatives.forEach { candidate ->
-                    TextButton(onClick = { vm.selectFood(entry, candidate.food) }, enabled = entry.id !in vm.reinforcedEntryIds) {
+                    TextButton(
+                        onClick = { vm.selectFood(entry, candidate.food) },
+                        enabled = entry.id !in vm.reinforcedEntryIds && entry.id !in vm.correctionInFlightEntryIds
+                    ) {
                         Text("Use ${candidate.food.name}")
                     }
                 }
-                OutlinedButton(onClick = { vm.showSearch(entry.id) }, enabled = entry.id !in vm.reinforcedEntryIds) {
+                OutlinedButton(
+                    onClick = { vm.showSearch(entry.id) },
+                    enabled = entry.id !in vm.reinforcedEntryIds && entry.id !in vm.correctionInFlightEntryIds
+                ) {
                     Icon(Icons.Default.Search, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Search catalogue")
                 }
-                TextButton(onClick = { vm.confirm(entry) }, enabled = entry.id !in vm.reinforcedEntryIds) {
+                TextButton(
+                    onClick = { vm.confirm(entry) },
+                    enabled = entry.id !in vm.reinforcedEntryIds && entry.id !in vm.correctionInFlightEntryIds
+                ) {
                     Text(if (entry.id in vm.reinforcedEntryIds) "Preference saved" else "Confirm ${entry.foodName}")
                 }
             }
@@ -403,5 +466,7 @@ private fun SearchPanel(vm: BreakfastViewModel) {
 }
 
 private fun Double.rounded(): String = String.format(Locale.ROOT, "%.0f", this)
+
+private fun Double?.displayMacro(): String = this?.let { "${it.rounded()} g" } ?: "—"
 
 private fun Double.pretty(): String = if (this % 1.0 == 0.0) String.format(Locale.ROOT, "%.0f", this) else String.format(Locale.ROOT, "%.2f", this)

@@ -1,13 +1,21 @@
 package com.iron.breakfast.data
 
 import android.content.Context
+import androidx.room.Room
+import androidx.room.withTransaction
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.MealEntry
+import com.iron.breakfast.domain.MeasureUnit
+import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.Preference
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 @Serializable
 data class StorageModel(
@@ -25,7 +33,6 @@ object StorageCodec {
         json.decodeFromString(StorageModel.serializer(), value)
     }.getOrDefault(StorageModel())
 }
-
 object StorageMigrations {
     fun addFixtureConversions(model: StorageModel, fixtures: List<FoodRecord> = FoodCatalog.fixtures): StorageModel {
         val fixtureByKey = fixtures.associateBy { it.id }
@@ -56,23 +63,37 @@ object StorageMigrations {
     }
 }
 
-class BreakfastStore(context: Context) {
-    private val preferences = context.getSharedPreferences("breakfast_store", Context.MODE_PRIVATE)
-    private var model = StorageCodec.decode(preferences.getString(KEY, "") ?: "")
+private data class StoreSnapshot(
+    val foods: List<FoodRecord> = emptyList(),
+    val entries: List<MealEntry> = emptyList(),
+    val preferences: List<Preference> = emptyList()
+)
 
-    init {
-        var changed = false
-        if (model.foods.isEmpty()) {
-            model = model.copy(foods = FoodCatalog.fixtures)
-            changed = true
-        }
-        val migrated = StorageMigrations.addFixtureConversions(model)
-        if (migrated != model) {
-            model = migrated
-            changed = true
-        }
-        if (changed) {
-            persist()
+class BreakfastStore(context: Context) {
+    private val database = Room.databaseBuilder(
+        context.applicationContext,
+        BreakfastDatabase::class.java,
+        "breakfast.db"
+    ).build()
+    private val writeMutex = Mutex()
+
+    @Volatile
+    private var model = StoreSnapshot()
+
+    @Volatile
+    private var initialized = false
+
+    suspend fun initialize() {
+        if (initialized) return
+        writeMutex.withLock {
+            if (initialized) return
+            withContext(Dispatchers.IO) {
+                database.withTransaction {
+                    seedMissingFixtures()
+                }
+                model = readSnapshot()
+                initialized = true
+            }
         }
     }
 
@@ -82,38 +103,97 @@ class BreakfastStore(context: Context) {
 
     fun preferenceMap(): Map<String, Preference> = model.preferences.associateBy { it.foodId }
 
-    fun saveEntries(entries: List<MealEntry>) {
-        model = model.copy(entries = model.entries + entries)
-        persist()
+    suspend fun saveEntries(entries: List<MealEntry>) {
+        requireReady()
+        if (entries.isEmpty()) return
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                database.withTransaction {
+                    database.mealEntryDao().insertAll(entries.map { it.toEntity() })
+                }
+                model = readSnapshot()
+            }
+        }
     }
 
-    fun replaceEntry(updated: MealEntry) {
-        model = model.copy(entries = model.entries.map { entry ->
-            if (entry.id == updated.id) updated else entry
-        })
-        persist()
+    suspend fun replaceEntry(updated: MealEntry) {
+        requireReady()
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                database.withTransaction {
+                    database.mealEntryDao().replace(updated.toEntity())
+                }
+                model = readSnapshot()
+            }
+        }
     }
 
-    fun reinforce(foodId: String) {
-        val existing = preferenceMap()[foodId] ?: Preference(foodId)
-        val updated = existing.copy(
-            explicitCount = existing.explicitCount + 1,
-            lastReinforcedEpochMs = System.currentTimeMillis()
+    suspend fun reinforce(foodId: String) {
+        requireReady()
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val existing = preferenceMap()[foodId] ?: Preference(foodId)
+                val updated = existing.copy(
+                    explicitCount = existing.explicitCount + 1,
+                    lastReinforcedEpochMs = System.currentTimeMillis()
+                )
+                database.withTransaction {
+                    database.preferenceDao().upsert(updated.toEntity())
+                }
+                model = readSnapshot()
+            }
+        }
+    }
+
+    suspend fun upsertFood(food: FoodRecord) {
+        requireReady()
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                database.withTransaction {
+                    database.foodDao().upsert(food.toEntity())
+                    database.foodAliasDao().deleteForFood(food.id)
+                    database.servingConversionDao().deleteForFood(food.id)
+                    database.foodAliasDao().insertAll(food.toAliasEntities())
+                    database.servingConversionDao().insertAll(food.toConversionEntities())
+                }
+                model = readSnapshot()
+            }
+        }
+    }
+
+    private suspend fun seedMissingFixtures() {
+        val existingIds = database.foodDao().ids().toSet()
+        val missing = fixtureRowsMissingFrom(existingIds)
+        if (missing.isEmpty()) return
+        database.foodDao().insertAll(missing.map { it.toEntity() })
+        database.foodAliasDao().insertAll(missing.flatMap { it.toAliasEntities() })
+        database.servingConversionDao().insertAll(missing.flatMap { it.toConversionEntities() })
+    }
+
+    private suspend fun readSnapshot(): StoreSnapshot {
+        val aliases = database.foodAliasDao().all().groupBy { it.foodId }
+        val conversions = database.servingConversionDao().all().groupBy { it.foodId }
+        val foods = database.foodDao().all().map { entity ->
+            entity.toDomain(
+                aliases = aliases[entity.id].orEmpty().map { it.alias },
+                conversions = conversions[entity.id].orEmpty().map {
+                    ServingConversion(
+                        unit = MeasureUnit.valueOf(it.unit),
+                        baseUnitsPerServing = it.baseUnitsPerServing,
+                        provenance = it.provenance,
+                        approximate = it.approximate
+                    )
+                }
+            )
+        }
+        return StoreSnapshot(
+            foods = foods,
+            entries = database.mealEntryDao().all().map { it.toDomain() },
+            preferences = database.preferenceDao().all().map { it.toDomain() }
         )
-        model = model.copy(preferences = model.preferences.filterNot { it.foodId == foodId } + updated)
-        persist()
     }
 
-    fun upsertFood(food: FoodRecord) {
-        model = model.copy(foods = model.foods.filterNot { it.id == food.id } + food)
-        persist()
-    }
-
-    private fun persist() {
-        preferences.edit().putString(KEY, StorageCodec.encode(model)).apply()
-    }
-
-    companion object {
-        private const val KEY = "breakfast_payload"
+    private fun requireReady() {
+        check(initialized) { "BreakfastStore.initialize() must complete before reading or writing" }
     }
 }

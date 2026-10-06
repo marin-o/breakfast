@@ -9,6 +9,8 @@ class BreakfastEngine(private val store: BreakfastStore) {
     private var matcherCatalog: List<FoodRecord>? = null
     private var cachedMatcher: FoodMatcher? = null
 
+    suspend fun initialize() = store.initialize()
+
     private fun matcher(): FoodMatcher {
         val foods = store.foods()
         if (cachedMatcher == null || foods !== matcherCatalog) {
@@ -34,7 +36,11 @@ class BreakfastEngine(private val store: BreakfastStore) {
             .take(2)
     }
 
-    fun save(input: String, nowMs: Long = System.currentTimeMillis()): SavedMeal {
+    suspend fun save(
+        input: String,
+        nowMs: Long = System.currentTimeMillis(),
+        mealSlot: MealSlot = MealSlot.BREAKFAST
+    ): SavedMeal {
         val unresolved = mutableListOf<String>()
         val entries = parser.split(input).mapNotNull { raw ->
             val parsed = parser.parse(raw)
@@ -61,7 +67,9 @@ class BreakfastEngine(private val store: BreakfastStore) {
                 conversionProvenance = calculation.provenance,
                 approximateConversion = calculation.approximate,
                 savedAtEpochMs = nowMs,
-                sourcePhrase = raw
+                sourcePhrase = raw,
+                mealSlot = mealSlot,
+                dayKey = dayKeyForEpochMs(nowMs)
             )
         }
         if (entries.isNotEmpty()) store.saveEntries(entries)
@@ -72,7 +80,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
         )
     }
 
-    fun replaceEntry(entryId: String, foodId: String): ReplacementResult {
+    suspend fun replaceEntry(entryId: String, foodId: String): ReplacementResult {
         val old = store.entries().firstOrNull { it.id == entryId }
             ?: return ReplacementResult.Failure("That saved entry is no longer available.")
         val food = store.foods().firstOrNull { it.id == foodId }
@@ -95,7 +103,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
         return ReplacementResult.Success(updated)
     }
 
-    fun reinforce(foodId: String) = store.reinforce(foodId)
+    suspend fun reinforce(foodId: String) = store.reinforce(foodId)
 
     fun foods(): List<FoodRecord> = store.foods()
 
