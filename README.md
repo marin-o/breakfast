@@ -1,8 +1,8 @@
-# Breakfast prototype
+# Breakfast
 
-This is a deliberately small, offline Android spike for testing fast breakfast logging. The single Breakfast screen accepts shorthand such as `2 tbsp oats, half a tbsp peanut butter, banana`, highlights detected quantities while typing, and only commits entries when Done is pressed. Matching is deterministic and local: explicit aliases and modifiers constrain candidates, then name/category compatibility and explicit frequency/recency preferences rank the fixture catalogue. Automatic guesses never reinforce a preference; Confirm, an alternative, or a catalogue search selection reinforces once.
+Breakfast is an Android-first calorie and macro tracker built around fast natural-language logging. Enter shorthand such as `2 tbsp oats, half a tbsp peanut butter, banana` in a meal, and the app parses the portions and resolves familiar foods locally. Explicit aliases and personal history rank matches; automatic guesses never reinforce a preference. Submitted Open Food Facts search and barcode scanning cover foods outside the local catalogue.
 
-Saved entries and totals remain visible after the temporary feedback window and are reloaded from a fresh local Room database on app relaunch. The legacy SharedPreferences blob is left untouched for rollback inspection but is intentionally not imported into this fresh-storage slice. Each entry keeps the original amount/unit, a nutrition snapshot, and serving-conversion provenance. Choosing an alternative or a Search result replaces the targeted saved entry using its original amount/unit, recalculates its snapshot, and records one explicit preference. The post-save alternatives, Search, and Confirm controls are temporary and disappear after 30 seconds or an app restart. Unresolved comma segments stay in the input for correction instead of being silently discarded. The catalogue includes competing milk and peanut-butter records plus English and Cyrillic custom fixtures. Remote providers, barcode, onboarding, custom-food creation, recipes, and conversational parsing are intentionally outside this spike.
+The Room-backed diary has Breakfast, Lunch, Dinner, and Snacks for each date. Swipe the main diary between dates, open a meal to inspect entries, or browse the local Food Library to manage personal foods. A logged entry keeps its amount, nutrition snapshot, and conversion provenance so later food edits do not silently rewrite history. Tap an entry for details, double-tap for amount-only quick edit, hold for full entry edit, or swipe left inside a meal to delete with Undo. Eligible saved barcode foods can be reviewed and optionally contributed to Open Food Facts from their detail view. Recipes, conversational parsing, cloud sync, and account-backed storage are outside the current app.
 
 ## Build locally
 
@@ -17,7 +17,7 @@ $env:GRADLE_USER_HOME = './_stack/gradle-home'
 
 The debug APK is produced at `app/build/outputs/apk/debug/app-debug.apk`. Install it with the existing platform-tools `adb` when a device is attached. This preserves the app's existing local data when using `adb install -r`.
 
-Room uses version 2.8.5 with KAPT and the official Room Gradle plugin. The `perf` APK is produced at `app/build/outputs/apk/perf/app-perf.apk`. Version 1 schema JSON is exported under `app/schemas/debug` and `app/schemas/perf` for future migrations; separate variant directories keep repeated builds deterministic. KAPT emits its standard Kotlin 2.0 language-version fallback warning, but the Room compiler and both variants build successfully.
+Room uses version 2.8.5 with KAPT and the official Room Gradle plugin. The `perf` APK is produced at `app/build/outputs/apk/perf/app-perf.apk`. Versioned schema JSON is exported under `app/schemas/debug` and `app/schemas/perf` for migrations; separate variant directories keep repeated builds deterministic. KAPT emits its standard Kotlin 2.0 language-version fallback warning, but the Room compiler and both variants build successfully.
 
 ## Fixture catalogue
 
@@ -27,9 +27,9 @@ The pinned exports are small build-time source snapshots; the app has no runtime
 
 ## Focused checks
 
-`BreakfastDomainTest` covers quantity-first and quantity-after parsing, fractions, comma segments, modifier-constrained matching in English and Cyrillic, serving conversion and nutrition calculation, and legacy codec round trips. `RoomStorageMappingTest` covers fresh stable-ID seeding, entity round trips, source metadata, and nullable-vs-zero snapshot columns. The app has no network or API dependency.
+`BreakfastDomainTest` covers quantity-first and quantity-after parsing, fractions, comma segments, modifier-constrained matching in English and Cyrillic, serving conversion and nutrition calculation, and legacy codec round trips. `RoomStorageMappingTest` covers stable-ID seeding, entity round trips, source metadata, and nullable-vs-zero snapshot columns. Core logging works locally; submitted OFF search, barcode lookup, and optional contribution require a connection.
 
-`BreakfastDatabaseTest` is an Android test for additive seed idempotence and a meal snapshot surviving a database close/reopen. Compile it with `compileDebugAndroidTestKotlin`; run the instrumentation test only when an authorized Android device is attached.
+`BreakfastDatabaseTest` is an Android test for additive seed idempotence, meal snapshots surviving a database close/reopen, and Room migrations through version 3. Compile it with `compileDebugAndroidTestKotlin`; run the instrumentation test only when an authorized Android device is attached.
 
 ## Commit messages
 

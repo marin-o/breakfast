@@ -48,4 +48,30 @@ class MainActivityTest {
         assertNull(contributionDraftAfterLocalSave(scanned, fromScan = false))
         assertEquals("123", contributionDraftAfterLocalSave(scanned, fromScan = true)?.barcode)
     }
+
+    @Test
+    fun customFoodEditPreservesAliasesAndAlignsDefaultServingToNewBasis() {
+        val original = FoodRecord(
+            id = "custom", name = "Old", aliases = listOf("legacy alias"), category = "Personal food",
+            origin = FoodOrigin.CUSTOM,
+            nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(100.0, 1.0, 2.0, 3.0)),
+            defaultAmount = 100.0, defaultUnit = MeasureUnit.GRAM
+        )
+        val edited = editedCustomFoodRecord(
+            original, "New", "", "", "", NutritionValues(200.0, 2.0, 3.0, 4.0), 250.0, MeasureUnit.MILLILITER
+        )
+        assertEquals(listOf("legacy alias"), edited.aliases)
+        assertEquals(250.0, edited.defaultAmount)
+        assertEquals(MeasureUnit.MILLILITER, edited.defaultUnit)
+        assertEquals(250.0, edited.nutrition.amount)
+    }
+
+    @Test
+    fun productLabelUsesActualNutritionBasis() {
+        val food = FoodRecord(
+            id = "basis", name = "Soup", aliases = emptyList(), category = "Open Food Facts", origin = FoodOrigin.GENERIC,
+            nutrition = NutritionBasis(250.0, MeasureUnit.GRAM, NutritionValues(300.0, null, null, null))
+        )
+        assertEquals("Calories per 250 g", productNutritionBasisLabel(food))
+    }
 }

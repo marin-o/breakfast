@@ -13,6 +13,13 @@ class BreakfastDomainTest {
     private val parser = ShorthandParser()
 
     @Test
+    fun archivedFoodsAreExcludedFromLoggingCatalog() {
+        val active = FoodCatalog.fixtures.first()
+        val archived = active.copy(id = "archived", archived = true)
+        assertEquals(listOf(active), foodsAvailableForLogging(listOf(active, archived)))
+    }
+
+    @Test
     fun suggestionHotPathStaysBoundedWithExpandedCatalog() {
         val matcher = FoodMatcher(FoodCatalog.fixtures)
         val parsed = parser.parse("ground beef 90/10 raw 100 g")

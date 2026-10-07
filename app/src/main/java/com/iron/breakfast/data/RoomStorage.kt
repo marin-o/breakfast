@@ -41,7 +41,8 @@ data class FoodEntity(
     val preparation: String?,
     @ColumnInfo(name = "source_description") val sourceDescription: String?,
     val brand: String?,
-    val barcode: String?
+    val barcode: String?,
+    val archived: Boolean = false
 )
 
 @Entity(tableName = "food_aliases", primaryKeys = ["foodId", "alias"])
@@ -157,7 +158,7 @@ interface MealEntryDao {
         PreferenceEntity::class,
         MealEntryEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 abstract class BreakfastDatabase : RoomDatabase() {
@@ -174,6 +175,12 @@ val ROOM_MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
         db.execSQL("ALTER TABLE foods ADD COLUMN barcode TEXT")
         db.execSQL("CREATE INDEX IF NOT EXISTS index_foods_barcode ON foods(barcode)")
         db.execSQL("CREATE INDEX IF NOT EXISTS index_foods_brand ON foods(brand)")
+    }
+}
+
+val ROOM_MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE foods ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
     }
 }
 
@@ -199,7 +206,8 @@ fun FoodRecord.toEntity(): FoodEntity = FoodEntity(
     preparation = preparation,
     sourceDescription = sourceDescription,
     brand = brand,
-    barcode = barcode
+    barcode = barcode,
+    archived = archived
 )
 
 fun FoodRecord.toAliasEntities(): List<FoodAliasEntity> = aliases.distinct().map { alias ->
@@ -244,7 +252,8 @@ fun FoodEntity.toDomain(
     preparation = preparation,
         sourceDescription = sourceDescription,
         brand = brand,
-        barcode = barcode
+        barcode = barcode,
+        archived = archived
     )
 
 fun Preference.toEntity() = PreferenceEntity(foodId, explicitCount, lastReinforcedEpochMs)

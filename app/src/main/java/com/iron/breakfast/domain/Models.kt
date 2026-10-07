@@ -81,7 +81,9 @@ data class FoodRecord(
     val preparation: String? = null,
     val sourceDescription: String? = null,
     val brand: String? = null,
-    val barcode: String? = null
+    val barcode: String? = null,
+    /** Archived personal foods stay available to historical diary snapshots. */
+    val archived: Boolean = false
 ) {
     fun allNames(): List<String> = listOf(name) + aliases
 }

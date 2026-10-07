@@ -92,4 +92,22 @@ class RoomStorageMappingTest {
         assertEquals(food.nutrition.values.protein, entity.protein)
         assertEquals(food.nutrition.values.fat, entity.fat)
     }
+
+    @Test
+    fun archivedFoodRoundTripsWithoutChangingHistoricalEntrySnapshots() {
+        val archived = FoodCatalog.fixtures.first().copy(
+            id = "archived-food", origin = FoodOrigin.CUSTOM, archived = true,
+            aliases = listOf("legacy alias")
+        )
+        assertEquals(archived, archived.toEntity().toDomain(archived.aliases, archived.conversions))
+        val entry = MealEntry(
+            id = "historical", foodId = archived.id, foodName = archived.name,
+            enteredAmount = 100.0, enteredUnit = MeasureUnit.GRAM, resolvedBaseAmount = 100.0,
+            nutritionSnapshot = NutritionValues(archived.nutrition.values.calories, 1.0, 2.0, 3.0),
+            conversionProvenance = "historical snapshot", approximateConversion = false,
+            savedAtEpochMs = 1L, dayKey = "1970-01-01"
+        )
+        assertEquals(archived.nutrition.values.calories, entry.nutritionSnapshot.calories)
+        assertEquals("historical snapshot", entry.conversionProvenance)
+    }
 }

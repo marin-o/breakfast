@@ -74,7 +74,7 @@ class BreakfastStore(context: Context) {
         context.applicationContext,
         BreakfastDatabase::class.java,
         "breakfast.db"
-    ).addMigrations(ROOM_MIGRATION_1_2).build()
+    ).addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3).build()
     private val writeMutex = Mutex()
 
     @Volatile
@@ -164,12 +164,38 @@ class BreakfastStore(context: Context) {
     suspend fun foodByBarcode(barcode: String): FoodRecord? {
         requireReady()
         return withContext(Dispatchers.IO) {
-            val entity = database.foodDao().byBarcode(barcode) ?: return@withContext null
+            val entity = database.foodDao().byBarcode(barcode)?.takeUnless { it.archived } ?: return@withContext null
             val aliases = database.foodAliasDao().all().filter { it.foodId == entity.id }.map { it.alias }
             val conversions = database.servingConversionDao().all().filter { it.foodId == entity.id }.map {
                 ServingConversion(MeasureUnit.valueOf(it.unit), it.baseUnitsPerServing, it.provenance, it.approximate)
             }
             entity.toDomain(aliases, conversions)
+        }
+    }
+
+    suspend fun foodsMatching(query: String = "", includeArchived: Boolean = false): List<FoodRecord> {
+        requireReady()
+        val normalized = query.trim().lowercase()
+        return model.foods.filter { food ->
+            (includeArchived || !food.archived) &&
+                (normalized.isBlank() || food.allNames().any { it.lowercase().contains(normalized) } ||
+                    food.brand?.lowercase()?.contains(normalized) == true || food.barcode?.contains(normalized) == true)
+        }
+    }
+
+    suspend fun foodById(id: String): FoodRecord? {
+        requireReady()
+        return model.foods.firstOrNull { it.id == id }
+    }
+
+    suspend fun archiveFood(id: String) {
+        requireReady()
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val current = database.foodDao().all().firstOrNull { it.id == id } ?: return@withContext
+                database.withTransaction { database.foodDao().upsert(current.copy(archived = true)) }
+                model = readSnapshot()
+            }
         }
     }
 
