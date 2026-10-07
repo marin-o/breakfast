@@ -144,7 +144,7 @@ class OpenFoodFactsClient(
     private val json = Json { ignoreUnknownKeys = true }
 
     fun search(query: String): OffSearchResult {
-        val legacyUrl = URL("https://world.openfoodfacts.org/cgi/search.pl?search_terms=" + URLEncoder.encode(query, "UTF-8") + "&search_simple=1&action=process&json=1&page_size=20&fields=code,product_name,brands,nutriments,nutrition_data_per,product_quantity,product_quantity_unit,quantity")
+        val legacyUrl = URL("https://world.openfoodfacts.org/cgi/search.pl?search_terms=" + URLEncoder.encode(query, "UTF-8") + "&search_simple=1&action=process&json=1&page_size=20&fields=code,product_name,brands,nutriments,nutrition_data_per,product_quantity,product_quantity_unit,quantity,serving_size,serving_quantity_unit")
         return when (val legacy = requestSearch(legacyUrl, ::parseSearchResponse)) {
             OffSearchResult.Unavailable -> searchAlicious(query)
             else -> legacy
@@ -152,7 +152,7 @@ class OpenFoodFactsClient(
     }
 
     private fun searchAlicious(query: String): OffSearchResult {
-        val url = URL("https://search.openfoodfacts.org/search?q=" + URLEncoder.encode(query, "UTF-8") + "&page=1&page_size=20&fields=" + URLEncoder.encode("code,product_name,brands,nutriments,quantity", "UTF-8"))
+        val url = URL("https://search.openfoodfacts.org/search?q=" + URLEncoder.encode(query, "UTF-8") + "&page=1&page_size=20&fields=" + URLEncoder.encode("code,product_name,brands,nutriments,quantity,serving_size,serving_quantity_unit", "UTF-8"))
         return requestSearch(url, ::parseSearchAliciousResponse)
     }
 
@@ -255,11 +255,8 @@ class OpenFoodFactsClient(
             if (dataPer != "100g") {
                 return OffPreflightResult.Ineligible("Open Food Facts stores this product's nutrition per serving or with an unclear basis, so Breakfast will not overwrite it with a partial correction.")
             }
-            val sourceUnit = when (product.string("product_quantity_unit")?.trim()?.lowercase()) {
-                "g" -> MeasureUnit.GRAM
-                "ml" -> MeasureUnit.MILLILITER
-                else -> quantityUnit(product.string("quantity"))
-            } ?: return OffPreflightResult.Ineligible("Open Food Facts does not provide a clear gram or milliliter basis for this product.")
+            val sourceUnit = product.basisUnit()
+                ?: return OffPreflightResult.Ineligible("Open Food Facts does not provide a clear gram or milliliter basis for this product.")
             if (sourceUnit != draft.basisUnit) {
                 return OffPreflightResult.Ineligible("The local correction basis does not match the product's Open Food Facts basis, so it was not submitted.")
             }
@@ -367,15 +364,11 @@ class OpenFoodFactsClient(
     private fun parseProduct(p: kotlinx.serialization.json.JsonObject, fallbackBarcode: String? = null): FoodRecord? {
         val name = p.string("product_name")?.trim()?.ifBlank { null } ?: return null
         val n = p["nutriments"]?.jsonObject ?: return null
-        // OFF normalizes both solids and liquids to *_100g. The package's
-        // quantity unit tells us whether those numbers are per 100 g or 100 ml.
+        // OFF normalizes both solids and liquids to *_100g. The package or
+        // serving unit tells us whether those numbers are per 100 g or 100 ml.
         // nutrition_data_per describes the contributor's original input basis,
         // so it must not be used to choose our logging unit.
-        val basisUnit = when (p.string("product_quantity_unit")?.trim()?.lowercase()) {
-            "g" -> MeasureUnit.GRAM
-            "ml" -> MeasureUnit.MILLILITER
-            else -> quantityUnit(p.string("quantity")) ?: return null
-        }
+        val basisUnit = p.basisUnit() ?: return null
         val calories = when {
             n.containsKey("energy-kcal_100g") -> n.number("energy-kcal_100g") ?: return null
             n.containsKey("energy-kj_100g") -> n.number("energy-kj_100g")?.div(4.184) ?: return null
@@ -407,16 +400,42 @@ class OpenFoodFactsClient(
     internal fun parseProductForTesting(raw: String, fallbackBarcode: String? = null): FoodRecord? =
         json.parseToJsonElement(raw).jsonObject.let { parseProduct(it, fallbackBarcode) }
 
-    private fun quantityUnit(quantity: String?): MeasureUnit? {
-        val units = Regex("(?i)(?:^|\\s|\\d)(g|ml)(?:$|\\s|[.,])")
-            .findAll(quantity.orEmpty())
+    private fun unitCandidates(value: String?): Set<MeasureUnit> {
+        val units = Regex("(?i)(?<!\\p{L})(g|ml)(?!\\p{L})")
+            .findAll(value.orEmpty())
             .mapNotNull { it.groupValues.getOrNull(1)?.lowercase() }
+            .map { if (it == "g") MeasureUnit.GRAM else MeasureUnit.MILLILITER }
             .toSet()
-        return when (units) {
-            setOf("g") -> MeasureUnit.GRAM
-            setOf("ml") -> MeasureUnit.MILLILITER
-            else -> null
-        }
+        return units
+    }
+
+    private fun normalizedUnit(value: String?): MeasureUnit? = when (value?.trim()?.lowercase()) {
+        "g" -> MeasureUnit.GRAM
+        "ml" -> MeasureUnit.MILLILITER
+        else -> null
+    }
+
+    /** Resolves a product's logging basis while rejecting conflicting evidence. */
+    private fun kotlinx.serialization.json.JsonObject.basisUnit(): MeasureUnit? {
+        val packageUnit = normalizedUnit(string("product_quantity_unit"))
+        val quantityUnits = unitCandidates(string("quantity"))
+        val servingUnit = normalizedUnit(string("serving_quantity_unit"))
+        val servingSizeUnits = unitCandidates(string("serving_size"))
+
+        // Mixed g/ml text is ambiguous even when another field happens to be
+        // explicit; using that other field would silently guess the basis.
+        if (quantityUnits.size > 1 || servingSizeUnits.size > 1) return null
+
+        val quantityUnit = quantityUnits.singleOrNull()
+        if (packageUnit != null && quantityUnit != null && packageUnit != quantityUnit) return null
+        val packageBasis = packageUnit ?: quantityUnit
+
+        val servingSizeUnit = servingSizeUnits.singleOrNull()
+        if (servingUnit != null && servingSizeUnit != null && servingUnit != servingSizeUnit) return null
+        val servingBasis = servingUnit ?: servingSizeUnit
+
+        if (packageBasis != null && servingBasis != null && packageBasis != servingBasis) return null
+        return packageBasis ?: servingBasis
     }
 
     private fun kotlinx.serialization.json.JsonObject.string(key: String): String? = when (val value = this[key]) {

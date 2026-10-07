@@ -259,6 +259,44 @@ class OpenFoodFactsClientTest {
         assertTrue(client.parseSearchResponseForTesting("not-json") is OffSearchResult.Error)
     }
 
+    @Test fun legacySearchRequestsServingBasisFieldsAndParsesServingOnlyProducts() {
+        val urls = mutableListOf<String>()
+        val client = OpenFoodFactsClient { url ->
+            urls += url.toExternalForm()
+            FakeConnection(
+                url, 200,
+                """{"products":[{"code":"legacy-1","product_name":"Serving yogurt","nutrition_data_per":"100g","serving_size":"1 portion (100 g)","nutriments":{"energy-kcal_100g":42}}]}""",
+                null
+            )
+        }
+
+        val result = client.search("yogurt") as OffSearchResult.Success
+        assertEquals(listOf("Serving yogurt"), result.foods.map { it.name })
+        assertEquals(MeasureUnit.GRAM, result.foods.single().nutrition.unit)
+        assertTrue(urls.single().contains("serving_size"))
+        assertTrue(urls.single().contains("serving_quantity_unit"))
+    }
+
+    @Test fun searchAliciousRequestsServingBasisFieldsAndParsesServingOnlyProducts() {
+        val urls = mutableListOf<String>()
+        val client = OpenFoodFactsClient { url ->
+            urls += url.toExternalForm()
+            val legacy = url.host == "world.openfoodfacts.org"
+            FakeConnection(
+                url,
+                if (legacy) 503 else 200,
+                if (legacy) "" else """{"hits":[{"code":"alicious-1","product_name":"Serving yogurt","nutrition_data_per":"100g","serving_size":"1 portion (100 g)","nutriments":{"energy-kcal_100g":42}}]}""",
+                null
+            )
+        }
+
+        val result = client.search("yogurt") as OffSearchResult.Success
+        assertEquals(listOf("Serving yogurt"), result.foods.map { it.name })
+        assertEquals(MeasureUnit.GRAM, result.foods.single().nutrition.unit)
+        assertTrue(urls.last().contains("serving_size"))
+        assertTrue(urls.last().contains("serving_quantity_unit"))
+    }
+
     @Test fun searchParsingRetainsOnlyEligibleNutritionRecords() {
         val raw = """
             {"products":[
@@ -304,6 +342,90 @@ class OpenFoodFactsClientTest {
         assertEquals(42.0, food.nutrition.values.calories, 0.001)
         assertNull(food.nutrition.values.protein)
         assertEquals("123", food.barcode)
+    }
+
+    @Test fun servingBasisParsesBellaFarmRecordAndPreflightAcceptsIt() {
+        val product = """
+            {
+              "code":"5310153028451",
+              "product_name":"Greek Yogurt",
+              "nutrition_data_per":"100g",
+              "serving_quantity":100,
+              "serving_quantity_unit":"g",
+              "serving_size":"1 portion (100 g)",
+              "nutriments":{"energy-kcal_100g":77,"proteins_100g":4.5,"fat_100g":3.8}
+            }
+        """.trimIndent()
+        val client = OpenFoodFactsClient { url ->
+            FakeConnection(url, 200, "{\"product\":$product}", null)
+        }
+
+        val food = requireNotNull(client.parseProductForTesting(product))
+        assertEquals(MeasureUnit.GRAM, food.nutrition.unit)
+        assertEquals("5310153028451", food.barcode)
+        assertTrue(
+            client.preflight(
+                OffContributionDraft(
+                    barcode = "5310153028451", name = "Greek Yogurt", brand = null,
+                    basisAmount = 100.0, basisUnit = MeasureUnit.GRAM,
+                    nutrition = NutritionValues(77.0, 4.5, null, 3.8)
+                )
+            ) is OffPreflightResult.Existing
+        )
+        assertTrue(
+            client.preflight(
+                OffContributionDraft(
+                    barcode = "5310153028451", name = "Greek Yogurt", brand = null,
+                    basisAmount = 100.0, basisUnit = MeasureUnit.MILLILITER,
+                    nutrition = NutritionValues(77.0, 4.5, null, 3.8)
+                )
+            ) is OffPreflightResult.Ineligible
+        )
+    }
+
+    @Test fun parenthesizedServingTextProvidesBasisWithoutNormalizedServingUnit() {
+        val food = OpenFoodFactsClient().parseProductForTesting(
+            """{"product_name":"Text-only yogurt","nutrition_data_per":"100g","serving_size":"1 portion (100 g)","nutriments":{"energy-kcal_100g":42}}"""
+        )
+        assertEquals(MeasureUnit.GRAM, requireNotNull(food).nutrition.unit)
+    }
+
+    @Test fun rejectsConflictingPackageAndServingBasis() {
+        val raw = """
+            {"product_name":"Conflicting product","product_quantity":"500","product_quantity_unit":"g",
+             "serving_size":"1 portion (100 ml)","nutrition_data_per":"100g",
+             "nutriments":{"energy-kcal_100g":42}}
+        """.trimIndent()
+        assertNull(OpenFoodFactsClient().parseProductForTesting(raw))
+
+        val client = OpenFoodFactsClient { url -> FakeConnection(url, 200, "{\"product\":$raw}", null) }
+        val result = client.preflight(
+            OffContributionDraft("123", "Conflicting product", null, 100.0, MeasureUnit.GRAM, NutritionValues(42.0, null, null, null))
+        )
+        assertTrue(result is OffPreflightResult.Ineligible)
+    }
+
+    @Test fun rejectsAmbiguousOrNonBasisServingText() {
+        val client = OpenFoodFactsClient()
+        assertNull(client.parseProductForTesting("""{"product_name":"Mixed","serving_size":"100 g / 100 ml","nutrition_data_per":"100g","nutriments":{"energy-kcal_100g":42}}"""))
+        assertNull(client.parseProductForTesting("""{"product_name":"Supplement","serving_size":"30 mg","nutrition_data_per":"100g","nutriments":{"energy-kcal_100g":42}}"""))
+        assertNull(client.parseProductForTesting("""{"product_name":"Unknown","serving_size":"one portion","nutrition_data_per":"100g","nutriments":{"energy-kcal_100g":42}}"""))
+    }
+
+    @Test fun rejectsSlashSeparatedMixedUnitsInEitherOrderDuringParseAndPreflight() {
+        listOf("100 g/100 ml", "100 ml/100 g").forEach { servingSize ->
+            val raw = """
+                {"product_name":"Mixed","serving_size":"$servingSize","nutrition_data_per":"100g",
+                 "nutriments":{"energy-kcal_100g":42}}
+            """.trimIndent()
+            assertNull(OpenFoodFactsClient().parseProductForTesting(raw))
+
+            val client = OpenFoodFactsClient { url -> FakeConnection(url, 200, "{\"product\":$raw}", null) }
+            val result = client.preflight(
+                OffContributionDraft("123", "Mixed", null, 100.0, MeasureUnit.GRAM, NutritionValues(42.0, null, null, null))
+            )
+            assertTrue(result is OffPreflightResult.Ineligible)
+        }
     }
 
     @Test fun rejectsUnsuffixedEnergyAndImpossibleCalories() {
