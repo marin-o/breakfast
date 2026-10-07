@@ -35,4 +35,17 @@ class MainActivityTest {
         assertEquals(MeasureUnit.TABLESPOON, parseProductUnit(" tbsp "))
         assertNull(parseProductUnit(" cups "))
     }
+
+    @Test
+    fun contributionRequiresExplicitScanProvenanceAfterLocalSave() {
+        val scanned = FoodRecord(
+            id = "off-scan", name = "Scanned drink", aliases = emptyList(), category = "Open Food Facts",
+            origin = FoodOrigin.GENERIC,
+            nutrition = NutritionBasis(100.0, MeasureUnit.MILLILITER, NutritionValues(42.0, null, null, null)),
+            defaultAmount = 100.0, defaultUnit = MeasureUnit.MILLILITER,
+            sourceName = "Open Food Facts", barcode = "123"
+        )
+        assertNull(contributionDraftAfterLocalSave(scanned, fromScan = false))
+        assertEquals("123", contributionDraftAfterLocalSave(scanned, fromScan = true)?.barcode)
+    }
 }

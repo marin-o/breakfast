@@ -13,6 +13,10 @@ import kotlinx.serialization.json.contentOrNull
 import java.net.HttpURLConnection
 import java.net.URLEncoder
 import java.net.URL
+import java.nio.charset.StandardCharsets
+
+private fun prettyNumber(value: Double): String =
+    "%.2f".format(java.util.Locale.ROOT, value).trimEnd('0').trimEnd('.')
 
 sealed interface OffResult {
     data class Found(val food: FoodRecord) : OffResult
@@ -28,8 +32,95 @@ sealed interface OffSearchResult {
     data class Error(val message: String) : OffSearchResult
 }
 
+data class OffContributionDraft(
+    val barcode: String,
+    val name: String,
+    val brand: String?,
+    val basisAmount: Double,
+    val basisUnit: MeasureUnit,
+    val nutrition: NutritionValues
+) {
+    val normalizedNutrition: NutritionValues
+        get() = nutrition * (100.0 / basisAmount)
+
+    fun publicFields(): List<String> = buildList {
+        add("Barcode: $barcode")
+        add("Nutrition basis: per 100 ${basisUnit.label}")
+        add("Calories: ${prettyNumber(normalizedNutrition.calories)} kcal")
+        normalizedNutrition.protein?.let { add("Protein: ${prettyNumber(it)} g") }
+        normalizedNutrition.carbohydrates?.let { add("Carbohydrates: ${prettyNumber(it)} g") }
+        normalizedNutrition.fat?.let { add("Fat: ${prettyNumber(it)} g") }
+    }
+
+    fun asFormFields(): Map<String, String> = buildMap {
+        put("code", barcode)
+        // OFF's write API accepts only 100g or serving here. For liquids, the
+        // normalized values still represent 100 ml, as documented by the
+        // product nutrition schema; changing this token would reinterpret all
+        // existing nutrients on the product.
+        put("nutrition_data_per", "100g")
+        put("nutriment_energy-kcal", prettyNumber(normalizedNutrition.calories))
+        put("nutriment_energy-kcal_unit", "kcal")
+        normalizedNutrition.protein?.let {
+            put("nutriment_proteins", prettyNumber(it))
+            put("nutriment_proteins_unit", "g")
+        }
+        normalizedNutrition.carbohydrates?.let {
+            put("nutriment_carbohydrates", prettyNumber(it))
+            put("nutriment_carbohydrates_unit", "g")
+        }
+        normalizedNutrition.fat?.let {
+            put("nutriment_fat", prettyNumber(it))
+            put("nutriment_fat_unit", "g")
+        }
+        put("lc", "en")
+        put("comment", "Nutrition correction from Breakfast")
+        put("app_name", "Breakfast")
+        put("app_version", "0.1")
+    }
+
+    companion object {
+        fun fromFood(food: FoodRecord): OffContributionDraft? {
+            if (food.sourceName != "Open Food Facts") return null
+            val barcode = food.barcode?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            val basis = food.nutrition
+            if (food.name.isBlank() || !basis.amount.isFinite() || basis.amount <= 0.0) return null
+            if (basis.unit != MeasureUnit.GRAM && basis.unit != MeasureUnit.MILLILITER) return null
+            fun valid(value: Double?) = value == null || (value.isFinite() && value >= 0.0)
+            if (!valid(basis.values.calories) || !valid(basis.values.protein) || !valid(basis.values.carbohydrates) || !valid(basis.values.fat)) return null
+            return OffContributionDraft(barcode, food.name.trim(), food.brand, basis.amount, basis.unit, basis.values)
+        }
+    }
+}
+
+sealed interface OffContributionResult {
+    data object Success : OffContributionResult
+    data object AuthFailed : OffContributionResult
+    data class Ineligible(val message: String) : OffContributionResult
+    data class Rejected(val message: String) : OffContributionResult
+    data object Unavailable : OffContributionResult
+    data class Error(val message: String) : OffContributionResult
+}
+
+private sealed interface OffLoginResult {
+    data class Success(val cookie: String) : OffLoginResult
+    data object AuthFailed : OffLoginResult
+    data object Unavailable : OffLoginResult
+    data class Error(val message: String) : OffLoginResult
+}
+
+private sealed interface OffPreflightResult {
+    data object Eligible : OffPreflightResult
+    data class Ineligible(val message: String) : OffPreflightResult
+    data object Unavailable : OffPreflightResult
+}
+
 /** Explicit-submit adapter. It is deliberately independent of matching and Room. */
-class OpenFoodFactsClient {
+class OpenFoodFactsClient(
+    private val connectionFactory: (URL) -> HttpURLConnection? = { url ->
+        (url.openConnection() as? HttpURLConnection)
+    }
+) {
     private val json = Json { ignoreUnknownKeys = true }
 
     fun search(query: String): OffSearchResult {
@@ -70,6 +161,66 @@ class OpenFoodFactsClient {
         } catch (_: Exception) { OffResult.Unavailable } finally { connection.disconnect() }
     }
 
+    fun contribute(draft: OffContributionDraft, username: String, password: String): OffContributionResult {
+        if (username.isBlank() || password.isBlank()) return OffContributionResult.AuthFailed
+        when (val preflight = preflight(draft)) {
+            OffPreflightResult.Eligible -> Unit
+            is OffPreflightResult.Ineligible -> return OffContributionResult.Ineligible(preflight.message)
+            OffPreflightResult.Unavailable -> return OffContributionResult.Unavailable
+        }
+        val session = when (val login = login(username.trim(), password)) {
+            is OffLoginResult.Success -> login.cookie
+            OffLoginResult.AuthFailed -> return OffContributionResult.AuthFailed
+            OffLoginResult.Unavailable -> return OffContributionResult.Unavailable
+            is OffLoginResult.Error -> return OffContributionResult.Error(login.message)
+        }
+        val connection = openPost(URL("https://world.openfoodfacts.org/cgi/product_jqm2.pl"))
+            ?: return OffContributionResult.Unavailable
+        return try {
+            connection.setRequestProperty("Cookie", session)
+            val response = postForm(connection, draft.asFormFields())
+            classifyContributionResponse(response.first, response.second)
+        } catch (_: java.io.IOException) {
+            OffContributionResult.Unavailable
+        } catch (_: Exception) {
+            OffContributionResult.Error("Open Food Facts returned an unreadable contribution response.")
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun preflight(draft: OffContributionDraft): OffPreflightResult {
+        val connection = open(URL("https://world.openfoodfacts.org/api/v3/product/${URLEncoder.encode(draft.barcode, "UTF-8")}.json"))
+            ?: return OffPreflightResult.Unavailable
+        return try {
+            if (connection.responseCode == 404) {
+                return OffPreflightResult.Ineligible("This barcode is not an existing Open Food Facts product; Breakfast will not create a new product from this correction.")
+            }
+            if (connection.responseCode !in 200..299) return OffPreflightResult.Unavailable
+            val product = json.parseToJsonElement(connection.inputStream.bufferedReader().readText()).jsonObject["product"]?.jsonObject
+                ?: return OffPreflightResult.Unavailable
+            val dataPer = product.string("nutrition_data_per")?.trim()?.lowercase()
+            if (dataPer != "100g") {
+                return OffPreflightResult.Ineligible("Open Food Facts stores this product's nutrition per serving or with an unclear basis, so Breakfast will not overwrite it with a partial correction.")
+            }
+            val sourceUnit = when (product.string("product_quantity_unit")?.trim()?.lowercase()) {
+                "g" -> MeasureUnit.GRAM
+                "ml" -> MeasureUnit.MILLILITER
+                else -> quantityUnit(product.string("quantity"))
+            } ?: return OffPreflightResult.Ineligible("Open Food Facts does not provide a clear gram or milliliter basis for this product.")
+            if (sourceUnit != draft.basisUnit) {
+                return OffPreflightResult.Ineligible("The local correction basis does not match the product's Open Food Facts basis, so it was not submitted.")
+            }
+            OffPreflightResult.Eligible
+        } catch (_: java.io.IOException) {
+            OffPreflightResult.Unavailable
+        } catch (_: Exception) {
+            OffPreflightResult.Unavailable
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     private fun parseSearchResponse(raw: String): OffSearchResult = try {
         val root = json.parseToJsonElement(raw).jsonObject
         parseSearchArray(root, "products", "Open Food Facts returned no product list; try again or add manually.")
@@ -94,11 +245,72 @@ class OpenFoodFactsClient {
     internal fun parseSearchAliciousResponseForTesting(raw: String): OffSearchResult = parseSearchAliciousResponse(raw)
 
     private fun open(url: URL): HttpURLConnection? = try {
-        (url.openConnection() as HttpURLConnection).apply {
+        connectionFactory(url)?.apply {
             connectTimeout = 4500; readTimeout = 4500; requestMethod = "GET"
-            setRequestProperty("User-Agent", "IronBreakfast/0.1 (daily food logger)")
+            setRequestProperty("User-Agent", "Breakfast/0.1 (daily food logger)")
         }
     } catch (_: Exception) { null }
+
+    private fun openPost(url: URL): HttpURLConnection? = try {
+        connectionFactory(url)?.apply {
+            connectTimeout = 4500; readTimeout = 4500; requestMethod = "POST"
+            doOutput = true
+            setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            setRequestProperty("User-Agent", "Breakfast/0.1 (daily food logger)")
+        }
+    } catch (_: Exception) { null }
+
+    private fun login(username: String, password: String): OffLoginResult {
+        val connection = openPost(URL("https://world.openfoodfacts.org/cgi/session.pl"))
+            ?: return OffLoginResult.Unavailable
+        return try {
+            val (status, body) = postForm(connection, mapOf("user_id" to username, "password" to password, ".submit" to "Sign in"))
+            if (status == 401 || status == 403 || body.contains("invalid", ignoreCase = true) && body.contains("password", ignoreCase = true)) {
+                return OffLoginResult.AuthFailed
+            }
+            if (status !in 200..299) return OffLoginResult.Unavailable
+            val cookie = connection.headerFields["Set-Cookie"]
+                ?.mapNotNull { it.substringBefore(';').trim().takeIf(String::isNotBlank) }
+                ?.joinToString("; ")
+                ?.takeIf(String::isNotBlank)
+            cookie?.let { OffLoginResult.Success(it) }
+                ?: OffLoginResult.Error("Open Food Facts did not return a session for that account.")
+        } catch (_: java.io.IOException) {
+            OffLoginResult.Unavailable
+        } catch (_: Exception) {
+            OffLoginResult.Error("Open Food Facts returned an unreadable login response.")
+        } finally { connection.disconnect() }
+    }
+
+    private fun postForm(connection: HttpURLConnection, fields: Map<String, String>): Pair<Int, String> {
+        val body = fields.entries.joinToString("&") { (key, value) ->
+            URLEncoder.encode(key, StandardCharsets.UTF_8.name()) + "=" + URLEncoder.encode(value, StandardCharsets.UTF_8.name())
+        }
+        connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
+        val stream = if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream
+        return connection.responseCode to (stream?.bufferedReader()?.readText().orEmpty())
+    }
+
+    internal fun classifyContributionResponseForTesting(status: Int, raw: String): OffContributionResult =
+        classifyContributionResponse(status, raw)
+
+    private fun classifyContributionResponse(status: Int, raw: String): OffContributionResult {
+        if (status == 401 || status == 403) return OffContributionResult.AuthFailed
+        if (status !in 200..299) return OffContributionResult.Rejected("Open Food Facts rejected the contribution (HTTP $status).")
+        return runCatching {
+            val root = json.parseToJsonElement(raw).jsonObject
+            val ok = root["status"]?.jsonPrimitive?.content == "1"
+            if (ok) OffContributionResult.Success
+            else {
+                val message = root["status_verbose"]?.jsonPrimitive?.contentOrNull ?: "Open Food Facts did not save the contribution."
+                if (message.contains("auth", ignoreCase = true) || message.contains("password", ignoreCase = true) || message.contains("login", ignoreCase = true)) {
+                    OffContributionResult.AuthFailed
+                } else {
+                    OffContributionResult.Rejected(message)
+                }
+            }
+        }.getOrElse { OffContributionResult.Error("Open Food Facts returned an unreadable contribution response.") }
+    }
 
     private fun parseProduct(p: kotlinx.serialization.json.JsonObject, fallbackBarcode: String? = null): FoodRecord? {
         val name = p.string("product_name")?.trim()?.ifBlank { null } ?: return null
@@ -161,4 +373,5 @@ class OpenFoodFactsClient {
         else -> null
     }
     private fun kotlinx.serialization.json.JsonObject.number(key: String) = this[key]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
+
 }

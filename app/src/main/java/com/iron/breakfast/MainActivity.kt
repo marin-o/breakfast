@@ -73,6 +73,8 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -86,6 +88,8 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.common.InputImage
 import com.iron.breakfast.data.BreakfastStore
+import com.iron.breakfast.data.OffContributionDraft
+import com.iron.breakfast.data.OffContributionResult
 import com.iron.breakfast.data.OffResult
 import com.iron.breakfast.data.OffSearchResult
 import com.iron.breakfast.data.OpenFoodFactsClient
@@ -138,6 +142,7 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
     var customSeedName by mutableStateOf(""); private set
     var customSeedBrand by mutableStateOf(""); private set
     var customSeedBarcode by mutableStateOf(""); private set
+    var customSeedFromOff by mutableStateOf(false); private set
     var searchOpen by mutableStateOf(false); private set
     var searchQuery by mutableStateOf(""); private set
     var offResults by mutableStateOf<List<FoodRecord>>(emptyList()); private set
@@ -145,6 +150,7 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
     var offSearchMessage by mutableStateOf<String?>(null); private set
     var scannerOpen by mutableStateOf(false); private set
     var selectedProduct by mutableStateOf<FoodRecord?>(null); private set
+    var selectedProductFromScan by mutableStateOf(false); private set
     var productAmount by mutableStateOf("100"); private set
     var productUnit by mutableStateOf("g"); private set
     var productName by mutableStateOf(""); private set
@@ -153,6 +159,13 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
     var productCarbs by mutableStateOf(""); private set
     var productFat by mutableStateOf(""); private set
     var notice by mutableStateOf<String?>(null); private set
+    var pendingContribution by mutableStateOf<OffContributionDraft?>(null); private set
+    var contributionReviewOpen by mutableStateOf(false); private set
+    var contributionAuthOpen by mutableStateOf(false); private set
+    var contributionFailure by mutableStateOf<String?>(null); private set
+    var contributionUsername by mutableStateOf(""); private set
+    var contributionPassword by mutableStateOf(""); private set
+    var contributionBusy by mutableStateOf(false); private set
     var undoEntry by mutableStateOf<MealEntry?>(null); private set
     var mealDraftError by mutableStateOf<String?>(null); private set
     var mealPickerOpen by mutableStateOf(false); private set
@@ -318,12 +331,13 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
     private fun removeMealMarker(value: String, target: MealSlot): String = removeMealMarkerToken(value, target)
     fun delete(entry: MealEntry) { if (!ready || busy) return; busy = true; viewModelScope.launch { runCatching { engine.deleteEntry(entry.id) }.onSuccess { undoEntry = entry; refresh() }.also { busy = false } } }
     fun undo() { val e = undoEntry ?: return; if (!ready || busy) return; busy = true; viewModelScope.launch { runCatching { engine.restoreEntry(e) }.onSuccess { undoEntry = null; refresh() }.also { busy = false } } }
-    fun openCustom(name: String = "", brand: String = "", barcode: String = "", fromResolver: Boolean = false) {
+    fun openCustom(name: String = "", brand: String = "", barcode: String = "", fromResolver: Boolean = false, fromOff: Boolean = false) {
         if (!fromResolver && unknownQueue.isNotEmpty()) abandonUnknownResolution()
         resolutionContinuation = fromResolver
         customSeedName = name
         customSeedBrand = brand
         customSeedBarcode = barcode
+        customSeedFromOff = fromOff
         customOpen = true
         searchOpen = false
         resolverOpen = false
@@ -331,7 +345,52 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
     fun closeCustom() { customOpen = false; if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false }
     fun closeResolver() { abandonUnknownResolution() }
     fun dismissNotice() { notice = null }
-    fun clearSelectedProduct() { selectedProduct = null; if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false }
+    fun reviewContribution() { if (pendingContribution != null) contributionReviewOpen = true }
+    fun dismissContributionReview() { contributionReviewOpen = false }
+    fun confirmContribution() {
+        if (pendingContribution != null) {
+            contributionReviewOpen = false
+            contributionAuthOpen = true
+        }
+    }
+    fun dismissContributionAuth() { contributionAuthOpen = false; contributionPassword = "" }
+    fun dismissContributionFailure() { contributionFailure = null; pendingContribution = null }
+    fun retryContribution() { contributionFailure = null; contributionAuthOpen = true }
+    fun onContributionUsername(v: String) { contributionUsername = v }
+    fun onContributionPassword(v: String) { contributionPassword = v }
+    fun submitContribution() {
+        val draft = pendingContribution ?: return
+        if (contributionBusy) return
+        if (contributionUsername.isBlank() || contributionPassword.isBlank()) {
+            contributionFailure = "Enter your Open Food Facts username and password to submit."
+            contributionAuthOpen = false
+            return
+        }
+        val username = contributionUsername.trim()
+        val password = contributionPassword
+        contributionPassword = ""
+        contributionAuthOpen = false
+        contributionBusy = true
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = off.contribute(draft, username, password)
+            withContext(Dispatchers.Main) {
+                when (result) {
+                    OffContributionResult.Success -> {
+                        pendingContribution = null
+                        contributionFailure = null
+                        notice = "Contribution sent to Open Food Facts."
+                    }
+                    OffContributionResult.AuthFailed -> contributionFailure = "Open Food Facts could not authenticate that account. Check the username and password, then retry."
+                    is OffContributionResult.Ineligible -> contributionFailure = result.message
+                    is OffContributionResult.Rejected -> contributionFailure = result.message
+                    OffContributionResult.Unavailable -> contributionFailure = "Open Food Facts was unavailable. Retry when you have a connection."
+                    is OffContributionResult.Error -> contributionFailure = result.message
+                }
+                contributionBusy = false
+            }
+        }
+    }
+    fun clearSelectedProduct() { selectedProduct = null; selectedProductFromScan = false; if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false }
     fun onProductAmount(v: String) { productAmount = v }
     fun onProductUnit(v: String) { productUnit = v }
     fun onProductName(v: String) { productName = v }
@@ -401,8 +460,9 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
     }
-    fun chooseProduct(food: FoodRecord) {
+    fun chooseProduct(food: FoodRecord, fromScan: Boolean = false) {
         selectedProduct = food
+        selectedProductFromScan = fromScan
         searchOpen = false
         val prefill = unknownQueue.firstOrNull()
             ?.takeIf { resolutionContinuation }
@@ -426,11 +486,14 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
         val resolvesQueue = resolutionContinuation && unknownQueueTarget == target
+        val fromScan = selectedProductFromScan
         busy = true
         viewModelScope.launch {
             runCatching { engine.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target) }
                 .onSuccess {
                     selectedProduct = null
+                    pendingContribution = contributionDraftAfterLocalSave(draft.food, fromScan)
+                    selectedProductFromScan = false
                     if (resolvesQueue) advanceUnknownQueue() else resolutionContinuation = false
                     refresh()
                     notice = "Added to ${target.label()}"
@@ -465,7 +528,7 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
     }
     fun beginScan() { scannerOpen = true }
     fun endScan() { scannerOpen = false }
-    fun onBarcode(code: String) { scannerOpen = false; viewModelScope.launch(Dispatchers.IO) { val local = engine.foodByBarcode(code); if (local != null) { withContext(Dispatchers.Main) { chooseProduct(local) }; return@launch }; when (val result = off.barcode(code)) { is OffResult.Found -> withContext(Dispatchers.Main) { chooseProduct(result.food) }; is OffResult.Ineligible -> withContext(Dispatchers.Main) { notice = "Nutrition is incomplete. Review it as a personal food."; openCustom(result.name.orEmpty(), result.brand.orEmpty(), result.barcode) }; OffResult.Missing -> withContext(Dispatchers.Main) { notice = "Product not found. Add it manually with barcode $code"; openCustom(barcode = code) }; OffResult.Unavailable -> withContext(Dispatchers.Main) { notice = "No connection. Add the product manually."; openCustom(barcode = code) }; is OffResult.Error -> withContext(Dispatchers.Main) { notice = result.message } } } }
+    fun onBarcode(code: String) { scannerOpen = false; viewModelScope.launch(Dispatchers.IO) { val local = engine.foodByBarcode(code); if (local != null) { withContext(Dispatchers.Main) { chooseProduct(local, fromScan = true) }; return@launch }; when (val result = off.barcode(code)) { is OffResult.Found -> withContext(Dispatchers.Main) { chooseProduct(result.food, fromScan = true) }; is OffResult.Ineligible -> withContext(Dispatchers.Main) { notice = "Nutrition is incomplete. Review it as a personal food."; openCustom(result.name.orEmpty(), result.brand.orEmpty(), result.barcode, fromOff = true) }; OffResult.Missing -> withContext(Dispatchers.Main) { notice = "Product not found. Add it manually with barcode $code"; openCustom(barcode = code) }; OffResult.Unavailable -> withContext(Dispatchers.Main) { notice = "No connection. Add the product manually."; openCustom(barcode = code) }; is OffResult.Error -> withContext(Dispatchers.Main) { notice = result.message } } } }
     fun saveCustom(name: String, brand: String, barcode: String, alias: String, shorthand: String, basisAmountText: String, basisUnitText: String, calories: String, protein: String, carbs: String, fat: String) {
         fun shorthandNumber(label: String) = Regex("(?i)([0-9]+(?:[.,][0-9]+)?)\\s*g?\\s*$label").find(shorthand)?.groupValues?.getOrNull(1)?.replace(',', '.')?.toDoubleOrNull()
         val kcal = calories.toDoubleOrNull() ?: shorthandNumber("kcal"); val proteinValue = protein.toDoubleOrNull() ?: shorthandNumber("protein"); val carbsValue = carbs.toDoubleOrNull() ?: shorthandNumber("(?:carb|carbs)"); val fatValue = fat.toDoubleOrNull() ?: shorthandNumber("fat")
@@ -476,9 +539,15 @@ class BreakfastViewModel(application: Application) : AndroidViewModel(applicatio
         if (!nutrition.calories.isFinite() || nutrition.calories < 0.0 || nutrition.calories > 10000.0 || listOf(nutrition.protein, nutrition.carbohydrates, nutrition.fat).any { it != null && (!it.isFinite() || it < 0.0 || it > 1000.0) }) { notice = "Nutrition values must be finite and nonnegative."; return }
         if (!ready || busy || !basisAmount.isFinite() || basisAmount <= 0.0) { notice = "Enter a positive nutrition basis."; return }
         val resolvesQueue = resolutionContinuation && unknownQueueTarget == slot
+        val contribution = if (customSeedFromOff && barcode.isNotBlank()) OffContributionDraft(
+            barcode = barcode.trim(), name = name.trim(), brand = brand.trim().ifBlank { null },
+            basisAmount = basisAmount, basisUnit = basisUnit, nutrition = nutrition
+        ) else null
         busy = true; viewModelScope.launch { runCatching { val target = slot; if (target != null) engine.saveCustomAndLog(name, brand, barcode, alias, nutrition, basisAmount, basisUnit, target, basisAmount, basisUnit) else engine.saveCustomFood(name, brand, barcode, alias, nutrition, basisAmount, basisUnit) }.onSuccess {
             refresh()
             customOpen = false
+            customSeedFromOff = false
+            pendingContribution = contribution
             if (resolvesQueue && unknownQueue.isNotEmpty()) advanceUnknownQueue() else resolutionContinuation = false
             notice = if (slot != null) "Saved to ${slot!!.label()} and your food library." else "Saved to your food library."
         }.onFailure { notice = it.message ?: "Could not save this food." }.also { busy = false } }
@@ -496,6 +565,9 @@ internal fun productPrefill(raw: String, food: FoodRecord): ProductPrefill {
 }
 
 internal fun parseProductUnit(value: String): MeasureUnit? = value.trim().toMeasureUnit()
+
+internal fun contributionDraftAfterLocalSave(food: FoodRecord, fromScan: Boolean): OffContributionDraft? =
+    if (fromScan) OffContributionDraft.fromFood(food) else null
 
 private data class ProductDraft(
     val food: FoodRecord,
@@ -542,6 +614,9 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     if (vm.searchOpen) SearchDialog(vm)
     if (vm.resolverOpen) UnknownResolver(vm)
     vm.selectedProduct?.let { ProductDialog(vm, it) }
+    if (vm.contributionReviewOpen) vm.pendingContribution?.let { ContributionReviewDialog(vm, it) }
+    if (vm.contributionAuthOpen) ContributionAuthDialog(vm)
+    vm.contributionFailure?.let { ContributionFailureDialog(vm, it) }
     vm.notice?.let { message -> AlertDialog(onDismissRequest = vm::dismissNotice, confirmButton = { TextButton(vm::dismissNotice) { Text("OK") } }, text = { Text(message) }) }
     vm.initializationError?.let { message -> AlertDialog(onDismissRequest = {}, confirmButton = {}, title = { Text("Storage unavailable") }, text = { Text(message) }) }
 }
@@ -566,6 +641,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
         vm.mealDraftError?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
         MealSlot.entries.forEach { s -> item { MealCard(s, today.filter { it.mealSlot == s }, vm) } }
         item { OutlinedButton({ vm.openCustom() }, Modifier.fillMaxWidth()) { Text("Create a personal food") } }
+        vm.pendingContribution?.let { item { ContributionAction(vm) } }
         vm.undoEntry?.let { item { TextButton({ vm.undo() }) { Text("Undo delete ${it.foodName}") } } }
         item { Spacer(Modifier.height(24.dp)) }
     }
@@ -599,6 +675,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     val target = vm.slot ?: return; val entries = vm.entries.filter { it.dayKey == dayKeyForEpochMs(System.currentTimeMillis()) && it.mealSlot == target }; val total = entries.fold(NutritionValues.ZERO) { a, e -> a + e.nutritionSnapshot }
     LazyColumn(modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { Spacer(Modifier.height(8.dp)); Text(target.label(), style = MaterialTheme.typography.headlineMedium); Text("${total.calories.pretty()} kcal  •  P ${total.protein.macro()}  C ${total.carbohydrates.macro()}  F ${total.fat.macro()}") }
+        vm.pendingContribution?.let { item { ContributionAction(vm) } }
         items(entries, key = { it.id }) { entry -> EntryRow(entry, vm) }
         item { vm.undoEntry?.let { TextButton({ vm.undo() }) { Text("Undo delete ${it.foodName}") } }; TextButton({ vm.closeMeal() }) { Text("Back to today") }; Spacer(Modifier.height(16.dp)) }
     }
@@ -786,6 +863,62 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
             }
         }
     }
+}
+
+@Composable private fun ContributionAction(vm: BreakfastViewModel) {
+    OutlinedButton(vm::reviewContribution, Modifier.fillMaxWidth()) {
+        Text("Contribute to Open Food Facts")
+    }
+}
+
+@Composable private fun ContributionReviewDialog(vm: BreakfastViewModel, draft: OffContributionDraft) {
+    AlertDialog(
+        onDismissRequest = vm::dismissContributionReview,
+        title = { Text("Contribute correction?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("These public product fields will be sent to Open Food Facts:")
+                draft.publicFields().forEach { Text(it) }
+                Text("Your meal amount, aliases, preferences, and serving estimates are not included.", style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = { Button(vm::confirmContribution) { Text("Continue to sign in") } },
+        dismissButton = { TextButton(vm::dismissContributionReview) { Text("Decline") } }
+    )
+}
+
+@Composable private fun ContributionAuthDialog(vm: BreakfastViewModel) {
+    AlertDialog(
+        onDismissRequest = vm::dismissContributionAuth,
+        title = { Text("Open Food Facts sign in") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Use your own Open Food Facts account. Breakfast does not save your password.", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(vm.contributionUsername, vm::onContributionUsername, label = { Text("Username") }, singleLine = true)
+                OutlinedTextField(
+                    vm.contributionPassword,
+                    vm::onContributionPassword,
+                    label = { Text("Password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { vm.submitContribution() })
+                )
+            }
+        },
+        confirmButton = { Button(vm::submitContribution, enabled = !vm.contributionBusy) { Text(if (vm.contributionBusy) "Submitting…" else "Submit contribution") } },
+        dismissButton = { TextButton(vm::dismissContributionAuth) { Text("Cancel") } }
+    )
+}
+
+@Composable private fun ContributionFailureDialog(vm: BreakfastViewModel, message: String) {
+    AlertDialog(
+        onDismissRequest = vm::dismissContributionFailure,
+        title = { Text("Contribution not sent") },
+        text = { Text(message) },
+        confirmButton = { TextButton(vm::retryContribution) { Text("Retry") } },
+        dismissButton = { TextButton(vm::dismissContributionFailure) { Text("Dismiss") } }
+    )
 }
 
 @Composable private fun CustomDialog(vm: BreakfastViewModel) {
