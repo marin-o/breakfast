@@ -74,7 +74,7 @@ class BreakfastStore(context: Context) {
         context.applicationContext,
         BreakfastDatabase::class.java,
         "breakfast.db"
-    ).addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3).build()
+    ).addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4).build()
     private val writeMutex = Mutex()
 
     @Volatile
@@ -214,11 +214,14 @@ class BreakfastStore(context: Context) {
         writeMutex.withLock {
             withContext(Dispatchers.IO) {
                 database.withTransaction {
-                    database.foodDao().upsert(food.toEntity())
-                    database.foodAliasDao().deleteForFood(food.id)
-                    database.servingConversionDao().deleteForFood(food.id)
-                    database.foodAliasDao().insertAll(food.toAliasEntities())
-                    database.servingConversionDao().insertAll(food.toConversionEntities())
+                    val current = database.foodDao().all().firstOrNull { it.id == food.id }
+                    if (current?.archived != true) {
+                        database.foodDao().upsert(food.toEntity())
+                        database.foodAliasDao().deleteForFood(food.id)
+                        database.servingConversionDao().deleteForFood(food.id)
+                        database.foodAliasDao().insertAll(food.toAliasEntities())
+                        database.servingConversionDao().insertAll(food.toConversionEntities())
+                    }
                     database.mealEntryDao().replace(entry.toEntity())
                 }
                 model = readSnapshot()

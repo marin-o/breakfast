@@ -83,7 +83,9 @@ data class FoodRecord(
     val brand: String? = null,
     val barcode: String? = null,
     /** Archived personal foods stay available to historical diary snapshots. */
-    val archived: Boolean = false
+    val archived: Boolean = false,
+    /** Local edits take precedence over later imports of the same source record. */
+    val personalOverride: Boolean = false
 ) {
     fun allNames(): List<String> = listOf(name) + aliases
 }

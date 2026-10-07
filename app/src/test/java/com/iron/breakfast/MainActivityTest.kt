@@ -1,6 +1,7 @@
 package com.iron.breakfast
 
 import com.iron.breakfast.domain.FoodOrigin
+import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionBasis
@@ -8,6 +9,7 @@ import com.iron.breakfast.domain.NutritionValues
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class MainActivityTest {
     @Test
@@ -64,6 +66,27 @@ class MainActivityTest {
         assertEquals(250.0, edited.defaultAmount)
         assertEquals(MeasureUnit.MILLILITER, edited.defaultUnit)
         assertEquals(250.0, edited.nutrition.amount)
+    }
+
+    @Test
+    fun cachedOffFoodEditKeepsSourceIdentityForLaterRecache() {
+        val tablespoon = ServingConversion(MeasureUnit.TABLESPOON, 15.0, "package serving")
+        val original = FoodRecord(
+            id = "off-123", name = "Imported name", aliases = emptyList(), category = "Open Food Facts",
+            origin = FoodOrigin.GENERIC,
+            nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(100.0, 1.0, 2.0, 3.0)),
+            conversions = listOf(tablespoon), defaultAmount = 1.0, defaultUnit = MeasureUnit.TABLESPOON,
+            sourceId = "source-123", sourceName = "Open Food Facts", barcode = "123"
+        )
+        val edited = editedCustomFoodRecord(original, "My name", "Brand", "123", "alias", NutritionValues(200.0, 2.0, 3.0, 4.0), 100.0, MeasureUnit.GRAM)
+        assertEquals(FoodOrigin.GENERIC, edited.origin)
+        assertEquals("Open Food Facts", edited.sourceName)
+        assertEquals("source-123", edited.sourceId)
+        assertEquals("123", edited.barcode)
+        assertEquals(listOf(tablespoon), edited.conversions)
+        assertEquals(1.0, edited.defaultAmount)
+        assertEquals(MeasureUnit.TABLESPOON, edited.defaultUnit)
+        assertTrue(edited.personalOverride)
     }
 
     @Test

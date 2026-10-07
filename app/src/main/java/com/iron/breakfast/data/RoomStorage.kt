@@ -42,7 +42,8 @@ data class FoodEntity(
     @ColumnInfo(name = "source_description") val sourceDescription: String?,
     val brand: String?,
     val barcode: String?,
-    val archived: Boolean = false
+    val archived: Boolean = false,
+    @ColumnInfo(name = "personal_override") val personalOverride: Boolean = false
 )
 
 @Entity(tableName = "food_aliases", primaryKeys = ["foodId", "alias"])
@@ -158,7 +159,7 @@ interface MealEntryDao {
         PreferenceEntity::class,
         MealEntryEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 abstract class BreakfastDatabase : RoomDatabase() {
@@ -181,6 +182,12 @@ val ROOM_MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
 val ROOM_MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
     override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE foods ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+val ROOM_MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE foods ADD COLUMN personal_override INTEGER NOT NULL DEFAULT 0")
     }
 }
 
@@ -207,7 +214,8 @@ fun FoodRecord.toEntity(): FoodEntity = FoodEntity(
     sourceDescription = sourceDescription,
     brand = brand,
     barcode = barcode,
-    archived = archived
+    archived = archived,
+    personalOverride = personalOverride
 )
 
 fun FoodRecord.toAliasEntities(): List<FoodAliasEntity> = aliases.distinct().map { alias ->
@@ -253,7 +261,8 @@ fun FoodEntity.toDomain(
         sourceDescription = sourceDescription,
         brand = brand,
         barcode = barcode,
-        archived = archived
+        archived = archived,
+        personalOverride = personalOverride
     )
 
 fun Preference.toEntity() = PreferenceEntity(foodId, explicitCount, lastReinforcedEpochMs)

@@ -95,7 +95,7 @@ class BreakfastDatabaseTest {
     }
 
     @Test
-    fun migration1To3PreservesPopulatedRowsAndAddsArchiveFlag() {
+    fun migration1To4PreservesPopulatedRowsAndAddsLocalOverrideFlag() {
         val name = "migration-${System.nanoTime()}.db"
         val old = migrationHelper.createDatabase(name, 1)
         old.execSQL("CREATE TABLE IF NOT EXISTS foods (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL, origin TEXT NOT NULL, nutrition_amount REAL NOT NULL, nutrition_unit TEXT NOT NULL, calories REAL NOT NULL, protein REAL, carbohydrates REAL, fat REAL, default_amount REAL NOT NULL, default_unit TEXT NOT NULL, source_id TEXT, source_name TEXT, source_release TEXT, preparation TEXT, source_description TEXT)")
@@ -109,11 +109,12 @@ class BreakfastDatabaseTest {
         old.execSQL("INSERT INTO preferences VALUES ('legacy',3,1234)")
         old.execSQL("INSERT INTO meal_entries VALUES ('entry','legacy','Legacy food',100.0,'GRAM',100.0,250.0,NULL,12.0,5.0,'legacy',0,1234,'legacy','BREAKFAST','1970-01-01')")
         old.close()
-        val migrated = migrationHelper.runMigrationsAndValidate(name, 3, true, ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3)
+        val migrated = migrationHelper.runMigrationsAndValidate(name, 4, true, ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4)
         assertEquals(1, migrated.query("SELECT COUNT(*) FROM foods").use { it.moveToFirst(); it.getInt(0) })
         assertEquals("old alias", migrated.query("SELECT alias FROM food_aliases").use { it.moveToFirst(); it.getString(0) })
         assertEquals(1, migrated.query("SELECT COUNT(*) FROM meal_entries").use { it.moveToFirst(); it.getInt(0) })
         assertEquals(0, migrated.query("SELECT archived FROM foods WHERE id = 'legacy'").use { it.moveToFirst(); it.getInt(0) })
+        assertEquals(0, migrated.query("SELECT personal_override FROM foods WHERE id = 'legacy'").use { it.moveToFirst(); it.getInt(0) })
         migrated.close(); context.deleteDatabase(name)
     }
 
@@ -126,9 +127,10 @@ class BreakfastDatabaseTest {
         old.execSQL("INSERT INTO meal_entries VALUES ('saved-entry','saved','Saved food',100.0,'GRAM',100.0,250.0,NULL,NULL,NULL,'label',0,1234,'usual food','BREAKFAST','1970-01-01')")
         old.close()
 
-        val migrated = migrationHelper.runMigrationsAndValidate(name, 3, true, ROOM_MIGRATION_2_3)
+        val migrated = migrationHelper.runMigrationsAndValidate(name, 4, true, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4)
         assertEquals("1234567890123", migrated.query("SELECT barcode FROM foods WHERE id = 'saved'").use { it.moveToFirst(); it.getString(0) })
         assertEquals(0, migrated.query("SELECT archived FROM foods WHERE id = 'saved'").use { it.moveToFirst(); it.getInt(0) })
+        assertEquals(0, migrated.query("SELECT personal_override FROM foods WHERE id = 'saved'").use { it.moveToFirst(); it.getInt(0) })
         assertEquals("usual food", migrated.query("SELECT alias FROM food_aliases WHERE foodId = 'saved'").use { it.moveToFirst(); it.getString(0) })
         assertEquals(250.0, migrated.query("SELECT snapshot_calories FROM meal_entries WHERE id = 'saved-entry'").use { it.moveToFirst(); it.getDouble(0) }, 0.0)
         migrated.close(); context.deleteDatabase(name)

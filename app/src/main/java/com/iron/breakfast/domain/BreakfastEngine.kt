@@ -163,8 +163,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
     suspend fun archiveFood(foodId: String) = store.archiveFood(foodId)
 
     suspend fun updateFood(food: FoodRecord) {
-        require(food.origin == FoodOrigin.CUSTOM) { "Only personal foods can be edited." }
-        store.upsertFood(food)
+        store.upsertFood(food.copy(personalOverride = true))
         matcherCatalog = null
     }
 
@@ -207,7 +206,9 @@ class BreakfastEngine(private val store: BreakfastStore) {
             brand = brand?.trim()?.ifBlank { null },
             barcode = barcode?.trim()?.ifBlank { null },
             sourceName = sourceName,
-            sourceDescription = sourceDescription
+            sourceId = barcode?.trim()?.ifBlank { null },
+            sourceDescription = sourceDescription,
+            personalOverride = true
         )
         val calculation = calculator.calculate(food, amount, amountUnit)
         require(calculation.supported) { "Amount unit is incompatible with the nutrition basis" }
@@ -229,7 +230,8 @@ class BreakfastEngine(private val store: BreakfastStore) {
         require(nutrition.calories.isFinite() && nutrition.calories >= 0.0) { "Calories are required" }
         val food = FoodRecord("custom-" + UUID.randomUUID(), name.trim(), alias?.split(',')?.map(String::trim)?.filter(String::isNotBlank).orEmpty(), "Personal food", FoodOrigin.CUSTOM,
             NutritionBasis(basisAmount, basisUnit, nutrition), listOf(ServingConversion(basisUnit, basisAmount, "custom basis")),
-            basisAmount, basisUnit, sourceName = sourceName, sourceDescription = sourceDescription,
+            basisAmount, basisUnit, sourceId = barcode?.trim()?.ifBlank { null }, sourceName = sourceName, sourceDescription = sourceDescription,
+            personalOverride = true,
             brand = brand?.trim()?.ifBlank { null }, barcode = barcode?.trim()?.ifBlank { null })
         store.upsertFood(food)
         matcherCatalog = null
@@ -237,13 +239,18 @@ class BreakfastEngine(private val store: BreakfastStore) {
     }
 
     suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, mealSlot: MealSlot, dayKey: String = dayKeyForEpochMs(System.currentTimeMillis())): MealEntry {
-        val calculation = calculator.calculate(food, amount, unit)
+        val effectiveFood = cachedFoodForLogging(
+            food,
+            store.foodById(food.id),
+            food.barcode?.let { store.foodByBarcode(it) }
+        )
+        val calculation = calculator.calculate(effectiveFood, amount, unit)
         require(calculation.supported) { "Amount unit is incompatible with the nutrition basis" }
         val now = System.currentTimeMillis()
-        val entry = MealEntry(UUID.randomUUID().toString(), food.id, food.name, amount, unit,
+        val entry = MealEntry(UUID.randomUUID().toString(), effectiveFood.id, effectiveFood.name, amount, unit,
             calculation.resolvedBaseAmount, calculation.nutrition, calculation.provenance,
-            calculation.approximate, now, food.name, mealSlot, dayKey)
-        store.addFoodAndEntry(food, entry)
+            calculation.approximate, now, effectiveFood.name, mealSlot, dayKey)
+        store.addFoodAndEntry(effectiveFood, entry)
         matcherCatalog = null
         return entry
     }
@@ -259,6 +266,9 @@ class BreakfastEngine(private val store: BreakfastStore) {
     fun totalsForToday(): NutritionValues = store.entries()
         .fold(NutritionValues.ZERO) { total, entry -> total + entry.nutritionSnapshot }
 }
+
+internal fun cachedFoodForLogging(candidate: FoodRecord, byId: FoodRecord?, byBarcode: FoodRecord?): FoodRecord =
+    listOfNotNull(byId, byBarcode).firstOrNull { it.personalOverride && !it.archived } ?: candidate
 
 internal fun foodsAvailableForLogging(foods: List<FoodRecord>): List<FoodRecord> =
     foods.filterNot { it.archived }

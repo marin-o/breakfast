@@ -94,6 +94,19 @@ class RoomStorageMappingTest {
     }
 
     @Test
+    fun personalOverrideRoundTripsAlongsideOffSourceIdentity() {
+        val edited = FoodCatalog.fixtures.first().copy(
+            sourceName = "Open Food Facts", sourceId = "123", barcode = "123",
+            personalOverride = true, name = "My local name"
+        )
+        val restored = edited.toEntity().toDomain(edited.aliases, edited.conversions)
+        assertEquals("123", restored.sourceId)
+        assertEquals("123", restored.barcode)
+        assertTrue(restored.personalOverride)
+        assertEquals("My local name", restored.name)
+    }
+
+    @Test
     fun archivedFoodRoundTripsWithoutChangingHistoricalEntrySnapshots() {
         val archived = FoodCatalog.fixtures.first().copy(
             id = "archived-food", origin = FoodOrigin.CUSTOM, archived = true,

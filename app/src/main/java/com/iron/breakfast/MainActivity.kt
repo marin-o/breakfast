@@ -93,6 +93,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.iron.breakfast.data.BreakfastStore
 import com.iron.breakfast.data.OffContributionDraft
 import com.iron.breakfast.data.OffContributionResult
+import com.iron.breakfast.data.OffPreflightResult
 import com.iron.breakfast.data.OffResult
 import com.iron.breakfast.data.OffSearchResult
 import com.iron.breakfast.data.OpenFoodFactsClient
@@ -179,6 +180,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var contributionUsername by mutableStateOf(""); private set
     var contributionPassword by mutableStateOf(""); private set
     var contributionBusy by mutableStateOf(false); private set
+    var contributionPreflightBusy by mutableStateOf(false); private set
+    private var contributionPreflightComplete by mutableStateOf(false)
+    private var contributionPreflightToken = 0L
+    var contributionLanguageCode by mutableStateOf("en"); private set
+    var contributionPackageQuantityMl by mutableStateOf(""); private set
     var undoEntry by mutableStateOf<MealEntry?>(null); private set
     var mealDraftError by mutableStateOf<String?>(null); private set
     var mealPickerOpen by mutableStateOf(false); private set
@@ -235,7 +241,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (!ready) return
         viewModelScope.launch {
             libraryFoods = engine.foodsMatching(libraryQuery, libraryIncludeArchived)
-                .filter { !libraryOnlyPersonal || it.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM }
+                .filter { !libraryOnlyPersonal || it.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM || it.personalOverride }
                 .sortedBy { it.name.lowercase(Locale.ROOT) }
         }
     }
@@ -281,9 +287,48 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         openContributionForFood(foods.firstOrNull { it.id == entry.foodId })
     }
     fun openContributionForFood(food: FoodRecord?) {
-        pendingContribution = food?.let { OffContributionDraft.fromFood(it) }
-        if (pendingContribution == null) notice = "This food has no eligible Open Food Facts barcode provenance."
-        else contributionReviewOpen = true
+        contributionPreflightToken++
+        val draft = food?.let { OffContributionDraft.fromFood(it) }
+        pendingContribution = draft
+        if (draft == null) {
+            contributionPreflightBusy = false
+            contributionPreflightComplete = false
+            notice = "Open Food Facts submission is available only for foods with a barcode."
+            return
+        }
+        contributionPreflightComplete = false
+        startContributionPreflight(draft)
+    }
+
+    private fun startContributionPreflight(draft: OffContributionDraft) {
+        val token = ++contributionPreflightToken
+        contributionPreflightBusy = true
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = off.preflight(draft)
+            withContext(Dispatchers.Main) {
+                if (token != contributionPreflightToken) return@withContext
+                contributionPreflightBusy = false
+                contributionPreflightComplete = true
+                when (result) {
+                    OffPreflightResult.Existing -> pendingContribution = draft.copy(createNewProduct = false)
+                    OffPreflightResult.NewProduct -> {
+                        val language = contributionLanguageFor(draft.name)
+                        contributionLanguageCode = language
+                        contributionPackageQuantityMl = ""
+                        pendingContribution = draft.copy(createNewProduct = true, languageCode = language)
+                    }
+                    is OffPreflightResult.Ineligible -> {
+                        pendingContribution = null
+                        notice = result.message
+                    }
+                    OffPreflightResult.Unavailable -> {
+                        pendingContribution = null
+                        notice = "Open Food Facts was unavailable. Retry when you have a connection."
+                    }
+                }
+                if (pendingContribution != null) contributionReviewOpen = true
+            }
+        }
     }
     private fun abandonUnknownResolution(clearDraft: Boolean = false) {
         unknownQueue = emptyList()
@@ -443,7 +488,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     fun closeCustom() { customOpen = false; editingLibraryFoodId = null; resetCustomSeeds(); if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false }
     fun openLibraryEdit(food: FoodRecord) {
-        if (food.origin != com.iron.breakfast.domain.FoodOrigin.CUSTOM) return
         editingLibraryFoodId = food.id
         customSeedName = food.name; customSeedBrand = food.brand.orEmpty(); customSeedBarcode = food.barcode.orEmpty(); customSeedAliases = food.aliases.joinToString(", ")
         customSeedCalories = food.nutrition.values.calories.toString(); customSeedProtein = food.nutrition.values.protein?.toString().orEmpty()
@@ -453,10 +497,26 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     fun closeResolver() { abandonUnknownResolution() }
     fun dismissNotice() { notice = null }
-    fun reviewContribution() { if (pendingContribution != null) contributionReviewOpen = true }
+    fun reviewContribution() {
+        val draft = pendingContribution ?: return
+        if (contributionPreflightBusy) return
+        if (contributionPreflightComplete) contributionReviewOpen = true
+        else startContributionPreflight(draft)
+    }
     fun dismissContributionReview() { contributionReviewOpen = false }
     fun confirmContribution() {
-        if (pendingContribution != null) {
+        val draft = pendingContribution
+        if (draft != null && draft.createNewProduct && draft.languageCode.trim().lowercase() !in setOf("en", "mk")) {
+            notice = "Choose en (English) or mk (Macedonian) for the new product."
+            return
+        }
+        if (draft != null && draft.createNewProduct && draft.basisUnit == MeasureUnit.MILLILITER &&
+            (draft.packageQuantityMl == null || !draft.packageQuantityMl.isFinite() || draft.packageQuantityMl <= 0.0)
+        ) {
+            notice = "Enter a positive package quantity in ml before continuing."
+            return
+        }
+        if (draft != null) {
             contributionReviewOpen = false
             contributionAuthOpen = true
         }
@@ -466,6 +526,14 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun retryContribution() { contributionFailure = null; contributionAuthOpen = true }
     fun onContributionUsername(v: String) { contributionUsername = v }
     fun onContributionPassword(v: String) { contributionPassword = v }
+    fun onContributionLanguage(v: String) {
+        contributionLanguageCode = v
+        pendingContribution = pendingContribution?.copy(languageCode = v.trim().lowercase())
+    }
+    fun onContributionPackageQuantityMl(v: String) {
+        contributionPackageQuantityMl = v
+        pendingContribution = pendingContribution?.copy(packageQuantityMl = v.toDoubleOrNull())
+    }
     fun submitContribution() {
         val draft = pendingContribution ?: return
         if (contributionBusy) return
@@ -491,6 +559,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                     OffContributionResult.AuthFailed -> contributionFailure = "Open Food Facts could not authenticate that account. Check the username and password, then retry."
                     is OffContributionResult.Ineligible -> contributionFailure = result.message
                     is OffContributionResult.Rejected -> contributionFailure = result.message
+                    is OffContributionResult.PreflightChanged -> contributionFailure = result.message
                     OffContributionResult.Unavailable -> contributionFailure = "Open Food Facts was unavailable. Retry when you have a connection."
                     is OffContributionResult.Error -> contributionFailure = result.message
                 }
@@ -677,17 +746,25 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             if (editingId != null) {
                 val original = foods.firstOrNull { it.id == editingId } ?: error("That personal food is no longer available.")
                 engine.updateFood(editedCustomFoodRecord(original, name, brand, barcode, alias, nutrition, basisAmount, basisUnit))
+                original
             } else {
                 val target = slot
-                if (target != null) engine.saveCustomAndLog(name, brand, barcode, alias, nutrition, basisAmount, basisUnit, target, basisAmount, basisUnit, dayKey = selectedDayKey, sourceName = offSource, sourceDescription = "Saved from an incomplete Open Food Facts barcode result")
-                else engine.saveCustomFood(name, brand, barcode, alias, nutrition, basisAmount, basisUnit, sourceName = offSource, sourceDescription = "Saved from an incomplete Open Food Facts barcode result")
+                if (target != null) {
+                    val entry = engine.saveCustomAndLog(name, brand, barcode, alias, nutrition, basisAmount, basisUnit, target, basisAmount, basisUnit, dayKey = selectedDayKey, sourceName = offSource, sourceDescription = "Saved from an incomplete Open Food Facts barcode result")
+                    engine.foodById(entry.foodId) ?: error("Saved food could not be reloaded.")
+                } else engine.saveCustomFood(name, brand, barcode, alias, nutrition, basisAmount, basisUnit, sourceName = offSource, sourceDescription = "Saved from an incomplete Open Food Facts barcode result")
             }
         }.onSuccess {
             refresh()
             customOpen = false
             editingLibraryFoodId = null
             customSeedFromOff = false
-            pendingContribution = contribution
+            pendingContribution = contribution?.copy(
+                languageCode = contributionLanguageFor(name),
+                packageQuantityMl = null
+            )
+            contributionPreflightComplete = false
+            refreshLibrary()
             if (resolvesQueue && unknownQueue.isNotEmpty()) advanceUnknownQueue() else resolutionContinuation = false
             notice = if (editingId != null) "Personal food updated for future logs." else if (slot != null) "Saved to ${slot!!.label()} and your food library." else "Saved to your food library."
         }.onFailure { notice = it.message ?: "Could not save this food." }.also { busy = false } }
@@ -709,14 +786,22 @@ internal fun editedCustomFoodRecord(
     val aliases = aliasText.trim().takeIf { it.isNotBlank() }
         ?.split(',')?.map(String::trim)?.filter(String::isNotBlank)
         ?: original.aliases
+    val preserveImportedServings = original.origin != com.iron.breakfast.domain.FoodOrigin.CUSTOM &&
+        original.nutrition.unit == basisUnit
     return original.copy(
         name = name.trim(), brand = brand.trim().ifBlank { null }, barcode = barcode.trim().ifBlank { null },
+        sourceId = if (original.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM) barcode.trim().ifBlank { null } else original.sourceId,
         aliases = aliases,
         nutrition = NutritionBasis(basisAmount, basisUnit, nutrition),
-        conversions = listOf(com.iron.breakfast.domain.ServingConversion(basisUnit, basisAmount, "custom basis")),
-        defaultAmount = basisAmount, defaultUnit = basisUnit
+        conversions = if (preserveImportedServings) original.conversions else listOf(com.iron.breakfast.domain.ServingConversion(basisUnit, basisAmount, "custom basis")),
+        defaultAmount = if (preserveImportedServings) original.defaultAmount else basisAmount,
+        defaultUnit = if (preserveImportedServings) original.defaultUnit else basisUnit,
+        personalOverride = true
     )
 }
+
+private fun contributionLanguageFor(name: String): String =
+    if (name.any { it in '\u0400'..'\u04ff' }) "mk" else "en"
 
 internal fun productNutritionBasisLabel(food: FoodRecord): String =
     "Calories per ${food.nutrition.amount.pretty()} ${food.nutrition.unit.label}"
@@ -904,8 +989,9 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
                 Text("${food.nutrition.values.calories.pretty()} kcal  ·  P ${food.nutrition.values.protein.macro()}  C ${food.nutrition.values.carbohydrates.macro()}  F ${food.nutrition.values.fat.macro()}")
                 food.conversions.forEach { conversion -> Text("${conversion.unit.label}: ${conversion.provenance}${if (conversion.approximate) " (approximate)" else ""}", style = MaterialTheme.typography.bodySmall) }
                 if (food.archived) Text("Archived personal food; historical entries are preserved.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (OffContributionDraft.fromFood(food) != null) TextButton({ vm.closeLibraryFood(); vm.openContributionForFood(food) }, Modifier.fillMaxWidth()) { Text("Contribute to Open Food Facts") }
-                if (food.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM) TextButton({ vm.openLibraryEdit(food) }, Modifier.fillMaxWidth()) { Text("Edit personal food") }
+                if (food.barcode.isNullOrBlank()) Text("Open Food Facts submission is unavailable without a barcode.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else TextButton({ vm.closeLibraryFood(); vm.openContributionForFood(food) }, Modifier.fillMaxWidth()) { Text("Submit to Open Food Facts") }
+                TextButton({ vm.openLibraryEdit(food) }, Modifier.fillMaxWidth()) { Text(if (food.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM) "Edit personal food" else "Edit food") }
                 if (food.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM && !food.archived) TextButton({ vm.archiveLibraryFood(food) }, Modifier.fillMaxWidth()) { Text("Archive personal food") }
             }
         },
@@ -1120,6 +1206,15 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("These public product fields will be sent to Open Food Facts:")
                 draft.publicFields().forEach { Text(it) }
+                if (draft.createNewProduct) {
+                    OutlinedTextField(vm.contributionLanguageCode, vm::onContributionLanguage, label = { Text("Product language (en or mk)") }, singleLine = true)
+                    if (draft.basisUnit == MeasureUnit.MILLILITER) {
+                        OutlinedTextField(vm.contributionPackageQuantityMl, vm::onContributionPackageQuantityMl, label = { Text("Package quantity (ml) *") }, singleLine = true)
+                    }
+                    Text("This barcode is new to Open Food Facts; Breakfast will create the product with the fields above.", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    Text("This is an existing product. Only the recorded nutrition fields will be sent; its name, brand, and language stay unchanged.", style = MaterialTheme.typography.bodySmall)
+                }
                 Text("Your meal amount, aliases, preferences, and serving estimates are not included.", style = MaterialTheme.typography.bodySmall)
             }
         },

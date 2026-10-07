@@ -20,6 +20,15 @@ class BreakfastDomainTest {
     }
 
     @Test
+    fun archivedPersonalOverrideCannotBecomeEffectiveDuringRecache() {
+        val candidate = FoodCatalog.fixtures.first().copy(id = "off-123", barcode = "123")
+        val archivedOverride = candidate.copy(name = "Archived local edit", archived = true, personalOverride = true)
+        assertEquals(candidate, cachedFoodForLogging(candidate, archivedOverride, null))
+        val activeOverride = archivedOverride.copy(archived = false)
+        assertEquals(activeOverride, cachedFoodForLogging(candidate, activeOverride, null))
+    }
+
+    @Test
     fun suggestionHotPathStaysBoundedWithExpandedCatalog() {
         val matcher = FoodMatcher(FoodCatalog.fixtures)
         val parsed = parser.parse("ground beef 90/10 raw 100 g")

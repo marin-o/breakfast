@@ -49,6 +49,34 @@ class OpenFoodFactsClientTest {
         assertTrue(client.classifyContributionResponseForTesting(200, "not-json") is OffContributionResult.Error)
     }
 
+    @Test fun newProductFormIncludesDocumentedIdentityFieldsButCorrectionDoesNot() {
+        val create = OffContributionDraft(
+            "999", "Македонски напиток", "Бренд", 100.0, MeasureUnit.MILLILITER,
+            NutritionValues(42.0, 1.0, null, 0.5), createNewProduct = true,
+            languageCode = "mk", packageQuantityMl = 500.0
+        ).asFormFields()
+        assertEquals("mk", create["lc"])
+        assertEquals("Македонски напиток", create["product_name_mk"])
+        assertEquals("food", create["product_type"])
+        assertEquals("Бренд", create["brands"])
+        assertEquals("500 ml", create["quantity"])
+
+        val existing = OffContributionDraft("999", "Name", "Brand", 100.0, MeasureUnit.GRAM, NutritionValues(42.0, null, null, null)).asFormFields()
+        assertNull(existing["product_name_en"])
+        assertNull(existing["brands"])
+        assertNull(existing["lc"])
+    }
+
+    @Test fun customBarcodeFoodsAreEligibleForExplicitSubmission() {
+        val food = FoodRecord(
+            id = "custom", name = "My drink", aliases = emptyList(), category = "Personal food",
+            origin = FoodOrigin.CUSTOM,
+            nutrition = NutritionBasis(100.0, MeasureUnit.MILLILITER, NutritionValues(42.0, null, null, null)),
+            sourceName = null, barcode = "123"
+        )
+        assertEquals("123", OffContributionDraft.fromFood(food)?.barcode)
+    }
+
     @Test fun contributionUsesSessionCookieAndSendsOnlyPublicProductFields() {
         val connections = mutableListOf<FakeConnection>()
         val client = OpenFoodFactsClient { url ->
@@ -66,18 +94,116 @@ class OpenFoodFactsClientTest {
         val draft = OffContributionDraft("123", "Drink", "Brand", 50.0, MeasureUnit.GRAM, NutritionValues(100.0, 5.0, null, 2.0))
 
         assertTrue(client.contribute(draft, "user", "password") is OffContributionResult.Success)
-        assertEquals(3, connections.size)
+        assertEquals(4, connections.size)
         val loginBody = connections[1].written.toString(Charsets.UTF_8)
-        val productBody = connections[2].written.toString(Charsets.UTF_8)
+        val productBody = connections[3].written.toString(Charsets.UTF_8)
         assertTrue(loginBody.contains("user_id=user"))
         assertTrue(loginBody.contains("password=password"))
-        assertEquals("session=user&token=abc", connections[2].headersSeen["Cookie"])
+        assertEquals("session=user&token=abc", connections[3].headersSeen["Cookie"])
         assertTrue(productBody.contains("code=123"))
         assertTrue(productBody.contains("nutriment_energy-kcal=200"))
         assertTrue(productBody.contains("nutrition_data_per=100g"))
         assertTrue(!productBody.contains("entered_amount"))
         assertTrue(!productBody.contains("entered_unit"))
         assertTrue(!productBody.contains("alias"))
+    }
+
+    @Test fun missingBarcodePreflightCreatesNewProductWithLanguageAndLiquidQuantity() {
+        val connections = mutableListOf<FakeConnection>()
+        val client = OpenFoodFactsClient { url ->
+            FakeConnection(
+                url = url,
+                status = if (url.path.contains("/api/v3/product/")) 404 else 200,
+                body = if (url.path.endsWith("session.pl")) "logged in" else "{\"status\":1}",
+                setCookie = if (url.path.endsWith("session.pl")) "session=user&token=abc" else null
+            ).also { connections += it }
+        }
+        val result = client.contribute(
+            OffContributionDraft("999", "Македонски напиток", "Бренд", 100.0, MeasureUnit.MILLILITER,
+                NutritionValues(42.0, null, null, null), createNewProduct = true, languageCode = "mk", packageQuantityMl = 500.0),
+            "user", "password"
+        )
+        assertTrue(result is OffContributionResult.Success)
+        val body = connections.last().written.toString(Charsets.UTF_8)
+        assertTrue(body.contains("product_name_mk=%D0%9C%D0%B0%D0%BA%D0%B5%D0%B4%D0%BE%D0%BD%D1%81%D0%BA%D0%B8"))
+        assertTrue(body.contains("quantity=500+ml"))
+        assertTrue(body.contains("product_type=food"))
+    }
+
+    @Test fun newLiquidProductRequiresPackageQuantityBeforeLogin() {
+        val connections = mutableListOf<FakeConnection>()
+        val client = OpenFoodFactsClient { url ->
+            FakeConnection(url, if (url.path.contains("/api/v3/product/")) 404 else 200, "", null).also { connections += it }
+        }
+        val result = client.contribute(
+            OffContributionDraft("999", "Drink", null, 100.0, MeasureUnit.MILLILITER, NutritionValues(42.0, null, null, null), createNewProduct = true),
+            "user", "password"
+        )
+        assertTrue(result is OffContributionResult.Ineligible)
+        assertEquals(1, connections.size)
+    }
+
+    @Test fun preflightModeChangeFromMissingToExistingAbortsBeforeWrite() {
+        val connections = mutableListOf<FakeConnection>()
+        var productReads = 0
+        val client = OpenFoodFactsClient { url ->
+            val isProduct = url.path.contains("/api/v3/product/")
+            val status = if (isProduct) {
+                productReads++
+                if (productReads == 1) 404 else 200
+            } else 200
+            FakeConnection(url, status, if (isProduct) "{\"product\":{\"nutrition_data_per\":\"100g\",\"product_quantity_unit\":\"g\",\"nutriments\":{\"energy-kcal_100g\":100}}}" else "{\"status\":1}", if (url.path.endsWith("session.pl")) "session=x" else null).also { connections += it }
+        }
+        val result = client.contribute(OffContributionDraft("123", "Food", null, 100.0, MeasureUnit.GRAM, NutritionValues(100.0, null, null, null), createNewProduct = true, languageCode = "en"), "user", "password")
+        assertTrue(result is OffContributionResult.PreflightChanged)
+        assertEquals(3, connections.size)
+    }
+
+    @Test fun preflightModeChangeFromExistingToMissingAbortsBeforeWrite() {
+        val connections = mutableListOf<FakeConnection>()
+        var productReads = 0
+        val client = OpenFoodFactsClient { url ->
+            val isProduct = url.path.contains("/api/v3/product/")
+            val status = if (isProduct) {
+                productReads++
+                if (productReads == 1) 200 else 404
+            } else 200
+            FakeConnection(url, status, if (isProduct) "{\"product\":{\"nutrition_data_per\":\"100g\",\"product_quantity_unit\":\"g\",\"nutriments\":{\"energy-kcal_100g\":100}}}" else "{\"status\":1}", if (url.path.endsWith("session.pl")) "session=x" else null).also { connections += it }
+        }
+        val result = client.contribute(OffContributionDraft("123", "Food", null, 100.0, MeasureUnit.GRAM, NutritionValues(100.0, null, null, null)), "user", "password")
+        assertTrue(result is OffContributionResult.PreflightChanged)
+        assertEquals(3, connections.size)
+    }
+
+    @Test fun reviewedExistingModeAbortsIfFirstPreflightFindsNewProduct() {
+        val connections = mutableListOf<FakeConnection>()
+        val client = OpenFoodFactsClient { url ->
+            FakeConnection(url, if (url.path.contains("/api/v3/product/")) 404 else 200, "", null).also { connections += it }
+        }
+        val result = client.contribute(OffContributionDraft("123", "Food", null, 100.0, MeasureUnit.GRAM, NutritionValues(100.0, null, null, null), createNewProduct = false), "user", "password")
+        assertTrue(result is OffContributionResult.PreflightChanged)
+        assertEquals(1, connections.size)
+    }
+
+    @Test fun reviewedNewModeAbortsIfFirstPreflightFindsExistingProduct() {
+        val connections = mutableListOf<FakeConnection>()
+        val client = OpenFoodFactsClient { url ->
+            FakeConnection(url, 200, if (url.path.contains("/api/v3/product/")) "{\"product\":{\"nutrition_data_per\":\"100g\",\"product_quantity_unit\":\"g\",\"nutriments\":{\"energy-kcal_100g\":100}}}" else "", null).also { connections += it }
+        }
+        val result = client.contribute(OffContributionDraft("123", "Food", null, 100.0, MeasureUnit.GRAM, NutritionValues(100.0, null, null, null), createNewProduct = true, languageCode = "en"), "user", "password")
+        assertTrue(result is OffContributionResult.PreflightChanged)
+        assertEquals(1, connections.size)
+    }
+
+    @Test fun unsupportedCreationLanguageIsRejectedWithoutNetworkWrite() {
+        val connections = mutableListOf<FakeConnection>()
+        val client = OpenFoodFactsClient { url -> FakeConnection(url, 404, "", null).also { connections += it } }
+        val result = client.contribute(
+            OffContributionDraft("123", "Food", null, 100.0, MeasureUnit.GRAM, NutritionValues(100.0, null, null, null), createNewProduct = true, languageCode = "sr"),
+            "user", "password"
+        )
+        assertTrue(result is OffContributionResult.Ineligible)
+        assertEquals(0, connections.size)
     }
 
     @Test fun contributionRejectsServingBasisAndMissingProductsBeforeLogin() {

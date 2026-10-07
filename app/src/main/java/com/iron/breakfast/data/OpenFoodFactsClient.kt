@@ -38,13 +38,21 @@ data class OffContributionDraft(
     val brand: String?,
     val basisAmount: Double,
     val basisUnit: MeasureUnit,
-    val nutrition: NutritionValues
+    val nutrition: NutritionValues,
+    val createNewProduct: Boolean = false,
+    val languageCode: String = "en",
+    val packageQuantityMl: Double? = null
 ) {
     val normalizedNutrition: NutritionValues
         get() = nutrition * (100.0 / basisAmount)
 
     fun publicFields(): List<String> = buildList {
         add("Barcode: $barcode")
+        if (createNewProduct) {
+            add("New product name (${languageCode.lowercase()}): $name")
+            brand?.let { add("Brand: $it") }
+            if (basisUnit == MeasureUnit.MILLILITER) packageQuantityMl?.let { add("Package quantity: ${prettyNumber(it)} ml") }
+        }
         add("Nutrition basis: per 100 ${basisUnit.label}")
         add("Calories: ${prettyNumber(normalizedNutrition.calories)} kcal")
         normalizedNutrition.protein?.let { add("Protein: ${prettyNumber(it)} g") }
@@ -73,15 +81,25 @@ data class OffContributionDraft(
             put("nutriment_fat", prettyNumber(it))
             put("nutriment_fat_unit", "g")
         }
-        put("lc", "en")
-        put("comment", "Nutrition correction from Breakfast")
+        if (createNewProduct) {
+            val language = languageCode.trim().lowercase()
+            require(language == "en" || language == "mk") { "Product language must be en or mk." }
+            put("lc", language)
+            put("lang", language)
+            put("product_name_$language", name)
+            put("product_type", "food")
+            brand?.takeIf { it.isNotBlank() }?.let { put("brands", it) }
+            packageQuantityMl?.takeIf { basisUnit == MeasureUnit.MILLILITER }?.let { put("quantity", "${prettyNumber(it)} ml") }
+            put("comment", "New product contribution from Breakfast")
+        } else {
+            put("comment", "Nutrition correction from Breakfast")
+        }
         put("app_name", "Breakfast")
         put("app_version", "0.1")
     }
 
     companion object {
         fun fromFood(food: FoodRecord): OffContributionDraft? {
-            if (food.sourceName != "Open Food Facts") return null
             val barcode = food.barcode?.trim()?.takeIf { it.isNotEmpty() } ?: return null
             val basis = food.nutrition
             if (food.name.isBlank() || !basis.amount.isFinite() || basis.amount <= 0.0) return null
@@ -98,6 +116,7 @@ sealed interface OffContributionResult {
     data object AuthFailed : OffContributionResult
     data class Ineligible(val message: String) : OffContributionResult
     data class Rejected(val message: String) : OffContributionResult
+    data class PreflightChanged(val message: String) : OffContributionResult
     data object Unavailable : OffContributionResult
     data class Error(val message: String) : OffContributionResult
 }
@@ -109,8 +128,9 @@ private sealed interface OffLoginResult {
     data class Error(val message: String) : OffLoginResult
 }
 
-private sealed interface OffPreflightResult {
-    data object Eligible : OffPreflightResult
+sealed interface OffPreflightResult {
+    data object Existing : OffPreflightResult
+    data object NewProduct : OffPreflightResult
     data class Ineligible(val message: String) : OffPreflightResult
     data object Unavailable : OffPreflightResult
 }
@@ -163,10 +183,22 @@ class OpenFoodFactsClient(
 
     fun contribute(draft: OffContributionDraft, username: String, password: String): OffContributionResult {
         if (username.isBlank() || password.isBlank()) return OffContributionResult.AuthFailed
-        when (val preflight = preflight(draft)) {
-            OffPreflightResult.Eligible -> Unit
+        if (draft.createNewProduct && draft.languageCode.trim().lowercase() !in setOf("en", "mk")) {
+            return OffContributionResult.Ineligible("Choose English (en) or Macedonian (mk) for a new product before submitting.")
+        }
+        val preflight = preflight(draft)
+        when (preflight) {
             is OffPreflightResult.Ineligible -> return OffContributionResult.Ineligible(preflight.message)
             OffPreflightResult.Unavailable -> return OffContributionResult.Unavailable
+            OffPreflightResult.Existing -> {
+                if (draft.createNewProduct) return OffContributionResult.PreflightChanged("Open Food Facts changed this barcode while you were reviewing it. Review the current product state again before submitting.")
+            }
+            OffPreflightResult.NewProduct -> {
+                if (!draft.createNewProduct) return OffContributionResult.PreflightChanged("Open Food Facts changed this barcode while you were reviewing it. Review the current product state again before submitting.")
+                if (draft.basisUnit == MeasureUnit.MILLILITER &&
+                    (draft.packageQuantityMl == null || !draft.packageQuantityMl.isFinite() || draft.packageQuantityMl <= 0.0)
+                ) return OffContributionResult.Ineligible("New liquid products need the package quantity in ml before Breakfast can submit them.")
+            }
         }
         val session = when (val login = login(username.trim(), password)) {
             is OffLoginResult.Success -> login.cookie
@@ -174,11 +206,31 @@ class OpenFoodFactsClient(
             OffLoginResult.Unavailable -> return OffContributionResult.Unavailable
             is OffLoginResult.Error -> return OffContributionResult.Error(login.message)
         }
+        // Re-read immediately before the write so a product that appeared after
+        // the review cannot be treated as a new product (or vice versa).
+        val latest = preflight(draft)
+        when (latest) {
+            is OffPreflightResult.Ineligible -> return OffContributionResult.Ineligible(latest.message)
+            OffPreflightResult.Unavailable -> return OffContributionResult.Unavailable
+            OffPreflightResult.Existing -> {
+                if (draft.createNewProduct) return OffContributionResult.PreflightChanged("Open Food Facts changed this barcode while you were reviewing it. Review the current product state again before submitting.")
+            }
+            OffPreflightResult.NewProduct -> {
+                if (!draft.createNewProduct) return OffContributionResult.PreflightChanged("Open Food Facts changed this barcode while you were reviewing it. Review the current product state again before submitting.")
+                if (draft.basisUnit == MeasureUnit.MILLILITER &&
+                    (draft.packageQuantityMl == null || !draft.packageQuantityMl.isFinite() || draft.packageQuantityMl <= 0.0)
+                ) return OffContributionResult.Ineligible("New liquid products need the package quantity in ml before Breakfast can submit them.")
+            }
+        }
+        if (latest is OffPreflightResult.NewProduct && draft.languageCode.trim().lowercase() !in setOf("en", "mk")) {
+            return OffContributionResult.Ineligible("Choose English (en) or Macedonian (mk) for a new product before submitting.")
+        }
+        val remoteDraft = draft
         val connection = openPost(URL("https://world.openfoodfacts.org/cgi/product_jqm2.pl"))
             ?: return OffContributionResult.Unavailable
         return try {
             connection.setRequestProperty("Cookie", session)
-            val response = postForm(connection, draft.asFormFields())
+            val response = postForm(connection, remoteDraft.asFormFields())
             classifyContributionResponse(response.first, response.second)
         } catch (_: java.io.IOException) {
             OffContributionResult.Unavailable
@@ -189,12 +241,12 @@ class OpenFoodFactsClient(
         }
     }
 
-    private fun preflight(draft: OffContributionDraft): OffPreflightResult {
+    fun preflight(draft: OffContributionDraft): OffPreflightResult {
         val connection = open(URL("https://world.openfoodfacts.org/api/v3/product/${URLEncoder.encode(draft.barcode, "UTF-8")}.json"))
             ?: return OffPreflightResult.Unavailable
         return try {
             if (connection.responseCode == 404) {
-                return OffPreflightResult.Ineligible("This barcode is not an existing Open Food Facts product; Breakfast will not create a new product from this correction.")
+                return OffPreflightResult.NewProduct
             }
             if (connection.responseCode !in 200..299) return OffPreflightResult.Unavailable
             val product = json.parseToJsonElement(connection.inputStream.bufferedReader().readText()).jsonObject["product"]?.jsonObject
@@ -211,7 +263,7 @@ class OpenFoodFactsClient(
             if (sourceUnit != draft.basisUnit) {
                 return OffPreflightResult.Ineligible("The local correction basis does not match the product's Open Food Facts basis, so it was not submitted.")
             }
-            OffPreflightResult.Eligible
+            OffPreflightResult.Existing
         } catch (_: java.io.IOException) {
             OffPreflightResult.Unavailable
         } catch (_: Exception) {
