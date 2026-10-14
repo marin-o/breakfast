@@ -154,6 +154,40 @@ class BreakfastEngine(private val store: BreakfastStore) {
         return ReplacementResult.Success(updated)
     }
 
+    /** Replaces every editable field in one storage transaction, retaining the entry id. */
+    suspend fun replaceEntryDraft(
+        entryId: String,
+        foodId: String,
+        amount: Double,
+        unit: MeasureUnit,
+        mealSlot: MealSlot,
+        dayKey: String,
+    ): ReplacementResult {
+        val old = store.entries().firstOrNull { it.id == entryId }
+            ?: return ReplacementResult.Failure("That saved entry is no longer available.")
+        val food = store.foods().firstOrNull { it.id == foodId && !it.archived }
+            ?: return ReplacementResult.Failure("That catalogue record is no longer available.")
+        if (!amount.isFinite() || amount <= 0.0) return ReplacementResult.Failure("Enter a positive amount.")
+        val calculation = calculator.calculate(food, amount, unit)
+        if (!calculation.supported) return ReplacementResult.Failure("That amount/unit is not supported for ${food.name}.")
+        val updated = old.copy(
+            foodId = food.id,
+            foodName = food.name,
+            enteredAmount = amount,
+            enteredUnit = unit,
+            resolvedBaseAmount = calculation.resolvedBaseAmount,
+            nutritionSnapshot = calculation.nutrition,
+            conversionProvenance = calculation.provenance,
+            approximateConversion = calculation.approximate,
+            sourcePhrase = food.name,
+            mealSlot = mealSlot,
+            dayKey = dayKey,
+            resolvedBaseUnit = food.nutrition.unit,
+        )
+        store.replaceEntry(updated)
+        return ReplacementResult.Success(updated)
+    }
+
     suspend fun reinforce(foodId: String) = store.reinforce(foodId)
 
     fun foods(): List<FoodRecord> = store.foods()
@@ -161,6 +195,11 @@ class BreakfastEngine(private val store: BreakfastStore) {
     suspend fun foodByBarcode(barcode: String): FoodRecord? = store.foodByBarcode(barcode)
 
     suspend fun deleteEntry(id: String) = store.deleteEntry(id)
+
+    suspend fun updateEntryPlacement(id: String, mealSlot: MealSlot, dayKey: String) {
+        val entry = store.entries().firstOrNull { it.id == id } ?: return
+        store.replaceEntry(entry.copy(mealSlot = mealSlot, dayKey = dayKey))
+    }
 
     suspend fun restoreEntry(entry: MealEntry) = store.saveEntries(listOf(entry))
 

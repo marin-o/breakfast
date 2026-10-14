@@ -120,6 +120,10 @@ import com.iron.breakfast.domain.dayKeyForEpochMs
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.ui.screens.DailyScreen
 import com.iron.breakfast.ui.screens.DailyComposer
+import com.iron.breakfast.ui.screens.EntryDetailScreen
+import com.iron.breakfast.ui.screens.EntryFullEditScreen
+import com.iron.breakfast.ui.screens.EntryFoodPicker
+import com.iron.breakfast.ui.screens.EntryQuickEditSheet
 import com.iron.breakfast.ui.screens.FocusedFoodAddDialog
 import com.iron.breakfast.ui.screens.LibraryComposer
 import com.iron.breakfast.ui.screens.LibraryFoodDetailDialog
@@ -130,6 +134,9 @@ import com.iron.breakfast.ui.components.ReceiptNavigationBar
 import com.iron.breakfast.ui.theme.BreakfastTheme
 import com.iron.breakfast.ui.theme.Ground
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -237,11 +244,15 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var entryEditMode by mutableStateOf(EntryEditMode.NONE); private set
     var editingEntryId by mutableStateOf<String?>(null); private set
     var editingFoodName by mutableStateOf<String?>(null); private set
+    var editingFoodId by mutableStateOf<String?>(null); private set
+    var editingFoodPickerOpen by mutableStateOf(false); private set
     var editInvalid by mutableStateOf(false); private set
     var editInvalidSignal by mutableStateOf(0); private set
     var quickEditHintVisible by mutableStateOf(false); private set
     private var editSession = 0L
+    private var editReturnToDaily = false
     private var quickHintSession = 0L
+    private var fullSaveJob: Job? = null
     var unknownQueue by mutableStateOf<List<String>>(emptyList()); private set
     var unknownQueueTarget by mutableStateOf<MealSlot?>(null); private set
     var resolutionContinuation by mutableStateOf(false); private set
@@ -353,6 +364,38 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     fun openEntryDetail(entry: MealEntry) { selectedEntry = entry; selectedEntryId = entry.id; savedState["entry_id"] = entry.id }
     fun closeEntryDetail() { selectedEntry = null; selectedEntryId = null; savedState["entry_id"] = null }
+    fun editingEntry(): MealEntry? = editingEntryId?.let { id -> entries.firstOrNull { it.id == id } }
+    fun saveFullEdit(foodId: String, amount: String, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
+        val id = editingEntryId ?: return
+        val session = editSession
+        val parsedAmount = amount.toDoubleOrNull()
+        if (parsedAmount == null || parsedAmount <= 0.0 || foodId.isBlank() || !ready || busy) {
+            markEditInvalid("Enter a positive amount and choose a food.")
+            return
+        }
+        busy = true
+        fullSaveJob?.cancel()
+        fullSaveJob = viewModelScope.launch {
+            withContext(NonCancellable) {
+                try {
+                    when (val result = engine.replaceEntryDraft(id, foodId, parsedAmount, unit, meal, dayKey)) {
+                        is ReplacementResult.Success -> if (editSession == session && editingEntryId == id) {
+                            refresh()
+                            fullSaveJob = null
+                            cancelEdit()
+                        }
+                        is ReplacementResult.Failure -> if (editSession == session && editingEntryId == id) markEditInvalid(result.reason)
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Throwable) {
+                    if (editSession == session && editingEntryId == id) markEditInvalid(error.message ?: "Could not save this entry.")
+                } finally {
+                    if (editSession == session && editingEntryId == id) busy = false
+                }
+            }
+        }
+    }
     fun openContributionForEntry(entry: MealEntry) {
         openContributionForFood(foods.firstOrNull { it.id == entry.foodId })
     }
@@ -421,6 +464,30 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         libraryIncludeArchived = false
         refreshLibrary()
     }
+    fun openLibraryFoodDetail(entry: MealEntry) {
+        closeEntryDetail()
+        cancelEdit()
+        selectMeal(null)
+        libraryOpen = true
+        libraryQuery = entry.foodName
+        selectedLibraryFood = foods.firstOrNull { it.id == entry.foodId }
+        refreshLibrary()
+    }
+    fun openEditFoodPicker() {
+        editingFoodPickerOpen = true
+        refreshLibrary()
+    }
+    fun closeEditFoodPicker() { editingFoodPickerOpen = false }
+    fun chooseEditFood(food: FoodRecord) {
+        editingFoodId = food.id
+        editingFoodName = food.name
+        editingFoodPickerOpen = false
+    }
+    fun editingFood(): FoodRecord? = editingFoodId?.let { id -> foods.firstOrNull { it.id == id } }
+    fun editUnits(food: FoodRecord): List<MeasureUnit> = (listOf(food.defaultUnit, food.nutrition.unit) + food.conversions.map { it.unit })
+        .filter { it != MeasureUnit.UNKNOWN }.distinct()
+    fun draftCalculation(foodId: String, amount: Double, unit: MeasureUnit): Calculation? =
+        foods.firstOrNull { it.id == foodId }?.let { calculator.calculate(it, amount, unit) }
     fun closeMeal() { abandonUnknownResolution(clearDraft = true); selectMeal(null); barcodeRequestToken++; cancelEdit() }
     fun onInput(v: String) {
         input = v
@@ -533,9 +600,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     fun beginQuickEdit(entry: MealEntry) {
         if (busy) return
+        editReturnToDaily = slot == null
         selectMeal(entry.mealSlot)
         editSession += 1
         editingEntryId = entry.id
+        editingFoodId = entry.foodId
         editingFoodName = entry.foodName
         entryEditMode = EntryEditMode.QUICK
         input = "${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}"
@@ -552,10 +621,13 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun beginEdit(entry: MealEntry) = beginQuickEdit(entry)
     fun beginFullEdit(entry: MealEntry) {
         if (busy) return
+        editReturnToDaily = slot == null
         selectMeal(entry.mealSlot)
         editSession += 1
         editingEntryId = entry.id
-        editingFoodName = null
+        editingFoodId = entry.foodId
+        editingFoodName = entry.foodName
+        editingFoodPickerOpen = false
         entryEditMode = EntryEditMode.FULL
         input = "${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()} ${entry.foodName}"
         mealDraftError = null
@@ -564,14 +636,22 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         quickEditHintVisible = false
     }
     fun cancelEdit() {
+        if (entryEditMode == EntryEditMode.FULL && fullSaveJob?.isActive == true) return
+        fullSaveJob?.cancel()
+        fullSaveJob = null
+        busy = false
         editSession += 1
         entryEditMode = EntryEditMode.NONE
         editingEntryId = null
         editingFoodName = null
+        editingFoodId = null
+        editingFoodPickerOpen = false
         input = ""
         editInvalid = false
         quickHintSession += 1
         quickEditHintVisible = false
+        if (editReturnToDaily) selectMeal(null)
+        editReturnToDaily = false
         mealDraftError = null
     }
     private fun markEditInvalid(message: String) {
@@ -1140,10 +1220,15 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); vm.reloadToday() } }
     LaunchedEffect(vm.feedbackUntil, vm.resolverOpen) { while (vm.feedbackUntil > 0L) { kotlinx.coroutines.delay(1000); if (vm.resolverOpen) vm.holdFeedback() else if (System.currentTimeMillis() >= vm.feedbackUntil) { vm.expireFeedback(); break } } }
     if (vm.scannerOpen) { BarcodeScanner(vm); return }
+    if (vm.selectedEntry != null) {
+        EntryDetailScreen(vm, vm.selectedEntry!!)
+        return
+    }
     Scaffold(
         containerColor = Ground,
         bottomBar = {
             when {
+                vm.entryEditMode != EntryEditMode.NONE -> Unit
                 vm.libraryOpen -> Column {
                     LibraryComposer(vm)
                     ReceiptNavigationBar(
@@ -1163,16 +1248,19 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
             else -> MealScreen(vm, Modifier.padding(pad))
         }
     }
-    if (vm.selectedEntry != null) EntryDetailDialog(vm, vm.selectedEntry!!)
+    when (vm.entryEditMode) {
+        EntryEditMode.QUICK -> vm.editingEntry()?.let { EntryQuickEditSheet(vm, it) }
+        EntryEditMode.FULL -> vm.editingEntry()?.let { EntryFullEditScreen(vm, it) }
+        EntryEditMode.NONE -> Unit
+    }
+    if (vm.editingFoodPickerOpen) EntryFoodPicker(vm)
     if (vm.selectedLibraryFood != null) {
         if (vm.slot != null) FocusedFoodAddDialog(vm, vm.selectedLibraryFood!!)
         else LibraryFoodDetailDialog(vm, vm.selectedLibraryFood!!)
     }
-    if (vm.selectedEntry != null) {
-        BackHandler { vm.closeEntryDetail() }
-    } else if (vm.libraryOpen && vm.selectedLibraryFood == null && !vm.customOpen && !vm.searchOpen && !vm.resolverOpen && vm.selectedProduct == null) {
+    if (vm.libraryOpen && vm.selectedLibraryFood == null && !vm.customOpen && !vm.searchOpen && !vm.resolverOpen && vm.selectedProduct == null && vm.entryEditMode == EntryEditMode.NONE) {
         BackHandler { vm.closeLibrary() }
-    } else if (vm.slot != null && !vm.customOpen && !vm.searchOpen && !vm.resolverOpen && vm.selectedProduct == null && vm.selectedEntry == null) {
+    } else if (vm.slot != null && vm.entryEditMode == EntryEditMode.NONE && !vm.customOpen && !vm.searchOpen && !vm.resolverOpen && vm.selectedProduct == null && vm.selectedEntry == null) {
         BackHandler { vm.closeMeal() }
     }
     if (vm.mealPickerOpen) MealPickerDialog(vm)

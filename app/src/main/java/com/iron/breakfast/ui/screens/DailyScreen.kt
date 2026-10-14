@@ -1,6 +1,7 @@
 package com.iron.breakfast.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,8 +31,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.BreakfastViewModel
+import com.iron.breakfast.EntryEditMode
 import com.iron.breakfast.ContributionAction
 import com.iron.breakfast.QuickAddPreview
 import com.iron.breakfast.macro
@@ -70,7 +76,7 @@ import kotlin.math.abs
 
 @Composable
 internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
-    if (vm.input.isNotBlank()) {
+    if (vm.input.isNotBlank() && vm.entryEditMode == EntryEditMode.NONE) {
         QuickAddDaily(vm, modifier)
         return
     }
@@ -271,6 +277,7 @@ private fun PendingSticker(preview: QuickAddPreview) {
     )
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun MealCard(
     slot: MealSlot,
@@ -298,7 +305,18 @@ private fun MealCard(
                 source = sourceLetter(food),
                 fresh = vm.feedbackOpen(entry),
                 first = index == 0,
-                onClick = { vm.openEntryDetail(entry) },
+                modifier = Modifier.semantics {
+                    onClick(label = "Open details for ${entry.foodName}") { vm.openEntryDetail(entry); true }
+                    customActions = listOf(
+                        CustomAccessibilityAction("Quick edit amount") { vm.beginQuickEdit(entry); true },
+                        CustomAccessibilityAction("Edit food and amount") { vm.beginFullEdit(entry); true },
+                        CustomAccessibilityAction("Delete ${entry.foodName}") { vm.delete(entry); true },
+                    )
+                }.combinedClickable(
+                    onClick = { vm.openEntryDetail(entry) },
+                    onDoubleClick = { vm.beginQuickEdit(entry) },
+                    onLongClick = { vm.beginFullEdit(entry) },
+                ),
             )
             if (vm.feedbackOpen(entry)) CorrectionStrip(vm, entry)
         }

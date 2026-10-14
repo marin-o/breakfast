@@ -13,6 +13,7 @@ import com.iron.breakfast.domain.Preference
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -119,7 +120,7 @@ class BreakfastStore(context: Context) {
     suspend fun replaceEntry(updated: MealEntry) {
         requireReady()
         writeMutex.withLock {
-            withContext(Dispatchers.IO) {
+            withContext(NonCancellable + Dispatchers.IO) {
                 database.withTransaction {
                     database.mealEntryDao().replace(updated.toEntity())
                 }
