@@ -535,6 +535,9 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         return listOfNotNull(parsed.amount?.pretty(), parsed.unit?.displayLabel(), food.name)
             .joinToString(" ")
     }
+    /** True when a typed food phrase resolves to a food (drives the "recognised" underline). */
+    fun isRecognizedFood(phrase: String): Boolean = ready && phrase.isNotBlank() && engine.search(phrase).isNotEmpty()
+
     internal fun quickAddPreviews(): List<QuickAddPreview> {
         if (!ready || input.isBlank()) return emptyList()
         val segments = quickAddSegments()

@@ -209,6 +209,7 @@ fun ReceiptSlip(
     unit: String = "kcal",
     macros: List<String> = emptyList(),
     modifier: Modifier = Modifier,
+    pending: String? = null,
     content: (@Composable () -> Unit)? = null,
 ) {
     Surface(modifier = modifier, color = Paper, shape = ReceiptPaperShape) {
@@ -217,6 +218,7 @@ fun ReceiptSlip(
                 Text(label, style = MaterialTheme.typography.titleSmall, color = InkSoft, modifier = Modifier.weight(1f).padding(end = 8.dp))
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(total, style = MaterialTheme.typography.displayLarge, color = Ink)
+                    pending?.let { Text(" $it", style = MaterialTheme.typography.headlineLarge, color = PrintRed) }
                     Text(" $unit", style = MaterialTheme.typography.titleSmall, color = InkSoft)
                 }
             }

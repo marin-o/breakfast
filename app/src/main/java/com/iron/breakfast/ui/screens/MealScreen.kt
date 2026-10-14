@@ -175,7 +175,7 @@ internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot) {
                         onImeDone = vm::submit,
                         placeholder = "Add to ${target.label()}",
                         expanded = vm.input.contains(',') || vm.input.length > 28,
-                        visualTransformation = ReceiptTokenVisualTransformation(tokenRangesForInput(vm.input)),
+                        visualTransformation = ReceiptTokenVisualTransformation(tokenRangesForInput(vm.input, vm::isRecognizedFood)),
                     )
                 }
             },

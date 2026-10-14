@@ -163,18 +163,20 @@ private fun QuickAddDaily(vm: BreakfastViewModel, modifier: Modifier) {
     val target = vm.quickAddTargetMeal() ?: MealSlot.LUNCH
     val existing = selected.filter { it.mealSlot == target }
     val previews = vm.quickAddPreviews()
-    val total = (existing.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot } +
-        previews.fold(NutritionValues.ZERO) { sum, preview -> sum + preview.calculation.nutrition })
+    val dayTotal = selected.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
+    val mealTotal = existing.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
+    val pendingKcal = previews.fold(NutritionValues.ZERO) { sum, preview -> sum + preview.calculation.nutrition }.calories
     Column(modifier.fillMaxSize().background(Ground).padding(horizontal = 14.dp)) {
-        ReceiptSlip(label = shortDateLabel(vm.selectedDayKey), total = receiptKcal(total.calories))
-        ReceiptTicket(mealName = target.label(), total = receiptKcal(total.calories), time = earliestMealTime(existing)) {
+        // Day total stays the printed fact; pending foods show only as the red "+N" and as stickers, never as ticket rows.
+        ReceiptSlip(
+            label = shortDateLabel(vm.selectedDayKey),
+            total = receiptKcal(dayTotal.calories),
+            pending = if (previews.isEmpty()) null else "+${receiptKcal(pendingKcal)}",
+        )
+        ReceiptTicket(mealName = target.label(), total = receiptKcal(mealTotal.calories), time = earliestMealTime(existing)) {
             existing.forEachIndexed { index, entry ->
                 val quantity = quantityRateDisplay(entry, foods[entry.foodId])
                 ReceiptEntryRow(name = entry.foodName, quantityLine = quantity.line, calories = receiptKcal(entry.nutritionSnapshot.calories), source = sourceLetter(foods[entry.foodId]), approximate = quantity.approximateLabel, first = index == 0)
-            }
-            previews.forEachIndexed { index, preview ->
-                val offset = existing.size + index
-                ReceiptEntryRow(name = preview.food.name, quantityLine = "${preview.amount.pretty()} ${preview.unit.displayLabel()}", calories = receiptKcal(preview.calculation.nutrition.calories), source = sourceLetter(preview.food), first = offset == 0)
             }
         }
     }
@@ -247,7 +249,7 @@ internal fun DailyComposer(vm: BreakfastViewModel) {
                         onImeDone = vm::submit,
                         placeholder = placeholder,
                         expanded = vm.input.contains(',') || vm.input.length > 28,
-                        visualTransformation = ReceiptTokenVisualTransformation(tokenRangesForInput(vm.input)),
+                        visualTransformation = ReceiptTokenVisualTransformation(tokenRangesForInput(vm.input, vm::isRecognizedFood)),
                     )
                 }
             },

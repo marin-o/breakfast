@@ -110,11 +110,15 @@ internal fun dayTitle(dayKey: String, zoneId: ZoneId = ZoneId.systemDefault()): 
     return day to date.format(DateTimeFormatter.ofPattern("d MMMM", Locale.ENGLISH))
 }
 
-internal fun tokenRangesForInput(value: String): List<ReceiptTokenRange> {
+/** Underline means "recognised": a food phrase is marked only when [isRecognized] resolves it. */
+internal fun tokenRangesForInput(value: String, isRecognized: (String) -> Boolean = { true }): List<ReceiptTokenRange> {
     val parser = ShorthandParser()
     val mealWords = setOf("breakfast", "lunch", "dinner", "snacks")
     var cursor = 0
-    return value.splitToSequence(',').flatMap { original ->
+    val segments = value.split(',')
+    // The segment still being typed (no trailing comma yet) is never marked recognised.
+    val activeIndex = if (value.trimEnd().endsWith(',')) -1 else segments.lastIndex
+    return segments.withIndex().asSequence().flatMap { (index, original) ->
         val leading = original.indexOfFirst { !it.isWhitespace() }.coerceAtLeast(0)
         val raw = original.trim()
         val offset = cursor + leading
@@ -130,7 +134,7 @@ internal fun tokenRangesForInput(value: String): List<ReceiptTokenRange> {
                 yield(ReceiptTokenRange(offset..(offset + raw.length - 1), ReceiptTokenKind.Meal))
             } else {
                 val foodStart = parsed.foodPhrase.takeIf { it.isNotBlank() }?.let { raw.indexOf(it) }
-                if (foodStart != null && foodStart >= 0) {
+                if (foodStart != null && foodStart >= 0 && index != activeIndex && isRecognized(parsed.foodPhrase)) {
                     yield(ReceiptTokenRange((offset + foodStart)..(offset + foodStart + parsed.foodPhrase.length - 1), ReceiptTokenKind.Food))
                 }
             }
