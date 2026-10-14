@@ -23,7 +23,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.Straighten
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -41,6 +42,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,6 +64,7 @@ import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.iron.breakfast.ui.theme.BoxGrey
@@ -123,6 +127,7 @@ fun ReceiptTicket(
     time: String? = null,
     addFoodLabel: String? = null,
     onAddFood: (() -> Unit)? = null,
+    onMealClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -158,6 +163,7 @@ fun ReceiptTicket(
                         .fillMaxWidth()
                         .height(TicketBandHeight)
                         .background(PrintRed)
+                        .clickable(enabled = onMealClick != null) { onMealClick?.invoke() }
                         .padding(horizontal = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -180,7 +186,7 @@ fun ReceiptTicket(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text("+", color = PenTonalInk, style = MaterialTheme.typography.titleLarge)
+                    Icon(Icons.Default.Add, contentDescription = null, tint = PenTonalInk, modifier = Modifier.size(20.dp))
                     Text(addFoodLabel, color = PenTonalInk, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 }
             }
@@ -298,7 +304,7 @@ class ReceiptTokenVisualTransformation(
 }
 
 private fun ReceiptTokenKind.style(): SpanStyle = when (this) {
-    ReceiptTokenKind.Meal -> SpanStyle(color = PrintRed)
+    ReceiptTokenKind.Meal -> SpanStyle(color = OnGround, background = PrintRed, fontWeight = FontWeight.Bold)
     ReceiptTokenKind.Quantity -> SpanStyle(fontWeight = FontWeight.Bold)
     ReceiptTokenKind.Food -> SpanStyle(textDecoration = TextDecoration.Underline)
 }
@@ -309,6 +315,7 @@ fun ReceiptSticker(
     value: String,
     detail: String,
     fields: List<String> = emptyList(),
+    approximateDetail: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -323,17 +330,22 @@ fun ReceiptSticker(
             Text(value, color = Ink, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
         }
         Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            ApproxTag(detail)
+            if (approximateDetail) ApproxTag(detail) else ReceiptStickerField(detail)
             fields.forEach { field ->
-                Text(
-                    field,
-                    color = InkSoft,
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.border(1.5.dp, Rule, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp),
-                )
+                ReceiptStickerField(field)
             }
         }
     }
+}
+
+@Composable
+private fun ReceiptStickerField(value: String) {
+    Text(
+        value,
+        color = InkSoft,
+        style = MaterialTheme.typography.labelSmall,
+        modifier = Modifier.border(1.5.dp, Rule, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp),
+    )
 }
 
 @Composable
@@ -363,6 +375,28 @@ fun ReceiptActionChip(label: String, onClick: () -> Unit, modifier: Modifier = M
 }
 
 @Composable
+fun ReceiptTonalChip(
+    label: String,
+    onClick: () -> Unit,
+    leadingIcon: ImageVector? = null,
+    modifier: Modifier = Modifier,
+) {
+    AssistChip(
+        onClick = onClick,
+        label = { Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold) },
+        leadingIcon = leadingIcon?.let { icon -> { Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp)) } },
+        modifier = modifier.height(48.dp),
+        shape = ReceiptPillShape,
+        border = null,
+        colors = AssistChipDefaults.assistChipColors(
+            containerColor = PenTonal,
+            labelColor = PenTonalInk,
+            leadingIconContentColor = PenTonalInk,
+        ),
+    )
+}
+
+@Composable
 fun ReceiptQuickAddField(
     value: String,
     onValueChange: (String) -> Unit,
@@ -371,20 +405,23 @@ fun ReceiptQuickAddField(
     expanded: Boolean = false,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     onImeDone: () -> Unit = onLog,
+    logContentDescription: String = "Log",
     modifier: Modifier = Modifier,
 ) {
+    var focused by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     Row(
         modifier
             .fillMaxWidth()
             .height(if (expanded) 76.dp else QuickAddHeight)
             .background(Paper, RoundedCornerShape(if (expanded) 26.dp else 27.dp))
+            .border(if (focused) 2.dp else 0.dp, PenOnDark, RoundedCornerShape(if (expanded) 26.dp else 27.dp))
             .padding(start = 18.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).onFocusChanged { focused = it.isFocused },
             singleLine = !expanded,
             minLines = if (expanded) 2 else 1,
             maxLines = if (expanded) 2 else 1,
@@ -396,10 +433,10 @@ fun ReceiptQuickAddField(
         )
         IconButton(onClick = onLog, enabled = value.isNotBlank(), modifier = Modifier.size(46.dp)) {
             if (value.isBlank()) {
-                Box(contentAlignment = Alignment.Center) { Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Log", tint = BoxGrey) }
+                Box(contentAlignment = Alignment.Center) { Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = logContentDescription, tint = BoxGrey) }
             } else {
                 Surface(color = PenBlue, shape = RoundedCornerShape(23.dp), modifier = Modifier.size(46.dp)) {
-                    Box(contentAlignment = Alignment.Center) { Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Log", tint = Color.White) }
+                    Box(contentAlignment = Alignment.Center) { Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = logContentDescription, tint = Color.White) }
                 }
             }
         }
@@ -475,7 +512,7 @@ fun ReceiptNavigationBar(selectedDaily: Boolean, onDaily: () -> Unit, onLibrary:
         NavigationBarItem(
             selected = !selectedDaily,
             onClick = onLibrary,
-            icon = { Icon(Icons.Outlined.BarChart, contentDescription = "Library") },
+            icon = { Icon(Icons.Outlined.Straighten, contentDescription = "Library") },
             label = { Text("Library", style = MaterialTheme.typography.bodySmall.copy(fontWeight = if (!selectedDaily) FontWeight.Bold else FontWeight.Normal)) },
             colors = NavigationBarItemDefaults.colors(selectedIconColor = NavIndicatorInk, selectedTextColor = OnGround, indicatorColor = NavIndicator, unselectedIconColor = com.iron.breakfast.ui.theme.OnGroundSoft, unselectedTextColor = com.iron.breakfast.ui.theme.OnGroundSoft),
         )

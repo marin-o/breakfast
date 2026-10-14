@@ -117,7 +117,9 @@ data class MealEntry(
     val savedAtEpochMs: Long,
     val sourcePhrase: String = foodName,
     val mealSlot: MealSlot = MealSlot.BREAKFAST,
-    val dayKey: String = dayKeyForEpochMs(savedAtEpochMs)
+    val dayKey: String = dayKeyForEpochMs(savedAtEpochMs),
+    /** Immutable nutrition basis captured when this entry was saved. */
+    val resolvedBaseUnit: MeasureUnit = MeasureUnit.UNKNOWN
 )
 
 fun dayKeyForEpochMs(epochMs: Long): String =

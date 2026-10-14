@@ -41,6 +41,19 @@ class RoomStorageMappingTest {
     }
 
     @Test
+    fun mealEntryMappingPreservesImmutableResolvedBasisUnit() {
+        val bananaServing = MealEntry(
+            id = "banana-serving", foodId = "banana", foodName = "Banana",
+            enteredAmount = 1.0, enteredUnit = MeasureUnit.PIECE,
+            resolvedBaseAmount = 118.0, resolvedBaseUnit = MeasureUnit.GRAM,
+            nutritionSnapshot = NutritionValues(105.0, null, null, null),
+            conversionProvenance = "medium banana reference", approximateConversion = true,
+            savedAtEpochMs = 1L,
+        )
+        assertEquals(MeasureUnit.GRAM, bananaServing.toEntity().toDomain().resolvedBaseUnit)
+    }
+
+    @Test
     fun nullableMacroColumnsKeepMissingDistinctFromZero() {
         val missing = MealEntryEntity(
             id = "missing", foodId = "food", foodName = "food", enteredAmount = 1.0,

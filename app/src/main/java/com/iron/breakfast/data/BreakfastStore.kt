@@ -74,7 +74,7 @@ class BreakfastStore(context: Context) {
         context.applicationContext,
         BreakfastDatabase::class.java,
         "breakfast.db"
-    ).addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4).build()
+    ).addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5).build()
     private val writeMutex = Mutex()
 
     @Volatile

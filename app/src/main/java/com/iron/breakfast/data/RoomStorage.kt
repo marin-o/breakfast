@@ -76,6 +76,7 @@ data class MealEntryEntity(
     @ColumnInfo(name = "entered_amount") val enteredAmount: Double,
     @ColumnInfo(name = "entered_unit") val enteredUnit: String,
     @ColumnInfo(name = "resolved_base_amount") val resolvedBaseAmount: Double,
+    @ColumnInfo(name = "resolved_base_unit") val resolvedBaseUnit: String = MeasureUnit.UNKNOWN.name,
     @ColumnInfo(name = "snapshot_calories") val snapshotCalories: Double,
     @ColumnInfo(name = "snapshot_protein") val snapshotProtein: Double?,
     @ColumnInfo(name = "snapshot_carbohydrates") val snapshotCarbohydrates: Double?,
@@ -159,7 +160,7 @@ interface MealEntryDao {
         PreferenceEntity::class,
         MealEntryEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 abstract class BreakfastDatabase : RoomDatabase() {
@@ -188,6 +189,21 @@ val ROOM_MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
 val ROOM_MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
     override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE foods ADD COLUMN personal_override INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+val ROOM_MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE meal_entries ADD COLUMN resolved_base_unit TEXT NOT NULL DEFAULT 'UNKNOWN'")
+        // Existing entries already contain their food id and the old food row's
+        // nutrition basis. Capture that basis once so future food edits cannot
+        // rewrite the historical printed fact.
+        db.execSQL(
+            "UPDATE meal_entries SET resolved_base_unit = " +
+                "(SELECT nutrition_unit FROM foods WHERE foods.id = meal_entries.food_id) " +
+                "WHERE resolved_base_unit = 'UNKNOWN' AND EXISTS " +
+                "(SELECT 1 FROM foods WHERE foods.id = meal_entries.food_id)"
+        )
     }
 }
 
@@ -276,6 +292,7 @@ fun MealEntry.toEntity() = MealEntryEntity(
     enteredAmount = enteredAmount,
     enteredUnit = enteredUnit.name,
     resolvedBaseAmount = resolvedBaseAmount,
+    resolvedBaseUnit = resolvedBaseUnit.name,
     snapshotCalories = nutritionSnapshot.calories,
     snapshotProtein = nutritionSnapshot.protein,
     snapshotCarbohydrates = nutritionSnapshot.carbohydrates,
@@ -295,6 +312,7 @@ fun MealEntryEntity.toDomain() = MealEntry(
     enteredAmount = enteredAmount,
     enteredUnit = MeasureUnit.valueOf(enteredUnit),
     resolvedBaseAmount = resolvedBaseAmount,
+    resolvedBaseUnit = runCatching { MeasureUnit.valueOf(resolvedBaseUnit) }.getOrDefault(MeasureUnit.UNKNOWN),
     nutritionSnapshot = NutritionValues(
         calories = snapshotCalories,
         protein = snapshotProtein,

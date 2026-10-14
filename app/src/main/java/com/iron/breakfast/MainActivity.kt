@@ -126,7 +126,9 @@ import com.iron.breakfast.ui.screens.LibraryFoodDetailDialog
 import com.iron.breakfast.ui.screens.LibraryScreen
 import com.iron.breakfast.ui.screens.MealComposer
 import com.iron.breakfast.ui.screens.MealScreen
+import com.iron.breakfast.ui.components.ReceiptNavigationBar
 import com.iron.breakfast.ui.theme.BreakfastTheme
+import com.iron.breakfast.ui.theme.Ground
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -147,6 +149,13 @@ class MainActivity : ComponentActivity() {
 }
 
 enum class EntryEditMode { NONE, QUICK, FULL }
+
+internal data class QuickAddPreview(
+    val food: FoodRecord,
+    val amount: Double,
+    val unit: MeasureUnit,
+    val calculation: Calculation,
+)
 
 private enum class EntryGesturePhase { UP, HORIZONTAL, VERTICAL, CONSUMED }
 
@@ -241,6 +250,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var resolverResults by mutableStateOf<List<RankedFood>>(emptyList()); private set
     var feedbackUntil by mutableStateOf(0L); private set
     var feedbackIds by mutableStateOf<Set<String>>(emptySet()); private set
+    var loggedBatchMessage by mutableStateOf<String?>(null); private set
+    private var loggedBatchIds: List<String> = emptyList()
 
     init { viewModelScope.launch { runCatching { engine.initialize(); refresh() }.onSuccess { ready = true }.onFailure { initializationError = "Storage could not be opened: ${it.message}" } } }
     private fun refresh() {
@@ -415,6 +426,43 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         input = v
         if (libraryOpen && parser.parse(v).amount == null) onLibraryQuery(v)
     }
+    internal fun quickAddTargetMeal(): MealSlot? = slot ?: mealMarkers(input).singleOrNull()
+    private fun quickAddSegments(): List<String> = input.split(',').map(String::trim).filter(String::isNotBlank)
+    private fun quickAddActiveSegment(): String = input.substringAfterLast(',').trim()
+    internal fun quickAddSuggestions(): List<RankedFood> {
+        if (!ready || input.isBlank()) return emptyList()
+        val active = quickAddActiveSegment()
+        if (active.isBlank() || mealMarkers(active).isNotEmpty()) return emptyList()
+        val parsed = parser.parse(active)
+        return engine.suggestions(parsed.foodPhrase).take(4)
+    }
+    internal fun quickAddSuggestionLabel(food: FoodRecord): String {
+        val parsed = parser.parse(quickAddActiveSegment())
+        return listOfNotNull(parsed.amount?.pretty(), parsed.unit?.displayLabel(), food.name)
+            .joinToString(" ")
+    }
+    internal fun quickAddPreviews(): List<QuickAddPreview> {
+        if (!ready || input.isBlank()) return emptyList()
+        val segments = quickAddSegments()
+        val completed = if (input.trimEnd().endsWith(',')) segments else segments.dropLast(1)
+        return completed.mapNotNull { raw ->
+        val parsed = parser.parse(raw)
+        val food = engine.search(parsed.foodPhrase).firstOrNull()?.food ?: return@mapNotNull null
+        val amount = parsed.amount ?: food.defaultAmount
+        val unit = parsed.unit ?: food.defaultUnit
+        val calculation = calculator.calculate(food, amount, unit)
+        QuickAddPreview(food, amount, unit, calculation).takeIf { calculation.supported }
+        }
+    }
+    fun chooseQuickSuggestion(food: FoodRecord) {
+        val active = quickAddActiveSegment()
+        val parsed = parser.parse(active)
+        val amount = parsed.amount?.pretty()
+        val unit = parsed.unit?.displayLabel()
+        val replacement = listOfNotNull(amount, unit, food.name).joinToString(" ")
+        val prefix = input.substringBeforeLast(',').trimEnd()
+        onInput(if (prefix.isBlank()) replacement else "$prefix, $replacement")
+    }
     fun submitLibraryInput() {
         val raw = input.trim()
         if (raw.isBlank() || !ready || busy) return
@@ -474,9 +522,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                     resolutionContinuation = saved.unresolvedSegments.isNotEmpty()
                     resolverOpen = saved.unresolvedSegments.isNotEmpty()
                     mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
-                    feedbackIds = saved.entries.mapTo(mutableSetOf()) { it.id }
-                    feedbackUntil = System.currentTimeMillis() + 30_000L
-                    if (slot == null) selectMeal(target)
+                    feedbackIds = saved.entries.filter { it.approximateConversion }.mapTo(mutableSetOf()) { it.id }
+                    feedbackUntil = if (feedbackIds.isEmpty()) 0L else System.currentTimeMillis() + 30_000L
+                    loggedBatchIds = saved.entries.map { it.id }
+                    loggedBatchMessage = "${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} logged to ${target.label()}"
                 }
                 .onFailure { notice = it.message ?: "Could not save this batch." }
                 .also { busy = false }
@@ -603,8 +652,9 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         viewModelScope.launch {
             runCatching { engine.save(cleaned, mealSlot = target, dayKey = selectedDayKey) }.onSuccess { saved ->
                 refresh(); if (input == captured) input = saved.unresolvedSegments.joinToString(", "); unknownQueue = saved.unresolvedSegments; unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }; resolutionContinuation = saved.unresolvedSegments.isNotEmpty(); resolverOpen = saved.unresolvedSegments.isNotEmpty(); mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
-                feedbackIds = saved.entries.mapTo(mutableSetOf()) { it.id }; feedbackUntil = System.currentTimeMillis() + 30_000L
-                if (slot == null) selectMeal(target)
+                feedbackIds = saved.entries.filter { it.approximateConversion }.mapTo(mutableSetOf()) { it.id }; feedbackUntil = if (feedbackIds.isEmpty()) 0L else System.currentTimeMillis() + 30_000L
+                loggedBatchIds = saved.entries.map { it.id }
+                loggedBatchMessage = "${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} logged to ${target.label()}"
             }.onFailure { mealDraftError = it.message ?: "Could not save this meal." }.also { busy = false }
         }
     }
@@ -615,6 +665,16 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private fun removeMealMarker(value: String, target: MealSlot): String = removeMealMarkerToken(value, target)
     fun delete(entry: MealEntry) { if (!ready || busy) return; busy = true; viewModelScope.launch { runCatching { engine.deleteEntry(entry.id) }.onSuccess { undoEntry = entry; refresh() }.also { busy = false } } }
     fun undo() { val e = undoEntry ?: return; if (!ready || busy) return; busy = true; viewModelScope.launch { runCatching { engine.restoreEntry(e) }.onSuccess { undoEntry = null; refresh() }.also { busy = false } } }
+    fun undoLoggedBatch() {
+        if (!ready || busy || loggedBatchIds.isEmpty()) return
+        val ids = loggedBatchIds.toList()
+        busy = true
+        viewModelScope.launch {
+            runCatching { ids.forEach { engine.deleteEntry(it) } }
+                .onSuccess { loggedBatchIds = emptyList(); loggedBatchMessage = null; refresh() }
+                .also { busy = false }
+        }
+    }
     fun openCustom(name: String = "", brand: String = "", barcode: String = "", fromResolver: Boolean = false, fromOff: Boolean = false) {
         if (!fromResolver && unknownQueue.isNotEmpty()) abandonUnknownResolution()
         resolutionContinuation = fromResolver
@@ -751,6 +811,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun resolveUnknown(food: FoodRecord) { val raw = unknownQueue.firstOrNull() ?: return; val target = slot ?: return; if (unknownQueueTarget != target || !resolutionContinuation) return; val parsed = parser.parse(raw); val amount = parsed.amount ?: food.defaultAmount; val unit = parsed.unit ?: food.defaultUnit; if (!ready || busy) return; busy = true; viewModelScope.launch { runCatching { engine.cacheFoodAndLog(food, amount, unit, target, selectedDayKey) }.onSuccess { advanceUnknownQueue(); refresh() }.onFailure { notice = it.message ?: "Could not resolve this food." }.also { busy = false } } }
     fun discardUnknowns() { abandonUnknownResolution(clearDraft = true) }
     fun feedbackOpen(entry: MealEntry): Boolean = entry.id in feedbackIds && System.currentTimeMillis() < feedbackUntil
+    fun feedbackCount(): Int = feedbackIds.count { id -> entries.any { it.id == id } && System.currentTimeMillis() < feedbackUntil }
     fun alternatives(entry: MealEntry): List<RankedFood> = if (feedbackOpen(entry)) engine.alternativesFor(entry) else emptyList()
     fun confirm(entry: MealEntry) { if (!ready || busy || !feedbackOpen(entry)) return; busy = true; viewModelScope.launch { runCatching { engine.reinforce(entry.foodId) }.onSuccess { feedbackIds = feedbackIds - entry.id }.also { busy = false } } }
     fun chooseAlternative(entry: MealEntry, food: FoodRecord) { if (!ready || busy || !feedbackOpen(entry)) return; busy = true; viewModelScope.launch { runCatching { engine.replaceEntry(entry.id, food.id); engine.reinforce(food.id) }.onSuccess { feedbackIds = feedbackIds - entry.id; refresh() }.also { busy = false } } }
@@ -1080,28 +1141,19 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     LaunchedEffect(vm.feedbackUntil, vm.resolverOpen) { while (vm.feedbackUntil > 0L) { kotlinx.coroutines.delay(1000); if (vm.resolverOpen) vm.holdFeedback() else if (System.currentTimeMillis() >= vm.feedbackUntil) { vm.expireFeedback(); break } } }
     if (vm.scannerOpen) { BarcodeScanner(vm); return }
     Scaffold(
-        topBar = { TopAppBar(title = { Text(if (vm.libraryOpen) vm.slot?.let { "Add to ${it.label()}" } ?: "Library" else vm.slot?.let { "${it.label()} · ${vm.selectedDayKey}" } ?: "Daily") }) },
+        containerColor = Ground,
         bottomBar = {
-            Column {
-                when {
-                    vm.libraryOpen -> LibraryComposer(vm)
-                    vm.slot == null -> DailyComposer(vm)
-                    else -> MealComposer(vm, vm.slot!!)
-                }
-                NavigationBar {
-                    NavigationBarItem(
-                        selected = !vm.libraryOpen && vm.slot == null,
-                        onClick = { vm.closeMeal(); vm.closeLibrary() },
-                        icon = { Text("D") },
-                        label = { Text("Daily") }
-                    )
-                    NavigationBarItem(
-                        selected = vm.libraryOpen,
-                        onClick = { vm.closeMeal(); vm.openLibrary() },
-                        icon = { Text("L") },
-                        label = { Text("Library") }
+            when {
+                vm.libraryOpen -> Column {
+                    LibraryComposer(vm)
+                    ReceiptNavigationBar(
+                        selectedDaily = false,
+                        onDaily = { vm.closeMeal(); vm.closeLibrary() },
+                        onLibrary = {},
                     )
                 }
+                vm.slot == null -> DailyComposer(vm)
+                else -> MealComposer(vm, vm.slot!!)
             }
         }
     ) { pad ->

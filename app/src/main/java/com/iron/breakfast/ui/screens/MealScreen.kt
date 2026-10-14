@@ -1,292 +1,267 @@
 package com.iron.breakfast.ui.screens
 
-import android.Manifest
-import android.app.Application
-import android.content.pm.PackageManager
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.enableEdgeToEdge
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.border
 import androidx.compose.foundation.background
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
-import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.activity.compose.BackHandler
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.BarcodeScanner
-import com.google.mlkit.vision.common.InputImage
-import com.iron.breakfast.data.BreakfastStore
-import com.iron.breakfast.data.OffContributionDraft
-import com.iron.breakfast.data.OffContributionResult
-import com.iron.breakfast.data.OffPreflightResult
-import com.iron.breakfast.data.OffResult
-import com.iron.breakfast.data.OffSearchResult
-import com.iron.breakfast.data.OpenFoodFactsClient
-import com.iron.breakfast.domain.BreakfastEngine
+import com.iron.breakfast.BreakfastViewModel
+import com.iron.breakfast.EntryEditMode
+import com.iron.breakfast.QuickAddPreview
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
-import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionValues
-import com.iron.breakfast.domain.NutritionBasis
-import com.iron.breakfast.domain.Calculation
-import com.iron.breakfast.domain.NutritionCalculator
-import com.iron.breakfast.domain.RankedFood
-import com.iron.breakfast.domain.ReplacementResult
-import com.iron.breakfast.domain.ShorthandParser
-import com.iron.breakfast.domain.toMeasureUnit
-import com.iron.breakfast.domain.dayKeyForEpochMs
 import com.iron.breakfast.domain.displayLabel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.withContext
-import java.util.Locale
-import java.util.concurrent.atomic.AtomicBoolean
-import java.time.LocalDate
-import kotlin.math.abs
-import kotlin.math.hypot
+import com.iron.breakfast.macro
+import com.iron.breakfast.pretty
+import com.iron.breakfast.label
+import com.iron.breakfast.ui.components.ReceiptBottomTray
+import com.iron.breakfast.ui.components.ReceiptChoiceChip
+import com.iron.breakfast.ui.components.ReceiptEntryRow
+import com.iron.breakfast.ui.components.ReceiptQuickAddField
+import com.iron.breakfast.ui.components.ReceiptSticker
+import com.iron.breakfast.ui.components.ReceiptSnackbar
+import com.iron.breakfast.ui.components.ReceiptTicket
+import com.iron.breakfast.ui.components.ReceiptTokenVisualTransformation
+import com.iron.breakfast.ui.theme.Ground
+import com.iron.breakfast.ui.theme.Ink
+import com.iron.breakfast.ui.theme.OnGround
+import com.iron.breakfast.ui.theme.OnGroundSoft
+import com.iron.breakfast.ui.theme.Paper
+import com.iron.breakfast.ui.theme.PaperFresh
+import com.iron.breakfast.ui.theme.PenBlue
+import com.iron.breakfast.ui.theme.PenOnDark
+import com.iron.breakfast.ui.theme.PenOnDarkInk
+import com.iron.breakfast.ui.theme.PenTonal
+import com.iron.breakfast.ui.theme.PenTonalInk
+import com.iron.breakfast.ui.theme.PrintRed
+import com.iron.breakfast.ui.theme.Tray
+import com.iron.breakfast.ui.theme.doubleWidth
+import com.iron.breakfast.ui.theme.usesSingleWidthAt
+import kotlin.math.roundToInt
 
-import com.iron.breakfast.*
+@Composable
+internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
+    val target = vm.slot ?: return
+    val entries = vm.entries.filter { it.dayKey == vm.selectedDayKey && it.mealSlot == target }
+    val foods = vm.foods.associateBy { it.id }
+    val total = entries.fold(NutritionValues.ZERO) { a, e -> a + e.nutritionSnapshot }
+    val (_, subtitle) = dayTitle(vm.selectedDayKey)
 
-@Composable internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
-    val target = vm.slot ?: return; val entries = vm.entries.filter { it.dayKey == vm.selectedDayKey && it.mealSlot == target }; val total = entries.fold(NutritionValues.ZERO) { a, e -> a + e.nutritionSnapshot }
-    LazyColumn(modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { Spacer(Modifier.height(8.dp)); Text(target.label(), style = MaterialTheme.typography.headlineMedium); Text(vm.selectedDayKey, style = MaterialTheme.typography.labelMedium); Text("${total.calories.pretty()} kcal  •  P ${total.protein.macro()}  C ${total.carbohydrates.macro()}  F ${total.fat.macro()}") }
-        vm.pendingContribution?.let { item { ContributionAction(vm) } }
-        items(entries, key = { it.id }) { entry -> EntryRow(entry, vm) }
-        item { vm.undoEntry?.let { TextButton({ vm.undo() }) { Text("Undo delete ${it.foodName}") } }; TextButton({ vm.closeMeal() }) { Text("Back to diary") }; Spacer(Modifier.height(16.dp)) }
+    LazyColumn(
+        modifier.fillMaxSize().background(Ground),
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = vm::closeMeal) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+                Column(Modifier.weight(1f)) {
+                    val headingStyle = if (usesSingleWidthAt(LocalDensity.current.fontScale)) MaterialTheme.typography.headlineMedium else doubleWidth(MaterialTheme.typography.headlineMedium)
+                    Text(target.label(), style = headingStyle, color = OnGround)
+                    Text(subtitle, style = MaterialTheme.typography.titleSmall, color = OnGroundSoft)
+                }
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(receiptKcal(total.calories), style = MaterialTheme.typography.titleLarge, color = OnGround, fontWeight = FontWeight.Bold)
+                    Text(" kcal", style = MaterialTheme.typography.titleSmall, color = OnGroundSoft)
+                }
+            }
+        }
+        item {
+            ReceiptTicket(total = receiptKcal(total.calories), time = earliestMealTime(entries), mealName = "") {
+                entries.forEachIndexed { index, entry -> EntryRow(entry, foods[entry.foodId], vm, index == 0) }
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = { vm.openFocusedLibrary(target) }, modifier = Modifier.height(48.dp)) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Text("Add food", modifier = Modifier.padding(start = 8.dp))
+                }
+                OutlinedButton(onClick = vm::beginScan, modifier = Modifier.height(48.dp)) { Text("Scan") }
+            }
+        }
+        item { vm.pendingContribution?.let { com.iron.breakfast.ContributionAction(vm) } }
     }
 }
 
-@Composable internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot) {
-    val editing = vm.entryEditMode != EntryEditMode.NONE
-    val focusRequester = remember { FocusRequester() }
-    val focusManager = LocalFocusManager.current
-    val annotation = when {
-        vm.editInvalid -> "Invalid input"
-        editing -> "Editing"
-        vm.input.isNotBlank() -> "Adding"
-        else -> null
-    }
-    var shakeOffset by remember { mutableStateOf(0) }
-    LaunchedEffect(vm.editInvalidSignal) {
-        if (vm.editInvalidSignal == 0) return@LaunchedEffect
-        repeat(6) { index ->
-            shakeOffset = if (index % 2 == 0) 5 else -5
-            delay(45)
+@Composable
+internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot) {
+    val previews = vm.quickAddPreviews()
+    val suggestions = vm.quickAddSuggestions()
+    Column(Modifier.fillMaxWidth().background(Tray).navigationBarsPadding()) {
+        vm.undoEntry?.let { deleted ->
+            ReceiptSnackbar(
+                message = "${deleted.foodName} deleted",
+                actionLabel = "Undo",
+                onAction = vm::undo,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+            )
         }
-        shakeOffset = 0
-    }
-    LaunchedEffect(editing) {
-        if (editing) focusRequester.requestFocus() else focusManager.clearFocus()
-    }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        HorizontalDivider()
-        if (!editing) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                TextButton(vm::openLibrary) { Text("Library") }
-                TextButton({ vm.openCustom() }) { Text("Custom") }
-                TextButton(vm::openSearch) { Text("Search") }
-            }
-        } else {
-            Spacer(Modifier.height(16.dp))
-        }
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .offset(x = shakeOffset.dp)
-        ) {
-            Row(
-                Modifier.fillMaxWidth()
-                    .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                BasicTextField(
-                    value = vm.input,
-                    onValueChange = vm::onInput,
-                    modifier = Modifier.weight(1f).focusRequester(focusRequester).onPreviewKeyEvent { event ->
-                        if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { vm.submit(); true } else false
-                    },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyLarge,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { vm.submit() }),
-                    decorationBox = { innerTextField ->
-                        Box {
-                            if (vm.input.isBlank()) {
-                                Text(
-                                    if (editing) "Amount and unit" else "Add foods",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            innerTextField()
+        ReceiptBottomTray(
+            content = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (previews.isNotEmpty()) {
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            previews.forEach { preview -> MealPendingSticker(preview) }
                         }
                     }
-                )
-                if (vm.entryEditMode == EntryEditMode.QUICK) {
-                    Text(
-                        vm.editingFoodName.orEmpty(),
-                        Modifier.weight(1f).padding(start = 8.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                    if (suggestions.isNotEmpty()) {
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            suggestions.forEachIndexed { index, ranked ->
+                                if (index == 0) {
+                                    com.iron.breakfast.ui.components.ReceiptTonalChip(
+                                        vm.quickAddSuggestionLabel(ranked.food),
+                                        { vm.chooseQuickSuggestion(ranked.food) },
+                                    )
+                                } else {
+                                    ReceiptChoiceChip(ranked.food.name, false, { vm.chooseQuickSuggestion(ranked.food) })
+                                }
+                            }
+                        }
+                    }
+                    ReceiptQuickAddField(
+                        value = vm.input,
+                        onValueChange = vm::onInput,
+                        onLog = vm::submit,
+                        onImeDone = vm::submit,
+                        placeholder = "Add to ${target.label()}",
+                        expanded = vm.input.contains(',') || vm.input.length > 28,
+                        visualTransformation = ReceiptTokenVisualTransformation(tokenRangesForInput(vm.input)),
                     )
                 }
-            }
-            annotation?.let {
-                Text(
-                    it,
-                    Modifier.align(Alignment.TopEnd)
-                        .offset(x = (-12).dp, y = (-8).dp)
-                        .background(MaterialTheme.colorScheme.background)
-                        .padding(horizontal = 8.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (vm.editInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                )
-            }
-        }
-        if (vm.quickEditHintVisible) {
-            Text("Hold a food to change it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        vm.mealDraftError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Button(vm::submit, Modifier.fillMaxWidth()) { Text(if (!editing) "Add to ${target.label()}" else "Save entry edit") }
-        if (editing) TextButton(vm::cancelEdit, Modifier.fillMaxWidth()) { Text("Cancel edit") }
+            },
+            nav = {},
+        )
     }
+}
+
+@Composable
+private fun MealPendingSticker(preview: QuickAddPreview) {
+    ReceiptSticker(
+        name = preview.food.name,
+        value = receiptKcal(preview.calculation.nutrition.calories),
+        detail = "${preview.amount.pretty()} ${preview.unit.displayLabel()}",
+        fields = listOf("${preview.calculation.resolvedBaseAmount.pretty()} ${preview.food.nutrition.unit.displayLabel()}", sourceLetter(preview.food)),
+        approximateDetail = preview.calculation.approximate,
+    )
 }
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable internal fun EntryRow(entry: MealEntry, vm: BreakfastViewModel) {
+@Composable
+private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel, first: Boolean) {
+    var revealOffset by remember(entry.id) { mutableFloatStateOf(0f) }
+    var rowHeight by remember(entry.id) { androidx.compose.runtime.mutableIntStateOf(0) }
+    val deleteWidth = with(LocalDensity.current) { 96.dp.toPx() }
     val touchSlop = LocalViewConfiguration.current.touchSlop
-    val deleteThreshold = with(LocalDensity.current) { 96.dp.toPx() }
-    Card(
-        Modifier
-            .fillMaxWidth()
-            .semantics {
-                onClick(label = "Open details for ${entry.foodName}") { vm.openEntryDetail(entry); true }
-                customActions = listOf(
-                    CustomAccessibilityAction("Quick edit amount") { vm.beginQuickEdit(entry); true },
-                    CustomAccessibilityAction("Edit food and amount") { vm.beginFullEdit(entry); true },
-                    CustomAccessibilityAction("Delete ${entry.foodName}") { vm.delete(entry); true }
-                )
-            }
-            .combinedClickable(
-                onClick = { vm.openEntryDetail(entry) },
-                onDoubleClick = { vm.beginQuickEdit(entry) },
-                onLongClick = { vm.beginFullEdit(entry) }
-            )
-            .pointerInput(entry.id) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    var horizontal = false
-                    var finalDx = 0f
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        finalDx = change.position.x - down.position.x
-                        val dy = change.position.y - down.position.y
-                        if (change.pressed && !horizontal && hypot(finalDx.toDouble(), dy.toDouble()).toFloat() > touchSlop && abs(finalDx) > abs(dy)) horizontal = true
-                        if (horizontal) change.consume()
-                        if (!change.pressed) break
-                    }
-                    if (horizontal && finalDx < -deleteThreshold) vm.delete(entry)
-                }
-            }
-    ) {
-        Column(Modifier.padding(12.dp)) {
-            Text(entry.foodName, style = MaterialTheme.typography.titleMedium)
-            Text("${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}  ·  ${entry.nutritionSnapshot.calories.pretty()} kcal")
-            Text("P ${entry.nutritionSnapshot.protein.macro()}  C ${entry.nutritionSnapshot.carbohydrates.macro()}  F ${entry.nutritionSnapshot.fat.macro()}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (entry.approximateConversion) Text("Approximate: ${entry.conversionProvenance}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (vm.feedbackOpen(entry)) {
-                vm.alternatives(entry).forEach { candidate -> TextButton({ vm.chooseAlternative(entry, candidate.food) }) { Text("Use ${candidate.food.name}") } }
-                TextButton({ vm.confirm(entry) }) { Text("Confirm ${entry.foodName}") }
-                Text("Correction controls expire after 30 seconds.", style = MaterialTheme.typography.labelSmall)
-            }
+    val density = LocalDensity.current
+    val quantity = quantityRateDisplay(entry, food)
+    Box(Modifier.fillMaxWidth().background(Paper).onSizeChanged { rowHeight = it.height }) {
+        Row(
+            Modifier.align(Alignment.CenterEnd).width(96.dp).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).background(PrintRed).clickable { vm.delete(entry); revealOffset = 0f }.padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Icon(Icons.Default.Delete, contentDescription = null, tint = OnGround)
+            Text("Delete", color = OnGround, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 4.dp))
         }
+        ReceiptEntryRow(
+            name = entry.foodName,
+            quantityLine = quantity.line,
+            approximate = quantity.approximateLabel,
+            calories = receiptKcal(entry.nutritionSnapshot.calories),
+            source = sourceLetter(food),
+            first = first,
+            fresh = vm.feedbackOpen(entry),
+            modifier = Modifier
+                .offset { IntOffset(revealOffset.roundToInt(), 0) }
+                .semantics {
+                    onClick(label = "Open details for ${entry.foodName}") { vm.openEntryDetail(entry); true }
+                    customActions = listOf(
+                        CustomAccessibilityAction("Quick edit amount") { vm.beginQuickEdit(entry); true },
+                        CustomAccessibilityAction("Edit food and amount") { vm.beginFullEdit(entry); true },
+                        CustomAccessibilityAction("Delete ${entry.foodName}") { vm.delete(entry); true },
+                    )
+                }
+                .combinedClickable(
+                    onClick = { vm.openEntryDetail(entry) },
+                    onDoubleClick = { vm.beginQuickEdit(entry) },
+                    onLongClick = { vm.beginFullEdit(entry) },
+                )
+                .pointerInput(entry.id) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var dx = 0f
+                        var dy = 0f
+                        var horizontal = false
+                        var vertical = false
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            val deltaX = change.position.x - change.previousPosition.x
+                            val deltaY = change.position.y - change.previousPosition.y
+                            dx += deltaX
+                            dy += deltaY
+                            if (!horizontal && !vertical && kotlin.math.hypot(dx.toDouble(), dy.toDouble()) > touchSlop) {
+                                horizontal = kotlin.math.abs(dx) > kotlin.math.abs(dy)
+                                vertical = !horizontal
+                            }
+                            if (horizontal && dx < 0f) {
+                                revealOffset = (revealOffset + deltaX).coerceIn(-deleteWidth, 0f)
+                                change.consume()
+                            }
+                            if (!change.pressed) break
+                        }
+                        if (horizontal) revealOffset = if (revealOffset <= -deleteWidth * .65f) -deleteWidth else 0f
+                    }
+                },
+        )
     }
 }
-

@@ -70,7 +70,8 @@ class BreakfastEngine(private val store: BreakfastStore) {
                 savedAtEpochMs = nowMs,
                 sourcePhrase = raw,
                 mealSlot = mealSlot,
-                dayKey = dayKey
+                dayKey = dayKey,
+                resolvedBaseUnit = match.food.nutrition.unit
             )
         }
         if (entries.isNotEmpty()) store.saveEntries(entries)
@@ -98,7 +99,8 @@ class BreakfastEngine(private val store: BreakfastStore) {
             resolvedBaseAmount = calculation.resolvedBaseAmount,
             nutritionSnapshot = calculation.nutrition,
             conversionProvenance = calculation.provenance,
-            approximateConversion = calculation.approximate
+            approximateConversion = calculation.approximate,
+            resolvedBaseUnit = food.nutrition.unit
         )
         store.replaceEntry(updated)
         return ReplacementResult.Success(updated)
@@ -129,7 +131,8 @@ class BreakfastEngine(private val store: BreakfastStore) {
             resolvedBaseAmount = calculation.resolvedBaseAmount,
             nutritionSnapshot = calculation.nutrition,
             conversionProvenance = calculation.provenance,
-            approximateConversion = calculation.approximate
+            approximateConversion = calculation.approximate,
+            resolvedBaseUnit = food.nutrition.unit
         )
         store.replaceEntry(updated)
         return ReplacementResult.Success(updated)
@@ -145,7 +148,8 @@ class BreakfastEngine(private val store: BreakfastStore) {
         if (!calculation.supported) return ReplacementResult.Failure("That amount/unit is not supported for ${match.food.name}.")
         val updated = old.copy(foodId = match.food.id, foodName = match.food.name, enteredAmount = amount, enteredUnit = unit,
             resolvedBaseAmount = calculation.resolvedBaseAmount, nutritionSnapshot = calculation.nutrition,
-            conversionProvenance = calculation.provenance, approximateConversion = calculation.approximate, sourcePhrase = text)
+            conversionProvenance = calculation.provenance, approximateConversion = calculation.approximate, sourcePhrase = text,
+            resolvedBaseUnit = match.food.nutrition.unit)
         store.replaceEntry(updated)
         return ReplacementResult.Success(updated)
     }
@@ -214,7 +218,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
         require(calculation.supported) { "Amount unit is incompatible with the nutrition basis" }
         val entry = MealEntry(UUID.randomUUID().toString(), id, food.name, amount, amountUnit,
             calculation.resolvedBaseAmount, calculation.nutrition, calculation.provenance,
-            calculation.approximate, nowMs, name.trim(), mealSlot, dayKey)
+            calculation.approximate, nowMs, name.trim(), mealSlot, dayKey, basisUnit)
         store.addFoodAndEntry(food, entry)
         matcherCatalog = null
         return entry
@@ -249,7 +253,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
         val now = System.currentTimeMillis()
         val entry = MealEntry(UUID.randomUUID().toString(), effectiveFood.id, effectiveFood.name, amount, unit,
             calculation.resolvedBaseAmount, calculation.nutrition, calculation.provenance,
-            calculation.approximate, now, effectiveFood.name, mealSlot, dayKey)
+            calculation.approximate, now, effectiveFood.name, mealSlot, dayKey, effectiveFood.nutrition.unit)
         store.addFoodAndEntry(effectiveFood, entry)
         matcherCatalog = null
         return entry
