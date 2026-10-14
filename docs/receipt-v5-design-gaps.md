@@ -11,6 +11,8 @@ This ledger tracks UI states absent from the locked Receipt v5 screen set. It is
 | OFF search loading | Existing search flow; no Receipt v5 loading mock | Owner chose to wait for dedicated design. Keep the existing UI and behavior for now. | Search-in-progress state and placement of the loading affordance. |
 | Barcode lookup loading | Existing scanner/lookup flow; no Receipt v5 loading mock | Owner chose to wait for dedicated design. Keep the existing UI and behavior for now. | Lookup-in-progress state over or after the camera preview. |
 | Light-theme variants | PRODUCT.md calls for light and dark; Receipt v5 draws dark only | Owner directed implementation of the theme shown in Receipt v5, so the current pass is dark-only. | A complete light counterpart to the locked screen set, if light mode is still wanted later. |
+| Add serving inline form | `S-Food-Edit` shows only the "Add serving" button; no form is drawn | Unmocked minimal inline form implemented from existing components: unit chips plus a base amount in g or ml, with Add and Cancel. | The expanded Add serving state, including validation. |
+| Unarchive | No Receipt v5 screen or action restores an archived food; archived foods stay visible via Archived foods but cannot be newly logged | Existing behavior kept: there is no way to unarchive a food. | A restore action and where it lives (archived food detail or the Archived foods list). |
 
 ## Locked reference set
 

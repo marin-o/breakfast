@@ -38,6 +38,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -52,6 +54,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -113,6 +117,9 @@ import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.Calculation
 import com.iron.breakfast.domain.NutritionCalculator
 import com.iron.breakfast.domain.RankedFood
+import com.iron.breakfast.domain.asciiDigits
+import com.iron.breakfast.domain.normalizeBarcode
+import com.iron.breakfast.domain.validateBarcodeInput
 import com.iron.breakfast.domain.ReplacementResult
 import com.iron.breakfast.domain.ShorthandParser
 import com.iron.breakfast.domain.toMeasureUnit
@@ -126,7 +133,9 @@ import com.iron.breakfast.ui.screens.EntryFoodPicker
 import com.iron.breakfast.ui.screens.EntryQuickEditSheet
 import com.iron.breakfast.ui.screens.FocusedFoodAddDialog
 import com.iron.breakfast.ui.screens.LibraryComposer
+import com.iron.breakfast.ui.screens.FoodBarcodeField
 import com.iron.breakfast.ui.screens.LibraryFoodDetailDialog
+import com.iron.breakfast.ui.screens.LibraryFoodEditScreen
 import com.iron.breakfast.ui.screens.LibraryScreen
 import com.iron.breakfast.ui.screens.MealComposer
 import com.iron.breakfast.ui.screens.MealScreen
@@ -177,18 +186,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var selectedDayKey by mutableStateOf(savedState["selected_day"] ?: dayKeyForEpochMs(System.currentTimeMillis())); private set
     var slot by mutableStateOf(savedState.get<String>("meal_slot")?.let { runCatching { MealSlot.valueOf(it) }.getOrNull() }); private set
     var customOpen by mutableStateOf(false); private set
-    var customSeedName by mutableStateOf(""); private set
-    var customSeedBrand by mutableStateOf(""); private set
-    var customSeedBarcode by mutableStateOf(""); private set
-    var customSeedFromOff by mutableStateOf(false); private set
-    var customSeedAliases by mutableStateOf(""); private set
     var editingLibraryFoodId by mutableStateOf<String?>(null); private set
-    var customSeedCalories by mutableStateOf(""); private set
-    var customSeedProtein by mutableStateOf(""); private set
-    var customSeedCarbs by mutableStateOf(""); private set
-    var customSeedFat by mutableStateOf(""); private set
-    var customSeedBasisAmount by mutableStateOf("100"); private set
-    var customSeedBasisUnit by mutableStateOf("g"); private set
+    val draft = FoodDraft()
     var searchOpen by mutableStateOf(false); private set
     var searchQuery by mutableStateOf(""); private set
     var offResults by mutableStateOf<List<FoodRecord>>(emptyList()); private set
@@ -223,7 +222,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var mealPickerOpen by mutableStateOf(false); private set
     var libraryOpen by mutableStateOf(false); private set
     var libraryQuery by mutableStateOf(""); private set
-    var libraryOnlyPersonal by mutableStateOf(false); private set
     var libraryIncludeArchived by mutableStateOf(false); private set
     var libraryFoods by mutableStateOf<List<FoodRecord>>(emptyList()); private set
     var selectedLibraryFood by mutableStateOf<FoodRecord?>(null); private set
@@ -236,6 +234,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var selectedEntry by mutableStateOf<MealEntry?>(null); private set
     private var selectedEntryId: String? = savedState["entry_id"]
     private var barcodeRequestToken = 0L
+    private var rescanningBarcode = false
     private var barcodeOriginDay = selectedDayKey
     private var barcodeOriginMeal: MealSlot? = slot
     var ready by mutableStateOf(false); private set
@@ -275,20 +274,18 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private fun selectMeal(value: MealSlot?) { slot = value; savedState["meal_slot"] = value?.name }
     fun shiftSelectedDay(delta: Long) { selectDay(runCatching { LocalDate.parse(selectedDayKey).plusDays(delta).toString() }.getOrDefault(selectedDayKey)); barcodeRequestToken++ }
     fun goToday() { selectDay(dayKeyForEpochMs(System.currentTimeMillis())); barcodeRequestToken++ }
-    fun openLibrary() { cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryOnlyPersonal = false; libraryIncludeArchived = false; refreshLibrary() }
+    fun openLibrary() { cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryIncludeArchived = false; refreshLibrary() }
     fun closeLibrary() { libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null; expandedLibraryFoodId = null; libraryPendingAmount = null; libraryPendingUnit = null; libraryPendingBatch = emptyList(); libraryBatchMealPickerOpen = false; selectMeal(null) }
     fun cancelLibraryMealPicker() { libraryMealPickerFood = null; libraryPendingAmount = null; libraryPendingUnit = null }
     fun onLibraryQuery(value: String) { libraryQuery = value; refreshLibrary() }
-    fun toggleLibraryPersonal() { libraryOnlyPersonal = !libraryOnlyPersonal; refreshLibrary() }
     fun toggleLibraryArchived() { libraryIncludeArchived = !libraryIncludeArchived; refreshLibrary() }
     fun refreshLibrary() {
         if (!ready) return
         viewModelScope.launch {
-            val latestByFood = entries.groupBy { it.foodId }.mapValues { (_, values) -> values.maxByOrNull { it.savedAtEpochMs } }
-            libraryFoods = engine.foodsMatching(libraryQuery, libraryIncludeArchived)
-                .filter { !libraryOnlyPersonal || it.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM || it.personalOverride }
-                .sortedWith(compareByDescending<FoodRecord> { latestByFood[it.id]?.savedAtEpochMs ?: Long.MIN_VALUE }
-                    .thenBy { it.name.lowercase(Locale.ROOT) })
+            libraryFoods = libraryRecencyOrder(
+                engine.foodsMatching(libraryQuery, libraryIncludeArchived),
+                entries,
+            )
         }
     }
     fun openLibraryFood(food: FoodRecord) { selectedLibraryFood = food }
@@ -353,11 +350,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         logLibraryFood(food, target, amount, unit)
     }
     fun archiveLibraryFood(food: FoodRecord) {
-        if (!ready || busy || food.origin != com.iron.breakfast.domain.FoodOrigin.CUSTOM) return
+        if (!ready || busy || food.archived || food.origin != com.iron.breakfast.domain.FoodOrigin.CUSTOM) return
         busy = true
         viewModelScope.launch {
             runCatching { engine.archiveFood(food.id) }
-                .onSuccess { selectedLibraryFood = null; refresh(); refreshLibrary(); notice = "Food archived; saved diary entries remain readable." }
+                .onSuccess { selectedLibraryFood = null; if (editingLibraryFoodId == food.id) closeCustom(); refresh(); refreshLibrary(); notice = "Food archived; saved diary entries remain readable." }
                 .onFailure { notice = it.message ?: "Could not archive this food." }
                 .also { busy = false }
         }
@@ -460,7 +457,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         selectMeal(meal)
         libraryOpen = true
         libraryQuery = query
-        libraryOnlyPersonal = false
         libraryIncludeArchived = false
         refreshLibrary()
     }
@@ -758,27 +754,27 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun openCustom(name: String = "", brand: String = "", barcode: String = "", fromResolver: Boolean = false, fromOff: Boolean = false) {
         if (!fromResolver && unknownQueue.isNotEmpty()) abandonUnknownResolution()
         resolutionContinuation = fromResolver
-        resetCustomSeeds()
-        customSeedName = name
-        customSeedBrand = brand
-        customSeedBarcode = barcode
-        customSeedFromOff = fromOff
+        rescanningBarcode = false
+        editingLibraryFoodId = null
+        draft.reset()
+        draft.name = name
+        draft.brand = brand
+        draft.barcode = normalizeBarcode(barcode).orEmpty()
+        draft.fromOff = fromOff
         customOpen = true
         searchOpen = false
         resolverOpen = false
     }
-    private fun resetCustomSeeds() {
-        customSeedName = ""; customSeedBrand = ""; customSeedBarcode = ""; customSeedAliases = ""
-        customSeedFromOff = false; customSeedCalories = ""; customSeedProtein = ""; customSeedCarbs = ""; customSeedFat = ""
-        customSeedBasisAmount = "100"; customSeedBasisUnit = "g"
+    fun closeCustom() {
+        customOpen = false; editingLibraryFoodId = null; rescanningBarcode = false; draft.reset()
+        if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false
     }
-    fun closeCustom() { customOpen = false; editingLibraryFoodId = null; resetCustomSeeds(); if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false }
+    fun commitDraftServing() { if (!draft.commitServing()) notice = "Enter a positive serving size." }
+    fun beginBarcodeRescan() { rescanningBarcode = true; beginScan() }
     fun openLibraryEdit(food: FoodRecord) {
+        rescanningBarcode = false
         editingLibraryFoodId = food.id
-        customSeedName = food.name; customSeedBrand = food.brand.orEmpty(); customSeedBarcode = food.barcode.orEmpty(); customSeedAliases = food.aliases.joinToString(", ")
-        customSeedCalories = food.nutrition.values.calories.toString(); customSeedProtein = food.nutrition.values.protein?.toString().orEmpty()
-        customSeedCarbs = food.nutrition.values.carbohydrates?.toString().orEmpty(); customSeedFat = food.nutrition.values.fat?.toString().orEmpty()
-        customSeedBasisAmount = food.nutrition.amount.toString(); customSeedBasisUnit = food.nutrition.unit.label
+        draft.load(food)
         customOpen = true; selectedLibraryFood = null
     }
     fun closeResolver() { abandonUnknownResolution() }
@@ -1032,61 +1028,77 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         return ProductDraft(draftFood, amount, unit, calculation).takeIf { calculation.supported }
     }
     fun beginScan() { barcodeRequestToken++; barcodeOriginDay = selectedDayKey; barcodeOriginMeal = slot; scannerOpen = true }
-    fun endScan() { scannerOpen = false }
+    fun endScan() { scannerOpen = false; rescanningBarcode = false }
+    /** Camera unavailable: return to the form when rescanning, otherwise open the manual food form. */
+    fun scannerUnavailable() { val rescanning = rescanningBarcode; endScan(); if (!rescanning) openCustom() }
     private fun barcodeRequestStillTargets(token: Long, day: String, meal: MealSlot?): Boolean = token == barcodeRequestToken && day == selectedDayKey && meal == slot
     fun onBarcode(code: String) {
         scannerOpen = false
+        if (rescanningBarcode) {
+            rescanningBarcode = false
+            val scanned = normalizeBarcode(code)
+            if (scanned == null) notice = "Not a product barcode." else draft.barcode = scanned
+            return
+        }
+        val barcode = code.trim()
         val token = barcodeRequestToken
         val originDay = barcodeOriginDay
         val originMeal = barcodeOriginMeal
         viewModelScope.launch(Dispatchers.IO) {
-            val local = engine.foodByBarcode(code)
+            val local = engine.foodByBarcode(barcode)
             if (local != null) {
                 withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) chooseProduct(local, fromScan = true) }
                 return@launch
             }
-            when (val result = off.barcode(code)) {
+            when (val result = off.barcode(barcode)) {
                 is OffResult.Found -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) chooseProduct(result.food, fromScan = true) }
                 is OffResult.Ineligible -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { notice = "Nutrition is incomplete. Review it as a personal food."; openCustom(result.name.orEmpty(), result.brand.orEmpty(), result.barcode, fromOff = true) } }
-                OffResult.Missing -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { notice = "Product not found. Add it manually with barcode $code"; openCustom(barcode = code) } }
-                OffResult.Unavailable -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { notice = "No connection. Add the product manually."; openCustom(barcode = code) } }
+                OffResult.Missing -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { notice = "Product not found. Add it manually with barcode $barcode"; openCustom(barcode = barcode) } }
+                OffResult.Unavailable -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { notice = "No connection. Add the product manually."; openCustom(barcode = barcode) } }
                 is OffResult.Error -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) notice = result.message }
             }
         }
     }
-    fun saveCustom(name: String, brand: String, barcode: String, alias: String, shorthand: String, basisAmountText: String, basisUnitText: String, calories: String, protein: String, carbs: String, fat: String) {
+    fun saveCustom() {
+        val name = draft.name; val brand = draft.brand; val barcode = draft.barcode.trim(); val shorthand = draft.shorthand
+        val aliasList = draft.allAliases(); val servingList = draft.servings
         fun shorthandNumber(label: String) = Regex("(?i)([0-9]+(?:[.,][0-9]+)?)\\s*g?\\s*$label").find(shorthand)?.groupValues?.getOrNull(1)?.replace(',', '.')?.toDoubleOrNull()
-        val kcal = calories.toDoubleOrNull() ?: shorthandNumber("kcal"); val proteinValue = protein.toDoubleOrNull() ?: shorthandNumber("protein"); val carbsValue = carbs.toDoubleOrNull() ?: shorthandNumber("(?:carb|carbs)"); val fatValue = fat.toDoubleOrNull() ?: shorthandNumber("fat")
+        val kcal = draft.calories.toDoubleOrNull() ?: shorthandNumber("kcal"); val proteinValue = draft.protein.toDoubleOrNull() ?: shorthandNumber("protein"); val carbsValue = draft.carbs.toDoubleOrNull() ?: shorthandNumber("(?:carb|carbs)"); val fatValue = draft.fat.toDoubleOrNull() ?: shorthandNumber("fat")
         if (name.isBlank() || kcal == null) { notice = "Name and calories are required."; return }
-        val basisAmount = basisAmountText.toDoubleOrNull() ?: 100.0
-        val basisUnit = if (basisUnitText.trim().lowercase() == "ml") MeasureUnit.MILLILITER else MeasureUnit.GRAM
+        val editingId = editingLibraryFoodId
+        val originalBarcode = editingId?.let { id -> foods.firstOrNull { it.id == id }?.barcode?.trim() }
+        val barcodeError = if (barcode == originalBarcode) null else validateBarcodeInput(barcode, foods, editingId)
+        if (barcodeError != null) { notice = barcodeError; return }
+        val basisAmount = draft.basisAmount.toDoubleOrNull() ?: 100.0
+        val basisUnit = if (draft.basisUnit.trim().lowercase() == "ml") MeasureUnit.MILLILITER else MeasureUnit.GRAM
         val nutrition = NutritionValues(kcal, proteinValue, carbsValue, fatValue)
         if (!nutrition.calories.isFinite() || nutrition.calories < 0.0 || nutrition.calories > 10000.0 || listOf(nutrition.protein, nutrition.carbohydrates, nutrition.fat).any { it != null && (!it.isFinite() || it < 0.0 || it > 1000.0) }) { notice = "Nutrition values must be finite and nonnegative."; return }
         if (!ready || busy || !basisAmount.isFinite() || basisAmount <= 0.0) { notice = "Enter a positive nutrition basis."; return }
         val resolvesQueue = resolutionContinuation && unknownQueueTarget == slot
-        val contribution = if (customSeedFromOff && barcode.isNotBlank()) OffContributionDraft(
-            barcode = barcode.trim(), name = name.trim(), brand = brand.trim().ifBlank { null },
+        val fromOff = draft.fromOff
+        val contribution = if (fromOff && barcode.isNotBlank()) OffContributionDraft(
+            barcode = barcode, name = name.trim(), brand = brand.trim().ifBlank { null },
             basisAmount = basisAmount, basisUnit = basisUnit, nutrition = nutrition
         ) else null
-        val offSource = customSeedFromOff.takeIf { it }?.let { "Open Food Facts" }
-        val editingId = editingLibraryFoodId
+        val offSource = fromOff.takeIf { it }?.let { "Open Food Facts" }
+        val aliasText = aliasList.joinToString(", ")
         busy = true; viewModelScope.launch { runCatching {
             if (editingId != null) {
                 val original = foods.firstOrNull { it.id == editingId } ?: error("That personal food is no longer available.")
-                engine.updateFood(editedCustomFoodRecord(original, name, brand, barcode, alias, nutrition, basisAmount, basisUnit))
+                engine.updateFood(editedCustomFoodRecord(original, name, brand, barcode, aliasText, nutrition, basisAmount, basisUnit, aliases = aliasList, servings = servingList))
                 original
             } else {
                 val target = slot
                 if (target != null) {
-                    val entry = engine.saveCustomAndLog(name, brand, barcode, alias, nutrition, basisAmount, basisUnit, target, basisAmount, basisUnit, dayKey = selectedDayKey, sourceName = offSource, sourceDescription = "Saved from an incomplete Open Food Facts barcode result")
+                    val entry = engine.saveCustomAndLog(name, brand, barcode, aliasText, nutrition, basisAmount, basisUnit, target, basisAmount, basisUnit, dayKey = selectedDayKey, sourceName = offSource, sourceDescription = "Saved from an incomplete Open Food Facts barcode result")
                     engine.foodById(entry.foodId) ?: error("Saved food could not be reloaded.")
-                } else engine.saveCustomFood(name, brand, barcode, alias, nutrition, basisAmount, basisUnit, sourceName = offSource, sourceDescription = "Saved from an incomplete Open Food Facts barcode result")
+                } else engine.saveCustomFood(name, brand, barcode, aliasText, nutrition, basisAmount, basisUnit, sourceName = offSource, sourceDescription = "Saved from an incomplete Open Food Facts barcode result")
             }
         }.onSuccess {
             refresh()
             customOpen = false
             editingLibraryFoodId = null
-            customSeedFromOff = false
+            draft.reset()
             pendingContribution = contribution?.copy(
                 languageCode = contributionLanguageFor(name),
                 packageQuantityMl = null
@@ -1101,6 +1113,17 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
 
 internal data class ProductPrefill(val amount: Double, val unit: MeasureUnit)
 
+internal fun libraryRecencyOrder(foods: List<FoodRecord>, entries: List<MealEntry>): List<FoodRecord> {
+    val latestByFood = entries.groupBy { it.foodId }.mapValues { (_, values) -> values.maxOfOrNull { it.savedAtEpochMs } ?: Long.MIN_VALUE }
+    return foods.sortedWith(compareByDescending<FoodRecord> { latestByFood[it.id] ?: Long.MIN_VALUE }.thenBy { it.name.lowercase(Locale.ROOT) })
+}
+
+/**
+ * Applies form edits to a stored food. [aliases] and [servings], when given, replace the stored lists
+ * outright (so the last alias or serving can be removed); otherwise [aliasText] keeps its older
+ * "blank leaves aliases alone" meaning and imported servings are preserved.
+ * `sourceId` stays untouched for non-custom foods so an Open Food Facts food keeps its original code.
+ */
 internal fun editedCustomFoodRecord(
     original: FoodRecord,
     name: String,
@@ -1109,21 +1132,31 @@ internal fun editedCustomFoodRecord(
     aliasText: String,
     nutrition: NutritionValues,
     basisAmount: Double,
-    basisUnit: MeasureUnit
+    basisUnit: MeasureUnit,
+    aliases: List<String>? = null,
+    servings: List<com.iron.breakfast.domain.ServingConversion>? = null,
 ): FoodRecord {
-    val aliases = aliasText.trim().takeIf { it.isNotBlank() }
+    val editedAliases = aliases ?: aliasText.trim().takeIf { it.isNotBlank() }
         ?.split(',')?.map(String::trim)?.filter(String::isNotBlank)
         ?: original.aliases
-    val preserveImportedServings = original.origin != com.iron.breakfast.domain.FoodOrigin.CUSTOM &&
-        original.nutrition.unit == basisUnit
+    val isCustom = original.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM
+    val preserveImportedServings = !isCustom && original.nutrition.unit == basisUnit
+    val basisConversion = com.iron.breakfast.domain.ServingConversion(basisUnit, basisAmount, "custom basis")
+    val extraServings = servings.orEmpty().filter { it.unit != basisUnit }
+    val conversions = when {
+        servings == null -> if (preserveImportedServings) original.conversions else listOf(basisConversion)
+        preserveImportedServings -> original.conversions.filter { it.unit == basisUnit } + extraServings
+        else -> listOf(basisConversion) + extraServings
+    }
+    val keepDefault = preserveImportedServings && (servings == null || original.defaultUnit == basisUnit || extraServings.any { it.unit == original.defaultUnit })
     return original.copy(
         name = name.trim(), brand = brand.trim().ifBlank { null }, barcode = barcode.trim().ifBlank { null },
-        sourceId = if (original.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM) barcode.trim().ifBlank { null } else original.sourceId,
-        aliases = aliases,
+        sourceId = if (isCustom) barcode.trim().ifBlank { null } else original.sourceId,
+        aliases = editedAliases,
         nutrition = NutritionBasis(basisAmount, basisUnit, nutrition),
-        conversions = if (preserveImportedServings) original.conversions else listOf(com.iron.breakfast.domain.ServingConversion(basisUnit, basisAmount, "custom basis")),
-        defaultAmount = if (preserveImportedServings) original.defaultAmount else basisAmount,
-        defaultUnit = if (preserveImportedServings) original.defaultUnit else basisUnit,
+        conversions = conversions,
+        defaultAmount = if (keepDefault) original.defaultAmount else basisAmount,
+        defaultUnit = if (keepDefault) original.defaultUnit else basisUnit,
         personalOverride = true
     )
 }
@@ -1229,14 +1262,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
         bottomBar = {
             when {
                 vm.entryEditMode != EntryEditMode.NONE -> Unit
-                vm.libraryOpen -> Column {
-                    LibraryComposer(vm)
-                    ReceiptNavigationBar(
-                        selectedDaily = false,
-                        onDaily = { vm.closeMeal(); vm.closeLibrary() },
-                        onLibrary = {},
-                    )
-                }
+                vm.libraryOpen -> LibraryComposer(vm)
                 vm.slot == null -> DailyComposer(vm)
                 else -> MealComposer(vm, vm.slot!!)
             }
@@ -1267,7 +1293,9 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     if (vm.libraryMealPickerFood != null) LibraryMealPickerDialog(vm, vm.libraryMealPickerFood!!)
     if (vm.libraryBatchMealPickerOpen) LibraryBatchMealPickerDialog(vm)
     if (vm.productMealPickerOpen) ProductMealPickerDialog(vm)
-    if (vm.customOpen) CustomDialog(vm)
+    if (vm.customOpen) {
+        if (vm.editingLibraryFoodId != null) LibraryFoodEditScreen(vm) else CustomDialog(vm)
+    }
     if (vm.searchOpen) SearchDialog(vm)
     if (vm.resolverOpen) UnknownResolver(vm)
     vm.selectedProduct?.let { ProductDialog(vm, it) }
@@ -1422,8 +1450,8 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
 }
 
 @Composable private fun CustomDialog(vm: BreakfastViewModel) {
-    var name by remember(vm.editingLibraryFoodId, vm.customSeedName) { mutableStateOf(vm.customSeedName) }; var brand by remember(vm.editingLibraryFoodId, vm.customSeedBrand) { mutableStateOf(vm.customSeedBrand) }; var barcode by remember(vm.editingLibraryFoodId, vm.customSeedBarcode) { mutableStateOf(vm.customSeedBarcode) }; var alias by remember(vm.editingLibraryFoodId, vm.customSeedAliases) { mutableStateOf(vm.customSeedAliases) }; var shorthand by remember(vm.editingLibraryFoodId) { mutableStateOf("") }; var basisAmount by remember(vm.editingLibraryFoodId, vm.customSeedBasisAmount) { mutableStateOf(vm.customSeedBasisAmount) }; var basisUnit by remember(vm.editingLibraryFoodId, vm.customSeedBasisUnit) { mutableStateOf(vm.customSeedBasisUnit) }; var calories by remember(vm.editingLibraryFoodId, vm.customSeedCalories) { mutableStateOf(vm.customSeedCalories) }; var protein by remember(vm.editingLibraryFoodId, vm.customSeedProtein) { mutableStateOf(vm.customSeedProtein) }; var carbs by remember(vm.editingLibraryFoodId, vm.customSeedCarbs) { mutableStateOf(vm.customSeedCarbs) }; var fat by remember(vm.editingLibraryFoodId, vm.customSeedFat) { mutableStateOf(vm.customSeedFat) }
-    AlertDialog(onDismissRequest = vm::closeCustom, confirmButton = { Button({ vm.saveCustom(name, brand, barcode, alias, shorthand, basisAmount, basisUnit, calories, protein, carbs, fat) }) { Text(if (vm.editingLibraryFoodId != null) "Save changes" else "Save food") } }, dismissButton = { TextButton(vm::closeCustom) { Text("Cancel") } }, title = { Text(if (vm.editingLibraryFoodId != null) "Edit personal food" else "Create personal food") }, text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) { OutlinedTextField(name, { name = it }, label = { Text("Name") }); OutlinedTextField(brand, { brand = it }, label = { Text("Brand (optional)") }); OutlinedTextField(alias, { alias = it }, label = { Text("Alias (optional)") }); OutlinedTextField(barcode, { barcode = it }, label = { Text("Barcode (optional)") }); OutlinedTextField(shorthand, { shorthand = it }, label = { Text("Nutrition shorthand (optional)") }, placeholder = { Text("450 kcal, 12g protein, 20g carbs") }); Text("Nutrition basis", style = MaterialTheme.typography.labelMedium); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { OutlinedTextField(basisAmount, { basisAmount = it }, label = { Text("Amount") }, modifier = Modifier.weight(1f)); OutlinedTextField(basisUnit, { basisUnit = it }, label = { Text("Unit g/ml") }, modifier = Modifier.weight(1f)) }; OutlinedTextField(calories, { calories = it }, label = { Text("Calories *") }); OutlinedTextField(protein, { protein = it }, label = { Text("Protein g (optional)") }); OutlinedTextField(carbs, { carbs = it }, label = { Text("Carbs g (optional)") }); OutlinedTextField(fat, { fat = it }, label = { Text("Fat g (optional)") }) } })
+    val draft = vm.draft
+    AlertDialog(onDismissRequest = vm::closeCustom, confirmButton = { Button(vm::saveCustom) { Text("Save food") } }, dismissButton = { TextButton(vm::closeCustom) { Text("Cancel") } }, title = { Text("Create personal food") }, text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) { OutlinedTextField(draft.name, { draft.name = it }, label = { Text("Name") }); OutlinedTextField(draft.brand, { draft.brand = it }, label = { Text("Brand (optional)") }); OutlinedTextField(draft.aliasInput, { draft.aliasInput = it }, label = { Text("Alias (optional)") }); FoodBarcodeField(vm, label = "Barcode (optional)"); OutlinedTextField(draft.shorthand, { draft.shorthand = it }, label = { Text("Nutrition shorthand (optional)") }, placeholder = { Text("450 kcal, 12g protein, 20g carbs") }); Text("Nutrition basis", style = MaterialTheme.typography.labelMedium); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { OutlinedTextField(draft.basisAmount, { draft.basisAmount = it }, label = { Text("Amount") }, modifier = Modifier.weight(1f)); OutlinedTextField(draft.basisUnit, { draft.basisUnit = it }, label = { Text("Unit g/ml") }, modifier = Modifier.weight(1f)) }; OutlinedTextField(draft.calories, { draft.calories = it }, label = { Text("Calories *") }); OutlinedTextField(draft.protein, { draft.protein = it }, label = { Text("Protein g (optional)") }); OutlinedTextField(draft.carbs, { draft.carbs = it }, label = { Text("Carbs g (optional)") }); OutlinedTextField(draft.fat, { draft.fat = it }, label = { Text("Fat g (optional)") }) } })
 }
 
 @Composable private fun SearchDialog(vm: BreakfastViewModel) {
@@ -1496,9 +1524,10 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     val session = remember { ScannerSession() }
     DisposableEffect(Unit) { onDispose { session.dispose() } }
     var hasPermission by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasPermission = granted; if (!granted) { vm.endScan(); vm.openCustom() } }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasPermission = granted; if (!granted) vm.scannerUnavailable() }
     LaunchedEffect(Unit) { if (!hasPermission) launcher.launch(Manifest.permission.CAMERA) }
-    Scaffold(topBar = { TopAppBar(title = { Text("Scan barcode") }) }) { pad ->
+    BackHandler { vm.endScan() }
+    Scaffold(topBar = { TopAppBar(title = { Text("Scan barcode") }, navigationIcon = { IconButton(onClick = vm::endScan) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Cancel scan") } }) }) { pad ->
         if (hasPermission) AndroidView(factory = { ctx -> PreviewView(ctx).also { view ->
             val providerFuture = ProcessCameraProvider.getInstance(ctx)
             providerFuture.addListener({ runCatching {
@@ -1516,7 +1545,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
                     }.addOnCompleteListener { proxy.close() }
                 }
                 provider.bindToLifecycle(context as ComponentActivity, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
-            }.onFailure { if (!session.disposed.get()) { session.dispose(); vm.endScan(); vm.openCustom() } } }, ContextCompat.getMainExecutor(ctx))
+            }.onFailure { if (!session.disposed.get()) { session.dispose(); vm.scannerUnavailable() } } }, ContextCompat.getMainExecutor(ctx))
         } }, Modifier.fillMaxSize().padding(pad))
         else Box(Modifier.fillMaxSize().padding(pad)) { Text("Camera permission is required to scan.") }
     }

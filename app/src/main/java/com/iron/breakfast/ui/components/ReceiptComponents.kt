@@ -24,6 +24,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.outlined.Straighten
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material3.AssistChip
@@ -215,7 +219,7 @@ fun ReceiptSlip(
             }
             if (macros.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth().dashedTopRule().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Row(Modifier.fillMaxWidth().receiptDashedRule().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     macros.forEach { Text(it, style = MaterialTheme.typography.labelMedium, color = Ink) }
                 }
             }
@@ -224,7 +228,8 @@ fun ReceiptSlip(
     }
 }
 
-private fun Modifier.dashedTopRule(): Modifier = drawBehind {
+/** The 1.5dp dashed paper rule drawn along the top edge of a row. */
+fun Modifier.receiptDashedRule(): Modifier = drawBehind {
     drawLine(
         color = Rule,
         start = androidx.compose.ui.geometry.Offset(0f, 0f),
@@ -251,7 +256,7 @@ fun ReceiptEntryRow(
             .fillMaxWidth()
             .then(if (fresh) Modifier.background(com.iron.breakfast.ui.theme.PaperFresh) else Modifier)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .then(if (first) Modifier else Modifier.dashedTopRule())
+            .then(if (first) Modifier else Modifier.receiptDashedRule())
             .padding(horizontal = 14.dp, vertical = 11.dp),
         verticalAlignment = Alignment.Top,
     ) {
@@ -267,10 +272,37 @@ fun ReceiptEntryRow(
     }
 }
 
+/** Spoken and written name for a source letter. */
+fun sourceLabel(letter: String): String = when (letter) {
+    "B" -> "Bundled"
+    "P" -> "Personal"
+    "O" -> "Open Food Facts"
+    else -> "Unknown source"
+}
+
 @Composable
 fun SourceBox(source: String, modifier: Modifier = Modifier) {
-    Box(modifier.size(22.dp).border(1.5.dp, BoxGrey, RoundedCornerShape(3.dp)), contentAlignment = Alignment.Center) {
+    val description = "Source: ${sourceLabel(source).lowercase()}"
+    Box(modifier.size(22.dp).border(1.5.dp, BoxGrey, RoundedCornerShape(3.dp)).semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
         Text(source, color = InkSoft, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+/** Round 48dp tonal button for repeated row actions. */
+@Composable
+fun ReceiptTonalIconButton(icon: ImageVector, contentDescription: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.size(48.dp).background(if (enabled) PenTonal else PenTonal.copy(alpha = 0.4f), CircleShape),
+    ) { Icon(icon, contentDescription = contentDescription, tint = PenTonalInk) }
+}
+
+/** Circular outlined barcode-scan button that sits beside a search pill. */
+@Composable
+fun ReceiptScanButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    IconButton(onClick = onClick, modifier = modifier.size(48.dp).border(1.5.dp, PenOnDark, CircleShape)) {
+        Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan barcode", tint = PenOnDarkInk)
     }
 }
 
@@ -363,14 +395,15 @@ fun ReceiptChoiceChip(label: String, selected: Boolean, onClick: () -> Unit, mod
 }
 
 @Composable
-fun ReceiptActionChip(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun ReceiptActionChip(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, trailingIcon: ImageVector? = null) {
     AssistChip(
         onClick = onClick,
         label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+        trailingIcon = trailingIcon?.let { icon -> { Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp)) } },
         modifier = modifier.height(48.dp),
         shape = ReceiptPillShape,
         border = AssistChipDefaults.assistChipBorder(enabled = true, borderColor = PenOnDark, borderWidth = 1.5.dp),
-        colors = AssistChipDefaults.assistChipColors(labelColor = PenOnDarkInk),
+        colors = AssistChipDefaults.assistChipColors(labelColor = PenOnDarkInk, trailingIconContentColor = PenOnDarkInk),
     )
 }
 

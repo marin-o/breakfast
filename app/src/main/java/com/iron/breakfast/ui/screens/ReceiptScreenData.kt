@@ -1,7 +1,6 @@
 package com.iron.breakfast.ui.screens
 
 import com.iron.breakfast.domain.FoodOrigin
-import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
@@ -17,13 +16,13 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.round
 
+/** B bundled (any generic food), P personal, O Open Food Facts. Only a missing food is "?". */
 internal fun sourceLetter(food: FoodRecord?): String = when {
     food == null -> "?"
-    food.origin == FoodOrigin.CUSTOM || food.personalOverride -> "P"
+    food.origin == FoodOrigin.CUSTOM -> "P"
     food.sourceName?.contains("open food facts", ignoreCase = true) == true -> "O"
     food.sourceId?.startsWith("off", ignoreCase = true) == true -> "O"
-    FoodCatalog.fixtures.any { it.id == food.id } -> "B"
-    else -> "?"
+    else -> "B"
 }
 
 internal data class ReceiptQuantityDisplay(
@@ -131,3 +130,18 @@ internal fun tokenRangesForInput(value: String): List<ReceiptTokenRange> {
         }
     }.toList()
 }
+
+/** "Per 100 g", "Per 250 ml": always the food's real nutrition basis. */
+internal fun basisLabel(amount: Double, unit: MeasureUnit): String = "Per ${amount.pretty()} ${unit.label}"
+
+/**
+ * Open Food Facts foods keep their source code in `sourceId`; once the local barcode no longer
+ * matches it, edited numbers must not be submitted under a different product code.
+ */
+internal fun contributionAvailable(food: FoodRecord): Boolean {
+    val barcode = food.barcode?.trim().orEmpty()
+    if (barcode.isEmpty()) return false
+    return sourceLetter(food) != "O" || food.sourceId?.trim() == barcode
+}
+
+internal fun foodCountLabel(count: Int): String = if (count == 1) "1 food" else "$count foods"

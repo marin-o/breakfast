@@ -41,9 +41,12 @@ class ReceiptScreenDataTest {
     fun sourceMarkerMapsBundledPersonalAndOpenFoodFacts() {
         assertEquals("B", sourceLetter(generic))
         assertEquals("P", sourceLetter(generic.copy(origin = FoodOrigin.CUSTOM)))
-        assertEquals("P", sourceLetter(generic.copy(personalOverride = true)))
+        assertEquals("B", sourceLetter(generic.copy(personalOverride = true)))
+        assertEquals("O", sourceLetter(generic.copy(personalOverride = true, sourceName = "Open Food Facts")))
         assertEquals("O", sourceLetter(generic.copy(sourceName = "Open Food Facts")))
-        assertEquals("?", sourceLetter(generic.copy(id = "local-generic", sourceName = "Local import", sourceId = "local-1")))
+        assertEquals("B", sourceLetter(generic.copy(id = "local-generic", sourceName = "Local import", sourceId = "local-1")))
+        assertEquals("B", sourceLetter(generic.copy(id = "never-a-fixture", sourceName = null, sourceId = null)))
+        assertEquals("?", sourceLetter(null))
         assertEquals("B", sourceLetter(FoodCatalog.fixtures.first { it.id == "banana" }))
         assertEquals("B", sourceLetter(FoodCatalog.fixtures.first { it.id == "oat_milk" }))
     }
@@ -137,5 +140,30 @@ class ReceiptScreenDataTest {
     fun earliestTimeUsesLocalZoneAndOldestEntry() {
         val later = entry.copy(savedAtEpochMs = 60 * 60 * 1000L)
         assertEquals("01:00", earliestMealTime(listOf(later, entry), ZoneOffset.ofHours(1)))
+    }
+
+    @Test
+    fun basisLabelUsesTheRealBasisAmountAndUnit() {
+        assertEquals("Per 100 ml", basisLabel(100.0, MeasureUnit.MILLILITER))
+        assertEquals("Per 100 g", basisLabel(100.0, MeasureUnit.GRAM))
+        assertEquals("Per 250 ml", basisLabel(250.0, MeasureUnit.MILLILITER))
+        assertEquals("Per 30.5 g", basisLabel(30.5, MeasureUnit.GRAM))
+    }
+
+    @Test
+    fun contributionIsHiddenOnceAnOffFoodBarcodeNoLongerMatchesItsSource() {
+        val off = generic.copy(sourceName = "Open Food Facts", sourceId = "5449000000996", barcode = "5449000000996")
+        assertEquals(true, contributionAvailable(off))
+        assertEquals(true, contributionAvailable(off.copy(personalOverride = true)))
+        assertEquals(false, contributionAvailable(off.copy(barcode = "4006381333931")))
+        assertEquals(false, contributionAvailable(off.copy(barcode = null)))
+        assertEquals(true, contributionAvailable(generic.copy(barcode = "4006381333931")))
+    }
+
+    @Test
+    fun foodCountPluralises() {
+        assertEquals("0 foods", foodCountLabel(0))
+        assertEquals("1 food", foodCountLabel(1))
+        assertEquals("13 foods", foodCountLabel(13))
     }
 }

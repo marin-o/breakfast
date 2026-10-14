@@ -88,6 +88,9 @@ data class FoodRecord(
     val personalOverride: Boolean = false
 ) {
     fun allNames(): List<String> = listOf(name) + aliases
+
+    /** Serving conversions worth showing: the nutrition basis unit itself is implicit. */
+    fun householdServings(): List<ServingConversion> = conversions.filter { it.unit != nutrition.unit && it.unit != MeasureUnit.UNKNOWN }
 }
 
 @Serializable
