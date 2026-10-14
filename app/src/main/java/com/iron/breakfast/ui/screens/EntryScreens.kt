@@ -11,7 +11,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -90,7 +96,7 @@ internal fun EntryDetailScreen(vm: BreakfastViewModel, entry: MealEntry) {
     val loggedDate = runCatching { LocalDate.parse(entry.dayKey) }.getOrNull()
     val loggedLabel = loggedDate?.let { "${it.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.ENGLISH)}, ${it.dayOfMonth} ${it.month.getDisplayName(TextStyle.FULL, Locale.ENGLISH)}" } ?: entry.dayKey
     Surface(Modifier.fillMaxSize(), color = Ground) {
-        Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 14.dp, end = 14.dp, bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(Modifier.fillMaxWidth().padding(top = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = vm::closeEntryDetail) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnGround) }
@@ -108,19 +114,19 @@ internal fun EntryDetailScreen(vm: BreakfastViewModel, entry: MealEntry) {
                     DetailFactRow("Match") { Text("Matched from ${entry.sourcePhrase}", color = Ink) }
                     Text("${entry.mealSlot.label()}, $loggedLabel, logged ${entry.savedAtEpochMs.formatClock()}", Modifier.padding(14.dp), color = InkSoft, style = MaterialTheme.typography.bodySmall)
                 }
-                Button(onClick = { vm.closeEntryDetail(); vm.beginQuickEdit(entry) }, Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(24.dp)) { Icon(Icons.Default.Edit, null); Text("Edit amount", Modifier.padding(start = 8.dp)) }
-                OutlinedButton(onClick = { vm.closeEntryDetail(); vm.beginFullEdit(entry) }, Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(24.dp)) { Text("Replace food") }
-                TextButton(onClick = { vm.openLibraryFoodDetail(entry) }, Modifier.fillMaxWidth().height(48.dp)) { Text("Open in Library", color = PenOnDarkInk, fontWeight = FontWeight.Bold) }
+                Button(onClick = { vm.closeEntryDetail(); vm.beginQuickEdit(entry) }, Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(24.dp)) { Icon(Icons.Default.Edit, null); Text("Edit amount", Modifier.padding(start = 8.dp)) }
+                OutlinedButton(onClick = { vm.closeEntryDetail(); vm.beginFullEdit(entry) }, Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(24.dp)) { Text("Replace food") }
+                TextButton(onClick = { vm.openLibraryFoodDetail(entry) }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Open in Library", color = PenOnDarkInk, fontWeight = FontWeight.Bold) }
             }
             Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding(), color = Paper, shape = RoundedCornerShape(6.dp)) {
-                TextButton(onClick = { vm.closeEntryDetail(); vm.delete(entry) }, Modifier.fillMaxWidth().height(60.dp)) { Icon(Icons.Default.Delete, null, tint = PrintRed); Text("Delete entry", Modifier.padding(start = 8.dp), color = PrintRed, fontWeight = FontWeight.Bold) }
+                TextButton(onClick = { vm.closeEntryDetail(); vm.delete(entry) }, Modifier.fillMaxWidth().heightIn(min = 60.dp)) { Icon(Icons.Default.Delete, null, tint = PrintRed); Text("Delete entry", Modifier.padding(start = 8.dp), color = PrintRed, fontWeight = FontWeight.Bold) }
             }
         }
     }
 }
 
 @Composable private fun androidx.compose.foundation.layout.RowScope.MacroFact(label: String, value: Double?) { Column(Modifier.weight(1f)) { Text(label, color = InkSoft, style = MaterialTheme.typography.labelSmall); Text(value?.let { "${it.pretty()} g" } ?: "—", color = Ink, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold) } }
-@Composable private fun DetailFactRow(label: String, value: @Composable () -> Unit) { Row(Modifier.fillMaxWidth().height(44.dp).dashedTopRule().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) { Text(label, color = InkSoft, style = MaterialTheme.typography.bodyMedium); value() } }
+@Composable private fun DetailFactRow(label: String, value: @Composable () -> Unit) { Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).dashedTopRule().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) { Text(label, color = InkSoft, style = MaterialTheme.typography.bodyMedium); value() } }
 @Composable private fun SourceBadge(source: String) { Box(Modifier.size(22.dp).border(1.5.dp, InkSoft, RoundedCornerShape(3.dp)), contentAlignment = Alignment.Center) { Text(source, color = InkSoft, style = MaterialTheme.typography.labelSmall) } }
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -140,12 +146,12 @@ internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
             Text(entry.foodName, style = MaterialTheme.typography.titleLarge, color = Ink, fontWeight = FontWeight.Bold)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { amount = adjustAmount(amount, -1.0) }, Modifier.size(48.dp)) { Icon(Icons.Default.Remove, "Decrease amount") }
-                OutlinedTextField(amount, { amount = it.filter { c -> c.isDigit() || c == '.' } }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { keyboard?.hide(); vm.onInput("${amount.trim()} ${unit.displayLabel()}"); vm.submit() }), modifier = Modifier.width(160.dp).height(64.dp).focusRequester(focusRequester))
+                OutlinedTextField(amount, { amount = it.filter { c -> c.isDigit() || c == '.' } }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { keyboard?.hide(); vm.onInput("${amount.trim()} ${unit.displayLabel()}"); vm.submit() }), modifier = Modifier.width(160.dp).heightIn(min = 64.dp).focusRequester(focusRequester))
                 IconButton(onClick = { amount = adjustAmount(amount, 1.0) }, Modifier.size(48.dp)) { Icon(Icons.Default.Add, "Increase amount") }
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { units.forEach { candidate -> ReceiptChoiceChip(candidate.displayLabel(), unit == candidate, { unit = candidate }) } }
             Text(preview?.let { "${it.resolvedBaseAmount.pretty()} ${food?.nutrition?.unit?.displayLabel() ?: unit.displayLabel()}, ${receiptKcal(it.nutrition.calories)} kcal · was ${receiptKcal(entry.nutritionSnapshot.calories)}" } ?: "Enter a positive amount · was ${receiptKcal(entry.nutritionSnapshot.calories)} kcal", color = InkSoft)
-            Button(onClick = { vm.onInput("${amount.trim()} ${unit.displayLabel()}"); vm.submit() }, enabled = amount.toDoubleOrNull()?.let { it > 0.0 } == true, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(24.dp)) { Text("Save") }
+            Button(onClick = { vm.onInput("${amount.trim()} ${unit.displayLabel()}"); vm.submit() }, enabled = amount.toDoubleOrNull()?.let { it > 0.0 } == true, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(24.dp)) { Text("Save") }
             if (vm.editInvalid) Text(vm.mealDraftError ?: "Could not save this entry.", color = PrintRed)
         }
     }
@@ -167,7 +173,7 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
     val preview = selectedFood?.let { food -> amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { vm.draftCalculation(food.id, it, unit) } }
     LaunchedEffect(selectedFood?.id) { if (unit !in units) unit = units.first() }
     Surface(Modifier.fillMaxSize(), color = Ground) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState())) {
             Row(Modifier.fillMaxWidth().padding(top = 18.dp, start = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = vm::cancelEdit) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnGround) }
                 Text("Edit entry", style = MaterialTheme.typography.titleLarge, color = OnGround, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -176,15 +182,15 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
             Surface(Modifier.padding(horizontal = 14.dp), color = Paper, shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(selectedFood?.name ?: entry.foodName, {}, readOnly = true, label = { Text("Food") }, singleLine = true, modifier = Modifier.weight(1f).height(56.dp))
-                        TextButton(onClick = vm::openEditFoodPicker, Modifier.height(48.dp).background(PenTonal, RoundedCornerShape(24.dp))) { Text("Replace", color = PenTonalInk, fontWeight = FontWeight.Bold) }
+                        OutlinedTextField(selectedFood?.name ?: entry.foodName, {}, readOnly = true, label = { Text("Food") }, singleLine = true, modifier = Modifier.weight(1f).heightIn(min = 56.dp))
+                        TextButton(onClick = vm::openEditFoodPicker, Modifier.heightIn(min = 48.dp).background(PenTonal, RoundedCornerShape(24.dp))) { Text("Replace", color = PenTonalInk, fontWeight = FontWeight.Bold) }
                     }
                     OutlinedTextField(amount, { amount = it.filter { c -> c.isDigit() || c == '.' } }, label = { Text("Amount") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.width(140.dp))
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { units.forEach { candidate -> ReceiptChoiceChip(candidate.displayLabel(), unit == candidate, { unit = candidate }) } }
                     Text("Meal", color = InkSoft)
                     MealSlot.entries.chunked(2).forEach { row -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { row.forEach { candidate -> ReceiptChoiceChip(candidate.label(), meal == candidate, { meal = candidate }, Modifier.weight(1f)) } } }
                     Text("Date", color = InkSoft)
-                    OutlinedButton(onClick = { DatePickerDialog(context, { _, year, month, day -> dayKey = LocalDate.of(year, month + 1, day).toString() }, date.year, date.monthValue - 1, date.dayOfMonth).show() }, Modifier.fillMaxWidth().height(48.dp)) { Text(date.format(DateTimeFormatter.ofPattern("EEE d MMMM", Locale.ENGLISH)), Modifier.weight(1f), color = Ink); Icon(Icons.Default.CalendarMonth, "Change date") }
+                    OutlinedButton(onClick = { DatePickerDialog(context, { _, year, month, day -> dayKey = LocalDate.of(year, month + 1, day).toString() }, date.year, date.monthValue - 1, date.dayOfMonth).show() }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(date.format(DateTimeFormatter.ofPattern("EEE d MMMM", Locale.ENGLISH)), Modifier.weight(1f), color = Ink); Icon(Icons.Default.CalendarMonth, "Change date") }
                 }
             }
             ReceiptTornEdge(fill = Paper)
@@ -205,7 +211,7 @@ internal fun EntryFoodPicker(vm: BreakfastViewModel) {
     ReceiptBottomSheet(onDismissRequest = vm::closeEditFoodPicker) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Replace food", style = MaterialTheme.typography.titleLarge, color = Ink, fontWeight = FontWeight.Bold)
-            vm.foods.filterNot { it.archived }.take(30).forEach { food -> TextButton(onClick = { vm.chooseEditFood(food) }, Modifier.fillMaxWidth().height(48.dp)) { Text(food.name, color = Ink) } }
+            vm.foods.filterNot { it.archived }.take(30).forEach { food -> TextButton(onClick = { vm.chooseEditFood(food) }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(food.name, color = Ink) } }
         }
     }
 }

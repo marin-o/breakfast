@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -45,6 +46,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
@@ -83,8 +85,7 @@ import com.iron.breakfast.ui.theme.PenTonal
 import com.iron.breakfast.ui.theme.PenTonalInk
 import com.iron.breakfast.ui.theme.PrintRed
 import com.iron.breakfast.ui.theme.Tray
-import com.iron.breakfast.ui.theme.doubleWidth
-import com.iron.breakfast.ui.theme.usesSingleWidthAt
+import com.iron.breakfast.ui.theme.receiptHeadingStyle
 import kotlin.math.roundToInt
 
 @Composable
@@ -104,7 +105,7 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
             Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = vm::closeMeal) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
                 Column(Modifier.weight(1f)) {
-                    val headingStyle = if (usesSingleWidthAt(LocalDensity.current.fontScale)) MaterialTheme.typography.headlineMedium else doubleWidth(MaterialTheme.typography.headlineMedium)
+                    val headingStyle = receiptHeadingStyle(target.label())
                     Text(target.label(), style = headingStyle, color = OnGround)
                     Text(subtitle, style = MaterialTheme.typography.titleSmall, color = OnGroundSoft)
                 }
@@ -121,11 +122,11 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(onClick = { vm.openFocusedLibrary(target) }, modifier = Modifier.height(48.dp)) {
+                Button(onClick = { vm.openFocusedLibrary(target) }, modifier = Modifier.heightIn(min = 48.dp)) {
                     Icon(Icons.Default.Add, contentDescription = null)
                     Text("Add food", modifier = Modifier.padding(start = 8.dp))
                 }
-                OutlinedButton(onClick = vm::beginScan, modifier = Modifier.height(48.dp)) { Text("Scan") }
+                OutlinedButton(onClick = vm::beginScan, modifier = Modifier.heightIn(min = 48.dp)) { Text("Scan") }
             }
         }
         item { vm.pendingContribution?.let { com.iron.breakfast.ContributionAction(vm) } }
@@ -204,8 +205,8 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel
     val density = LocalDensity.current
     val quantity = quantityRateDisplay(entry, food)
     Box(Modifier.fillMaxWidth().background(Paper).onSizeChanged { rowHeight = it.height }) {
-        Row(
-            Modifier.align(Alignment.CenterEnd).width(96.dp).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).background(PrintRed).clickable { vm.delete(entry); revealOffset = 0f }.padding(horizontal = 8.dp),
+        if (revealOffset < 0f) Row(
+            Modifier.align(Alignment.CenterEnd).width(96.dp).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).background(PrintRed).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { vm.delete(entry); revealOffset = 0f }.padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {

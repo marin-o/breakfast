@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -189,7 +190,7 @@ import com.iron.breakfast.ui.theme.Sticker
                 Column(Modifier.padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     ReceiptTonalButton("Search Open Food Facts", { vm.openSearch(vm.currentUnknownName(), fromResolver = true) })
                     ReceiptOutlinedButton("Create personal food", { vm.openCustom(vm.currentUnknownName(), fromResolver = true) })
-                    TextButton(onClick = vm::skipCurrentUnknown, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text("Skip", color = PenOnDarkInk) }
+                    TextButton(onClick = vm::skipCurrentUnknown, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Skip", color = PenOnDarkInk) }
                 }
             }
         }

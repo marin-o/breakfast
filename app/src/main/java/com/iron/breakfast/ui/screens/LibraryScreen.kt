@@ -63,6 +63,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -106,6 +107,7 @@ import com.iron.breakfast.ui.theme.PenTonal
 import com.iron.breakfast.ui.theme.PenTonalInk
 import com.iron.breakfast.ui.theme.PrintRed
 import com.iron.breakfast.ui.theme.Rule
+import com.iron.breakfast.ui.theme.receiptHeadingStyle
 import java.time.LocalDate
 import java.util.Locale
 
@@ -117,7 +119,7 @@ import java.util.Locale
         item {
             if (root) {
                 Row(Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Library", style = MaterialTheme.typography.headlineMedium, color = OnGround, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text("Library", style = receiptHeadingStyle("Library"), color = OnGround, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     Box {
                         IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Library menu", tint = OnGround) }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
@@ -136,7 +138,7 @@ import java.util.Locale
                 }
             }
             Surface(Modifier.fillMaxWidth(), color = Paper, shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp).height(52.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp).heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("By last logged", style = MaterialTheme.typography.titleMedium, color = Ink, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     Text(foodCountLabel(vm.libraryFoods.size), color = InkSoft, style = MaterialTheme.typography.bodySmall)
                 }
@@ -158,7 +160,7 @@ import java.util.Locale
     Surface(Modifier.fillMaxWidth(), color = Paper) {
         Column {
             Row(Modifier.fillMaxWidth().then(if (first) Modifier else Modifier.receiptDashedRule()).padding(start = 14.dp, end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f).heightIn(min = 48.dp).clickable { vm.openLibraryFood(food) }.padding(vertical = 6.dp), verticalArrangement = Arrangement.Center) {
+                Column(Modifier.weight(1f).heightIn(min = 48.dp).clickable(role = Role.Button) { vm.openLibraryFood(food) }.padding(vertical = 6.dp), verticalArrangement = Arrangement.Center) {
                     Text(food.name, color = Ink, style = MaterialTheme.typography.bodyLarge)
                     val detail = "${repeatAmount.pretty()} ${repeatUnit.displayLabel()}, ${if (last == null) "${defaultServingCalories(food)} kcal" else "last ${last.nutritionSnapshot.calories.pretty()} kcal"}"
                     Text(if (food.archived) "Archived, $detail" else detail, color = InkSoft, style = MaterialTheme.typography.bodySmall)
@@ -193,7 +195,7 @@ private fun defaultServingCalories(food: FoodRecord): String =
     ReceiptBottomTray(
         content = {
             Row(Modifier.fillMaxWidth().then(if (inMeal) Modifier.navigationBarsPadding() else Modifier), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(Modifier.weight(1f).height(54.dp).background(Paper, RoundedCornerShape(27.dp)).padding(start = 16.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f).heightIn(min = 54.dp).background(Paper, RoundedCornerShape(27.dp)).padding(start = 16.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Search, contentDescription = null, tint = InkSoft, modifier = Modifier.size(20.dp))
                     BasicTextField(
                         value = vm.input,
@@ -272,7 +274,7 @@ private fun defaultServingCalories(food: FoodRecord): String =
                 Button(
                     onClick = { amountSheetOpen = true },
                     enabled = !food.archived,
-                    modifier = Modifier.weight(1f).height(48.dp).semantics { contentDescription = logDescription },
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { contentDescription = logDescription },
                     shape = RoundedCornerShape(24.dp),
                     colors = if (amountSheetOpen) ButtonDefaults.buttonColors(containerColor = PenTonal, contentColor = PenTonalInk) else ButtonDefaults.buttonColors(),
                 ) { Text("Log to ${targetMeal.label()}") }
@@ -283,7 +285,7 @@ private fun defaultServingCalories(food: FoodRecord): String =
                     }
                 }
             }
-            if (contributionAvailable(food)) OutlinedButton(onClick = { vm.closeLibraryFood(); vm.openContributionForFood(food) }, Modifier.fillMaxWidth().padding(top = 42.dp).height(48.dp), shape = RoundedCornerShape(24.dp)) { Text("Contribute to Open Food Facts") }
+            if (contributionAvailable(food)) OutlinedButton(onClick = { vm.closeLibraryFood(); vm.openContributionForFood(food) }, Modifier.fillMaxWidth().padding(top = 42.dp).heightIn(min = 48.dp), shape = RoundedCornerShape(24.dp)) { Text("Contribute to Open Food Facts") }
             if (food.origin == FoodOrigin.CUSTOM && !food.archived) TextButton(onClick = { vm.archiveLibraryFood(food) }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Archive personal food", color = PrintRed) }
         }
     }
@@ -323,7 +325,7 @@ private fun defaultServingCalories(food: FoodRecord): String =
 }
 
 @Composable private fun AliasChip(alias: String, onRemove: () -> Unit) {
-    Row(Modifier.height(48.dp).border(1.5.dp, Rule, RoundedCornerShape(24.dp)).padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.heightIn(min = 48.dp).border(1.5.dp, Rule, RoundedCornerShape(24.dp)).padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(alias, color = PenTonalInk, style = MaterialTheme.typography.labelMedium)
         IconButton(onClick = onRemove, Modifier.size(48.dp)) { Icon(Icons.Default.Close, "Remove alias $alias", tint = PenTonalInk, modifier = Modifier.size(18.dp)) }
     }
@@ -424,7 +426,7 @@ private fun defaultServingCalories(food: FoodRecord): String =
             Text("Meal", color = InkSoft, style = MaterialTheme.typography.labelMedium)
             ReceiptMealChips(chosenMeal, { chosenMeal = it })
             Text(calc?.let { "${receiptKcal(it.nutrition.calories)} kcal, P ${it.nutrition.protein?.pretty() ?: "—"} g, C ${it.nutrition.carbohydrates?.pretty() ?: "—"} g, F ${it.nutrition.fat?.pretty() ?: "—"} g" } ?: "Enter a positive amount", Modifier.fillMaxWidth().receiptDashedRule().padding(top = 12.dp), color = InkSoft)
-            Button(onClick = { val amount = amountText.toDoubleOrNull(); if (amount != null && amount > 0.0 && calc?.supported == true) { vm.logLibraryFood(food, chosenMeal, amount, unit); onDismiss() } else vm.noticeForInvalidLibraryAmount() }, enabled = !food.archived && calc?.supported == true, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(24.dp)) { Text("Add to ${chosenMeal.label()}") }
+            Button(onClick = { val amount = amountText.toDoubleOrNull(); if (amount != null && amount > 0.0 && calc?.supported == true) { vm.logLibraryFood(food, chosenMeal, amount, unit); onDismiss() } else vm.noticeForInvalidLibraryAmount() }, enabled = !food.archived && calc?.supported == true, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(24.dp)) { Text("Add to ${chosenMeal.label()}") }
         }
     }
 }

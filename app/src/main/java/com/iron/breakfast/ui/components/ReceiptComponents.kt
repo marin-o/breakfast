@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.iron.breakfast.ui.components
 
 import androidx.compose.foundation.Canvas
@@ -12,6 +14,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -33,6 +37,7 @@ import com.iron.breakfast.ui.theme.ReceiptFieldPillShape
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.outlined.Straighten
@@ -74,7 +79,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -102,7 +109,7 @@ import com.iron.breakfast.ui.theme.ReceiptStickerShape
 import com.iron.breakfast.ui.theme.Rule
 import com.iron.breakfast.ui.theme.Sticker
 import com.iron.breakfast.ui.theme.Tray
-import com.iron.breakfast.ui.theme.doubleWidth
+import com.iron.breakfast.ui.theme.receiptHeadingStyle
 import com.iron.breakfast.ui.theme.usesSingleWidthAt
 import androidx.compose.ui.platform.LocalDensity
 
@@ -142,12 +149,8 @@ fun ReceiptTicket(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val largeFont = usesSingleWidthAt(LocalDensity.current.fontScale)
-    val titleStyle = if (mealName.length <= 9 && !largeFont) {
-        doubleWidth(MaterialTheme.typography.headlineMedium)
-    } else {
-        MaterialTheme.typography.headlineMedium
-    }
+    val stackTime = usesSingleWidthAt(LocalDensity.current.fontScale) && time != null
+    val titleStyle = receiptHeadingStyle(mealName)
     Column(modifier) {
         Column(
             Modifier
@@ -155,44 +158,37 @@ fun ReceiptTicket(
                 .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
                 .background(Paper),
         ) {
-            if (largeFont && time != null) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(PrintRed)
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
-                ) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(mealName, style = titleStyle, color = OnGround, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        Text(total, style = MaterialTheme.typography.titleLarge, color = OnGround, fontWeight = FontWeight.Bold)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = TicketBandHeight)
+                    .background(PrintRed)
+                    .clickable(enabled = onMealClick != null, role = Role.Button) { onMealClick?.invoke() }
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (stackTime) {
+                    Column(Modifier.weight(1f)) {
+                        Text(mealName, style = titleStyle, color = OnGround, fontWeight = FontWeight.Bold)
+                        Text(time!!, style = MaterialTheme.typography.bodySmall, color = com.iron.breakfast.ui.theme.OnRedSoft)
                     }
-                    Text(time, style = MaterialTheme.typography.bodySmall, color = com.iron.breakfast.ui.theme.OnRedSoft)
+                } else {
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(mealName, style = titleStyle, color = OnGround, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f, fill = false))
+                        if (time != null) Text(time, style = MaterialTheme.typography.bodySmall, color = com.iron.breakfast.ui.theme.OnRedSoft)
+                    }
                 }
-            } else {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(TicketBandHeight)
-                        .background(PrintRed)
-                        .clickable(enabled = onMealClick != null) { onMealClick?.invoke() }
-                        .padding(horizontal = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Text(mealName, style = titleStyle, color = OnGround, fontWeight = FontWeight.Bold)
-                    if (time != null) Text(time, style = MaterialTheme.typography.bodySmall, color = com.iron.breakfast.ui.theme.OnRedSoft, modifier = Modifier.weight(1f))
-                    else Spacer(Modifier.weight(1f))
-                    Text(total, style = MaterialTheme.typography.titleLarge, color = OnGround, fontWeight = FontWeight.Bold)
-                }
+                Text(total, style = MaterialTheme.typography.titleLarge, color = OnGround, fontWeight = FontWeight.Bold, maxLines = 1)
             }
             Column(content = content)
             if (addFoodLabel != null && onAddFood != null) {
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .height(TicketAddHeight)
+                        .heightIn(min = TicketAddHeight)
                         .background(PenTonal)
-                        .clickable(onClick = onAddFood)
+                        .clickable(role = Role.Button, onClick = onAddFood)
                         .padding(horizontal = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -218,7 +214,7 @@ fun ReceiptSlip(
     Surface(modifier = modifier, color = Paper, shape = ReceiptPaperShape) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                Text(label, style = MaterialTheme.typography.titleSmall, color = InkSoft)
+                Text(label, style = MaterialTheme.typography.titleSmall, color = InkSoft, modifier = Modifier.weight(1f).padding(end = 8.dp))
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(total, style = MaterialTheme.typography.displayLarge, color = Ink)
                     Text(" $unit", style = MaterialTheme.typography.titleSmall, color = InkSoft)
@@ -226,7 +222,7 @@ fun ReceiptSlip(
             }
             if (macros.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth().receiptDashedRule().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                FlowRow(Modifier.fillMaxWidth().receiptDashedRule().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     macros.forEach { Text(it, style = MaterialTheme.typography.labelMedium, color = Ink) }
                 }
             }
@@ -264,7 +260,7 @@ fun ReceiptEntryRow(
         modifier
             .fillMaxWidth()
             .then(if (fresh) Modifier.background(com.iron.breakfast.ui.theme.PaperFresh) else Modifier)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .then(if (first) Modifier else Modifier.receiptDashedRule())
             .padding(horizontal = 14.dp, vertical = 11.dp),
         verticalAlignment = Alignment.Top,
@@ -273,7 +269,7 @@ fun ReceiptEntryRow(
             Text(name, color = Ink, style = MaterialTheme.typography.bodyLarge)
             if (approximate != null || quantityLine.isNotBlank()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (approximate != null) ApproxTag(approximate)
-                if (quantityLine.isNotBlank()) Text(quantityLine, color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                if (quantityLine.isNotBlank()) Text(quantityLine, color = InkSoft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f, fill = false))
             }
         }
         Column(Modifier.padding(start = 10.dp), horizontalAlignment = Alignment.End) {
@@ -295,7 +291,7 @@ fun sourceLabel(letter: String): String = when (letter) {
 @Composable
 fun SourceBox(source: String, modifier: Modifier = Modifier) {
     val description = "Source: ${sourceLabel(source).lowercase()}"
-    Box(modifier.size(22.dp).border(1.5.dp, BoxGrey, RoundedCornerShape(3.dp)).semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
+    Box(modifier.defaultMinSize(22.dp, 22.dp).border(1.5.dp, BoxGrey, RoundedCornerShape(3.dp)).semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
         Text(source, color = InkSoft, style = MaterialTheme.typography.labelSmall)
     }
 }
@@ -373,11 +369,11 @@ fun ReceiptSticker(
             .background(Sticker, ReceiptStickerShape)
             .padding(start = 10.dp, top = 8.dp, end = 10.dp, bottom = 9.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(name, color = Ink, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(name, color = Ink, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Text(value, color = Ink, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
         }
-        Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (approximateDetail) ApproxTag(detail) else ReceiptTag(detail)
             fields.forEach { field ->
                 ReceiptTag(field)
@@ -402,9 +398,9 @@ fun ReceiptChoiceChip(label: String, selected: Boolean, onClick: () -> Unit, mod
     FilterChip(
         selected = selected,
         onClick = onClick,
-        label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+        label = { Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis) },
         leadingIcon = if (selected) ({ Icon(Icons.Default.Check, contentDescription = null, Modifier.size(16.dp)) }) else null,
-        modifier = modifier.height(48.dp),
+        modifier = modifier.heightIn(min = 48.dp),
         shape = ReceiptPillShape,
         border = FilterChipDefaults.filterChipBorder(enabled = true, selected = selected, borderColor = Rule, selectedBorderColor = PenBlue, borderWidth = 1.5.dp, selectedBorderWidth = 2.dp),
         colors = FilterChipDefaults.filterChipColors(containerColor = Color.Transparent, labelColor = PenTonalInk, selectedContainerColor = PenTonal, selectedLabelColor = PenTonalInk),
@@ -415,9 +411,9 @@ fun ReceiptChoiceChip(label: String, selected: Boolean, onClick: () -> Unit, mod
 fun ReceiptActionChip(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, trailingIcon: ImageVector? = null) {
     AssistChip(
         onClick = onClick,
-        label = { Text(label, style = MaterialTheme.typography.labelMedium) },
+        label = { Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis) },
         trailingIcon = trailingIcon?.let { icon -> { Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp)) } },
-        modifier = modifier.height(48.dp),
+        modifier = modifier.heightIn(min = 48.dp),
         shape = ReceiptPillShape,
         border = AssistChipDefaults.assistChipBorder(enabled = true, borderColor = PenOnDark, borderWidth = 1.5.dp),
         colors = AssistChipDefaults.assistChipColors(labelColor = PenOnDarkInk, trailingIconContentColor = PenOnDarkInk),
@@ -433,9 +429,9 @@ fun ReceiptTonalChip(
 ) {
     AssistChip(
         onClick = onClick,
-        label = { Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold) },
+        label = { Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis) },
         leadingIcon = leadingIcon?.let { icon -> { Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp)) } },
-        modifier = modifier.height(48.dp),
+        modifier = modifier.heightIn(min = 48.dp),
         shape = ReceiptPillShape,
         border = null,
         colors = AssistChipDefaults.assistChipColors(
@@ -462,7 +458,7 @@ fun ReceiptQuickAddField(
     Row(
         modifier
             .fillMaxWidth()
-            .height(if (expanded) 76.dp else QuickAddHeight)
+            .heightIn(min = if (expanded) 76.dp else QuickAddHeight)
             .background(Paper, RoundedCornerShape(if (expanded) 26.dp else 27.dp))
             .border(if (focused) 2.dp else 0.dp, PenOnDark, RoundedCornerShape(if (expanded) 26.dp else 27.dp))
             .padding(start = 18.dp, end = 4.dp),
@@ -501,7 +497,7 @@ fun ReceiptSnackbar(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = modifier.height(48.dp),
+        modifier = modifier.heightIn(min = 48.dp),
         color = Paper,
         contentColor = Ink,
         shape = ReceiptPaperShape,
@@ -550,7 +546,7 @@ fun ReceiptBottomTray(content: @Composable () -> Unit, nav: @Composable () -> Un
 @Composable
 fun ReceiptNavigationBar(selectedDaily: Boolean, onDaily: () -> Unit, onLibrary: () -> Unit, modifier: Modifier = Modifier) {
     NavigationBar(
-        modifier = modifier.height(80.dp),
+        modifier = modifier,
         containerColor = Tray,
         contentColor = OnGround,
     ) {
@@ -605,7 +601,7 @@ fun ReceiptSearchPill(
 ) {
     Row(
         modifier
-            .height(54.dp)
+            .heightIn(min = 54.dp)
             .background(Paper, ReceiptFieldPillShape)
             .border(2.dp, PenOnDark, ReceiptFieldPillShape)
             .padding(start = 18.dp, end = 4.dp),
@@ -709,9 +705,9 @@ fun ReceiptPrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier =
     androidx.compose.material3.Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.then(if (fillWidth) Modifier.fillMaxWidth() else Modifier).height(48.dp),
+        modifier = modifier.then(if (fillWidth) Modifier.fillMaxWidth() else Modifier).heightIn(min = 48.dp),
         shape = ReceiptPillShape,
-    ) { Text(text, fontWeight = FontWeight.Bold, maxLines = 1) }
+    ) { Text(text, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center) }
 }
 
 @Composable
@@ -719,21 +715,21 @@ fun ReceiptTonalButton(text: String, onClick: () -> Unit, modifier: Modifier = M
     androidx.compose.material3.Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.fillMaxWidth().height(48.dp),
+        modifier = modifier.fillMaxWidth().heightIn(min = 48.dp),
         shape = ReceiptPillShape,
         colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = PenTonal, contentColor = PenTonalInk),
-    ) { Text(text, fontWeight = FontWeight.Bold, maxLines = 1) }
+    ) { Text(text, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center) }
 }
 
 @Composable
 fun ReceiptOutlinedButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     androidx.compose.material3.OutlinedButton(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth().height(48.dp),
+        modifier = modifier.fillMaxWidth().heightIn(min = 48.dp),
         shape = ReceiptPillShape,
         border = androidx.compose.foundation.BorderStroke(1.5.dp, PenOnDark),
         colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = PenOnDarkInk),
-    ) { Text(text, maxLines = 1) }
+    ) { Text(text, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center) }
 }
 
 /** A plain paper slip: padded paper with the 6dp radius and no band. */

@@ -65,8 +65,7 @@ import com.iron.breakfast.ui.theme.OnGround
 import com.iron.breakfast.ui.theme.OnGroundSoft
 import com.iron.breakfast.ui.theme.PaperFresh
 import com.iron.breakfast.ui.theme.Tray
-import com.iron.breakfast.ui.theme.doubleWidth
-import com.iron.breakfast.ui.theme.usesSingleWidthAt
+import com.iron.breakfast.ui.theme.receiptHeadingStyle
 import com.iron.breakfast.ui.theme.PenTonalInk
 import com.iron.breakfast.ui.theme.PenOnDarkInk
 import java.time.LocalDate
@@ -124,7 +123,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                         Icon(Icons.Default.ChevronLeft, contentDescription = "Previous day")
                     }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        val headingStyle = if (usesSingleWidthAt(androidx.compose.ui.platform.LocalDensity.current.fontScale)) MaterialTheme.typography.headlineMedium else doubleWidth(MaterialTheme.typography.headlineMedium)
+                        val headingStyle = receiptHeadingStyle(dayName)
                         Text(dayName, style = headingStyle, color = OnGround)
                         Text(subtitle, style = MaterialTheme.typography.titleSmall, color = OnGroundSoft)
                     }

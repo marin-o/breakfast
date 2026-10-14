@@ -1,7 +1,9 @@
 <resources>
+    <!-- Dark-only Receipt v5: graphite window so launch never flashes white. Bars are redrawn edge-to-edge in code. -->
     <style name="Theme.Breakfast" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">monospace</item>
         <item name="android:colorAccent">#3D63D9</item>
+        <item name="android:colorBackground">#2A2730</item>
         <item name="android:windowBackground">#2A2730</item>
         <item name="android:navigationBarColor">#1F1D24</item>
         <item name="android:statusBarColor">#2A2730</item>

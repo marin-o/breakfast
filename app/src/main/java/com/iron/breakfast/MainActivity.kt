@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -21,6 +22,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -149,6 +159,7 @@ import com.iron.breakfast.ui.screens.ScannerScreen
 import com.iron.breakfast.ui.components.ReceiptNavigationBar
 import com.iron.breakfast.ui.theme.BreakfastTheme
 import com.iron.breakfast.ui.theme.Ground
+import com.iron.breakfast.ui.theme.Tray
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
@@ -166,7 +177,11 @@ import kotlin.math.hypot
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // Dark-only app: light bar icons regardless of the system theme, graphite scrims behind them.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Ground.toArgb()),
+            navigationBarStyle = SystemBarStyle.dark(Tray.toArgb()),
+        )
         setContent { BreakfastTheme { IronApp() } }
     }
 }
@@ -411,9 +426,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             }
         }
     }
-    fun openContributionForEntry(entry: MealEntry) {
-        openContributionForFood(foods.firstOrNull { it.id == entry.foodId })
-    }
     fun openContributionForFood(food: FoodRecord?) {
         contributionPreflightToken++
         val draft = food?.let { OffContributionDraft.fromFood(it) }
@@ -633,8 +645,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             if (quickHintSession == hintSession && entryEditMode == EntryEditMode.QUICK) quickEditHintVisible = false
         }
     }
-    /** Kept as the entry-point name for callers that predate the two edit modes. */
-    fun beginEdit(entry: MealEntry) = beginQuickEdit(entry)
     fun beginFullEdit(entry: MealEntry) {
         if (busy) return
         editReturnToDaily = slot == null
@@ -753,9 +763,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 loggedBatchMessage = "${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} logged to ${target.label()}"
             }.onFailure { mealDraftError = it.message ?: "Could not save this meal." }.also { busy = false }
         }
-    }
-    private fun parseMealMarker(value: String): MealSlot? {
-        return mealMarkers(value).singleOrNull()
     }
     private fun mealMarkers(value: String): List<MealSlot> = mealMarkerSlots(value)
     private fun removeMealMarker(value: String, target: MealSlot): String = removeMealMarkerToken(value, target)
@@ -878,7 +885,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun onProductProtein(v: String) { productProtein = v }
     fun onProductCarbs(v: String) { productCarbs = v }
     fun onProductFat(v: String) { productFat = v }
-    fun editInput(v: String) { input = v }
     fun currentUnknownName(): String = unknownQueue.firstOrNull()?.let { parser.parse(it).foodPhrase.trim().ifBlank { it.trim() } }.orEmpty()
     fun openSearch(prefill: String? = null, fromResolver: Boolean = false) {
         if (!fromResolver && unknownQueue.isNotEmpty()) abandonUnknownResolution()
@@ -1266,12 +1272,16 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     }
     Scaffold(
         containerColor = Ground,
+        contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout),
         bottomBar = {
-            when {
-                vm.entryEditMode != EntryEditMode.NONE -> Unit
-                vm.libraryOpen -> LibraryComposer(vm)
-                vm.slot == null -> DailyComposer(vm)
-                else -> MealComposer(vm, vm.slot!!)
+            // The tray rides above the keyboard and clear of a side display cutout.
+            Box(Modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).imePadding()) {
+                when {
+                    vm.entryEditMode != EntryEditMode.NONE -> Unit
+                    vm.libraryOpen -> LibraryComposer(vm)
+                    vm.slot == null -> DailyComposer(vm)
+                    else -> MealComposer(vm, vm.slot!!)
+                }
             }
         }
     ) { pad ->
@@ -1349,35 +1359,6 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
         confirmButton = { TextButton(vm::dismissLibraryBatchMealPicker) { Text("Cancel") } }
     )
 }
-
-
-
-
-@Composable private fun EntryDetailDialog(vm: BreakfastViewModel, entry: MealEntry) {
-    val food = vm.foods.firstOrNull { it.id == entry.foodId }
-    AlertDialog(
-        onDismissRequest = vm::closeEntryDetail,
-        title = { Text("Edit existing entry") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                food?.let { Text(listOfNotNull(it.brand, it.sourceName ?: it.category, it.barcode?.let { code -> "Barcode $code" }).joinToString(" · ")) }
-                Text("Logged nutrition snapshot: ${entry.nutritionSnapshot.calories.pretty()} kcal  ·  P ${entry.nutritionSnapshot.protein.macro()}  C ${entry.nutritionSnapshot.carbohydrates.macro()}  F ${entry.nutritionSnapshot.fat.macro()}")
-                food?.let { Text("Current catalogue metadata (may have changed): ${it.nutrition.amount.pretty()} ${it.nutrition.unit.label} basis", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                Text("Logged amount: ${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}")
-                Text("${entry.dayKey} · ${entry.mealSlot.label()}")
-                if (entry.approximateConversion) Text("Approximate conversion: ${entry.conversionProvenance}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("${entry.foodName} · ${entry.dayKey} · ${entry.mealSlot.label()}", style = MaterialTheme.typography.titleMedium)
-                Text("Save changes updates this exact diary entry and keeps its nutrition snapshot.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                TextButton({ vm.closeEntryDetail(); vm.beginFullEdit(entry) }, Modifier.fillMaxWidth()) { Text("Replace food") }
-                if (food != null && OffContributionDraft.fromFood(food) != null) TextButton({ vm.openContributionForEntry(entry) }, Modifier.fillMaxWidth()) { Text("Contribute to Open Food Facts") }
-                TextButton({ vm.closeEntryDetail(); vm.delete(entry) }, Modifier.fillMaxWidth()) { Text("Delete entry") }
-            }
-        },
-        confirmButton = { Button({ vm.closeEntryDetail(); vm.beginQuickEdit(entry) }) { Text("Edit and save this entry") } },
-        dismissButton = { TextButton(vm::closeEntryDetail) { Text("Close") } }
-    )
-}
-
 
 
 
