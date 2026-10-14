@@ -42,9 +42,12 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -81,6 +84,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.activity.compose.BackHandler
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
@@ -165,6 +170,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var scannerOpen by mutableStateOf(false); private set
     var selectedProduct by mutableStateOf<FoodRecord?>(null); private set
     var selectedProductFromScan by mutableStateOf(false); private set
+    var productMealPickerOpen by mutableStateOf(false); private set
     var productAmount by mutableStateOf("100"); private set
     var productUnit by mutableStateOf("g"); private set
     var productName by mutableStateOf(""); private set
@@ -195,6 +201,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var libraryFoods by mutableStateOf<List<FoodRecord>>(emptyList()); private set
     var selectedLibraryFood by mutableStateOf<FoodRecord?>(null); private set
     var libraryMealPickerFood by mutableStateOf<FoodRecord?>(null); private set
+    var expandedLibraryFoodId by mutableStateOf<String?>(null); private set
+    private var libraryPendingAmount: Double? = null
+    private var libraryPendingUnit: MeasureUnit? = null
+    private var libraryPendingBatch: List<LibraryLogDraft> = emptyList()
+    var libraryBatchMealPickerOpen by mutableStateOf(false); private set
     var selectedEntry by mutableStateOf<MealEntry?>(null); private set
     private var selectedEntryId: String? = savedState["entry_id"]
     private var barcodeRequestToken = 0L
@@ -231,45 +242,82 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private fun selectMeal(value: MealSlot?) { slot = value; savedState["meal_slot"] = value?.name }
     fun shiftSelectedDay(delta: Long) { selectDay(runCatching { LocalDate.parse(selectedDayKey).plusDays(delta).toString() }.getOrDefault(selectedDayKey)); barcodeRequestToken++ }
     fun goToday() { selectDay(dayKeyForEpochMs(System.currentTimeMillis())); barcodeRequestToken++ }
-    fun openLibrary() { libraryOpen = true; libraryQuery = ""; libraryOnlyPersonal = false; libraryIncludeArchived = false; refreshLibrary() }
-    fun closeLibrary() { libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null }
-    fun cancelLibraryMealPicker() { libraryMealPickerFood = null }
+    fun openLibrary() { cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryOnlyPersonal = false; libraryIncludeArchived = false; refreshLibrary() }
+    fun closeLibrary() { libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null; expandedLibraryFoodId = null; libraryPendingAmount = null; libraryPendingUnit = null; libraryPendingBatch = emptyList(); libraryBatchMealPickerOpen = false; selectMeal(null) }
+    fun cancelLibraryMealPicker() { libraryMealPickerFood = null; libraryPendingAmount = null; libraryPendingUnit = null }
     fun onLibraryQuery(value: String) { libraryQuery = value; refreshLibrary() }
     fun toggleLibraryPersonal() { libraryOnlyPersonal = !libraryOnlyPersonal; refreshLibrary() }
     fun toggleLibraryArchived() { libraryIncludeArchived = !libraryIncludeArchived; refreshLibrary() }
     fun refreshLibrary() {
         if (!ready) return
         viewModelScope.launch {
+            val latestByFood = entries.groupBy { it.foodId }.mapValues { (_, values) -> values.maxByOrNull { it.savedAtEpochMs } }
             libraryFoods = engine.foodsMatching(libraryQuery, libraryIncludeArchived)
                 .filter { !libraryOnlyPersonal || it.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM || it.personalOverride }
-                .sortedBy { it.name.lowercase(Locale.ROOT) }
+                .sortedWith(compareByDescending<FoodRecord> { latestByFood[it.id]?.savedAtEpochMs ?: Long.MIN_VALUE }
+                    .thenBy { it.name.lowercase(Locale.ROOT) })
         }
     }
     fun openLibraryFood(food: FoodRecord) { selectedLibraryFood = food }
     fun closeLibraryFood() { selectedLibraryFood = null }
-    fun logLibraryFood(food: FoodRecord) {
+    fun lastLoggedEntry(food: FoodRecord): MealEntry? = entries.asSequence()
+        .filter { it.foodId == food.id }
+        .maxByOrNull { it.savedAtEpochMs }
+
+    fun toggleLibraryFoodPicker(food: FoodRecord) {
+        expandedLibraryFoodId = if (expandedLibraryFoodId == food.id) null else food.id
+    }
+    fun collapseLibraryFoodPicker() { expandedLibraryFoodId = null }
+    fun noticeForInvalidLibraryAmount() { notice = "Enter a positive amount and a supported unit such as g, ml, tbsp, tsp, or piece." }
+
+    fun logLibraryFood(food: FoodRecord, amount: Double = lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount, unit: MeasureUnit = lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit) {
         if (!ready || busy || food.archived) return
         val target = slot
-        if (target == null) { libraryMealPickerFood = food; return }
+        if (target == null) {
+            libraryPendingAmount = amount
+            libraryPendingUnit = unit
+            libraryMealPickerFood = food
+            return
+        }
+        logLibraryFood(food, target, amount, unit)
+    }
+
+    fun logLibraryFood(food: FoodRecord, target: MealSlot, amount: Double = lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount, unit: MeasureUnit = lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit) {
+        if (!ready || busy || food.archived) return
+        logLibraryBatch(listOf(libraryLogDraft(food, target, amount, unit)), target)
+    }
+
+    private fun logLibraryBatch(drafts: List<LibraryLogDraft>, target: MealSlot) {
+        if (!ready || busy || drafts.isEmpty()) return
+        val capturedDayKey = selectedDayKey
         busy = true
         viewModelScope.launch {
-            runCatching { engine.cacheFoodAndLog(food, food.defaultAmount, food.defaultUnit, target, selectedDayKey) }
-                .onSuccess { refresh(); notice = "Added to ${target.label()} on $selectedDayKey" }
+            runCatching { drafts.forEach { draft -> engine.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, capturedDayKey) } }
+                .onSuccess { refresh(); refreshLibrary(); notice = "Added ${drafts.size} food${if (drafts.size == 1) "" else "s"} to ${target.label()} on $capturedDayKey" }
                 .onFailure { notice = it.message ?: "Could not log this food." }
                 .also { busy = false }
         }
+    }
+
+    fun chooseLibraryBatchMeal(target: MealSlot) {
+        val drafts = libraryPendingBatch
+        libraryPendingBatch = emptyList()
+        libraryBatchMealPickerOpen = false
+        logLibraryBatch(drafts, target)
+    }
+    fun dismissLibraryBatchMealPicker() {
+        libraryPendingBatch = emptyList()
+        libraryBatchMealPickerOpen = false
     }
     fun chooseLibraryMeal(target: MealSlot) {
         val food = libraryMealPickerFood ?: return
         libraryMealPickerFood = null
         if (!ready || busy) return
-        busy = true
-        viewModelScope.launch {
-            runCatching { engine.cacheFoodAndLog(food, food.defaultAmount, food.defaultUnit, target, selectedDayKey) }
-                .onSuccess { refresh(); notice = "Added to ${target.label()} on $selectedDayKey" }
-                .onFailure { notice = it.message ?: "Could not log this food." }
-                .also { busy = false }
-        }
+        val amount = libraryPendingAmount ?: lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount
+        val unit = libraryPendingUnit ?: lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit
+        libraryPendingAmount = null
+        libraryPendingUnit = null
+        logLibraryFood(food, target, amount, unit)
     }
     fun archiveLibraryFood(food: FoodRecord) {
         if (!ready || busy || food.origin != com.iron.breakfast.domain.FoodOrigin.CUSTOM) return
@@ -341,10 +389,91 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }
     }
     fun openMeal(s: MealSlot) { abandonUnknownResolution(); selectMeal(s); barcodeRequestToken++; cancelEdit(); mealDraftError = null }
+    fun openFocusedLibrary(meal: MealSlot?, query: String = "") {
+        abandonUnknownResolution()
+        cancelEdit()
+        selectMeal(meal)
+        libraryOpen = true
+        libraryQuery = query
+        libraryOnlyPersonal = false
+        libraryIncludeArchived = false
+        refreshLibrary()
+    }
     fun closeMeal() { abandonUnknownResolution(clearDraft = true); selectMeal(null); barcodeRequestToken++; cancelEdit() }
-    fun onInput(v: String) { input = v }
+    fun onInput(v: String) {
+        input = v
+        if (libraryOpen && parser.parse(v).amount == null) onLibraryQuery(v)
+    }
+    fun submitLibraryInput() {
+        val raw = input.trim()
+        if (raw.isBlank() || !ready || busy) return
+        val markers = mealMarkers(raw)
+        if (markers.size > 1) { notice = "Choose one meal marker."; return }
+        val target = markers.singleOrNull()
+        val effectiveTarget = target ?: slot
+        val cleaned = target?.let { removeMealMarker(raw, it) } ?: raw
+        val segments = libraryInputSegments(cleaned)
+        if (segments.isEmpty() || segments.all { it.amount == null }) {
+            onLibraryQuery(segments.joinToString(", ") { it.foodPhrase })
+            input = ""
+            return
+        }
+        if (segments.any { it.amount == null }) {
+            if (effectiveTarget == null) {
+                libraryPendingBatch = emptyList()
+                notice = "Choose a meal before adding a mixed batch with an unquantified food."
+                mealPickerOpen = true
+                return
+            }
+            submitLibraryMixedInput(cleaned, effectiveTarget)
+            return
+        }
+        viewModelScope.launch {
+            val drafts = segments.mapNotNull { segment ->
+                engine.search(segment.foodPhrase).firstOrNull()?.food?.let { food ->
+                    LibraryLogDraft(food, segment.amount!!, segment.unit ?: food.defaultUnit)
+                }
+            }
+            withContext(Dispatchers.Main) {
+                if (drafts.size != segments.size) {
+                    onLibraryQuery(segments.joinToString(", ") { it.foodPhrase })
+                    notice = "One or more foods are not in your local library."
+                    return@withContext
+                }
+                if (effectiveTarget != null) logLibraryBatch(drafts, effectiveTarget) else {
+                    libraryPendingBatch = drafts
+                    libraryBatchMealPickerOpen = true
+                }
+                input = ""
+            }
+        }
+    }
+
+    private fun submitLibraryMixedInput(cleaned: String, target: MealSlot) {
+        val capturedInput = input
+        val capturedDayKey = selectedDayKey
+        busy = true
+        viewModelScope.launch {
+            runCatching { engine.save(cleaned, mealSlot = target, dayKey = capturedDayKey) }
+                .onSuccess { saved ->
+                    refresh()
+                    if (input == capturedInput) input = saved.unresolvedSegments.joinToString(", ")
+                    unknownQueue = saved.unresolvedSegments
+                    unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }
+                    resolutionContinuation = saved.unresolvedSegments.isNotEmpty()
+                    resolverOpen = saved.unresolvedSegments.isNotEmpty()
+                    mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
+                    feedbackIds = saved.entries.mapTo(mutableSetOf()) { it.id }
+                    feedbackUntil = System.currentTimeMillis() + 30_000L
+                    if (slot == null) selectMeal(target)
+                }
+                .onFailure { notice = it.message ?: "Could not save this batch." }
+                .also { busy = false }
+        }
+    }
     fun beginQuickEdit(entry: MealEntry) {
         if (busy) return
+        selectMeal(entry.mealSlot)
         editSession += 1
         editingEntryId = entry.id
         editingFoodName = entry.foodName
@@ -363,6 +492,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun beginEdit(entry: MealEntry) = beginQuickEdit(entry)
     fun beginFullEdit(entry: MealEntry) {
         if (busy) return
+        selectMeal(entry.mealSlot)
         editSession += 1
         editingEntryId = entry.id
         editingFoodName = null
@@ -406,6 +536,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             return
         }
         if (input.isBlank()) { mealDraftError = "Add at least one food."; return }
+        amountlessDailySearch(input)?.let { intent ->
+            openFocusedLibrary(intent.meal, intent.phrase)
+            input = ""
+            return
+        }
         val target = slot ?: run {
             val markers = mealMarkers(input)
             when {
@@ -567,7 +702,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             }
         }
     }
-    fun clearSelectedProduct() { selectedProduct = null; selectedProductFromScan = false; if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false }
+    fun clearSelectedProduct() { selectedProduct = null; selectedProductFromScan = false; productMealPickerOpen = false; if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false }
+    fun dismissProductMealPicker() { productMealPickerOpen = false }
     fun onProductAmount(v: String) { productAmount = v }
     fun onProductUnit(v: String) { productUnit = v }
     fun onProductName(v: String) { productName = v }
@@ -657,7 +793,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun addSelected() {
         val food = selectedProduct ?: return
         if (!ready || busy) return
-        val target = slot ?: run { notice = "Open a meal before adding this food."; return }
+        val target = slot ?: run { productMealPickerOpen = true; return }
         val draft = productDraft(food) ?: run {
             notice = "Enter a positive amount, a supported unit, and valid calories."
             return
@@ -672,10 +808,50 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                     pendingContribution = contributionDraftAfterLocalSave(draft.food, fromScan)
                     selectedProductFromScan = false
                     if (resolvesQueue) advanceUnknownQueue() else resolutionContinuation = false
-                    refresh()
+                    refresh(); refreshLibrary()
                     notice = "Added to ${target.label()}"
                 }
                 .onFailure { notice = it.message ?: "This amount cannot be logged." }
+                .also { busy = false }
+        }
+    }
+
+    fun chooseProductMeal(target: MealSlot) {
+        val food = selectedProduct ?: return
+        val draft = productDraft(food) ?: run { notice = "Enter a positive amount, a supported unit, and valid calories."; return }
+        productMealPickerOpen = false
+        if (!ready || busy) return
+        val fromScan = selectedProductFromScan
+        busy = true
+        viewModelScope.launch {
+            runCatching { engine.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, selectedDayKey) }
+                .onSuccess {
+                    selectedProduct = null
+                    selectedProductFromScan = false
+                    pendingContribution = contributionDraftAfterLocalSave(draft.food, fromScan)
+                    refresh(); refreshLibrary()
+                    notice = "Added to ${target.label()}"
+                }
+                .onFailure { notice = it.message ?: "This amount cannot be logged." }
+                .also { busy = false }
+        }
+    }
+
+    fun saveSelectedToLibrary() {
+        val food = selectedProduct ?: return
+        val draft = productDraft(food) ?: run { notice = "Enter a positive amount, a supported unit, and valid calories."; return }
+        if (!ready || busy) return
+        busy = true
+        viewModelScope.launch {
+            runCatching { engine.updateFood(draft.food) }
+                .onSuccess {
+                    selectedProduct = null
+                    selectedProductFromScan = false
+                    refresh()
+                    refreshLibrary()
+                    notice = "Saved ${draft.food.name} to your food library."
+                }
+                .onFailure { notice = it.message ?: "Could not save this food." }
                 .also { busy = false }
         }
     }
@@ -826,6 +1002,34 @@ private data class ProductDraft(
     val calculation: Calculation
 )
 
+internal data class LibraryLogDraft(
+    val food: FoodRecord,
+    val amount: Double,
+    val unit: MeasureUnit,
+    val target: MealSlot? = null
+)
+
+internal fun libraryLogDraft(food: FoodRecord, target: MealSlot, amount: Double, unit: MeasureUnit): LibraryLogDraft =
+    LibraryLogDraft(food, amount, unit, target)
+
+internal data class LibraryInputSegment(
+    val raw: String,
+    val foodPhrase: String,
+    val amount: Double?,
+    val unit: MeasureUnit?
+)
+
+internal fun libraryInputSegments(value: String): List<LibraryInputSegment> {
+    val parser = ShorthandParser()
+    return parser.split(value).map { raw ->
+        val parsed = parser.parse(raw)
+        LibraryInputSegment(raw, parsed.foodPhrase, parsed.amount, parsed.unit)
+    }
+}
+
+internal fun defaultServingCalculation(food: FoodRecord): Calculation =
+    NutritionCalculator().calculate(food, food.defaultAmount, food.defaultUnit)
+
 internal fun mealMarkerSlots(value: String): List<MealSlot> = ShorthandParser().split(value).mapNotNull { token ->
     when (token.trim().lowercase(Locale.ROOT)) {
         "breakfast" -> MealSlot.BREAKFAST
@@ -834,6 +1038,20 @@ internal fun mealMarkerSlots(value: String): List<MealSlot> = ShorthandParser().
         "snacks", "snack" -> MealSlot.SNACKS
         else -> null
     }
+}
+
+internal data class AmountlessDailySearch(val meal: MealSlot?, val phrase: String)
+
+internal fun amountlessDailySearch(value: String): AmountlessDailySearch? {
+    val parser = ShorthandParser()
+    val markers = mealMarkerSlots(value)
+    if (markers.size > 1) return null
+    val meal = markers.singleOrNull()
+    val cleaned = meal?.let { removeMealMarkerToken(value, it) } ?: value
+    val segments = parser.split(cleaned)
+    if (segments.isEmpty() || segments.any { parser.parse(it).amount != null }) return null
+    val phrase = segments.joinToString(", ") { parser.parse(it).foodPhrase }.trim()
+    return phrase.takeIf { it.isNotBlank() }?.let { AmountlessDailySearch(meal, it) }
 }
 
 internal fun removeMealMarkerToken(value: String, target: MealSlot): String = ShorthandParser().split(value)
@@ -851,8 +1069,30 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     LaunchedEffect(vm.feedbackUntil, vm.resolverOpen) { while (vm.feedbackUntil > 0L) { kotlinx.coroutines.delay(1000); if (vm.resolverOpen) vm.holdFeedback() else if (System.currentTimeMillis() >= vm.feedbackUntil) { vm.expireFeedback(); break } } }
     if (vm.scannerOpen) { BarcodeScanner(vm); return }
     Scaffold(
-        topBar = { TopAppBar(title = { Text(vm.slot?.let { "${it.label()} · ${vm.selectedDayKey}" } ?: "Breakfast · ${vm.selectedDayKey}") }) },
-        bottomBar = { vm.slot?.let { MealComposer(vm, it) } }
+        topBar = { TopAppBar(title = { Text(if (vm.libraryOpen) vm.slot?.let { "Add to ${it.label()}" } ?: "Library" else vm.slot?.let { "${it.label()} · ${vm.selectedDayKey}" } ?: "Daily") }) },
+        bottomBar = {
+            Column {
+                when {
+                    vm.libraryOpen -> LibraryComposer(vm)
+                    vm.slot == null -> DailyComposer(vm)
+                    else -> MealComposer(vm, vm.slot!!)
+                }
+                NavigationBar {
+                    NavigationBarItem(
+                        selected = !vm.libraryOpen && vm.slot == null,
+                        onClick = { vm.closeMeal(); vm.closeLibrary() },
+                        icon = { Text("D") },
+                        label = { Text("Daily") }
+                    )
+                    NavigationBarItem(
+                        selected = vm.libraryOpen,
+                        onClick = { vm.closeMeal(); vm.openLibrary() },
+                        icon = { Text("L") },
+                        label = { Text("Library") }
+                    )
+                }
+            }
+        }
     ) { pad ->
         when {
             vm.libraryOpen -> FoodLibrary(vm, Modifier.padding(pad))
@@ -861,7 +1101,10 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
         }
     }
     if (vm.selectedEntry != null) EntryDetailDialog(vm, vm.selectedEntry!!)
-    if (vm.selectedLibraryFood != null) LibraryFoodDetailDialog(vm, vm.selectedLibraryFood!!)
+    if (vm.selectedLibraryFood != null) {
+        if (vm.slot != null) FocusedFoodAddDialog(vm, vm.selectedLibraryFood!!)
+        else LibraryFoodDetailDialog(vm, vm.selectedLibraryFood!!)
+    }
     if (vm.selectedEntry != null) {
         BackHandler { vm.closeEntryDetail() }
     } else if (vm.libraryOpen && vm.selectedLibraryFood == null && !vm.customOpen && !vm.searchOpen && !vm.resolverOpen && vm.selectedProduct == null) {
@@ -871,6 +1114,8 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     }
     if (vm.mealPickerOpen) MealPickerDialog(vm)
     if (vm.libraryMealPickerFood != null) LibraryMealPickerDialog(vm, vm.libraryMealPickerFood!!)
+    if (vm.libraryBatchMealPickerOpen) LibraryBatchMealPickerDialog(vm)
+    if (vm.productMealPickerOpen) ProductMealPickerDialog(vm)
     if (vm.customOpen) CustomDialog(vm)
     if (vm.searchOpen) SearchDialog(vm)
     if (vm.resolverOpen) UnknownResolver(vm)
@@ -900,28 +1145,75 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
             if (abs(dx) > pageThreshold) vm.shiftSelectedDay(if (dx < 0) 1 else -1)
         }
     }
+    val dailyTotal = selected.fold(NutritionValues.ZERO) { total, entry -> total + entry.nutritionSnapshot }
     LazyColumn(modifier.fillMaxSize().then(dateGesture).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { Spacer(Modifier.height(8.dp)); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(vm.selectedDayKey, style = MaterialTheme.typography.headlineMedium); TextButton(vm::goToday) { Text("Today") } }; Text("Swipe left/right to change diary date. Logging targets ${vm.selectedDayKey}.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        item { OutlinedTextField(
-            vm.input,
-            vm::onInput,
-            Modifier.fillMaxWidth().onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { vm.submit(); true } else false
-            },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { vm.submit() }),
-            label = { Text("Food shorthand") },
-            placeholder = { Text("100g oats (choose meal after submit)") }
-        ) }
-        item { Button({ vm.submit() }, Modifier.fillMaxWidth()) { Text("Add foods") } }
+        item {
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(vm.selectedDayKey, style = MaterialTheme.typography.headlineMedium)
+                Row {
+                    TextButton({ vm.shiftSelectedDay(-1) }) { Text("‹") }
+                    TextButton(vm::goToday) { Text("Today") }
+                    TextButton({ vm.shiftSelectedDay(1) }) { Text("›") }
+                }
+            }
+            Text("${dailyTotal.calories.pretty()} kcal  ·  P ${dailyTotal.protein.macro()}  C ${dailyTotal.carbohydrates.macro()}  F ${dailyTotal.fat.macro()}", style = MaterialTheme.typography.titleMedium)
+            Text("Swipe the diary to change date.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         vm.mealDraftError?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
         MealSlot.entries.forEach { s -> item { MealCard(s, selected.filter { it.mealSlot == s }, vm) } }
-        item { OutlinedButton(vm::openLibrary, Modifier.fillMaxWidth()) { Text("Food Library") } }
         item { OutlinedButton({ vm.openCustom() }, Modifier.fillMaxWidth()) { Text("Create a personal food") } }
         vm.pendingContribution?.let { item { ContributionAction(vm) } }
         vm.undoEntry?.let { item { TextButton({ vm.undo() }) { Text("Undo delete ${it.foodName}") } } }
         item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+@Composable private fun DailyComposer(vm: BreakfastViewModel) {
+    val focusRequester = remember { FocusRequester() }
+    Row(
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        BasicTextField(
+            value = vm.input,
+            onValueChange = vm::onInput,
+            modifier = Modifier.weight(1f)
+                .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), RoundedCornerShape(24.dp))
+                .padding(horizontal = 16.dp, vertical = 11.dp).focusRequester(focusRequester)
+                .onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { vm.submit(); true } else false },
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyLarge,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { vm.submit() }),
+            decorationBox = { inner -> Box { if (vm.input.isBlank()) Text("What did you eat?", color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } }
+        )
+        Button(vm::submit, Modifier.height(46.dp)) { Text("Add") }
+    }
+}
+
+@Composable private fun LibraryComposer(vm: BreakfastViewModel) {
+    Row(
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        OutlinedButton(vm::beginScan, Modifier.height(46.dp)) { Text("Scan") }
+        BasicTextField(
+            value = vm.input,
+            onValueChange = vm::onInput,
+            modifier = Modifier.weight(1f)
+                .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), RoundedCornerShape(24.dp))
+                .padding(horizontal = 16.dp, vertical = 11.dp)
+                .onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { vm.submitLibraryInput(); true } else false },
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyLarge,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { vm.submitLibraryInput() }),
+            decorationBox = { inner -> Box { if (vm.input.isBlank()) Text("Search or add a food", color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } }
+        )
+        Button(vm::submitLibraryInput, Modifier.height(46.dp)) { Text("Go") }
     }
 }
 
@@ -941,6 +1233,15 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     )
 }
 
+@Composable private fun ProductMealPickerDialog(vm: BreakfastViewModel) {
+    AlertDialog(
+        onDismissRequest = vm::dismissProductMealPicker,
+        title = { Text("Add scanned food to which meal?") },
+        text = { Column { MealSlot.entries.forEach { target -> TextButton({ vm.chooseProductMeal(target) }, Modifier.fillMaxWidth()) { Text(target.label()) } } } },
+        confirmButton = { TextButton(vm::dismissProductMealPicker) { Text("Back to review") } }
+    )
+}
+
 @Composable private fun LibraryMealPickerDialog(vm: BreakfastViewModel, food: FoodRecord) {
     AlertDialog(
         onDismissRequest = vm::cancelLibraryMealPicker,
@@ -950,53 +1251,132 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     )
 }
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable private fun LibraryBatchMealPickerDialog(vm: BreakfastViewModel) {
+    AlertDialog(
+        onDismissRequest = { vm.dismissLibraryBatchMealPicker() },
+        title = { Text("Add foods to which meal?") },
+        text = { Column { Text("Choose where to add this batch on the selected day."); MealSlot.entries.forEach { target -> TextButton({ vm.chooseLibraryBatchMeal(target) }, Modifier.fillMaxWidth()) { Text(target.label()) } } } },
+        confirmButton = { TextButton(vm::dismissLibraryBatchMealPicker) { Text("Cancel") } }
+    )
+}
+
 @Composable private fun FoodLibrary(vm: BreakfastViewModel, modifier: Modifier) {
     LazyColumn(modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             Spacer(Modifier.height(8.dp))
-            Text("Food Library", style = MaterialTheme.typography.headlineMedium)
-            Text("Local foods stay available offline. Open Food Facts search is an explicit remote fallback.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(vm.libraryQuery, vm::onLibraryQuery, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Search local foods") })
+            Text(if (vm.slot == null) "Food Library" else "Add to ${vm.slot!!.label()}", style = MaterialTheme.typography.headlineMedium)
+            Text(if (vm.slot == null) "Used foods appear first. Everything here is available offline." else "Choose a local food, adjust its amount, and add it to this meal.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedButton(vm::toggleLibraryPersonal) { Text(if (vm.libraryOnlyPersonal) "All foods" else "My Foods") }
+                OutlinedButton(vm::toggleLibraryPersonal) { Text(if (vm.libraryOnlyPersonal) "All foods" else "Foods") }
                 OutlinedButton(vm::toggleLibraryArchived) { Text(if (vm.libraryIncludeArchived) "Hide archived" else "Archived") }
             }
             Button({ vm.openCustom() }, Modifier.fillMaxWidth()) { Text("Create personal food") }
         }
         if (vm.libraryFoods.isEmpty()) item { Text("No local foods match this search.") }
+        if (vm.libraryFoods.isEmpty() && vm.libraryQuery.isNotBlank()) {
+            item { TextButton({ vm.openSearch(vm.libraryQuery) }) { Text("Search Open Food Facts") } }
+        }
         items(vm.libraryFoods, key = { it.id }) { food ->
-            Card(Modifier.fillMaxWidth().clickable { vm.openLibraryFood(food) }) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(food.name, style = MaterialTheme.typography.titleMedium)
-                    Text(listOfNotNull(food.brand, if (food.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM) "Personal food" else food.sourceName ?: "Bundled food").joinToString(" · "), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("${food.nutrition.values.calories.pretty()} kcal per ${food.nutrition.amount.pretty()} ${food.nutrition.unit.label}")
+            val last = vm.lastLoggedEntry(food)
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f).clickable { vm.openLibraryFood(food) }) {
+                            Text(food.name, style = MaterialTheme.typography.titleMedium)
+                            Text(listOfNotNull(food.brand, if (food.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM) "Personal food" else food.sourceName ?: "Bundled food").joinToString(" / "), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (last != null) Text("Last logged: ${last.enteredAmount.pretty()} ${last.enteredUnit.displayLabel()} / ${last.nutritionSnapshot.calories.pretty()} kcal")
+                            else {
+                                val calculation = defaultServingCalculation(food)
+                                val calories = if (calculation.supported) {
+                                    "${calculation.nutrition.calories.pretty()} kcal"
+                                } else {
+                                    "${food.nutrition.values.calories.pretty()} kcal per ${food.nutrition.amount.pretty()} ${food.nutrition.unit.label} basis"
+                                }
+                                Text("Default serving: ${food.defaultAmount.pretty()} ${food.defaultUnit.displayLabel()} / $calories", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        if (vm.slot != null) {
+                            TextButton({ vm.logLibraryFood(food, vm.slot!!, last?.enteredAmount ?: food.defaultAmount, last?.enteredUnit ?: food.defaultUnit) }, enabled = !food.archived) { Text("+") }
+                        } else {
+                            TextButton({ vm.toggleLibraryFoodPicker(food) }, enabled = !food.archived) { Text("+") }
+                        }
+                    }
+                    if (vm.slot == null && vm.expandedLibraryFoodId == food.id) {
+                        Text("Repeat ${last?.enteredAmount?.pretty() ?: food.defaultAmount.pretty()} ${last?.enteredUnit?.displayLabel() ?: food.defaultUnit.displayLabel()} on ${vm.selectedDayKey}", style = MaterialTheme.typography.bodySmall)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            MealSlot.entries.forEach { target ->
+                                TextButton({
+                                    vm.logLibraryFood(food, target, last?.enteredAmount ?: food.defaultAmount, last?.enteredUnit ?: food.defaultUnit)
+                                    vm.collapseLibraryFoodPicker()
+                                }) { Text(target.label()) }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
+    var amountText by remember(food.id) { mutableStateOf((vm.lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount).pretty()) }
+    var unitText by remember(food.id) { mutableStateOf((vm.lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit).displayLabel()) }
+    Dialog(onDismissRequest = vm::closeLibraryFood, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Scaffold(
+                topBar = { TopAppBar(title = { Text(food.name) }, navigationIcon = { TextButton(vm::closeLibraryFood) { Text("Back") } }) }
+            ) { padding ->
+                Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(listOfNotNull(food.brand, food.sourceName ?: if (food.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM) "Personal food" else "Bundled food").joinToString(" · "))
+                    food.barcode?.let { Text("Barcode: $it") }
+                    Text("Nutrition basis: ${food.nutrition.amount.pretty()} ${food.nutrition.unit.label}")
+                    Text("${food.nutrition.values.calories.pretty()} kcal  ·  P ${food.nutrition.values.protein.macro()}  C ${food.nutrition.values.carbohydrates.macro()}  F ${food.nutrition.values.fat.macro()}")
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedTextField(amountText, { amountText = it }, label = { Text("Amount") }, modifier = Modifier.weight(1f), singleLine = true)
+                        OutlinedTextField(unitText, { unitText = it }, label = { Text("Unit") }, modifier = Modifier.weight(1f), singleLine = true)
+                    }
+                    Button({
+                        val amount = amountText.toDoubleOrNull()
+                        val unit = unitText.toMeasureUnit()
+                        if (amount != null && amount > 0.0 && unit != null) { vm.logLibraryFood(food, amount, unit); vm.closeLibraryFood() } else vm.noticeForInvalidLibraryAmount()
+                    }, enabled = !food.archived, modifier = Modifier.fillMaxWidth()) { Text("Add to ${vm.slot?.label() ?: "a meal"}") }
+                    TextButton({ vm.closeLibraryFood(); vm.openLibraryEdit(food) }, Modifier.fillMaxWidth()) { Text("Edit local food data") }
+                    if (food.barcode.isNullOrBlank()) Text("Open Food Facts submission requires a barcode.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    else TextButton({ vm.closeLibraryFood(); vm.openContributionForFood(food) }, Modifier.fillMaxWidth()) { Text("Submit to Open Food Facts") }
+                    if (food.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM && !food.archived) TextButton({ vm.archiveLibraryFood(food) }, Modifier.fillMaxWidth()) { Text("Archive personal food") }
+                    Spacer(Modifier.height(24.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun FocusedFoodAddDialog(vm: BreakfastViewModel, food: FoodRecord) {
+    val target = vm.slot ?: return
+    var amountText by remember(food.id, target) { mutableStateOf((vm.lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount).pretty()) }
+    var unitText by remember(food.id, target) { mutableStateOf((vm.lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit).displayLabel()) }
     AlertDialog(
         onDismissRequest = vm::closeLibraryFood,
-        title = { Text(food.name) },
+        title = { Text("Add ${food.name} to ${target.label()}") },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(listOfNotNull(food.brand, food.sourceName ?: if (food.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM) "Personal food" else "Bundled food").joinToString(" · "))
-                food.barcode?.let { Text("Barcode: $it") }
-                Text("Nutrition basis: ${food.nutrition.amount.pretty()} ${food.nutrition.unit.label}")
-                Text("${food.nutrition.values.calories.pretty()} kcal  ·  P ${food.nutrition.values.protein.macro()}  C ${food.nutrition.values.carbohydrates.macro()}  F ${food.nutrition.values.fat.macro()}")
-                food.conversions.forEach { conversion -> Text("${conversion.unit.label}: ${conversion.provenance}${if (conversion.approximate) " (approximate)" else ""}", style = MaterialTheme.typography.bodySmall) }
-                if (food.archived) Text("Archived personal food; historical entries are preserved.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (food.barcode.isNullOrBlank()) Text("Open Food Facts submission is unavailable without a barcode.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else TextButton({ vm.closeLibraryFood(); vm.openContributionForFood(food) }, Modifier.fillMaxWidth()) { Text("Submit to Open Food Facts") }
-                TextButton({ vm.openLibraryEdit(food) }, Modifier.fillMaxWidth()) { Text(if (food.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM) "Edit personal food" else "Edit food") }
-                if (food.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM && !food.archived) TextButton({ vm.archiveLibraryFood(food) }, Modifier.fillMaxWidth()) { Text("Archive personal food") }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("${food.nutrition.values.calories.pretty()} kcal per ${food.nutrition.amount.pretty()} ${food.nutrition.unit.label}")
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(amountText, { amountText = it }, label = { Text("Amount") }, modifier = Modifier.weight(1f), singleLine = true)
+                    OutlinedTextField(unitText, { unitText = it }, label = { Text("Unit") }, modifier = Modifier.weight(1f), singleLine = true)
+                }
             }
         },
-        confirmButton = { Button({ vm.logLibraryFood(food); vm.closeLibraryFood() }, enabled = !food.archived) { Text("Add to ${vm.slot?.label() ?: "a meal"} on ${vm.selectedDayKey}") } },
-        dismissButton = { TextButton(vm::closeLibraryFood) { Text("Close") } }
+        confirmButton = { Button({
+            val amount = amountText.toDoubleOrNull()
+            val unit = unitText.toMeasureUnit()
+            if (amount != null && amount > 0.0 && unit != null) {
+                vm.logLibraryFood(food, target, amount, unit)
+                vm.closeLibraryFood()
+            } else vm.noticeForInvalidLibraryAmount()
+        }, enabled = !food.archived) { Text("Add to ${target.label()}") } },
+        dismissButton = { TextButton(vm::closeLibraryFood) { Text("Back") } }
     )
 }
 
@@ -1004,7 +1384,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     val food = vm.foods.firstOrNull { it.id == entry.foodId }
     AlertDialog(
         onDismissRequest = vm::closeEntryDetail,
-        title = { Text(entry.foodName) },
+        title = { Text("Edit existing entry") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 food?.let { Text(listOfNotNull(it.brand, it.sourceName ?: it.category, it.barcode?.let { code -> "Barcode $code" }).joinToString(" · ")) }
@@ -1013,23 +1393,38 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
                 Text("Logged amount: ${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}")
                 Text("${entry.dayKey} · ${entry.mealSlot.label()}")
                 if (entry.approximateConversion) Text("Approximate conversion: ${entry.conversionProvenance}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Single tap opens details · double-tap edits amount · hold edits food", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${entry.foodName} · ${entry.dayKey} · ${entry.mealSlot.label()}", style = MaterialTheme.typography.titleMedium)
+                Text("Save changes updates this exact diary entry and keeps its nutrition snapshot.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 TextButton({ vm.closeEntryDetail(); vm.beginFullEdit(entry) }, Modifier.fillMaxWidth()) { Text("Replace food") }
                 if (food != null && OffContributionDraft.fromFood(food) != null) TextButton({ vm.openContributionForEntry(entry) }, Modifier.fillMaxWidth()) { Text("Contribute to Open Food Facts") }
                 TextButton({ vm.closeEntryDetail(); vm.delete(entry) }, Modifier.fillMaxWidth()) { Text("Delete entry") }
             }
         },
-        confirmButton = { Button({ vm.closeEntryDetail(); vm.beginQuickEdit(entry) }) { Text("Edit amount") } },
+        confirmButton = { Button({ vm.closeEntryDetail(); vm.beginQuickEdit(entry) }) { Text("Edit and save this entry") } },
         dismissButton = { TextButton(vm::closeEntryDetail) { Text("Close") } }
     )
 }
 
 @Composable private fun MealCard(slot: MealSlot, entries: List<MealEntry>, vm: BreakfastViewModel) {
     val total = entries.fold(NutritionValues.ZERO) { a, e -> a + e.nutritionSnapshot }
-    Card(Modifier.fillMaxWidth().clickable { vm.openMeal(slot) }) { Column(Modifier.padding(14.dp)) {
-        Text(slot.label(), style = MaterialTheme.typography.titleLarge); Text(vm.selectedDayKey, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text("${total.calories.pretty()} kcal  •  P ${total.protein.macro()}  C ${total.carbohydrates.macro()}  F ${total.fat.macro()}")
-        entries.forEach { Text("${it.foodName}  ·  ${it.enteredAmount.pretty()} ${it.enteredUnit.displayLabel()}  ·  ${it.nutritionSnapshot.calories.pretty()} kcal") }
-    } }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(slot.label(), style = MaterialTheme.typography.titleLarge)
+                    Text("${total.calories.pretty()} kcal  /  P ${total.protein.macro()}  C ${total.carbohydrates.macro()}  F ${total.fat.macro()}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Button({ vm.openFocusedLibrary(slot) }) { Text("Add food") }
+            }
+            entries.forEach { entry ->
+                Row(Modifier.fillMaxWidth().clickable { vm.openEntryDetail(entry) }.padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("${entry.foodName} · ${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}", maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Text("${entry.nutritionSnapshot.calories.pretty()} kcal", modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+            if (entries.isEmpty()) Text("Nothing logged yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }
 
 @Composable private fun MealDetail(vm: BreakfastViewModel, modifier: Modifier) {
@@ -1071,7 +1466,6 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
                 TextButton(vm::openLibrary) { Text("Library") }
                 TextButton({ vm.openCustom() }) { Text("Custom") }
                 TextButton(vm::openSearch) { Text("Search") }
-                TextButton(vm::beginScan) { Text("Scan") }
             }
         } else {
             Spacer(Modifier.height(16.dp))
@@ -1292,7 +1686,38 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
 
 @Composable private fun ProductDialog(vm: BreakfastViewModel, food: FoodRecord) {
     val calculation = vm.productCalculation(food)
-    AlertDialog(onDismissRequest = vm::clearSelectedProduct, confirmButton = { Button(vm::addSelected, enabled = !food.archived) { Text("Add to ${vm.slot?.label() ?: "meal"}") } }, dismissButton = { Row { TextButton({ vm.clearSelectedProduct(); vm.openSearch(fromResolver = vm.resolutionContinuation) }) { Text("Find better match") }; TextButton({ vm.clearSelectedProduct(); vm.beginScan() }) { Text("Rescan") }; TextButton(vm::clearSelectedProduct) { Text("Back") } } }, title = { Text("Product details") }, text = { Column(Modifier.verticalScroll(rememberScrollState())) { OutlinedTextField(vm.productName, vm::onProductName, label = { Text("Name") }); food.brand?.let { Text(it) }; OutlinedTextField(vm.productCalories, vm::onProductCalories, label = { Text(productNutritionBasisLabel(food)) }); OutlinedTextField(vm.productProtein, vm::onProductProtein, label = { Text("Protein g (blank = unknown)") }); OutlinedTextField(vm.productCarbs, vm::onProductCarbs, label = { Text("Carbs g (blank = unknown)") }); OutlinedTextField(vm.productFat, vm::onProductFat, label = { Text("Fat g (blank = unknown)") }); OutlinedTextField(vm.productAmount, vm::onProductAmount, label = { Text("Amount") }); OutlinedTextField(vm.productUnit, vm::onProductUnit, label = { Text("Unit: g, ml, tbsp, tsp, or piece") }); Text("Preview: ${calculation?.nutrition?.calories?.pretty() ?: "—"} kcal", style = MaterialTheme.typography.titleMedium); calculation?.let { Text("${if (it.approximate) "Approximate conversion: " else "Conversion: "}${it.provenance}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } })
+    AlertDialog(
+        onDismissRequest = vm::clearSelectedProduct,
+        title = { Text("Product details") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedTextField(vm.productName, vm::onProductName, label = { Text("Name") }, singleLine = true)
+                food.brand?.let { Text(it) }
+                OutlinedTextField(vm.productCalories, vm::onProductCalories, label = { Text(productNutritionBasisLabel(food)) }, singleLine = true)
+                OutlinedTextField(vm.productProtein, vm::onProductProtein, label = { Text("Protein g (blank = unknown)") }, singleLine = true)
+                OutlinedTextField(vm.productCarbs, vm::onProductCarbs, label = { Text("Carbs g (blank = unknown)") }, singleLine = true)
+                OutlinedTextField(vm.productFat, vm::onProductFat, label = { Text("Fat g (blank = unknown)") }, singleLine = true)
+                OutlinedTextField(vm.productAmount, vm::onProductAmount, label = { Text("Amount") }, singleLine = true)
+                OutlinedTextField(vm.productUnit, vm::onProductUnit, label = { Text("Unit: g, ml, tbsp, tsp, or piece") }, singleLine = true)
+                Text("Preview: ${calculation?.nutrition?.calories?.pretty() ?: "—"} kcal", style = MaterialTheme.typography.titleMedium)
+                calculation?.let { Text("${if (it.approximate) "Approximate conversion: " else "Conversion: "}${it.provenance}", style = MaterialTheme.typography.labelSmall) }
+                if (vm.slot == null) Text("Choose a meal to log this scanned food, or save it to the library for later.", style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (vm.slot == null) OutlinedButton(vm::saveSelectedToLibrary) { Text("Save to library") }
+                Button(vm::addSelected, enabled = !food.archived) { Text(if (vm.slot == null) "Add to meal" else "Add to ${vm.slot!!.label()}") }
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton({ vm.clearSelectedProduct(); vm.openSearch(fromResolver = vm.resolutionContinuation) }) { Text("Find better match") }
+                TextButton({ vm.clearSelectedProduct(); vm.beginScan() }) { Text("Rescan") }
+                TextButton(vm::clearSelectedProduct) { Text("Back") }
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
