@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -117,6 +118,15 @@ import com.iron.breakfast.domain.ShorthandParser
 import com.iron.breakfast.domain.toMeasureUnit
 import com.iron.breakfast.domain.dayKeyForEpochMs
 import com.iron.breakfast.domain.displayLabel
+import com.iron.breakfast.ui.screens.DailyScreen
+import com.iron.breakfast.ui.screens.DailyComposer
+import com.iron.breakfast.ui.screens.FocusedFoodAddDialog
+import com.iron.breakfast.ui.screens.LibraryComposer
+import com.iron.breakfast.ui.screens.LibraryFoodDetailDialog
+import com.iron.breakfast.ui.screens.LibraryScreen
+import com.iron.breakfast.ui.screens.MealComposer
+import com.iron.breakfast.ui.screens.MealScreen
+import com.iron.breakfast.ui.theme.BreakfastTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -131,7 +141,8 @@ import kotlin.math.hypot
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { IronApp() }
+        enableEdgeToEdge()
+        setContent { BreakfastTheme { IronApp() } }
     }
 }
 
@@ -1058,9 +1069,9 @@ internal fun removeMealMarkerToken(value: String, target: MealSlot): String = Sh
     .filterNot { mealMarkerSlots(it).singleOrNull() == target }
     .joinToString(", ")
 
-private fun MealSlot.label() = name.lowercase().replaceFirstChar { it.titlecase() }
-private fun Double.pretty() = if (this % 1 == 0.0) "%.0f".format(Locale.ROOT, this) else "%.1f".format(Locale.ROOT, this)
-private fun Double?.macro() = this?.let { "${it.pretty()} g" } ?: "—"
+internal fun MealSlot.label() = name.lowercase().replaceFirstChar { it.titlecase() }
+internal fun Double.pretty() = if (this % 1 == 0.0) "%.0f".format(Locale.ROOT, this) else "%.1f".format(Locale.ROOT, this)
+internal fun Double?.macro() = this?.let { "${it.pretty()} g" } ?: "—"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1095,9 +1106,9 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
         }
     ) { pad ->
         when {
-            vm.libraryOpen -> FoodLibrary(vm, Modifier.padding(pad))
-            vm.slot == null -> Home(vm, Modifier.padding(pad))
-            else -> MealDetail(vm, Modifier.padding(pad))
+            vm.libraryOpen -> LibraryScreen(vm, Modifier.padding(pad))
+            vm.slot == null -> DailyScreen(vm, Modifier.padding(pad))
+            else -> MealScreen(vm, Modifier.padding(pad))
         }
     }
     if (vm.selectedEntry != null) EntryDetailDialog(vm, vm.selectedEntry!!)
@@ -1127,95 +1138,8 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     vm.initializationError?.let { message -> AlertDialog(onDismissRequest = {}, confirmButton = {}, title = { Text("Storage unavailable") }, text = { Text(message) }) }
 }
 
-@Composable private fun Home(vm: BreakfastViewModel, modifier: Modifier) {
-    val selected = vm.entries.filter { it.dayKey == vm.selectedDayKey }
-    val touchSlop = LocalViewConfiguration.current.touchSlop
-    val pageThreshold = with(LocalDensity.current) { 96.dp.toPx() }
-    val dateGesture = Modifier.pointerInput(vm.selectedDayKey) {
-        awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false)
-            var dx = 0f
-            while (true) {
-                val event = awaitPointerEvent()
-                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                dx = change.position.x - down.position.x
-                if (!change.pressed) break
-                if (abs(dx) > touchSlop && abs(dx) > abs(change.position.y - down.position.y)) change.consume()
-            }
-            if (abs(dx) > pageThreshold) vm.shiftSelectedDay(if (dx < 0) 1 else -1)
-        }
-    }
-    val dailyTotal = selected.fold(NutritionValues.ZERO) { total, entry -> total + entry.nutritionSnapshot }
-    LazyColumn(modifier.fillMaxSize().then(dateGesture).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item {
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(vm.selectedDayKey, style = MaterialTheme.typography.headlineMedium)
-                Row {
-                    TextButton({ vm.shiftSelectedDay(-1) }) { Text("‹") }
-                    TextButton(vm::goToday) { Text("Today") }
-                    TextButton({ vm.shiftSelectedDay(1) }) { Text("›") }
-                }
-            }
-            Text("${dailyTotal.calories.pretty()} kcal  ·  P ${dailyTotal.protein.macro()}  C ${dailyTotal.carbohydrates.macro()}  F ${dailyTotal.fat.macro()}", style = MaterialTheme.typography.titleMedium)
-            Text("Swipe the diary to change date.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        vm.mealDraftError?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
-        MealSlot.entries.forEach { s -> item { MealCard(s, selected.filter { it.mealSlot == s }, vm) } }
-        item { OutlinedButton({ vm.openCustom() }, Modifier.fillMaxWidth()) { Text("Create a personal food") } }
-        vm.pendingContribution?.let { item { ContributionAction(vm) } }
-        vm.undoEntry?.let { item { TextButton({ vm.undo() }) { Text("Undo delete ${it.foodName}") } } }
-        item { Spacer(Modifier.height(24.dp)) }
-    }
-}
 
-@Composable private fun DailyComposer(vm: BreakfastViewModel) {
-    val focusRequester = remember { FocusRequester() }
-    Row(
-        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        BasicTextField(
-            value = vm.input,
-            onValueChange = vm::onInput,
-            modifier = Modifier.weight(1f)
-                .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), RoundedCornerShape(24.dp))
-                .padding(horizontal = 16.dp, vertical = 11.dp).focusRequester(focusRequester)
-                .onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { vm.submit(); true } else false },
-            singleLine = true,
-            textStyle = MaterialTheme.typography.bodyLarge,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { vm.submit() }),
-            decorationBox = { inner -> Box { if (vm.input.isBlank()) Text("What did you eat?", color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } }
-        )
-        Button(vm::submit, Modifier.height(46.dp)) { Text("Add") }
-    }
-}
 
-@Composable private fun LibraryComposer(vm: BreakfastViewModel) {
-    Row(
-        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        OutlinedButton(vm::beginScan, Modifier.height(46.dp)) { Text("Scan") }
-        BasicTextField(
-            value = vm.input,
-            onValueChange = vm::onInput,
-            modifier = Modifier.weight(1f)
-                .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), RoundedCornerShape(24.dp))
-                .padding(horizontal = 16.dp, vertical = 11.dp)
-                .onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { vm.submitLibraryInput(); true } else false },
-            singleLine = true,
-            textStyle = MaterialTheme.typography.bodyLarge,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { vm.submitLibraryInput() }),
-            decorationBox = { inner -> Box { if (vm.input.isBlank()) Text("Search or add a food", color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } }
-        )
-        Button(vm::submitLibraryInput, Modifier.height(46.dp)) { Text("Go") }
-    }
-}
 
 @Composable private fun MealPickerDialog(vm: BreakfastViewModel) {
     AlertDialog(
@@ -1260,125 +1184,8 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     )
 }
 
-@Composable private fun FoodLibrary(vm: BreakfastViewModel, modifier: Modifier) {
-    LazyColumn(modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-            Spacer(Modifier.height(8.dp))
-            Text(if (vm.slot == null) "Food Library" else "Add to ${vm.slot!!.label()}", style = MaterialTheme.typography.headlineMedium)
-            Text(if (vm.slot == null) "Used foods appear first. Everything here is available offline." else "Choose a local food, adjust its amount, and add it to this meal.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedButton(vm::toggleLibraryPersonal) { Text(if (vm.libraryOnlyPersonal) "All foods" else "Foods") }
-                OutlinedButton(vm::toggleLibraryArchived) { Text(if (vm.libraryIncludeArchived) "Hide archived" else "Archived") }
-            }
-            Button({ vm.openCustom() }, Modifier.fillMaxWidth()) { Text("Create personal food") }
-        }
-        if (vm.libraryFoods.isEmpty()) item { Text("No local foods match this search.") }
-        if (vm.libraryFoods.isEmpty() && vm.libraryQuery.isNotBlank()) {
-            item { TextButton({ vm.openSearch(vm.libraryQuery) }) { Text("Search Open Food Facts") } }
-        }
-        items(vm.libraryFoods, key = { it.id }) { food ->
-            val last = vm.lastLoggedEntry(food)
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f).clickable { vm.openLibraryFood(food) }) {
-                            Text(food.name, style = MaterialTheme.typography.titleMedium)
-                            Text(listOfNotNull(food.brand, if (food.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM) "Personal food" else food.sourceName ?: "Bundled food").joinToString(" / "), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (last != null) Text("Last logged: ${last.enteredAmount.pretty()} ${last.enteredUnit.displayLabel()} / ${last.nutritionSnapshot.calories.pretty()} kcal")
-                            else {
-                                val calculation = defaultServingCalculation(food)
-                                val calories = if (calculation.supported) {
-                                    "${calculation.nutrition.calories.pretty()} kcal"
-                                } else {
-                                    "${food.nutrition.values.calories.pretty()} kcal per ${food.nutrition.amount.pretty()} ${food.nutrition.unit.label} basis"
-                                }
-                                Text("Default serving: ${food.defaultAmount.pretty()} ${food.defaultUnit.displayLabel()} / $calories", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                        if (vm.slot != null) {
-                            TextButton({ vm.logLibraryFood(food, vm.slot!!, last?.enteredAmount ?: food.defaultAmount, last?.enteredUnit ?: food.defaultUnit) }, enabled = !food.archived) { Text("+") }
-                        } else {
-                            TextButton({ vm.toggleLibraryFoodPicker(food) }, enabled = !food.archived) { Text("+") }
-                        }
-                    }
-                    if (vm.slot == null && vm.expandedLibraryFoodId == food.id) {
-                        Text("Repeat ${last?.enteredAmount?.pretty() ?: food.defaultAmount.pretty()} ${last?.enteredUnit?.displayLabel() ?: food.defaultUnit.displayLabel()} on ${vm.selectedDayKey}", style = MaterialTheme.typography.bodySmall)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            MealSlot.entries.forEach { target ->
-                                TextButton({
-                                    vm.logLibraryFood(food, target, last?.enteredAmount ?: food.defaultAmount, last?.enteredUnit ?: food.defaultUnit)
-                                    vm.collapseLibraryFoodPicker()
-                                }) { Text(target.label()) }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
-    var amountText by remember(food.id) { mutableStateOf((vm.lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount).pretty()) }
-    var unitText by remember(food.id) { mutableStateOf((vm.lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit).displayLabel()) }
-    Dialog(onDismissRequest = vm::closeLibraryFood, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Scaffold(
-                topBar = { TopAppBar(title = { Text(food.name) }, navigationIcon = { TextButton(vm::closeLibraryFood) { Text("Back") } }) }
-            ) { padding ->
-                Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(listOfNotNull(food.brand, food.sourceName ?: if (food.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM) "Personal food" else "Bundled food").joinToString(" · "))
-                    food.barcode?.let { Text("Barcode: $it") }
-                    Text("Nutrition basis: ${food.nutrition.amount.pretty()} ${food.nutrition.unit.label}")
-                    Text("${food.nutrition.values.calories.pretty()} kcal  ·  P ${food.nutrition.values.protein.macro()}  C ${food.nutrition.values.carbohydrates.macro()}  F ${food.nutrition.values.fat.macro()}")
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        OutlinedTextField(amountText, { amountText = it }, label = { Text("Amount") }, modifier = Modifier.weight(1f), singleLine = true)
-                        OutlinedTextField(unitText, { unitText = it }, label = { Text("Unit") }, modifier = Modifier.weight(1f), singleLine = true)
-                    }
-                    Button({
-                        val amount = amountText.toDoubleOrNull()
-                        val unit = unitText.toMeasureUnit()
-                        if (amount != null && amount > 0.0 && unit != null) { vm.logLibraryFood(food, amount, unit); vm.closeLibraryFood() } else vm.noticeForInvalidLibraryAmount()
-                    }, enabled = !food.archived, modifier = Modifier.fillMaxWidth()) { Text("Add to ${vm.slot?.label() ?: "a meal"}") }
-                    TextButton({ vm.closeLibraryFood(); vm.openLibraryEdit(food) }, Modifier.fillMaxWidth()) { Text("Edit local food data") }
-                    if (food.barcode.isNullOrBlank()) Text("Open Food Facts submission requires a barcode.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    else TextButton({ vm.closeLibraryFood(); vm.openContributionForFood(food) }, Modifier.fillMaxWidth()) { Text("Submit to Open Food Facts") }
-                    if (food.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM && !food.archived) TextButton({ vm.archiveLibraryFood(food) }, Modifier.fillMaxWidth()) { Text("Archive personal food") }
-                    Spacer(Modifier.height(24.dp))
-                }
-            }
-        }
-    }
-}
 
-@Composable private fun FocusedFoodAddDialog(vm: BreakfastViewModel, food: FoodRecord) {
-    val target = vm.slot ?: return
-    var amountText by remember(food.id, target) { mutableStateOf((vm.lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount).pretty()) }
-    var unitText by remember(food.id, target) { mutableStateOf((vm.lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit).displayLabel()) }
-    AlertDialog(
-        onDismissRequest = vm::closeLibraryFood,
-        title = { Text("Add ${food.name} to ${target.label()}") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("${food.nutrition.values.calories.pretty()} kcal per ${food.nutrition.amount.pretty()} ${food.nutrition.unit.label}")
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedTextField(amountText, { amountText = it }, label = { Text("Amount") }, modifier = Modifier.weight(1f), singleLine = true)
-                    OutlinedTextField(unitText, { unitText = it }, label = { Text("Unit") }, modifier = Modifier.weight(1f), singleLine = true)
-                }
-            }
-        },
-        confirmButton = { Button({
-            val amount = amountText.toDoubleOrNull()
-            val unit = unitText.toMeasureUnit()
-            if (amount != null && amount > 0.0 && unit != null) {
-                vm.logLibraryFood(food, target, amount, unit)
-                vm.closeLibraryFood()
-            } else vm.noticeForInvalidLibraryAmount()
-        }, enabled = !food.archived) { Text("Add to ${target.label()}") } },
-        dismissButton = { TextButton(vm::closeLibraryFood) { Text("Back") } }
-    )
-}
 
 @Composable private fun EntryDetailDialog(vm: BreakfastViewModel, entry: MealEntry) {
     val food = vm.foods.firstOrNull { it.id == entry.foodId }
@@ -1405,188 +1212,11 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     )
 }
 
-@Composable private fun MealCard(slot: MealSlot, entries: List<MealEntry>, vm: BreakfastViewModel) {
-    val total = entries.fold(NutritionValues.ZERO) { a, e -> a + e.nutritionSnapshot }
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(slot.label(), style = MaterialTheme.typography.titleLarge)
-                    Text("${total.calories.pretty()} kcal  /  P ${total.protein.macro()}  C ${total.carbohydrates.macro()}  F ${total.fat.macro()}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Button({ vm.openFocusedLibrary(slot) }) { Text("Add food") }
-            }
-            entries.forEach { entry ->
-                Row(Modifier.fillMaxWidth().clickable { vm.openEntryDetail(entry) }.padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("${entry.foodName} · ${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}", maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    Text("${entry.nutritionSnapshot.calories.pretty()} kcal", modifier = Modifier.padding(start = 8.dp))
-                }
-            }
-            if (entries.isEmpty()) Text("Nothing logged yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
 
-@Composable private fun MealDetail(vm: BreakfastViewModel, modifier: Modifier) {
-    val target = vm.slot ?: return; val entries = vm.entries.filter { it.dayKey == vm.selectedDayKey && it.mealSlot == target }; val total = entries.fold(NutritionValues.ZERO) { a, e -> a + e.nutritionSnapshot }
-    LazyColumn(modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { Spacer(Modifier.height(8.dp)); Text(target.label(), style = MaterialTheme.typography.headlineMedium); Text(vm.selectedDayKey, style = MaterialTheme.typography.labelMedium); Text("${total.calories.pretty()} kcal  •  P ${total.protein.macro()}  C ${total.carbohydrates.macro()}  F ${total.fat.macro()}") }
-        vm.pendingContribution?.let { item { ContributionAction(vm) } }
-        items(entries, key = { it.id }) { entry -> EntryRow(entry, vm) }
-        item { vm.undoEntry?.let { TextButton({ vm.undo() }) { Text("Undo delete ${it.foodName}") } }; TextButton({ vm.closeMeal() }) { Text("Back to diary") }; Spacer(Modifier.height(16.dp)) }
-    }
-}
 
-@Composable private fun MealComposer(vm: BreakfastViewModel, target: MealSlot) {
-    val editing = vm.entryEditMode != EntryEditMode.NONE
-    val focusRequester = remember { FocusRequester() }
-    val focusManager = LocalFocusManager.current
-    val annotation = when {
-        vm.editInvalid -> "Invalid input"
-        editing -> "Editing"
-        vm.input.isNotBlank() -> "Adding"
-        else -> null
-    }
-    var shakeOffset by remember { mutableStateOf(0) }
-    LaunchedEffect(vm.editInvalidSignal) {
-        if (vm.editInvalidSignal == 0) return@LaunchedEffect
-        repeat(6) { index ->
-            shakeOffset = if (index % 2 == 0) 5 else -5
-            delay(45)
-        }
-        shakeOffset = 0
-    }
-    LaunchedEffect(editing) {
-        if (editing) focusRequester.requestFocus() else focusManager.clearFocus()
-    }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        HorizontalDivider()
-        if (!editing) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                TextButton(vm::openLibrary) { Text("Library") }
-                TextButton({ vm.openCustom() }) { Text("Custom") }
-                TextButton(vm::openSearch) { Text("Search") }
-            }
-        } else {
-            Spacer(Modifier.height(16.dp))
-        }
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .offset(x = shakeOffset.dp)
-        ) {
-            Row(
-                Modifier.fillMaxWidth()
-                    .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                BasicTextField(
-                    value = vm.input,
-                    onValueChange = vm::onInput,
-                    modifier = Modifier.weight(1f).focusRequester(focusRequester).onPreviewKeyEvent { event ->
-                        if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { vm.submit(); true } else false
-                    },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyLarge,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { vm.submit() }),
-                    decorationBox = { innerTextField ->
-                        Box {
-                            if (vm.input.isBlank()) {
-                                Text(
-                                    if (editing) "Amount and unit" else "Add foods",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            innerTextField()
-                        }
-                    }
-                )
-                if (vm.entryEditMode == EntryEditMode.QUICK) {
-                    Text(
-                        vm.editingFoodName.orEmpty(),
-                        Modifier.weight(1f).padding(start = 8.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            annotation?.let {
-                Text(
-                    it,
-                    Modifier.align(Alignment.TopEnd)
-                        .offset(x = (-12).dp, y = (-8).dp)
-                        .background(MaterialTheme.colorScheme.background)
-                        .padding(horizontal = 8.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (vm.editInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                )
-            }
-        }
-        if (vm.quickEditHintVisible) {
-            Text("Hold a food to change it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        vm.mealDraftError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Button(vm::submit, Modifier.fillMaxWidth()) { Text(if (!editing) "Add to ${target.label()}" else "Save entry edit") }
-        if (editing) TextButton(vm::cancelEdit, Modifier.fillMaxWidth()) { Text("Cancel edit") }
-    }
-}
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable private fun EntryRow(entry: MealEntry, vm: BreakfastViewModel) {
-    val touchSlop = LocalViewConfiguration.current.touchSlop
-    val deleteThreshold = with(LocalDensity.current) { 96.dp.toPx() }
-    Card(
-        Modifier
-            .fillMaxWidth()
-            .semantics {
-                onClick(label = "Open details for ${entry.foodName}") { vm.openEntryDetail(entry); true }
-                customActions = listOf(
-                    CustomAccessibilityAction("Quick edit amount") { vm.beginQuickEdit(entry); true },
-                    CustomAccessibilityAction("Edit food and amount") { vm.beginFullEdit(entry); true },
-                    CustomAccessibilityAction("Delete ${entry.foodName}") { vm.delete(entry); true }
-                )
-            }
-            .combinedClickable(
-                onClick = { vm.openEntryDetail(entry) },
-                onDoubleClick = { vm.beginQuickEdit(entry) },
-                onLongClick = { vm.beginFullEdit(entry) }
-            )
-            .pointerInput(entry.id) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    var horizontal = false
-                    var finalDx = 0f
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        finalDx = change.position.x - down.position.x
-                        val dy = change.position.y - down.position.y
-                        if (change.pressed && !horizontal && hypot(finalDx.toDouble(), dy.toDouble()).toFloat() > touchSlop && abs(finalDx) > abs(dy)) horizontal = true
-                        if (horizontal) change.consume()
-                        if (!change.pressed) break
-                    }
-                    if (horizontal && finalDx < -deleteThreshold) vm.delete(entry)
-                }
-            }
-    ) {
-        Column(Modifier.padding(12.dp)) {
-            Text(entry.foodName, style = MaterialTheme.typography.titleMedium)
-            Text("${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}  ·  ${entry.nutritionSnapshot.calories.pretty()} kcal")
-            Text("P ${entry.nutritionSnapshot.protein.macro()}  C ${entry.nutritionSnapshot.carbohydrates.macro()}  F ${entry.nutritionSnapshot.fat.macro()}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (entry.approximateConversion) Text("Approximate: ${entry.conversionProvenance}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (vm.feedbackOpen(entry)) {
-                vm.alternatives(entry).forEach { candidate -> TextButton({ vm.chooseAlternative(entry, candidate.food) }) { Text("Use ${candidate.food.name}") } }
-                TextButton({ vm.confirm(entry) }) { Text("Confirm ${entry.foodName}") }
-                Text("Correction controls expire after 30 seconds.", style = MaterialTheme.typography.labelSmall)
-            }
-        }
-    }
-}
 
-@Composable private fun ContributionAction(vm: BreakfastViewModel) {
+@Composable internal fun ContributionAction(vm: BreakfastViewModel) {
     OutlinedButton(vm::reviewContribution, Modifier.fillMaxWidth()) {
         Text("Contribute to Open Food Facts")
     }
