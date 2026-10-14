@@ -7,25 +7,28 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.ExperimentalTextApi
-import androidx.compose.ui.text.googlefonts.Font
-import androidx.compose.ui.text.googlefonts.GoogleFont
-import androidx.compose.ui.text.googlefonts.GoogleFont.Provider
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.style.TextGeometricTransform
 import androidx.compose.ui.unit.sp
 import com.iron.breakfast.R
 
+/**
+ * Bundled (not downloadable) so the one face is always present offline; the Google Fonts provider
+ * silently fell back to the system sans on device. A Latin + Cyrillic subset of the variable font,
+ * which keeps the Macedonian `locl` forms and `tnum`. Licence: assets/licenses/NotoSansMono-OFL.txt.
+ */
 @OptIn(ExperimentalTextApi::class)
-private val NotoSansMonoProvider = Provider(
-    providerAuthority = "com.google.android.gms.fonts",
-    providerPackage = "com.google.android.gms",
-    certificates = R.array.com_google_android_gms_fonts_certs,
+private fun notoSansMono(weight: FontWeight) = Font(
+    resId = R.font.noto_sans_mono,
+    weight = weight,
+    variationSettings = FontVariation.Settings(FontVariation.weight(weight.weight), FontVariation.width(100f)),
 )
 
-@OptIn(ExperimentalTextApi::class)
 private val NotoSansMono = FontFamily(
-    Font(GoogleFont("Noto Sans Mono"), NotoSansMonoProvider, FontWeight.Normal),
-    Font(GoogleFont("Noto Sans Mono"), NotoSansMonoProvider, FontWeight.Medium),
-    Font(GoogleFont("Noto Sans Mono"), NotoSansMonoProvider, FontWeight.Bold),
+    notoSansMono(FontWeight.Normal),
+    notoSansMono(FontWeight.Medium),
+    notoSansMono(FontWeight.Bold),
 )
 
 private fun receiptStyle(
