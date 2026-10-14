@@ -25,3 +25,5 @@ val PenOnDarkInk = Color(0xFFDDE4F7)
 val NavIndicator = Color(0xFFAFC0EE)
 val NavIndicatorInk = Color(0xFF12245E)
 val Scrim = Color(0x9E0F0D12)
+
+val CameraGround = Color(0xFF141218)

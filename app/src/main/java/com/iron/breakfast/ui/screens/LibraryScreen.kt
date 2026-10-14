@@ -85,6 +85,7 @@ import com.iron.breakfast.ui.components.ReceiptActionChip
 import com.iron.breakfast.ui.components.ReceiptBottomSheet
 import com.iron.breakfast.ui.components.ReceiptBottomTray
 import com.iron.breakfast.ui.components.ReceiptChoiceChip
+import com.iron.breakfast.ui.components.ReceiptMealChips
 import com.iron.breakfast.ui.components.ReceiptNavigationBar
 import com.iron.breakfast.ui.components.ReceiptScanButton
 import com.iron.breakfast.ui.components.ReceiptTonalChip
@@ -421,13 +422,7 @@ private fun defaultServingCalories(food: FoodRecord): String =
                 FlowRow(Modifier.weight(1f).padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { units.forEach { candidate -> ReceiptChoiceChip(candidate.displayLabel(), unit == candidate, { unit = candidate }) } }
             }
             Text("Meal", color = InkSoft, style = MaterialTheme.typography.labelMedium)
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                MealSlot.entries.chunked(2).forEach { pair ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        pair.forEach { meal -> ReceiptChoiceChip(meal.label(), chosenMeal == meal, { chosenMeal = meal }, Modifier.weight(1f)) }
-                    }
-                }
-            }
+            ReceiptMealChips(chosenMeal, { chosenMeal = it })
             Text(calc?.let { "${receiptKcal(it.nutrition.calories)} kcal, P ${it.nutrition.protein?.pretty() ?: "—"} g, C ${it.nutrition.carbohydrates?.pretty() ?: "—"} g, F ${it.nutrition.fat?.pretty() ?: "—"} g" } ?: "Enter a positive amount", Modifier.fillMaxWidth().receiptDashedRule().padding(top = 12.dp), color = InkSoft)
             Button(onClick = { val amount = amountText.toDoubleOrNull(); if (amount != null && amount > 0.0 && calc?.supported == true) { vm.logLibraryFood(food, chosenMeal, amount, unit); onDismiss() } else vm.noticeForInvalidLibraryAmount() }, enabled = !food.archived && calc?.supported == true, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(24.dp)) { Text("Add to ${chosenMeal.label()}") }
         }

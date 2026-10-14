@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,6 +24,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import com.iron.breakfast.domain.MealSlot
+import com.iron.breakfast.label
+import com.iron.breakfast.ui.theme.ReceiptFieldPillShape
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.foundation.shape.CircleShape
@@ -250,6 +257,8 @@ fun ReceiptEntryRow(
     first: Boolean = false,
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    /** Small grey line under the kcal figure, such as "/100 ml". */
+    calorieCaption: String? = null,
 ) {
     Row(
         modifier
@@ -262,12 +271,15 @@ fun ReceiptEntryRow(
     ) {
         Column(Modifier.weight(1f)) {
             Text(name, color = Ink, style = MaterialTheme.typography.bodyLarge)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (approximate != null || quantityLine.isNotBlank()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (approximate != null) ApproxTag(approximate)
-                Text(quantityLine, color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                if (quantityLine.isNotBlank()) Text(quantityLine, color = InkSoft, style = MaterialTheme.typography.bodySmall)
             }
         }
-        Text(calories, color = Ink, style = MaterialTheme.typography.displaySmall, modifier = Modifier.padding(start = 10.dp))
+        Column(Modifier.padding(start = 10.dp), horizontalAlignment = Alignment.End) {
+            Text(calories, color = Ink, style = MaterialTheme.typography.displaySmall)
+            if (calorieCaption != null) Text(calorieCaption, color = InkSoft, style = MaterialTheme.typography.labelSmall)
+        }
         SourceBox(source, Modifier.padding(start = 10.dp, top = 1.dp))
     }
 }
@@ -307,9 +319,13 @@ fun ReceiptScanButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun ApproxTag(text: String, modifier: Modifier = Modifier) {
+fun ApproxTag(text: String, modifier: Modifier = Modifier) = ReceiptRedTag("≈ $text", modifier)
+
+/** Small print-red chip: the approximation mark and the "Required" marker share this one form. */
+@Composable
+fun ReceiptRedTag(text: String, modifier: Modifier = Modifier) {
     Text(
-        text = "≈ $text",
+        text = text,
         modifier = modifier.background(PrintRed, RoundedCornerShape(3.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
         color = OnGround,
         style = MaterialTheme.typography.labelSmall,
@@ -362,21 +378,22 @@ fun ReceiptSticker(
             Text(value, color = Ink, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
         }
         Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (approximateDetail) ApproxTag(detail) else ReceiptStickerField(detail)
+            if (approximateDetail) ApproxTag(detail) else ReceiptTag(detail)
             fields.forEach { field ->
-                ReceiptStickerField(field)
+                ReceiptTag(field)
             }
         }
     }
 }
 
+/** Small outlined grey tag: "2 tbsp" on a sticker, "from scan" on a field. */
 @Composable
-private fun ReceiptStickerField(value: String) {
+fun ReceiptTag(value: String, modifier: Modifier = Modifier) {
     Text(
         value,
         color = InkSoft,
         style = MaterialTheme.typography.labelSmall,
-        modifier = Modifier.border(1.5.dp, Rule, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp),
+        modifier = modifier.border(1.5.dp, Rule, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp),
     )
 }
 
@@ -504,11 +521,13 @@ fun ReceiptSnackbar(
 fun ReceiptBottomSheet(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
+    skipPartiallyExpanded: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         modifier = modifier,
+        sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = skipPartiallyExpanded),
         shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
         containerColor = Paper,
         contentColor = Ink,
@@ -552,3 +571,202 @@ fun ReceiptNavigationBar(selectedDaily: Boolean, onDaily: () -> Unit, onLibrary:
     }
 }
 
+
+/** Sub-screen header: arrow_back, a bold title (optionally a soft second line) and a trailing slot. */
+@Composable
+fun ReceiptTopBar(
+    title: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    trailing: @Composable () -> Unit = {},
+) {
+    Row(modifier.fillMaxWidth().padding(top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = OnGround)
+        }
+        Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
+            Text(title, color = OnGround, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+            if (subtitle != null) Text(subtitle, color = com.iron.breakfast.ui.theme.OnGroundSoft, style = MaterialTheme.typography.bodySmall)
+        }
+        trailing()
+    }
+}
+
+/** Rounded paper text field with a clear button, used for the search screens. */
+@Composable
+fun ReceiptSearchPill(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onClear: () -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    onSearch: (() -> Unit)? = null,
+) {
+    Row(
+        modifier
+            .height(54.dp)
+            .background(Paper, ReceiptFieldPillShape)
+            .border(2.dp, PenOnDark, ReceiptFieldPillShape)
+            .padding(start = 18.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.weight(1f).semantics { contentDescription = label },
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyMedium.copy(color = Ink),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(Ink),
+            keyboardOptions = KeyboardOptions(imeAction = if (onSearch != null) ImeAction.Search else ImeAction.Done),
+            keyboardActions = KeyboardActions(onSearch = { onSearch?.invoke() }, onDone = { onSearch?.invoke() }),
+        )
+        if (value.isNotEmpty()) {
+            IconButton(onClick = onClear, modifier = Modifier.size(46.dp)) {
+                Icon(Icons.Default.Close, contentDescription = "Clear", tint = InkSoft)
+            }
+        }
+    }
+}
+
+/**
+ * Labelled paper field. The label sits above on the dark ground (or on paper when [labelColor] says so);
+ * a 2dp ring shows focus, or print-red when [error] is set. [trailing] holds a tag or a small button.
+ */
+@Composable
+fun ReceiptField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    labelColor: Color = com.iron.breakfast.ui.theme.OnGroundSoft,
+    container: Color = Paper,
+    outline: Color? = null,
+    error: Boolean = false,
+    singleLine: Boolean = true,
+    minLines: Int = 1,
+    placeholder: String? = null,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    labelTrailing: (@Composable () -> Unit)? = null,
+    /** Applied to the text field itself, for a FocusRequester. */
+    fieldModifier: Modifier = Modifier,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    var focused by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val ring = when {
+        error -> PrintRed
+        focused -> PenOnDark
+        else -> null
+    }
+    Column(modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, color = labelColor, style = MaterialTheme.typography.bodySmall, modifier = Modifier.clearAndSetSemantics { })
+            labelTrailing?.invoke()
+        }
+        Row(
+            Modifier
+                .padding(top = 4.dp)
+                .fillMaxWidth()
+                .heightIn(min = 54.dp)
+                .background(container, ReceiptPaperShape)
+                .then(if (ring != null) Modifier.border(2.dp, ring, ReceiptPaperShape) else if (outline != null) Modifier.border(1.5.dp, outline, ReceiptPaperShape) else Modifier)
+                .padding(horizontal = 14.dp, vertical = if (singleLine) 0.dp else 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .then(fieldModifier)
+                    .onFocusChanged { focused = it.isFocused }
+                    .semantics { contentDescription = label },
+                singleLine = singleLine,
+                minLines = minLines,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = Ink),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(Ink),
+                keyboardOptions = keyboardOptions,
+                keyboardActions = keyboardActions,
+                visualTransformation = visualTransformation,
+                decorationBox = { inner ->
+                    Box(Modifier.heightIn(min = 48.dp), contentAlignment = Alignment.CenterStart) {
+                        if (value.isEmpty() && placeholder != null) Text(placeholder, color = InkSoft, style = MaterialTheme.typography.bodyMedium)
+                        inner()
+                    }
+                },
+            )
+            trailing?.invoke()
+        }
+    }
+}
+
+/** Full-width 48dp pill buttons. Solid primary is the one pen-blue action; tonal and outlined are secondary. */
+@Composable
+fun ReceiptPrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, fillWidth: Boolean = true) {
+    androidx.compose.material3.Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.then(if (fillWidth) Modifier.fillMaxWidth() else Modifier).height(48.dp),
+        shape = ReceiptPillShape,
+    ) { Text(text, fontWeight = FontWeight.Bold, maxLines = 1) }
+}
+
+@Composable
+fun ReceiptTonalButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    androidx.compose.material3.Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.fillMaxWidth().height(48.dp),
+        shape = ReceiptPillShape,
+        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = PenTonal, contentColor = PenTonalInk),
+    ) { Text(text, fontWeight = FontWeight.Bold, maxLines = 1) }
+}
+
+@Composable
+fun ReceiptOutlinedButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    androidx.compose.material3.OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth().height(48.dp),
+        shape = ReceiptPillShape,
+        border = androidx.compose.foundation.BorderStroke(1.5.dp, PenOnDark),
+        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = PenOnDarkInk),
+    ) { Text(text, maxLines = 1) }
+}
+
+/** A plain paper slip: padded paper with the 6dp radius and no band. */
+@Composable
+fun ReceiptPlainSlip(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier.fillMaxWidth().background(Paper, ReceiptPaperShape).padding(16.dp), content = content)
+}
+
+/** One paper ticket without a red band, closed by the torn edge: the results and matches lists. */
+@Composable
+fun ReceiptPaperTicket(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier) {
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)).background(Paper), content = content)
+        ReceiptTornEdge(fill = Paper)
+    }
+}
+
+/** Bold subhead row of a paper ticket ("5 results", "Local matches"). */
+@Composable
+fun ReceiptSubhead(text: String, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 14.dp), contentAlignment = Alignment.CenterStart) {
+        Text(text, color = Ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+/** The 2x2 meal choice. Selected = tonal + 2dp primary border + check. */
+@Composable
+fun ReceiptMealChips(selected: MealSlot, onSelect: (MealSlot) -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        MealSlot.entries.chunked(2).forEach { pair ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                pair.forEach { meal -> ReceiptChoiceChip(meal.label(), selected == meal, { onSelect(meal) }, Modifier.weight(1f)) }
+            }
+        }
+    }
+}

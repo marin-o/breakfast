@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MeasureUnit
+import com.iron.breakfast.domain.NutritionInput
 import com.iron.breakfast.domain.ServingConversion
 
 /**
@@ -15,6 +16,9 @@ class FoodDraft {
     var name by mutableStateOf("")
     var brand by mutableStateOf("")
     var barcode by mutableStateOf("")
+    /** The barcode was seeded by a scan; the create form tags it "from scan" until it is edited. */
+    var barcodeFromScan by mutableStateOf(false)
+    var fullFormOpen by mutableStateOf(false)
     var shorthand by mutableStateOf("")
     var calories by mutableStateOf("")
     var protein by mutableStateOf("")
@@ -33,6 +37,8 @@ class FoodDraft {
 
     fun reset() = load(null)
 
+    fun nutritionInput() = NutritionInput(shorthand, calories, protein, carbs, fat, basisAmount, basisUnit)
+
     fun load(food: FoodRecord?) {
         name = food?.name.orEmpty(); brand = food?.brand.orEmpty(); barcode = food?.barcode.orEmpty(); shorthand = ""
         calories = food?.nutrition?.values?.calories?.toString().orEmpty()
@@ -41,7 +47,7 @@ class FoodDraft {
         fat = food?.nutrition?.values?.fat?.toString().orEmpty()
         basisAmount = food?.nutrition?.amount?.toString() ?: "100"
         basisUnit = food?.nutrition?.unit?.label ?: "g"
-        fromOff = false
+        fromOff = false; barcodeFromScan = false; fullFormOpen = false
         aliases = food?.aliases.orEmpty(); aliasInput = ""; aliasFieldOpen = false
         servings = food?.householdServings().orEmpty()
         servingFormOpen = false; servingUnit = MeasureUnit.PIECE; servingAmount = ""

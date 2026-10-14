@@ -4,7 +4,14 @@ import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
+import com.iron.breakfast.domain.Calculation
+import com.iron.breakfast.domain.NutritionCalculator
+import com.iron.breakfast.domain.NutritionInput
+import com.iron.breakfast.domain.ParsedAmountUnit
+import com.iron.breakfast.domain.ResolvedNutrition
 import com.iron.breakfast.domain.ShorthandParser
+import com.iron.breakfast.domain.parseStrictAmountUnit
+import com.iron.breakfast.domain.resolveNutrition
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.pretty
 import com.iron.breakfast.ui.components.ReceiptTokenKind
@@ -145,3 +152,78 @@ internal fun contributionAvailable(food: FoodRecord): Boolean {
 }
 
 internal fun foodCountLabel(count: Int): String = if (count == 1) "1 food" else "$count foods"
+
+/** "/100 g" or "/100 ml": the caption under an Open Food Facts kcal figure, by the product's own basis unit. */
+internal fun basisCaption(amount: Double, unit: MeasureUnit): String = "/${amount.pretty()} ${unit.label}"
+
+/** The unresolved quote of the resolve queue: its kept quantity ("2 tbsp", when typed) and the food words. */
+internal data class UnknownDisplay(val quantity: String?, val name: String)
+
+internal fun unknownDisplay(raw: String): UnknownDisplay {
+    val parsed = ShorthandParser().parse(raw)
+    val quantity = parsed.amount?.let { amount -> listOfNotNull(amount.pretty(), parsed.unit?.displayLabel()?.takeIf { it.isNotBlank() }).joinToString(" ") }
+    return UnknownDisplay(quantity, parsed.foodPhrase.trim().ifBlank { raw.trim() })
+}
+
+/** One local match for the kept quantity: whole kcal, the ≈ chip text when the conversion is a guess, and the plain detail. */
+internal data class MatchDisplay(val kcal: String, val approximateLabel: String?, val detail: String)
+
+internal fun matchDisplay(food: FoodRecord, raw: String, calculator: NutritionCalculator = NutritionCalculator()): MatchDisplay {
+    val parsed = ShorthandParser().parse(raw)
+    val amount = parsed.amount ?: food.defaultAmount
+    val unit = parsed.unit ?: food.defaultUnit
+    val calculation = calculator.calculate(food, amount, unit)
+    val entered = "${amount.pretty()} ${unit.displayLabel()}".trim()
+    if (!calculation.supported) return MatchDisplay("—", null, entered)
+    val converted = unit != food.nutrition.unit
+    val base = "(${calculation.resolvedBaseAmount.pretty()} ${food.nutrition.unit.label})"
+    val approximate = calculation.approximate && converted
+    return MatchDisplay(
+        kcal = receiptKcal(calculation.nutrition.calories),
+        approximateLabel = entered.takeIf { approximate },
+        detail = when {
+            approximate -> base
+            converted -> "$entered $base"
+            else -> entered
+        },
+    )
+}
+
+/** Review amount field: "2 tbsp", or a bare number meaning the product's own basis unit. Null while it cannot be logged. */
+internal fun parseProductAmount(text: String, basisUnit: MeasureUnit): ParsedAmountUnit? {
+    val bare = text.trim().replace(',', '.').toDoubleOrNull()
+    if (bare != null) return if (bare.isFinite() && bare > 0.0) ParsedAmountUnit(bare, basisUnit) else null
+    return parseStrictAmountUnit(text)
+}
+
+/** "30 g" for the red chip beside a household-measure amount; null for exact amounts. */
+internal fun productApproxLabel(calculation: Calculation?, enteredUnit: MeasureUnit?, basisUnit: MeasureUnit): String? =
+    calculation?.takeIf { it.supported && it.approximate && enteredUnit != null && enteredUnit != basisUnit }
+        ?.let { "${it.resolvedBaseAmount.pretty()} ${basisUnit.label}" }
+
+/** What the create form resolves to and whether it can be saved. Calories are required. */
+internal data class CreateFoodState(
+    val nutrition: ResolvedNutrition,
+    val caloriesMissing: Boolean,
+    /** The red ring and "Required: kcal" tag: shown once the user has started on nutrition. */
+    val showRequired: Boolean,
+    val canSave: Boolean,
+)
+
+internal fun createFoodState(input: NutritionInput, name: String, barcodeError: String?): CreateFoodState {
+    val nutrition = resolveNutrition(input)
+    val missing = nutrition.calories == null
+    val touched = listOf(input.shorthand, input.calories, input.protein, input.carbs, input.fat).any { it.isNotBlank() }
+    return CreateFoodState(nutrition, missing, showRequired = missing && touched, canSave = !missing && name.isNotBlank() && barcodeError == null)
+}
+
+/** The parsed-result slip values; null prints as "unknown". */
+internal data class NutritionSlipValues(val label: String, val calories: String?, val protein: String?, val carbs: String?, val fat: String?)
+
+internal fun nutritionSlipValues(nutrition: ResolvedNutrition): NutritionSlipValues = NutritionSlipValues(
+    label = basisLabel(nutrition.basisAmount, nutrition.basisUnit),
+    calories = nutrition.calories?.let(::receiptKcal),
+    protein = nutrition.protein?.let { "${it.pretty()} g" },
+    carbs = nutrition.carbohydrates?.let { "${it.pretty()} g" },
+    fat = nutrition.fat?.let { "${it.pretty()} g" },
+)

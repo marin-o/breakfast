@@ -119,6 +119,7 @@ import com.iron.breakfast.domain.NutritionCalculator
 import com.iron.breakfast.domain.RankedFood
 import com.iron.breakfast.domain.asciiDigits
 import com.iron.breakfast.domain.normalizeBarcode
+import com.iron.breakfast.domain.resolveNutrition
 import com.iron.breakfast.domain.validateBarcodeInput
 import com.iron.breakfast.domain.ReplacementResult
 import com.iron.breakfast.domain.ShorthandParser
@@ -139,6 +140,12 @@ import com.iron.breakfast.ui.screens.LibraryFoodEditScreen
 import com.iron.breakfast.ui.screens.LibraryScreen
 import com.iron.breakfast.ui.screens.MealComposer
 import com.iron.breakfast.ui.screens.MealScreen
+import com.iron.breakfast.ui.screens.CreateFoodScreen
+import com.iron.breakfast.ui.screens.LibraryNoMatchScreen
+import com.iron.breakfast.ui.screens.OffSearchScreen
+import com.iron.breakfast.ui.screens.ProductReviewSheet
+import com.iron.breakfast.ui.screens.ResolveUnknownScreen
+import com.iron.breakfast.ui.screens.ScannerScreen
 import com.iron.breakfast.ui.components.ReceiptNavigationBar
 import com.iron.breakfast.ui.theme.BreakfastTheme
 import com.iron.breakfast.ui.theme.Ground
@@ -193,10 +200,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var offResults by mutableStateOf<List<FoodRecord>>(emptyList()); private set
     var searchBusy by mutableStateOf(false); private set
     var offSearchMessage by mutableStateOf<String?>(null); private set
+    /** True when the last OFF search failed for lack of a connection (not for any other reason). */
+    var offSearchUnavailable by mutableStateOf(false); private set
     var scannerOpen by mutableStateOf(false); private set
     var selectedProduct by mutableStateOf<FoodRecord?>(null); private set
     var selectedProductFromScan by mutableStateOf(false); private set
-    var productMealPickerOpen by mutableStateOf(false); private set
     var productAmount by mutableStateOf("100"); private set
     var productUnit by mutableStateOf("g"); private set
     var productName by mutableStateOf(""); private set
@@ -224,6 +232,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var libraryQuery by mutableStateOf(""); private set
     var libraryIncludeArchived by mutableStateOf(false); private set
     var libraryFoods by mutableStateOf<List<FoodRecord>>(emptyList()); private set
+    /** The query [libraryFoods] was computed for; the no-match screen waits until it equals [libraryQuery]. */
+    var libraryResultsQuery by mutableStateOf<String?>(null); private set
     var selectedLibraryFood by mutableStateOf<FoodRecord?>(null); private set
     var libraryMealPickerFood by mutableStateOf<FoodRecord?>(null); private set
     var expandedLibraryFoodId by mutableStateOf<String?>(null); private set
@@ -254,6 +264,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private var fullSaveJob: Job? = null
     var unknownQueue by mutableStateOf<List<String>>(emptyList()); private set
     var unknownQueueTarget by mutableStateOf<MealSlot?>(null); private set
+    var unknownQueueTotal by mutableStateOf(0); private set
     var resolutionContinuation by mutableStateOf(false); private set
     var resolverOpen by mutableStateOf(false); private set
     var resolverQuery by mutableStateOf(""); private set
@@ -281,14 +292,21 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun toggleLibraryArchived() { libraryIncludeArchived = !libraryIncludeArchived; refreshLibrary() }
     fun refreshLibrary() {
         if (!ready) return
+        val captured = libraryQuery
         viewModelScope.launch {
             libraryFoods = libraryRecencyOrder(
-                engine.foodsMatching(libraryQuery, libraryIncludeArchived),
+                engine.foodsMatching(captured, libraryIncludeArchived),
                 entries,
             )
+            libraryResultsQuery = captured
         }
     }
     fun openLibraryFood(food: FoodRecord) { selectedLibraryFood = food }
+    /** A library search that finished with nothing and has no other screen over it: the "No local match" screen. */
+    fun libraryNoMatch(): Boolean = isLibraryNoMatch(
+        ready, libraryOpen, libraryQuery, libraryResultsQuery, libraryFoods.isEmpty(),
+        otherScreenOpen = selectedLibraryFood != null || customOpen || searchOpen || resolverOpen || selectedProduct != null || scannerOpen || selectedEntry != null || entryEditMode != EntryEditMode.NONE,
+    )
     fun closeLibraryFood() { selectedLibraryFood = null }
     fun lastLoggedEntry(food: FoodRecord): MealEntry? = entries.asSequence()
         .filter { it.foodId == food.id }
@@ -443,6 +461,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private fun abandonUnknownResolution(clearDraft: Boolean = false) {
         unknownQueue = emptyList()
         unknownQueueTarget = null
+        unknownQueueTotal = 0
         resolutionContinuation = false
         resolverOpen = false
         if (clearDraft) {
@@ -581,6 +600,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                     refresh()
                     if (input == capturedInput) input = saved.unresolvedSegments.joinToString(", ")
                     unknownQueue = saved.unresolvedSegments
+                    unknownQueueTotal = saved.unresolvedSegments.size
                     unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }
                     resolutionContinuation = saved.unresolvedSegments.isNotEmpty()
                     resolverOpen = saved.unresolvedSegments.isNotEmpty()
@@ -727,7 +747,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         busy = true
         viewModelScope.launch {
             runCatching { engine.save(cleaned, mealSlot = target, dayKey = selectedDayKey) }.onSuccess { saved ->
-                refresh(); if (input == captured) input = saved.unresolvedSegments.joinToString(", "); unknownQueue = saved.unresolvedSegments; unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }; resolutionContinuation = saved.unresolvedSegments.isNotEmpty(); resolverOpen = saved.unresolvedSegments.isNotEmpty(); mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
+                refresh(); if (input == captured) input = saved.unresolvedSegments.joinToString(", "); unknownQueue = saved.unresolvedSegments; unknownQueueTotal = saved.unresolvedSegments.size; unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }; resolutionContinuation = saved.unresolvedSegments.isNotEmpty(); resolverOpen = saved.unresolvedSegments.isNotEmpty(); mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
                 feedbackIds = saved.entries.filter { it.approximateConversion }.mapTo(mutableSetOf()) { it.id }; feedbackUntil = if (feedbackIds.isEmpty()) 0L else System.currentTimeMillis() + 30_000L
                 loggedBatchIds = saved.entries.map { it.id }
                 loggedBatchMessage = "${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} logged to ${target.label()}"
@@ -760,6 +780,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         draft.name = name
         draft.brand = brand
         draft.barcode = normalizeBarcode(barcode).orEmpty()
+        draft.barcodeFromScan = draft.barcode.isNotEmpty()
         draft.fromOff = fromOff
         customOpen = true
         searchOpen = false
@@ -849,8 +870,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             }
         }
     }
-    fun clearSelectedProduct() { selectedProduct = null; selectedProductFromScan = false; productMealPickerOpen = false; if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false }
-    fun dismissProductMealPicker() { productMealPickerOpen = false }
+    fun clearSelectedProduct() { selectedProduct = null; selectedProductFromScan = false; if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false }
     fun onProductAmount(v: String) { productAmount = v }
     fun onProductUnit(v: String) { productUnit = v }
     fun onProductName(v: String) { productName = v }
@@ -869,9 +889,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         searchQuery = prefill ?: ""
         offResults = emptyList()
         offSearchMessage = null
+        offSearchUnavailable = false
     }
     fun closeSearch() { searchOpen = false; if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false }
-    fun onSearch(v: String) { searchQuery = v; offResults = emptyList(); offSearchMessage = null }
+    fun onSearch(v: String) { searchQuery = v; offResults = emptyList(); offSearchMessage = null; offSearchUnavailable = false }
     fun onResolverQuery(v: String) { resolverQuery = v; resolverResults = if (v.isBlank()) emptyList() else engine.search(v) }
     private fun advanceUnknownQueue() {
         unknownQueue = unknownQueue.drop(1)
@@ -885,7 +906,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }
     }
     fun resolveUnknown(food: FoodRecord) { val raw = unknownQueue.firstOrNull() ?: return; val target = slot ?: return; if (unknownQueueTarget != target || !resolutionContinuation) return; val parsed = parser.parse(raw); val amount = parsed.amount ?: food.defaultAmount; val unit = parsed.unit ?: food.defaultUnit; if (!ready || busy) return; busy = true; viewModelScope.launch { runCatching { engine.cacheFoodAndLog(food, amount, unit, target, selectedDayKey) }.onSuccess { advanceUnknownQueue(); refresh() }.onFailure { notice = it.message ?: "Could not resolve this food." }.also { busy = false } } }
-    fun discardUnknowns() { abandonUnknownResolution(clearDraft = true) }
+    /** Leaves the current unresolved food unlogged and moves to the next one. */
+    fun skipCurrentUnknown() { if (unknownQueue.isNotEmpty()) advanceUnknownQueue() }
+    /** Names of the foods the batch that produced this queue already saved, for the resolve header. */
+    fun savedBatchNames(): List<String> = loggedBatchIds.mapNotNull { id -> entries.firstOrNull { it.id == id }?.foodName }
     fun feedbackOpen(entry: MealEntry): Boolean = entry.id in feedbackIds && System.currentTimeMillis() < feedbackUntil
     fun feedbackCount(): Int = feedbackIds.count { id -> entries.any { it.id == id } && System.currentTimeMillis() < feedbackUntil }
     fun alternatives(entry: MealEntry): List<RankedFood> = if (feedbackOpen(entry)) engine.alternativesFor(entry) else emptyList()
@@ -898,6 +922,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val captured = searchQuery
         searchBusy = true
         offSearchMessage = null
+        offSearchUnavailable = false
         viewModelScope.launch(Dispatchers.IO) {
             val result = off.search(captured)
             withContext(Dispatchers.Main) {
@@ -908,6 +933,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                             offSearchMessage = if (result.foods.isEmpty()) "No usable result for \"$captured\"." else null
                         }
                         OffSearchResult.Unavailable -> {
+                            offSearchUnavailable = true
                             offResults = emptyList()
                             offSearchMessage = "Open Food Facts unavailable; try again or add manually."
                         }
@@ -938,15 +964,17 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         productFat = food.nutrition.values.fat?.toString().orEmpty()
     }
     fun productCalculation(food: FoodRecord): Calculation? = productDraft(food)?.calculation
-    fun addSelected() {
+    /** Logs the reviewed product to [target] on the selected day; Add in the review sheet calls this. */
+    fun addSelected(chosen: MealSlot) {
         val food = selectedProduct ?: return
         if (!ready || busy) return
-        val target = slot ?: run { productMealPickerOpen = true; return }
         val draft = productDraft(food) ?: run {
             notice = "Enter a positive amount, a supported unit, and valid calories."
             return
         }
-        val resolvesQueue = resolutionContinuation && unknownQueueTarget == target
+        val plan = reviewLogPlan(resolutionContinuation, unknownQueue.isNotEmpty(), unknownQueueTarget, chosen)
+        val target = plan.meal
+        val resolvesQueue = plan.advancesQueue
         val fromScan = selectedProductFromScan
         busy = true
         viewModelScope.launch {
@@ -956,27 +984,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                     pendingContribution = contributionDraftAfterLocalSave(draft.food, fromScan)
                     selectedProductFromScan = false
                     if (resolvesQueue) advanceUnknownQueue() else resolutionContinuation = false
-                    refresh(); refreshLibrary()
-                    notice = "Added to ${target.label()}"
-                }
-                .onFailure { notice = it.message ?: "This amount cannot be logged." }
-                .also { busy = false }
-        }
-    }
-
-    fun chooseProductMeal(target: MealSlot) {
-        val food = selectedProduct ?: return
-        val draft = productDraft(food) ?: run { notice = "Enter a positive amount, a supported unit, and valid calories."; return }
-        productMealPickerOpen = false
-        if (!ready || busy) return
-        val fromScan = selectedProductFromScan
-        busy = true
-        viewModelScope.launch {
-            runCatching { engine.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, selectedDayKey) }
-                .onSuccess {
-                    selectedProduct = null
-                    selectedProductFromScan = false
-                    pendingContribution = contributionDraftAfterLocalSave(draft.food, fromScan)
                     refresh(); refreshLibrary()
                     notice = "Added to ${target.label()}"
                 }
@@ -1037,7 +1044,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (rescanningBarcode) {
             rescanningBarcode = false
             val scanned = normalizeBarcode(code)
-            if (scanned == null) notice = "Not a product barcode." else draft.barcode = scanned
+            if (scanned == null) notice = "Not a product barcode." else { draft.barcode = scanned; draft.barcodeFromScan = true }
             return
         }
         val barcode = code.trim()
@@ -1060,17 +1067,17 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }
     }
     fun saveCustom() {
-        val name = draft.name; val brand = draft.brand; val barcode = draft.barcode.trim(); val shorthand = draft.shorthand
+        val name = draft.name; val brand = draft.brand; val barcode = draft.barcode.trim()
         val aliasList = draft.allAliases(); val servingList = draft.servings
-        fun shorthandNumber(label: String) = Regex("(?i)([0-9]+(?:[.,][0-9]+)?)\\s*g?\\s*$label").find(shorthand)?.groupValues?.getOrNull(1)?.replace(',', '.')?.toDoubleOrNull()
-        val kcal = draft.calories.toDoubleOrNull() ?: shorthandNumber("kcal"); val proteinValue = draft.protein.toDoubleOrNull() ?: shorthandNumber("protein"); val carbsValue = draft.carbs.toDoubleOrNull() ?: shorthandNumber("(?:carb|carbs)"); val fatValue = draft.fat.toDoubleOrNull() ?: shorthandNumber("fat")
+        val resolved = resolveNutrition(draft.nutritionInput())
+        val kcal = resolved.calories; val proteinValue = resolved.protein; val carbsValue = resolved.carbohydrates; val fatValue = resolved.fat
         if (name.isBlank() || kcal == null) { notice = "Name and calories are required."; return }
         val editingId = editingLibraryFoodId
         val originalBarcode = editingId?.let { id -> foods.firstOrNull { it.id == id }?.barcode?.trim() }
         val barcodeError = if (barcode == originalBarcode) null else validateBarcodeInput(barcode, foods, editingId)
         if (barcodeError != null) { notice = barcodeError; return }
-        val basisAmount = draft.basisAmount.toDoubleOrNull() ?: 100.0
-        val basisUnit = if (draft.basisUnit.trim().lowercase() == "ml") MeasureUnit.MILLILITER else MeasureUnit.GRAM
+        val basisAmount = resolved.basisAmount
+        val basisUnit = resolved.basisUnit
         val nutrition = NutritionValues(kcal, proteinValue, carbsValue, fatValue)
         if (!nutrition.calories.isFinite() || nutrition.calories < 0.0 || nutrition.calories > 10000.0 || listOf(nutrition.protein, nutrition.carbohydrates, nutrition.fat).any { it != null && (!it.isFinite() || it < 0.0 || it > 1000.0) }) { notice = "Nutrition values must be finite and nonnegative."; return }
         if (!ready || busy || !basisAmount.isFinite() || basisAmount <= 0.0) { notice = "Enter a positive nutrition basis."; return }
@@ -1252,7 +1259,7 @@ internal fun Double?.macro() = this?.let { "${it.pretty()} g" } ?: "—"
 fun IronApp(vm: BreakfastViewModel = viewModel()) {
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); vm.reloadToday() } }
     LaunchedEffect(vm.feedbackUntil, vm.resolverOpen) { while (vm.feedbackUntil > 0L) { kotlinx.coroutines.delay(1000); if (vm.resolverOpen) vm.holdFeedback() else if (System.currentTimeMillis() >= vm.feedbackUntil) { vm.expireFeedback(); break } } }
-    if (vm.scannerOpen) { BarcodeScanner(vm); return }
+    if (vm.scannerOpen) { ScannerScreen(vm); return }
     if (vm.selectedEntry != null) {
         EntryDetailScreen(vm, vm.selectedEntry!!)
         return
@@ -1292,13 +1299,13 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     if (vm.mealPickerOpen) MealPickerDialog(vm)
     if (vm.libraryMealPickerFood != null) LibraryMealPickerDialog(vm, vm.libraryMealPickerFood!!)
     if (vm.libraryBatchMealPickerOpen) LibraryBatchMealPickerDialog(vm)
-    if (vm.productMealPickerOpen) ProductMealPickerDialog(vm)
     if (vm.customOpen) {
-        if (vm.editingLibraryFoodId != null) LibraryFoodEditScreen(vm) else CustomDialog(vm)
+        if (vm.editingLibraryFoodId != null) LibraryFoodEditScreen(vm) else CreateFoodScreen(vm)
     }
-    if (vm.searchOpen) SearchDialog(vm)
-    if (vm.resolverOpen) UnknownResolver(vm)
-    vm.selectedProduct?.let { ProductDialog(vm, it) }
+    if (vm.libraryNoMatch()) LibraryNoMatchScreen(vm)
+    if (vm.searchOpen) OffSearchScreen(vm)
+    if (vm.resolverOpen) ResolveUnknownScreen(vm)
+    vm.selectedProduct?.let { ProductReviewSheet(vm, it) }
     if (vm.contributionReviewOpen) vm.pendingContribution?.let { ContributionReviewDialog(vm, it) }
     if (vm.contributionAuthOpen) ContributionAuthDialog(vm)
     vm.contributionFailure?.let { ContributionFailureDialog(vm, it) }
@@ -1322,15 +1329,6 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
             }
         },
         confirmButton = { TextButton(vm::dismissMealPicker) { Text("Cancel") } }
-    )
-}
-
-@Composable private fun ProductMealPickerDialog(vm: BreakfastViewModel) {
-    AlertDialog(
-        onDismissRequest = vm::dismissProductMealPicker,
-        title = { Text("Add scanned food to which meal?") },
-        text = { Column { MealSlot.entries.forEach { target -> TextButton({ vm.chooseProductMeal(target) }, Modifier.fillMaxWidth()) { Text(target.label()) } } } },
-        confirmButton = { TextButton(vm::dismissProductMealPicker) { Text("Back to review") } }
     )
 }
 
@@ -1449,121 +1447,18 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     )
 }
 
-@Composable private fun CustomDialog(vm: BreakfastViewModel) {
-    val draft = vm.draft
-    AlertDialog(onDismissRequest = vm::closeCustom, confirmButton = { Button(vm::saveCustom) { Text("Save food") } }, dismissButton = { TextButton(vm::closeCustom) { Text("Cancel") } }, title = { Text("Create personal food") }, text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) { OutlinedTextField(draft.name, { draft.name = it }, label = { Text("Name") }); OutlinedTextField(draft.brand, { draft.brand = it }, label = { Text("Brand (optional)") }); OutlinedTextField(draft.aliasInput, { draft.aliasInput = it }, label = { Text("Alias (optional)") }); FoodBarcodeField(vm, label = "Barcode (optional)"); OutlinedTextField(draft.shorthand, { draft.shorthand = it }, label = { Text("Nutrition shorthand (optional)") }, placeholder = { Text("450 kcal, 12g protein, 20g carbs") }); Text("Nutrition basis", style = MaterialTheme.typography.labelMedium); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { OutlinedTextField(draft.basisAmount, { draft.basisAmount = it }, label = { Text("Amount") }, modifier = Modifier.weight(1f)); OutlinedTextField(draft.basisUnit, { draft.basisUnit = it }, label = { Text("Unit g/ml") }, modifier = Modifier.weight(1f)) }; OutlinedTextField(draft.calories, { draft.calories = it }, label = { Text("Calories *") }); OutlinedTextField(draft.protein, { draft.protein = it }, label = { Text("Protein g (optional)") }); OutlinedTextField(draft.carbs, { draft.carbs = it }, label = { Text("Carbs g (optional)") }); OutlinedTextField(draft.fat, { draft.fat = it }, label = { Text("Fat g (optional)") }) } })
-}
+/** Where a reviewed product is logged. While a resolve queue is active the meal is the queue's own and Add always advances it. */
+internal data class ReviewLogPlan(val meal: MealSlot, val advancesQueue: Boolean)
 
-@Composable private fun SearchDialog(vm: BreakfastViewModel) {
-    AlertDialog(
-        onDismissRequest = vm::closeSearch,
-        confirmButton = { Button(vm::submitSearch, enabled = !vm.searchBusy) { Text(if (vm.searchBusy) "Searching…" else "Search") } },
-        dismissButton = { TextButton(vm::closeSearch) { Text("Cancel") } },
-        title = { Text("Open Food Facts") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                OutlinedTextField(vm.searchQuery, vm::onSearch, label = { Text("Search (submitted only)") })
-                vm.offResults.forEach { food ->
-                    TextButton({ vm.chooseProduct(food) }) { Text("${food.name}${food.brand?.let { " · $it" } ?: ""}") }
-                }
-                vm.offSearchMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                if (vm.offSearchMessage != null && vm.searchQuery.isNotBlank() && !vm.searchBusy) {
-                    TextButton({ vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) }) {
-                        Text(if (vm.offSearchMessage?.startsWith("No usable result") == true) "No usable result — create personal food" else "Add manually")
-                    }
-                }
-            }
-        }
-    )
-}
+internal fun reviewLogPlan(resolutionContinuation: Boolean, queueNotEmpty: Boolean, queueTarget: MealSlot?, chosen: MealSlot): ReviewLogPlan =
+    if (resolutionContinuation && queueNotEmpty && queueTarget != null) ReviewLogPlan(queueTarget, true) else ReviewLogPlan(chosen, false)
 
-@Composable private fun UnknownResolver(vm: BreakfastViewModel) {
-    val current = vm.unknownQueue.firstOrNull().orEmpty()
-    AlertDialog(onDismissRequest = vm::closeResolver, confirmButton = { TextButton(vm::discardUnknowns) { Text("Discard remaining") } }, title = { Text("Match food (${vm.unknownQueue.size} left)") }, text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(current); OutlinedTextField(vm.resolverQuery, vm::onResolverQuery, label = { Text("Search your foods") }); vm.resolverResults.forEach { result -> TextButton({ vm.resolveUnknown(result.food) }) { Text("Use ${result.food.name}") } }; TextButton({ vm.openSearch(vm.currentUnknownName(), fromResolver = true) }) { Text("Search Open Food Facts") }; TextButton({ vm.openCustom(vm.currentUnknownName(), fromResolver = true) }) { Text("Create personal food") } } })
-}
+/** The "No local match" screen shows only once a finished library search for the current query is empty and nothing sits over it. */
+internal fun isLibraryNoMatch(ready: Boolean, libraryOpen: Boolean, query: String, resultsQuery: String?, noResults: Boolean, otherScreenOpen: Boolean): Boolean =
+    ready && libraryOpen && query.isNotBlank() && resultsQuery == query && noResults && !otherScreenOpen
 
-@Composable private fun ProductDialog(vm: BreakfastViewModel, food: FoodRecord) {
-    val calculation = vm.productCalculation(food)
-    AlertDialog(
-        onDismissRequest = vm::clearSelectedProduct,
-        title = { Text("Product details") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedTextField(vm.productName, vm::onProductName, label = { Text("Name") }, singleLine = true)
-                food.brand?.let { Text(it) }
-                OutlinedTextField(vm.productCalories, vm::onProductCalories, label = { Text(productNutritionBasisLabel(food)) }, singleLine = true)
-                OutlinedTextField(vm.productProtein, vm::onProductProtein, label = { Text("Protein g (blank = unknown)") }, singleLine = true)
-                OutlinedTextField(vm.productCarbs, vm::onProductCarbs, label = { Text("Carbs g (blank = unknown)") }, singleLine = true)
-                OutlinedTextField(vm.productFat, vm::onProductFat, label = { Text("Fat g (blank = unknown)") }, singleLine = true)
-                OutlinedTextField(vm.productAmount, vm::onProductAmount, label = { Text("Amount") }, singleLine = true)
-                OutlinedTextField(vm.productUnit, vm::onProductUnit, label = { Text("Unit: g, ml, tbsp, tsp, or piece") }, singleLine = true)
-                Text("Preview: ${calculation?.nutrition?.calories?.pretty() ?: "—"} kcal", style = MaterialTheme.typography.titleMedium)
-                calculation?.let { Text("${if (it.approximate) "Approximate conversion: " else "Conversion: "}${it.provenance}", style = MaterialTheme.typography.labelSmall) }
-                if (vm.slot == null) Text("Choose a meal to log this scanned food, or save it to the library for later.", style = MaterialTheme.typography.bodySmall)
-            }
-        },
-        confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (vm.slot == null) OutlinedButton(vm::saveSelectedToLibrary) { Text("Save to library") }
-                Button(vm::addSelected, enabled = !food.archived) { Text(if (vm.slot == null) "Add to meal" else "Add to ${vm.slot!!.label()}") }
-            }
-        },
-        dismissButton = {
-            Row {
-                TextButton({ vm.clearSelectedProduct(); vm.openSearch(fromResolver = vm.resolutionContinuation) }) { Text("Find better match") }
-                TextButton({ vm.clearSelectedProduct(); vm.beginScan() }) { Text("Rescan") }
-                TextButton(vm::clearSelectedProduct) { Text("Back") }
-            }
-        }
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun BarcodeScanner(vm: BreakfastViewModel) {
-    val context = LocalContext.current
-    val session = remember { ScannerSession() }
-    DisposableEffect(Unit) { onDispose { session.dispose() } }
-    var hasPermission by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasPermission = granted; if (!granted) vm.scannerUnavailable() }
-    LaunchedEffect(Unit) { if (!hasPermission) launcher.launch(Manifest.permission.CAMERA) }
-    BackHandler { vm.endScan() }
-    Scaffold(topBar = { TopAppBar(title = { Text("Scan barcode") }, navigationIcon = { IconButton(onClick = vm::endScan) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Cancel scan") } }) }) { pad ->
-        if (hasPermission) AndroidView(factory = { ctx -> PreviewView(ctx).also { view ->
-            val providerFuture = ProcessCameraProvider.getInstance(ctx)
-            providerFuture.addListener({ runCatching {
-                if (session.disposed.get()) return@runCatching
-                val provider = providerFuture.get()
-                val preview = Preview.Builder().build().also { it.surfaceProvider = view.surfaceProvider }
-                val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
-                val scanner = BarcodeScanning.getClient(); var delivered = false
-                session.provider = provider; session.preview = preview; session.analysis = analysis; session.scanner = scanner
-                analysis.setAnalyzer(ContextCompat.getMainExecutor(ctx)) { proxy ->
-                    val image = proxy.image
-                    if (image == null || delivered || session.disposed.get()) { proxy.close(); return@setAnalyzer }
-                    scanner.process(InputImage.fromMediaImage(image, proxy.imageInfo.rotationDegrees)).addOnSuccessListener { codes ->
-                        codes.firstOrNull()?.rawValue?.let { code -> if (!delivered && !session.disposed.get()) { delivered = true; vm.onBarcode(code) } }
-                    }.addOnCompleteListener { proxy.close() }
-                }
-                provider.bindToLifecycle(context as ComponentActivity, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
-            }.onFailure { if (!session.disposed.get()) { session.dispose(); vm.scannerUnavailable() } } }, ContextCompat.getMainExecutor(ctx))
-        } }, Modifier.fillMaxSize().padding(pad))
-        else Box(Modifier.fillMaxSize().padding(pad)) { Text("Camera permission is required to scan.") }
-    }
-}
-
-private class ScannerSession {
-    val disposed = AtomicBoolean(false)
-    @Volatile var provider: ProcessCameraProvider? = null
-    @Volatile var preview: Preview? = null
-    @Volatile var analysis: ImageAnalysis? = null
-    @Volatile var scanner: BarcodeScanner? = null
-
-    fun dispose() {
-        if (!disposed.compareAndSet(false, true)) return
-        analysis?.clearAnalyzer()
-        scanner?.close()
-        val currentPreview = preview
-        val currentAnalysis = analysis
-        if (currentPreview != null && currentAnalysis != null) provider?.unbind(currentPreview, currentAnalysis)
-    }
+/** "n of m" for the resolve sticker; the total never reads lower than what is left. */
+internal fun resolvePosition(total: Int, remaining: Int): Pair<Int, Int> {
+    val shown = maxOf(total, remaining)
+    return (shown - remaining + 1).coerceIn(1, maxOf(shown, 1)) to shown
 }
