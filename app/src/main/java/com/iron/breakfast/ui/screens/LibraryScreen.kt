@@ -47,7 +47,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -92,6 +91,7 @@ import com.iron.breakfast.ui.components.ReceiptScanButton
 import com.iron.breakfast.ui.components.ReceiptTonalChip
 import com.iron.breakfast.ui.components.ReceiptTonalIconButton
 import com.iron.breakfast.ui.components.ReceiptTornEdge
+import com.iron.breakfast.ui.components.ReceiptField
 import com.iron.breakfast.ui.components.SourceBox
 import com.iron.breakfast.ui.components.receiptDashedRule
 import com.iron.breakfast.ui.components.sourceLabel
@@ -119,11 +119,18 @@ import java.util.Locale
         item {
             if (root) {
                 Row(Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Library", style = receiptHeadingStyle("Library"), color = OnGround, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    if (vm.libraryArchivedOnly) {
+                        IconButton(onClick = vm::openLibrary) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to Library", tint = OnGround) }
+                    }
+                    val title = if (vm.libraryArchivedOnly) "Archived foods" else "Library"
+                    Text(title, style = receiptHeadingStyle(title), color = OnGround, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     Box {
                         IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Library menu", tint = OnGround) }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                            DropdownMenuItem(text = { Text(if (vm.libraryIncludeArchived) "Hide archived foods" else "Archived foods") }, onClick = { vm.toggleLibraryArchived(); menuOpen = false })
+                            DropdownMenuItem(
+                                text = { Text(if (vm.libraryArchivedOnly) "Back to Library" else "Archived foods") },
+                                onClick = { if (vm.libraryArchivedOnly) vm.openLibrary() else vm.openArchivedLibrary(); menuOpen = false },
+                            )
                             DropdownMenuItem(text = { Text("Create personal food") }, onClick = { menuOpen = false; vm.openCustom() })
                         }
                     }
@@ -244,7 +251,7 @@ private fun defaultServingCalories(food: FoodRecord): String =
             }
             Surface(Modifier.fillMaxWidth(), color = Paper, shape = RoundedCornerShape(6.dp)) {
                 Column {
-                    Text(food.name, Modifier.fillMaxWidth().background(PrintRed).padding(14.dp), color = OnGround, fontWeight = FontWeight.Bold)
+                    Text(food.name, Modifier.fillMaxWidth().background(PrintRed).padding(14.dp), color = OnGround, style = receiptHeadingStyle(food.name), fontWeight = FontWeight.Bold)
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text(listOfNotNull(food.brand, sourceLabel(letter)).joinToString(", "), color = Ink, modifier = Modifier.weight(1f))
@@ -308,14 +315,13 @@ private fun defaultServingCalories(food: FoodRecord): String =
 /** The barcode field shared by both personal-food forms; typing keeps ASCII digits and rescanning fills this same draft. */
 @Composable internal fun FoodBarcodeField(vm: BreakfastViewModel, label: String = "Barcode") {
     val draft = vm.draft
-    OutlinedTextField(
+    ReceiptField(
+        label = label,
         value = draft.barcode,
         onValueChange = { draft.barcode = it.asciiDigits() },
-        label = { Text(label) },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
+        onPaper = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        trailingIcon = {
+        trailing = {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(end = 4.dp)) {
                 if (draft.barcode.isNotBlank()) ReceiptTonalIconButton(Icons.Default.Close, "Clear barcode", { draft.barcode = "" })
                 ReceiptTonalIconButton(Icons.Default.QrCodeScanner, "Scan barcode", vm::beginBarcodeRescan)
@@ -347,10 +353,10 @@ private fun defaultServingCalories(food: FoodRecord): String =
             }
             Surface(Modifier.fillMaxWidth(), color = Paper, shape = RoundedCornerShape(6.dp)) {
                 Column {
-                    Text(food.name, Modifier.fillMaxWidth().background(PrintRed).padding(14.dp), color = OnGround, fontWeight = FontWeight.Bold)
+                    Text(food.name, Modifier.fillMaxWidth().background(PrintRed).padding(14.dp), color = OnGround, style = receiptHeadingStyle(food.name), fontWeight = FontWeight.Bold)
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(draft.name, { draft.name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                        OutlinedTextField(draft.brand, { draft.brand = it }, label = { Text("Brand") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                        ReceiptField("Name", draft.name, { draft.name = it }, onPaper = true)
+                        ReceiptField("Brand", draft.brand, { draft.brand = it }, onPaper = true)
                         FoodBarcodeField(vm)
                         Text("Source", color = InkSoft, style = MaterialTheme.typography.labelMedium)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(sourceLabel(letter), color = Ink); SourceBox(letter) }
@@ -358,8 +364,8 @@ private fun defaultServingCalories(food: FoodRecord): String =
                     }
                     LibrarySubhead(basisLabel(food.nutrition.amount, food.nutrition.unit))
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { OutlinedTextField(draft.calories, { draft.calories = it }, label = { Text("kcal (required)") }, modifier = Modifier.weight(1f), singleLine = true); OutlinedTextField(draft.protein, { draft.protein = it }, label = { Text("Protein, g") }, modifier = Modifier.weight(1f), singleLine = true) }
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { OutlinedTextField(draft.carbs, { draft.carbs = it }, label = { Text("Carbs, g") }, modifier = Modifier.weight(1f), singleLine = true); OutlinedTextField(draft.fat, { draft.fat = it }, label = { Text("Fat, g") }, modifier = Modifier.weight(1f), singleLine = true) }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { ReceiptField("kcal (required)", draft.calories, { draft.calories = it }, Modifier.weight(1f), onPaper = true); ReceiptField("Protein, g", draft.protein, { draft.protein = it }, Modifier.weight(1f), onPaper = true) }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { ReceiptField("Carbs, g", draft.carbs, { draft.carbs = it }, Modifier.weight(1f), onPaper = true); ReceiptField("Fat, g", draft.fat, { draft.fat = it }, Modifier.weight(1f), onPaper = true) }
                     }
                     LibrarySubhead("Servings")
                     draft.servings.forEach { conversion ->
@@ -374,7 +380,7 @@ private fun defaultServingCalories(food: FoodRecord): String =
                     Column(Modifier.fillMaxWidth().receiptDashedRule().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (draft.servingFormOpen) {
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { servingUnits.forEach { unit -> ReceiptChoiceChip(unit.displayLabel(), draft.servingUnit == unit, { draft.servingUnit = unit }) } }
-                            OutlinedTextField(draft.servingAmount, { draft.servingAmount = it.asciiDigits(allowDecimalPoint = true) }, label = { Text("1 ${draft.servingUnit.displayLabel()} = how many ${food.nutrition.unit.label}") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                            ReceiptField("1 ${draft.servingUnit.displayLabel()} = how many ${food.nutrition.unit.label}", draft.servingAmount, { draft.servingAmount = it.asciiDigits(allowDecimalPoint = true) }, onPaper = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 ReceiptTonalChip("Add", vm::commitDraftServing)
                                 TextButton(onClick = { draft.servingFormOpen = false }, Modifier.heightIn(min = 48.dp)) { Text("Cancel", color = InkSoft) }
@@ -388,7 +394,7 @@ private fun defaultServingCalories(food: FoodRecord): String =
                             if (!draft.aliasFieldOpen) ReceiptTonalChip("Add alias", { draft.aliasFieldOpen = true }, Icons.Default.Add)
                         }
                         if (draft.aliasFieldOpen) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedTextField(draft.aliasInput, { draft.aliasInput = it }, label = { Text("New alias") }, modifier = Modifier.weight(1f), singleLine = true, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { draft.commitAlias() }))
+                            ReceiptField("New alias", draft.aliasInput, { draft.aliasInput = it }, Modifier.weight(1f), onPaper = true, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { draft.commitAlias() }))
                             ReceiptTonalChip("Add", { draft.commitAlias() })
                         }
                     }
@@ -420,7 +426,7 @@ private fun defaultServingCalories(food: FoodRecord): String =
                 SourceBox(letter, Modifier.padding(start = 8.dp))
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-                OutlinedTextField(amountText, { amountText = it.asciiDigits(allowDecimalPoint = true) }, label = { Text("Amount") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.width(112.dp))
+                ReceiptField("Amount", amountText, { amountText = it.asciiDigits(allowDecimalPoint = true) }, Modifier.width(112.dp), onPaper = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                 FlowRow(Modifier.weight(1f).padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { units.forEach { candidate -> ReceiptChoiceChip(candidate.displayLabel(), unit == candidate, { unit = candidate }) } }
             }
             Text("Meal", color = InkSoft, style = MaterialTheme.typography.labelMedium)

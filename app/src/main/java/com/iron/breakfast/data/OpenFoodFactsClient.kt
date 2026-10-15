@@ -5,6 +5,7 @@ import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.NutritionValues
+import com.iron.breakfast.domain.normalizeBarcode
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -100,7 +101,7 @@ data class OffContributionDraft(
 
     companion object {
         fun fromFood(food: FoodRecord): OffContributionDraft? {
-            val barcode = food.barcode?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            val barcode = normalizeBarcode(food.barcode ?: return null) ?: return null
             val basis = food.nutrition
             if (food.name.isBlank() || !basis.amount.isFinite() || basis.amount <= 0.0) return null
             if (basis.unit != MeasureUnit.GRAM && basis.unit != MeasureUnit.MILLILITER) return null

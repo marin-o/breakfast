@@ -26,7 +26,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -40,7 +39,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.material.icons.outlined.Straighten
+import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
+import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -481,10 +481,10 @@ fun ReceiptQuickAddField(
         )
         IconButton(onClick = onLog, enabled = value.isNotBlank(), modifier = Modifier.size(46.dp)) {
             if (value.isBlank()) {
-                Box(contentAlignment = Alignment.Center) { Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = logContentDescription, tint = BoxGrey) }
+                Box(contentAlignment = Alignment.Center) { Icon(Icons.AutoMirrored.Filled.KeyboardReturn, contentDescription = logContentDescription, tint = BoxGrey) }
             } else {
                 Surface(color = PenBlue, shape = RoundedCornerShape(23.dp), modifier = Modifier.size(46.dp)) {
-                    Box(contentAlignment = Alignment.Center) { Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = logContentDescription, tint = Color.White) }
+                    Box(contentAlignment = Alignment.Center) { Icon(Icons.AutoMirrored.Filled.KeyboardReturn, contentDescription = logContentDescription, tint = Color.White) }
                 }
             }
         }
@@ -562,7 +562,7 @@ fun ReceiptNavigationBar(selectedDaily: Boolean, onDaily: () -> Unit, onLibrary:
         NavigationBarItem(
             selected = !selectedDaily,
             onClick = onLibrary,
-            icon = { Icon(Icons.Outlined.Straighten, contentDescription = "Library") },
+            icon = { Icon(Icons.AutoMirrored.Outlined.LibraryBooks, contentDescription = "Library") },
             label = { Text("Library", style = MaterialTheme.typography.bodySmall.copy(fontWeight = if (!selectedDaily) FontWeight.Bold else FontWeight.Normal)) },
             colors = NavigationBarItemDefaults.colors(selectedIconColor = NavIndicatorInk, selectedTextColor = OnGround, indicatorColor = NavIndicator, unselectedIconColor = com.iron.breakfast.ui.theme.OnGroundSoft, unselectedTextColor = com.iron.breakfast.ui.theme.OnGroundSoft),
         )
@@ -637,10 +637,17 @@ fun ReceiptField(
     value: String,
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
-    labelColor: Color = com.iron.breakfast.ui.theme.OnGroundSoft,
-    container: Color = Paper,
-    outline: Color? = null,
+    /** True on paper or a sticker: ink-soft label, `#F0EFE9` fill, 1.5dp rule border and a pen-blue focus ring. */
+    onPaper: Boolean = false,
+    labelColor: Color = if (onPaper) InkSoft else com.iron.breakfast.ui.theme.OnGroundSoft,
+    container: Color = if (onPaper) Sticker else Paper,
+    outline: Color? = if (onPaper) Rule else null,
     error: Boolean = false,
+    readOnly: Boolean = false,
+    /** Hides the visible label (the semantics label stays), for a field whose meaning is clear from its neighbours. */
+    labelVisible: Boolean = true,
+    /** Larger centred bold amount style used by the quick-edit sheet. */
+    amountStyle: Boolean = false,
     singleLine: Boolean = true,
     minLines: Int = 1,
     placeholder: String? = null,
@@ -655,17 +662,17 @@ fun ReceiptField(
     var focused by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val ring = when {
         error -> PrintRed
-        focused -> PenOnDark
+        focused -> if (onPaper) PenBlue else PenOnDark
         else -> null
     }
     Column(modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+        if (labelVisible) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, color = labelColor, style = MaterialTheme.typography.bodySmall, modifier = Modifier.clearAndSetSemantics { })
             labelTrailing?.invoke()
         }
         Row(
             Modifier
-                .padding(top = 4.dp)
+                .padding(top = if (labelVisible) 4.dp else 0.dp)
                 .fillMaxWidth()
                 .heightIn(min = 54.dp)
                 .background(container, ReceiptPaperShape)
@@ -684,13 +691,14 @@ fun ReceiptField(
                     .semantics { contentDescription = label },
                 singleLine = singleLine,
                 minLines = minLines,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(color = Ink),
+                readOnly = readOnly,
+                textStyle = if (amountStyle) MaterialTheme.typography.displayLarge.copy(color = Ink, textAlign = TextAlign.Center) else MaterialTheme.typography.bodyMedium.copy(color = Ink),
                 cursorBrush = androidx.compose.ui.graphics.SolidColor(Ink),
                 keyboardOptions = keyboardOptions,
                 keyboardActions = keyboardActions,
                 visualTransformation = visualTransformation,
                 decorationBox = { inner ->
-                    Box(Modifier.heightIn(min = 48.dp), contentAlignment = Alignment.CenterStart) {
+                    Box(Modifier.heightIn(min = 48.dp), contentAlignment = if (amountStyle) Alignment.Center else Alignment.CenterStart) {
                         if (value.isEmpty() && placeholder != null) Text(placeholder, color = InkSoft, style = MaterialTheme.typography.bodyMedium)
                         inner()
                     }
@@ -724,10 +732,10 @@ fun ReceiptTonalButton(text: String, onClick: () -> Unit, modifier: Modifier = M
 }
 
 @Composable
-fun ReceiptOutlinedButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun ReceiptOutlinedButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, fillWidth: Boolean = true) {
     androidx.compose.material3.OutlinedButton(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth().heightIn(min = 48.dp),
+        modifier = modifier.then(if (fillWidth) Modifier.fillMaxWidth() else Modifier).heightIn(min = 48.dp),
         shape = ReceiptPillShape,
         border = androidx.compose.foundation.BorderStroke(1.5.dp, PenOnDark),
         colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = PenOnDarkInk),

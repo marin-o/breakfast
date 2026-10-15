@@ -1,6 +1,7 @@
 package com.iron.breakfast.ui.screens
 
 import com.iron.breakfast.domain.FoodOrigin
+import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
@@ -23,14 +24,23 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.round
 
-/** B bundled (any generic food), P personal, O Open Food Facts. Only a missing food is "?". */
+/**
+ * Source boxes describe the local record's provenance. Personal overrides remain P even when
+ * their underlying record came from OFF. A bundled marker is reserved for an actual catalogue
+ * fixture; an otherwise unknown generic record has no trustworthy source and is marked "?".
+ */
 internal fun sourceLetter(food: FoodRecord?): String = when {
     food == null -> "?"
-    food.origin == FoodOrigin.CUSTOM -> "P"
-    food.sourceName?.contains("open food facts", ignoreCase = true) == true -> "O"
-    food.sourceId?.startsWith("off", ignoreCase = true) == true -> "O"
-    else -> "B"
+    food.origin == FoodOrigin.CUSTOM || food.personalOverride -> "P"
+    FoodCatalog.fixtures.any { it.id == food.id } -> "B"
+    isOpenFoodFactsSource(food) -> "O"
+    else -> "?"
 }
+
+/** OFF provenance is independent from the source box: local overrides still may be contributed. */
+private fun isOpenFoodFactsSource(food: FoodRecord): Boolean =
+    food.sourceName?.contains("open food facts", ignoreCase = true) == true ||
+        food.sourceId?.startsWith("off", ignoreCase = true) == true
 
 internal data class ReceiptQuantityDisplay(
     val line: String,
@@ -51,15 +61,47 @@ internal fun quantityRateDisplay(entry: MealEntry, food: FoodRecord?): ReceiptQu
     val rawAmount = if (converted) entry.resolvedBaseAmount else entry.enteredAmount
     val printed = choosePrintedQuantity(rawAmount, rate, entry.nutritionSnapshot.calories)
     val base = "(${printed.amountText} ${basisUnit.displayLabel()})"
+    val rateUnit = basisUnit.displayLabel()
+    val line = when {
+        converted && !approximate -> "$entered $base × ${printed.rateText}"
+        converted -> "$base × ${printed.rateText}"
+        else -> "${printed.amountText} ${entry.enteredUnit.displayLabel()} × ${printed.rateText}".trim()
+    }
     return ReceiptQuantityDisplay(
-        line = when {
-            converted && !approximate -> "$entered $base × ${printed.rateText}"
-            converted -> "$base × ${printed.rateText}"
-            else -> "${printed.amountText} ${entry.enteredUnit.displayLabel()} × ${printed.rateText}".trim()
-        },
+        line = withRateUnit(line, rateUnit, approximate),
         approximateLabel = entered.takeIf { approximate },
     )
 }
+
+private const val MAX_RATE_UNIT_LINE = 28
+
+/** Plain rows name the rate unit ("kcal/g") when the line still fits on one row; approximate rows never do. */
+internal fun withRateUnit(line: String, rateUnit: String, approximate: Boolean): String {
+    if (approximate || rateUnit.isBlank()) return line
+    val withUnit = "$line kcal/$rateUnit"
+    return if (withUnit.length <= MAX_RATE_UNIT_LINE) withUnit else line
+}
+
+/** A number for an editable field: whole values without ".0", others as the shortest plain decimal. */
+internal fun editableNumber(value: Double?): String {
+    if (value == null || !value.isFinite()) return ""
+    return java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
+}
+
+/** "Wed 14 October", the date part of the entry detail line. */
+internal fun entryDateLabel(dayKey: String): String =
+    runCatching { java.time.LocalDate.parse(dayKey) }.getOrNull()
+        ?.format(DateTimeFormatter.ofPattern("EEE d MMMM", Locale.ENGLISH)) ?: dayKey
+
+/** The Match row only appears when the entry was matched from an alias or a phrase different from the food name. */
+internal fun matchedPhraseLabel(sourcePhrase: String, foodName: String): String? {
+    val phrase = sourcePhrase.trim()
+    if (phrase.isEmpty() || phrase.equals(foodName.trim(), ignoreCase = true)) return null
+    return "Matched from $phrase"
+}
+
+/** Source label beside the O/B/P box on the entry detail. */
+internal fun entrySourceLabel(food: FoodRecord?): String = com.iron.breakfast.ui.components.sourceLabel(sourceLetter(food))
 
 private fun provenanceBasisUnit(provenance: String): MeasureUnit? {
     val match = Regex("(?:applied to per-[0-9.]+|on [0-9.]+)\\s*(g|ml)\\b", RegexOption.IGNORE_CASE)
@@ -150,9 +192,8 @@ internal fun basisLabel(amount: Double, unit: MeasureUnit): String = "Per ${amou
  * matches it, edited numbers must not be submitted under a different product code.
  */
 internal fun contributionAvailable(food: FoodRecord): Boolean {
-    val barcode = food.barcode?.trim().orEmpty()
-    if (barcode.isEmpty()) return false
-    return sourceLetter(food) != "O" || food.sourceId?.trim() == barcode
+    val barcode = com.iron.breakfast.domain.normalizeBarcode(food.barcode ?: return false) ?: return false
+    return !isOpenFoodFactsSource(food) || food.sourceId?.trim() == barcode
 }
 
 internal fun foodCountLabel(count: Int): String = if (count == 1) "1 food" else "$count foods"

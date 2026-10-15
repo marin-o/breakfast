@@ -51,10 +51,10 @@ class MainActivityTest {
             origin = FoodOrigin.GENERIC,
             nutrition = NutritionBasis(100.0, MeasureUnit.MILLILITER, NutritionValues(42.0, null, null, null)),
             defaultAmount = 100.0, defaultUnit = MeasureUnit.MILLILITER,
-            sourceName = "Open Food Facts", barcode = "123"
+            sourceName = "Open Food Facts", barcode = "4006381333931"
         )
         assertNull(contributionDraftAfterLocalSave(scanned, fromScan = false))
-        assertEquals("123", contributionDraftAfterLocalSave(scanned, fromScan = true)?.barcode)
+        assertEquals("4006381333931", contributionDraftAfterLocalSave(scanned, fromScan = true)?.barcode)
     }
 
     @Test

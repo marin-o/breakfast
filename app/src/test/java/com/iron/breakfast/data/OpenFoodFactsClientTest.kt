@@ -21,11 +21,11 @@ class OpenFoodFactsClientTest {
             origin = FoodOrigin.GENERIC,
             nutrition = NutritionBasis(250.0, MeasureUnit.MILLILITER, NutritionValues(50.0, 5.0, null, 1.25)),
             defaultAmount = 1.0, defaultUnit = MeasureUnit.TABLESPOON,
-            sourceName = "Open Food Facts", barcode = "123", brand = "Brand"
+            sourceName = "Open Food Facts", barcode = "4006381333931", brand = "Brand"
         )
         val fields = requireNotNull(OffContributionDraft.fromFood(food)).asFormFields()
         val publicFields = requireNotNull(OffContributionDraft.fromFood(food)).publicFields()
-        assertEquals("123", fields["code"])
+        assertEquals("4006381333931", fields["code"])
         assertNull(fields["product_name"])
         assertNull(fields["brands"])
         assertEquals("100g", fields["nutrition_data_per"])
@@ -72,9 +72,21 @@ class OpenFoodFactsClientTest {
             id = "custom", name = "My drink", aliases = emptyList(), category = "Personal food",
             origin = FoodOrigin.CUSTOM,
             nutrition = NutritionBasis(100.0, MeasureUnit.MILLILITER, NutritionValues(42.0, null, null, null)),
-            sourceName = null, barcode = "123"
+            sourceName = null, barcode = "4006381333931"
         )
-        assertEquals("123", OffContributionDraft.fromFood(food)?.barcode)
+        assertEquals("4006381333931", OffContributionDraft.fromFood(food)?.barcode)
+    }
+
+    @Test fun contributionDraftRejectsInvalidBarcodeLengthAndNonAsciiDigits() {
+        val base = FoodRecord(
+            id = "food", name = "Food", aliases = emptyList(), category = "Personal food",
+            origin = FoodOrigin.CUSTOM,
+            nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(42.0, null, null, null)),
+        )
+        assertNull(OffContributionDraft.fromFood(base.copy(barcode = "1234567")))
+        assertNull(OffContributionDraft.fromFood(base.copy(barcode = "１２３４５６７８")))
+        assertNull(OffContributionDraft.fromFood(base.copy(barcode = "١٢٣٤٥٦٧٨")))
+        assertEquals("4006381333931", OffContributionDraft.fromFood(base.copy(barcode = " 4006381333931 "))?.barcode)
     }
 
     @Test fun contributionUsesSessionCookieAndSendsOnlyPublicProductFields() {

@@ -28,8 +28,8 @@ class ReceiptScreenDataTest {
     )
 
     private fun assertPrintedProductRounds(display: ReceiptQuantityDisplay, calories: Double) {
-        val parenthetical = Regex("\\(([0-9.]+) [a-z]+\\) .* ([0-9.]+)$").find(display.line)
-        val direct = Regex("^([0-9.]+) [a-z]+ .* ([0-9.]+)$").find(display.line)
+        val parenthetical = Regex("\\(([0-9.]+) [a-z]+\\) .* ([0-9.]+)(?: kcal/[a-z]+)?$").find(display.line)
+        val direct = Regex("^([0-9.]+) [a-z]+ .* ([0-9.]+)(?: kcal/[a-z]+)?$").find(display.line)
         val match = parenthetical ?: direct
         requireNotNull(match) { "Could not parse printed quantity: ${display.line}" }
         val amount = match.groupValues[1].toDouble()
@@ -41,14 +41,17 @@ class ReceiptScreenDataTest {
     fun sourceMarkerMapsBundledPersonalAndOpenFoodFacts() {
         assertEquals("B", sourceLetter(generic))
         assertEquals("P", sourceLetter(generic.copy(origin = FoodOrigin.CUSTOM)))
-        assertEquals("B", sourceLetter(generic.copy(personalOverride = true)))
-        assertEquals("O", sourceLetter(generic.copy(personalOverride = true, sourceName = "Open Food Facts")))
-        assertEquals("O", sourceLetter(generic.copy(sourceName = "Open Food Facts")))
-        assertEquals("B", sourceLetter(generic.copy(id = "local-generic", sourceName = "Local import", sourceId = "local-1")))
-        assertEquals("B", sourceLetter(generic.copy(id = "never-a-fixture", sourceName = null, sourceId = null)))
+        assertEquals("P", sourceLetter(generic.copy(personalOverride = true)))
+        assertEquals("P", sourceLetter(generic.copy(personalOverride = true, sourceName = "Open Food Facts")))
+        assertEquals("B", sourceLetter(generic.copy(sourceName = "Open Food Facts")))
+        assertEquals("?", sourceLetter(generic.copy(id = "local-generic", sourceName = "Local import", sourceId = "local-1")))
+        assertEquals("?", sourceLetter(generic.copy(id = "never-a-fixture", sourceName = null, sourceId = null)))
         assertEquals("?", sourceLetter(null))
         assertEquals("B", sourceLetter(FoodCatalog.fixtures.first { it.id == "banana" }))
         assertEquals("B", sourceLetter(FoodCatalog.fixtures.first { it.id == "oat_milk" }))
+        val off = generic.copy(id = "off-local", sourceName = "Open Food Facts", sourceId = "4006381333931")
+        assertEquals("O", sourceLetter(off))
+        assertEquals("P", sourceLetter(off.copy(personalOverride = true)))
     }
 
     @Test
@@ -71,14 +74,14 @@ class ReceiptScreenDataTest {
         )
         val food = generic.copy(id = "water", nutrition = NutritionBasis(100.0, MeasureUnit.MILLILITER, NutritionValues(19.0, null, null, null)))
         val display = quantityRateDisplay(liquid, food)
-        assertEquals("330 ml \u00D7 0.19", display.line)
+        assertEquals("330 ml \u00D7 0.19 kcal/ml", display.line)
         assertPrintedProductRounds(display, liquid.nutritionSnapshot.calories)
     }
 
     @Test
     fun exactServingStillShowsResolvedBaseAndDirectAmountStaysEntered() {
         val exactServing = entry.copy(approximateConversion = false, resolvedBaseUnit = MeasureUnit.GRAM)
-        assertEquals("1 tsp (5.3 g) \u00D7 5.88", quantityRateDisplay(exactServing, null).line)
+        assertEquals("1 tsp (5.3 g) \u00D7 5.88 kcal/g", quantityRateDisplay(exactServing, null).line)
         val direct = entry.copy(
             enteredAmount = 100.0,
             enteredUnit = MeasureUnit.GRAM,
@@ -88,7 +91,7 @@ class ReceiptScreenDataTest {
             approximateConversion = false,
         )
         val display = quantityRateDisplay(direct, null)
-        assertEquals("100 g \u00D7 1.20", display.line)
+        assertEquals("100 g \u00D7 1.20 kcal/g", display.line)
         assertPrintedProductRounds(display, direct.nutritionSnapshot.calories)
     }
 
@@ -101,7 +104,7 @@ class ReceiptScreenDataTest {
             approximateConversion = false,
         )
         val display = quantityRateDisplay(adversarial, null)
-        assertEquals("1 tsp (3 g) \u00D7 0.33", display.line)
+        assertEquals("1 tsp (3 g) \u00D7 0.33 kcal/g", display.line)
         assertPrintedProductRounds(display, adversarial.nutritionSnapshot.calories)
     }
 
@@ -161,9 +164,53 @@ class ReceiptScreenDataTest {
     }
 
     @Test
+    fun contributionDisplayRequiresANormalizedBarcode() {
+        val off = generic.copy(id = "off-local", sourceName = "Open Food Facts", sourceId = "4006381333931")
+        assertEquals(false, contributionAvailable(off.copy(barcode = "1234567")))
+        assertEquals(false, contributionAvailable(off.copy(barcode = "１２３４５６７８")))
+        assertEquals(false, contributionAvailable(off.copy(barcode = "١٢٣٤٥٦٧٨")))
+        assertEquals(true, contributionAvailable(off.copy(barcode = " 4006381333931 ")))
+    }
+
+    @Test
     fun foodCountPluralises() {
         assertEquals("0 foods", foodCountLabel(0))
         assertEquals("1 food", foodCountLabel(1))
         assertEquals("13 foods", foodCountLabel(13))
+    }
+
+    @Test
+    fun rateUnitIsDroppedWhenApproximateOrTooLong() {
+        assertEquals("60 g × 3.89 kcal/g", withRateUnit("60 g × 3.89", "g", false))
+        assertEquals("(16 g) × 5.88", withRateUnit("(16 g) × 5.88", "g", true))
+        val long = "1 tablespoon (15.25 g) × 5.8812"
+        assertEquals(long, withRateUnit(long, "g", false))
+    }
+
+    @Test
+    fun editableNumbersDropTrailingZero() {
+        assertEquals("19", editableNumber(19.0))
+        assertEquals("389.5", editableNumber(389.5))
+        assertEquals("0.25", editableNumber(0.25))
+        assertEquals("100", editableNumber(100.0))
+        assertEquals("", editableNumber(null))
+    }
+
+    @Test
+    fun matchRowOnlyForAliasOrDifferentPhrase() {
+        assertEquals(null, matchedPhraseLabel("Peanut butter", "peanut butter"))
+        assertEquals(null, matchedPhraseLabel("  ", "Peanut butter"))
+        assertEquals("Matched from pb", matchedPhraseLabel("pb", "Peanut butter"))
+    }
+
+    @Test
+    fun entryDateLineHasNoComma() {
+        assertEquals("Wed 14 October", entryDateLabel("2026-10-14"))
+    }
+
+    @Test
+    fun kcalAlwaysWhole() {
+        assertEquals("148", receiptKcal(148.1))
+        assertEquals("389", receiptKcal(388.6))
     }
 }

@@ -245,7 +245,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var mealPickerOpen by mutableStateOf(false); private set
     var libraryOpen by mutableStateOf(false); private set
     var libraryQuery by mutableStateOf(""); private set
-    var libraryIncludeArchived by mutableStateOf(false); private set
+    /** True only on the explicit Archived foods destination; active foods are never mixed in. */
+    var libraryArchivedOnly by mutableStateOf(false); private set
     var libraryFoods by mutableStateOf<List<FoodRecord>>(emptyList()); private set
     /** The query [libraryFoods] was computed for; the no-match screen waits until it equals [libraryQuery]. */
     var libraryResultsQuery by mutableStateOf<String?>(null); private set
@@ -300,17 +301,18 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private fun selectMeal(value: MealSlot?) { slot = value; savedState["meal_slot"] = value?.name }
     fun shiftSelectedDay(delta: Long) { selectDay(runCatching { LocalDate.parse(selectedDayKey).plusDays(delta).toString() }.getOrDefault(selectedDayKey)); barcodeRequestToken++ }
     fun goToday() { selectDay(dayKeyForEpochMs(System.currentTimeMillis())); barcodeRequestToken++ }
-    fun openLibrary() { cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryIncludeArchived = false; refreshLibrary() }
-    fun closeLibrary() { libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null; expandedLibraryFoodId = null; libraryPendingAmount = null; libraryPendingUnit = null; libraryPendingBatch = emptyList(); libraryBatchMealPickerOpen = false; selectMeal(null) }
+    fun openLibrary() { cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = false; refreshLibrary() }
+    fun openArchivedLibrary() { cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = true; refreshLibrary() }
+    fun closeLibrary() { libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null; expandedLibraryFoodId = null; libraryPendingAmount = null; libraryPendingUnit = null; libraryPendingBatch = emptyList(); libraryBatchMealPickerOpen = false; libraryArchivedOnly = false; selectMeal(null) }
     fun cancelLibraryMealPicker() { libraryMealPickerFood = null; libraryPendingAmount = null; libraryPendingUnit = null }
     fun onLibraryQuery(value: String) { libraryQuery = value; refreshLibrary() }
-    fun toggleLibraryArchived() { libraryIncludeArchived = !libraryIncludeArchived; refreshLibrary() }
     fun refreshLibrary() {
         if (!ready) return
         val captured = libraryQuery
         viewModelScope.launch {
+            val matching = engine.foodsMatching(captured, includeArchived = libraryArchivedOnly)
             libraryFoods = libraryRecencyOrder(
-                engine.foodsMatching(captured, libraryIncludeArchived),
+                if (libraryArchivedOnly) matching.filter { it.archived } else matching,
                 entries,
             )
             libraryResultsQuery = captured
@@ -488,7 +490,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         selectMeal(meal)
         libraryOpen = true
         libraryQuery = query
-        libraryIncludeArchived = false
+        libraryArchivedOnly = false
         refreshLibrary()
     }
     fun openLibraryFoodDetail(entry: MealEntry) {
@@ -1092,10 +1094,13 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (!ready || busy || !basisAmount.isFinite() || basisAmount <= 0.0) { notice = "Enter a positive nutrition basis."; return }
         val resolvesQueue = resolutionContinuation && unknownQueueTarget == slot
         val fromOff = draft.fromOff
-        val contribution = if (fromOff && barcode.isNotBlank()) OffContributionDraft(
-            barcode = barcode, name = name.trim(), brand = brand.trim().ifBlank { null },
-            basisAmount = basisAmount, basisUnit = basisUnit, nutrition = nutrition
-        ) else null
+        val normalizedBarcode = normalizeBarcode(barcode)
+        val contribution = if (fromOff) normalizedBarcode?.let {
+            OffContributionDraft(
+                barcode = it, name = name.trim(), brand = brand.trim().ifBlank { null },
+                basisAmount = basisAmount, basisUnit = basisUnit, nutrition = nutrition
+            )
+        } else null
         val offSource = fromOff.takeIf { it }?.let { "Open Food Facts" }
         val aliasText = aliasList.joinToString(", ")
         busy = true; viewModelScope.launch { runCatching {
