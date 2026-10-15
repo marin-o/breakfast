@@ -218,6 +218,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     /** True when the last OFF search failed for lack of a connection (not for any other reason). */
     var offSearchUnavailable by mutableStateOf(false); private set
     var scannerOpen by mutableStateOf(false); private set
+    /** True when the scanner is still open but its camera preview cannot be used. */
+    var scannerUnavailableState by mutableStateOf(false); private set
     var selectedProduct by mutableStateOf<FoodRecord?>(null); private set
     var selectedProductFromScan by mutableStateOf(false); private set
     var productAmount by mutableStateOf("100"); private set
@@ -256,6 +258,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private var libraryPendingAmount: Double? = null
     private var libraryPendingUnit: MeasureUnit? = null
     private var libraryPendingBatch: List<LibraryLogDraft> = emptyList()
+    private var libraryRefreshJob: Job? = null
+    private var libraryRefreshGeneration = 0L
+    private var offSearchJob: Job? = null
+    private var offSearchGeneration = 0L
     var libraryBatchMealPickerOpen by mutableStateOf(false); private set
     var selectedEntry by mutableStateOf<MealEntry?>(null); private set
     private var selectedEntryId: String? = savedState["entry_id"]
@@ -303,19 +309,32 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun goToday() { selectDay(dayKeyForEpochMs(System.currentTimeMillis())); barcodeRequestToken++ }
     fun openLibrary() { cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = false; refreshLibrary() }
     fun openArchivedLibrary() { cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = true; refreshLibrary() }
-    fun closeLibrary() { libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null; expandedLibraryFoodId = null; libraryPendingAmount = null; libraryPendingUnit = null; libraryPendingBatch = emptyList(); libraryBatchMealPickerOpen = false; libraryArchivedOnly = false; selectMeal(null) }
+    fun closeLibrary() { libraryRefreshJob?.cancel(); libraryRefreshGeneration++; libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null; expandedLibraryFoodId = null; libraryPendingAmount = null; libraryPendingUnit = null; libraryPendingBatch = emptyList(); libraryBatchMealPickerOpen = false; libraryArchivedOnly = false; selectMeal(null) }
     fun cancelLibraryMealPicker() { libraryMealPickerFood = null; libraryPendingAmount = null; libraryPendingUnit = null }
     fun onLibraryQuery(value: String) { libraryQuery = value; refreshLibrary() }
     fun refreshLibrary() {
         if (!ready) return
+        libraryRefreshJob?.cancel()
+        val generation = ++libraryRefreshGeneration
         val captured = libraryQuery
-        viewModelScope.launch {
-            val matching = engine.foodsMatching(captured, includeArchived = libraryArchivedOnly)
-            libraryFoods = libraryRecencyOrder(
-                if (libraryArchivedOnly) matching.filter { it.archived } else matching,
-                entries,
+        val capturedArchivedOnly = libraryArchivedOnly
+        val capturedEntries = entries
+        libraryRefreshJob = viewModelScope.launch(Dispatchers.IO) {
+            val matching = engine.foodsMatching(captured, includeArchived = capturedArchivedOnly)
+            val ordered = libraryRecencyOrder(
+                if (capturedArchivedOnly) matching.filter { it.archived } else matching,
+                capturedEntries,
             )
-            libraryResultsQuery = captured
+            withContext(Dispatchers.Main) {
+                if (shouldApplyLibraryRefresh(
+                        generation, libraryRefreshGeneration, captured, libraryQuery,
+                        capturedArchivedOnly, libraryArchivedOnly, libraryOpen,
+                    )
+                ) {
+                    libraryFoods = ordered
+                    libraryResultsQuery = captured
+                }
+            }
         }
     }
     fun openLibraryFood(food: FoodRecord) { selectedLibraryFood = food }
@@ -892,6 +911,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun onProductFat(v: String) { productFat = v }
     fun currentUnknownName(): String = unknownQueue.firstOrNull()?.let { parser.parse(it).foodPhrase.trim().ifBlank { it.trim() } }.orEmpty()
     fun openSearch(prefill: String? = null, fromResolver: Boolean = false) {
+        offSearchJob?.cancel()
+        offSearchGeneration++
         if (!fromResolver && unknownQueue.isNotEmpty()) abandonUnknownResolution()
         resolutionContinuation = fromResolver
         searchOpen = true
@@ -902,8 +923,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         offSearchMessage = null
         offSearchUnavailable = false
     }
-    fun closeSearch() { searchOpen = false; if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false }
-    fun onSearch(v: String) { searchQuery = v; offResults = emptyList(); offSearchMessage = null; offSearchUnavailable = false }
+    fun closeSearch() { offSearchJob?.cancel(); offSearchGeneration++; searchBusy = false; searchOpen = false; if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false }
+    fun onSearch(v: String) { offSearchJob?.cancel(); offSearchGeneration++; searchBusy = false; searchQuery = v; offResults = emptyList(); offSearchMessage = null; offSearchUnavailable = false }
     fun onResolverQuery(v: String) { resolverQuery = v; resolverResults = if (v.isBlank()) emptyList() else engine.search(v) }
     private fun advanceUnknownQueue() {
         unknownQueue = unknownQueue.drop(1)
@@ -916,7 +937,22 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             resolutionContinuation = false
         }
     }
-    fun resolveUnknown(food: FoodRecord) { val raw = unknownQueue.firstOrNull() ?: return; val target = slot ?: return; if (unknownQueueTarget != target || !resolutionContinuation) return; val parsed = parser.parse(raw); val amount = parsed.amount ?: food.defaultAmount; val unit = parsed.unit ?: food.defaultUnit; if (!ready || busy) return; busy = true; viewModelScope.launch { runCatching { engine.cacheFoodAndLog(food, amount, unit, target, selectedDayKey) }.onSuccess { advanceUnknownQueue(); refresh() }.onFailure { notice = it.message ?: "Could not resolve this food." }.also { busy = false } } }
+    fun resolveUnknown(food: FoodRecord) {
+        val raw = unknownQueue.firstOrNull() ?: return
+        val target = activeResolutionTarget(resolutionContinuation, unknownQueue, unknownQueueTarget) ?: return
+        val parsed = parser.parse(raw)
+        val amount = parsed.amount ?: food.defaultAmount
+        val unit = parsed.unit ?: food.defaultUnit
+        if (!ready || busy) return
+        val capturedDayKey = selectedDayKey
+        busy = true
+        viewModelScope.launch {
+            runCatching { engine.cacheFoodAndLog(food, amount, unit, target, capturedDayKey) }
+                .onSuccess { advanceUnknownQueue(); refresh() }
+                .onFailure { notice = it.message ?: "Could not resolve this food." }
+                .also { busy = false }
+        }
+    }
     /** Leaves the current unresolved food unlogged and moves to the next one. */
     fun skipCurrentUnknown() { if (unknownQueue.isNotEmpty()) advanceUnknownQueue() }
     /** Names of the foods the batch that produced this queue already saved, for the resolve header. */
@@ -931,13 +967,15 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun submitSearch() {
         if (!ready || searchQuery.isBlank() || searchBusy) return
         val captured = searchQuery
+        val generation = ++offSearchGeneration
+        offSearchJob?.cancel()
         searchBusy = true
         offSearchMessage = null
         offSearchUnavailable = false
-        viewModelScope.launch(Dispatchers.IO) {
+        offSearchJob = viewModelScope.launch(Dispatchers.IO) {
             val result = off.search(captured)
             withContext(Dispatchers.Main) {
-                if (searchQuery == captured) {
+                if (shouldApplyOffSearchResult(generation, offSearchGeneration, captured, searchQuery, searchOpen)) {
                     when (result) {
                         is OffSearchResult.Success -> {
                             offResults = result.foods
@@ -954,7 +992,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                         }
                     }
                 }
-                searchBusy = false
+                if (generation == offSearchGeneration) searchBusy = false
             }
         }
     }
@@ -987,9 +1025,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val target = plan.meal
         val resolvesQueue = plan.advancesQueue
         val fromScan = selectedProductFromScan
+        val capturedDayKey = selectedDayKey
         busy = true
         viewModelScope.launch {
-            runCatching { engine.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, selectedDayKey) }
+            runCatching { engine.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, capturedDayKey) }
                 .onSuccess {
                     selectedProduct = null
                     pendingContribution = contributionDraftAfterLocalSave(draft.food, fromScan)
@@ -1005,6 +1044,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
 
     fun saveSelectedToLibrary() {
         val food = selectedProduct ?: return
+        if (!canSaveProductToLibrary(slot, resolutionContinuation, unknownQueue.isNotEmpty())) return
         val draft = productDraft(food) ?: run { notice = "Enter a positive amount, a supported unit, and valid calories."; return }
         if (!ready || busy) return
         busy = true
@@ -1045,13 +1085,18 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val calculation = calculator.calculate(draftFood, amount, unit)
         return ProductDraft(draftFood, amount, unit, calculation).takeIf { calculation.supported }
     }
-    fun beginScan() { barcodeRequestToken++; barcodeOriginDay = selectedDayKey; barcodeOriginMeal = slot; scannerOpen = true }
-    fun endScan() { scannerOpen = false; rescanningBarcode = false }
-    /** Camera unavailable: return to the form when rescanning, otherwise open the manual food form. */
-    fun scannerUnavailable() { val rescanning = rescanningBarcode; endScan(); if (!rescanning) openCustom() }
+    fun beginScan() { barcodeRequestToken++; barcodeOriginDay = selectedDayKey; barcodeOriginMeal = slot; scannerUnavailableState = false; scannerOpen = true }
+    fun endScan() { scannerOpen = false; scannerUnavailableState = false; rescanningBarcode = false }
+    /** Keep the scanner route open so manual barcode entry remains available after camera failure. */
+    fun scannerUnavailable() {
+        val transition = scannerUnavailableTransition()
+        scannerUnavailableState = transition.unavailable
+        scannerOpen = transition.scannerOpen
+    }
     private fun barcodeRequestStillTargets(token: Long, day: String, meal: MealSlot?): Boolean = token == barcodeRequestToken && day == selectedDayKey && meal == slot
     fun onBarcode(code: String) {
         scannerOpen = false
+        scannerUnavailableState = false
         if (rescanningBarcode) {
             rescanningBarcode = false
             val scanned = normalizeBarcode(code)
@@ -1092,7 +1137,13 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val nutrition = NutritionValues(kcal, proteinValue, carbsValue, fatValue)
         if (!nutrition.calories.isFinite() || nutrition.calories < 0.0 || nutrition.calories > 10000.0 || listOf(nutrition.protein, nutrition.carbohydrates, nutrition.fat).any { it != null && (!it.isFinite() || it < 0.0 || it > 1000.0) }) { notice = "Nutrition values must be finite and nonnegative."; return }
         if (!ready || busy || !basisAmount.isFinite() || basisAmount <= 0.0) { notice = "Enter a positive nutrition basis."; return }
-        val resolvesQueue = resolutionContinuation && unknownQueueTarget == slot
+        val resolutionPlan = resolverLogPlan(resolutionContinuation, unknownQueue.isNotEmpty(), unknownQueueTarget, slot)
+        val saveTarget = resolutionPlan?.meal
+        val resolvesQueue = resolutionPlan?.advancesQueue == true
+        if (resolutionContinuation && unknownQueue.isNotEmpty() && saveTarget == null) {
+            notice = "Choose a meal before saving this food."
+            return
+        }
         val fromOff = draft.fromOff
         val normalizedBarcode = normalizeBarcode(barcode)
         val contribution = if (fromOff) normalizedBarcode?.let {
@@ -1103,15 +1154,16 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         } else null
         val offSource = fromOff.takeIf { it }?.let { "Open Food Facts" }
         val aliasText = aliasList.joinToString(", ")
+        val capturedDayKey = selectedDayKey
         busy = true; viewModelScope.launch { runCatching {
             if (editingId != null) {
                 val original = foods.firstOrNull { it.id == editingId } ?: error("That personal food is no longer available.")
                 engine.updateFood(editedCustomFoodRecord(original, name, brand, barcode, aliasText, nutrition, basisAmount, basisUnit, aliases = aliasList, servings = servingList))
                 original
             } else {
-                val target = slot
+                val target = saveTarget
                 if (target != null) {
-                    val entry = engine.saveCustomAndLog(name, brand, barcode, aliasText, nutrition, basisAmount, basisUnit, target, basisAmount, basisUnit, dayKey = selectedDayKey, sourceName = offSource, sourceDescription = "Saved from an incomplete Open Food Facts barcode result")
+                    val entry = engine.saveCustomAndLog(name, brand, barcode, aliasText, nutrition, basisAmount, basisUnit, target, basisAmount, basisUnit, dayKey = capturedDayKey, sourceName = offSource, sourceDescription = "Saved from an incomplete Open Food Facts barcode result")
                     engine.foodById(entry.foodId) ?: error("Saved food could not be reloaded.")
                 } else engine.saveCustomFood(name, brand, barcode, aliasText, nutrition, basisAmount, basisUnit, sourceName = offSource, sourceDescription = "Saved from an incomplete Open Food Facts barcode result")
             }
@@ -1127,7 +1179,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             contributionPreflightComplete = false
             refreshLibrary()
             if (resolvesQueue && unknownQueue.isNotEmpty()) advanceUnknownQueue() else resolutionContinuation = false
-            notice = if (editingId != null) "Personal food updated for future logs." else if (slot != null) "Saved to ${slot!!.label()} and your food library." else "Saved to your food library."
+            notice = if (editingId != null) "Personal food updated for future logs." else if (saveTarget != null) "Saved to ${saveTarget.label()} and your food library." else "Saved to your food library."
         }.onFailure { notice = it.message ?: "Could not save this food." }.also { busy = false } }
     }
 }
@@ -1441,6 +1493,52 @@ internal data class ReviewLogPlan(val meal: MealSlot, val advancesQueue: Boolean
 
 internal fun reviewLogPlan(resolutionContinuation: Boolean, queueNotEmpty: Boolean, queueTarget: MealSlot?, chosen: MealSlot): ReviewLogPlan =
     if (resolutionContinuation && queueNotEmpty && queueTarget != null) ReviewLogPlan(queueTarget, true) else ReviewLogPlan(chosen, false)
+
+/** The queue owns the meal while resolving, even when the Daily screen has no selected meal. */
+internal fun resolverLogPlan(
+    resolutionContinuation: Boolean,
+    queueNotEmpty: Boolean,
+    queueTarget: MealSlot?,
+    currentMeal: MealSlot?,
+): ReviewLogPlan? = when {
+    resolutionContinuation && queueNotEmpty -> queueTarget?.let { ReviewLogPlan(it, true) }
+    else -> currentMeal?.let { ReviewLogPlan(it, false) }
+}
+
+internal fun activeResolutionTarget(
+    resolutionContinuation: Boolean,
+    queue: List<String>,
+    queueTarget: MealSlot?,
+): MealSlot? = resolverLogPlan(resolutionContinuation, queue.isNotEmpty(), queueTarget, null)?.meal
+
+internal fun canSaveProductToLibrary(slot: MealSlot?, resolutionContinuation: Boolean, queueNotEmpty: Boolean): Boolean =
+    slot == null && !(resolutionContinuation && queueNotEmpty)
+
+internal data class ScannerFailureTransition(
+    val scannerOpen: Boolean,
+    val unavailable: Boolean,
+)
+
+internal fun scannerUnavailableTransition(): ScannerFailureTransition =
+    ScannerFailureTransition(scannerOpen = true, unavailable = true)
+
+internal fun shouldApplyOffSearchResult(
+    responseGeneration: Long,
+    currentGeneration: Long,
+    responseQuery: String,
+    currentQuery: String,
+    searchOpen: Boolean,
+): Boolean = searchOpen && responseGeneration == currentGeneration && responseQuery == currentQuery
+
+internal fun shouldApplyLibraryRefresh(
+    responseGeneration: Long,
+    currentGeneration: Long,
+    responseQuery: String,
+    currentQuery: String,
+    responseArchivedOnly: Boolean,
+    currentArchivedOnly: Boolean,
+    libraryOpen: Boolean,
+): Boolean = libraryOpen && responseGeneration == currentGeneration && responseQuery == currentQuery && responseArchivedOnly == currentArchivedOnly
 
 /** The "No local match" screen shows only once a finished library search for the current query is empty and nothing sits over it. */
 internal fun isLibraryNoMatch(ready: Boolean, libraryOpen: Boolean, query: String, resultsQuery: String?, noResults: Boolean, otherScreenOpen: Boolean): Boolean =

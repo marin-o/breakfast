@@ -82,6 +82,7 @@ import com.iron.breakfast.domain.asciiDigits
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.domain.normalizeBarcode
 import com.iron.breakfast.label
+import com.iron.breakfast.canSaveProductToLibrary
 import com.iron.breakfast.pretty
 import com.iron.breakfast.ui.components.ApproxTag
 import com.iron.breakfast.ui.components.ReceiptBottomSheet
@@ -116,7 +117,7 @@ import java.util.concurrent.atomic.AtomicBoolean
     LaunchedEffect(torchOn, torchAvailable) { if (torchAvailable) session.camera?.cameraControl?.enableTorch(torchOn) }
     BackHandler { vm.endScan() }
     Box(Modifier.fillMaxSize().background(CameraGround)) {
-        if (hasPermission) AndroidView(factory = { ctx -> PreviewView(ctx).also { view ->
+        if (hasPermission && !vm.scannerUnavailableState) AndroidView(factory = { ctx -> PreviewView(ctx).also { view ->
             val providerFuture = ProcessCameraProvider.getInstance(ctx)
             providerFuture.addListener({ runCatching {
                 if (session.disposed.get()) return@runCatching
@@ -137,7 +138,12 @@ import java.util.concurrent.atomic.AtomicBoolean
                 torchAvailable = camera.cameraInfo.hasFlashUnit()
             }.onFailure { if (!session.disposed.get()) { session.dispose(); vm.scannerUnavailable() } } }, ContextCompat.getMainExecutor(ctx))
         } }, Modifier.fillMaxSize())
-        else Text("Camera permission is required to scan.", Modifier.align(Alignment.TopCenter).padding(top = 150.dp), color = OnGroundSoft)
+        else Text(
+            if (vm.scannerUnavailableState) "Camera unavailable. Enter a barcode manually."
+            else "Camera permission is required to scan.",
+            Modifier.align(Alignment.TopCenter).padding(top = 150.dp),
+            color = OnGroundSoft,
+        )
         Viewfinder(Modifier.align(Alignment.Center).offset(y = (-80).dp).size(width = 260.dp, height = 160.dp))
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = vm::endScan, Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnGround) }
@@ -286,7 +292,9 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
                 }
             }
             ReceiptPrimaryButton("Add to ${(queueMeal ?: meal).label()}", { vm.addSelected(queueMeal ?: meal) }, enabled = canAdd)
-            if (vm.slot == null) ReceiptTonalButton("Save to library", vm::saveSelectedToLibrary, Modifier.padding(top = 10.dp), enabled = canAdd)
+            if (canSaveProductToLibrary(vm.slot, vm.resolutionContinuation, vm.unknownQueue.isNotEmpty())) {
+                ReceiptTonalButton("Save to library", vm::saveSelectedToLibrary, Modifier.padding(top = 10.dp), enabled = canAdd)
+            }
             TextButton(onClick = { vm.clearSelectedProduct(); vm.openSearch(fromResolver = vm.resolutionContinuation) }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Find better match", color = PenTonalInk) }
             TextButton(onClick = { vm.clearSelectedProduct(); vm.beginScan() }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Rescan", color = PenTonalInk) }
         }

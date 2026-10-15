@@ -64,7 +64,8 @@ import com.iron.breakfast.ui.theme.Sticker
 /** Local search that found nothing: the way on is Open Food Facts or a personal food. */
 @Composable internal fun LibraryNoMatchScreen(vm: BreakfastViewModel) {
     val query = vm.libraryQuery
-    val clear = { vm.onInput(""); vm.onLibraryQuery("") }
+    // Leaving a no-match result must keep the Daily quick-add draft intact.
+    val clear = { vm.onLibraryQuery("") }
     BackHandler(onBack = clear)
     Surface(Modifier.fillMaxSize(), color = Ground) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
