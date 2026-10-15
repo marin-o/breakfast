@@ -260,6 +260,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private var libraryPendingBatch: List<LibraryLogDraft> = emptyList()
     private var libraryRefreshJob: Job? = null
     private var libraryRefreshGeneration = 0L
+    /** Daily input present before entering Library; Library-owned typing is restored to this on exit. */
+    private var libraryInputBeforeOpen: String? = null
     private var offSearchJob: Job? = null
     private var offSearchGeneration = 0L
     var libraryBatchMealPickerOpen by mutableStateOf(false); private set
@@ -307,9 +309,22 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private fun selectMeal(value: MealSlot?) { slot = value; savedState["meal_slot"] = value?.name }
     fun shiftSelectedDay(delta: Long) { selectDay(runCatching { LocalDate.parse(selectedDayKey).plusDays(delta).toString() }.getOrDefault(selectedDayKey)); barcodeRequestToken++ }
     fun goToday() { selectDay(dayKeyForEpochMs(System.currentTimeMillis())); barcodeRequestToken++ }
-    fun openLibrary() { cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = false; refreshLibrary() }
-    fun openArchivedLibrary() { cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = true; refreshLibrary() }
-    fun closeLibrary() { libraryRefreshJob?.cancel(); libraryRefreshGeneration++; libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null; expandedLibraryFoodId = null; libraryPendingAmount = null; libraryPendingUnit = null; libraryPendingBatch = emptyList(); libraryBatchMealPickerOpen = false; libraryArchivedOnly = false; selectMeal(null) }
+    fun openLibrary() {
+        if (!libraryOpen) libraryInputBeforeOpen = input
+        cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = false; refreshLibrary()
+    }
+    fun openArchivedLibrary() {
+        if (!libraryOpen) libraryInputBeforeOpen = input
+        cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = true; refreshLibrary()
+    }
+    fun closeLibrary() {
+        val restoreInput = if (libraryOpen) libraryInputBeforeOpen else null
+        libraryRefreshJob?.cancel(); libraryRefreshGeneration++; libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null; expandedLibraryFoodId = null; libraryPendingAmount = null; libraryPendingUnit = null; libraryPendingBatch = emptyList(); libraryBatchMealPickerOpen = false; libraryArchivedOnly = false; selectMeal(null)
+        libraryQuery = ""
+        libraryResultsQuery = null
+        if (restoreInput != null) input = restoreInput
+        libraryInputBeforeOpen = null
+    }
     fun cancelLibraryMealPicker() { libraryMealPickerFood = null; libraryPendingAmount = null; libraryPendingUnit = null }
     fun onLibraryQuery(value: String) { libraryQuery = value; refreshLibrary() }
     fun refreshLibrary() {
@@ -506,6 +521,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun openFocusedLibrary(meal: MealSlot?, query: String = "") {
         abandonUnknownResolution()
         cancelEdit()
+        if (!libraryOpen) libraryInputBeforeOpen = ""
         selectMeal(meal)
         libraryOpen = true
         libraryQuery = query
@@ -515,6 +531,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun openLibraryFoodDetail(entry: MealEntry) {
         closeEntryDetail()
         cancelEdit()
+        if (!libraryOpen) libraryInputBeforeOpen = ""
         selectMeal(null)
         libraryOpen = true
         libraryQuery = entry.foodName

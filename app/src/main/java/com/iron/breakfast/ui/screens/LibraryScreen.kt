@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -170,7 +171,7 @@ import java.util.Locale
             Row(Modifier.fillMaxWidth().then(if (first) Modifier else Modifier.receiptDashedRule()).padding(start = 14.dp, end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f).heightIn(min = 48.dp).clickable(role = Role.Button) { vm.openLibraryFood(food) }.padding(vertical = 6.dp), verticalArrangement = Arrangement.Center) {
                     Text(food.name, color = Ink, style = MaterialTheme.typography.bodyLarge)
-                    val detail = "${repeatAmount.pretty()} ${repeatUnit.displayLabel()}, ${if (last == null) "${defaultServingCalories(food)} kcal" else "last ${last.nutritionSnapshot.calories.pretty()} kcal"}"
+                    val detail = "${repeatAmount.pretty()} ${repeatUnit.displayLabel()}, ${if (last == null) "${defaultServingCalories(food)} kcal" else "last ${printedFactKcal(last.nutritionSnapshot.calories)} kcal"}"
                     Text(if (food.archived) "Archived, $detail" else detail, color = InkSoft, style = MaterialTheme.typography.bodySmall)
                 }
                 SourceBox(sourceLetter(food), Modifier.padding(horizontal = 10.dp))
@@ -186,8 +187,16 @@ import java.util.Locale
                 )
             }
             if (expanded) {
-                FlowRow(Modifier.fillMaxWidth().padding(start = 14.dp, end = 8.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MealSlot.entries.forEach { meal -> ReceiptTonalChip(meal.label(), { vm.logLibraryFood(food, meal, repeatAmount, repeatUnit); vm.collapseLibraryFoodPicker() }) }
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 14.dp, end = 8.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    MealSlot.entries.forEach { meal ->
+                        ReceiptTonalChip(
+                            label = meal.label(),
+                            onClick = { vm.logLibraryFood(food, meal, repeatAmount, repeatUnit); vm.collapseLibraryFoodPicker() },
+                        )
+                    }
                 }
             }
         }
@@ -195,7 +204,7 @@ import java.util.Locale
 }
 
 private fun defaultServingCalories(food: FoodRecord): String =
-    com.iron.breakfast.defaultServingCalculation(food).nutrition.calories.pretty()
+    printedFactKcal(com.iron.breakfast.defaultServingCalculation(food).nutrition.calories)
 
 /** Search pill, scan button and (outside a meal) the navigation bar, as drawn in the locked Library tray. */
 @Composable internal fun LibraryComposer(vm: BreakfastViewModel) {
@@ -267,7 +276,7 @@ private fun defaultServingCalories(food: FoodRecord): String =
                             food.barcode?.let { Text("Barcode  $it", color = InkSoft, style = MaterialTheme.typography.bodySmall) }
                         }
                         LibrarySubhead(basisLabel(food.nutrition.amount, food.nutrition.unit))
-                        LibraryFactRow("Energy", "${food.nutrition.values.calories.pretty()} kcal")
+                        LibraryFactRow("Energy", "${printedFactKcal(food.nutrition.values.calories)} kcal")
                         LibraryFactRow("Fat", "${food.nutrition.values.fat?.pretty() ?: "—"} g")
                         LibraryFactRow("Carbohydrate", "${food.nutrition.values.carbohydrates?.pretty() ?: "—"} g")
                         LibraryFactRow("Protein", "${food.nutrition.values.protein?.pretty() ?: "—"} g")

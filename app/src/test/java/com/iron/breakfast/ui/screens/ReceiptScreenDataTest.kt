@@ -213,4 +213,10 @@ class ReceiptScreenDataTest {
         assertEquals("148", receiptKcal(148.1))
         assertEquals("389", receiptKcal(388.6))
     }
+
+    @Test
+    fun printedFactKcalDropsOnlyInsignificantTenths() {
+        assertEquals("105", printedFactKcal(105.0000001))
+        assertEquals("148.1", printedFactKcal(148.1))
+    }
 }

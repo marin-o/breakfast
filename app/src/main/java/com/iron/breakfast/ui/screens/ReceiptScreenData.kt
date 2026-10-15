@@ -50,6 +50,10 @@ internal data class ReceiptQuantityDisplay(
 /** Printed receipt figures use whole kcal consistently across rows and slips. */
 internal fun receiptKcal(value: Double): String = round(value).toInt().toString()
 
+/** Library's printed fact keeps meaningful tenths while dropping floating-point '.0' noise. */
+internal fun printedFactKcal(value: Double): String =
+    String.format(Locale.ROOT, "%.1f", value).removeSuffix(".0")
+
 internal fun quantityRateDisplay(entry: MealEntry, food: FoodRecord?): ReceiptQuantityDisplay {
     val basisUnit = entry.resolvedBaseUnit.takeUnless { it == MeasureUnit.UNKNOWN }
         ?: provenanceBasisUnit(entry.conversionProvenance)

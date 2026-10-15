@@ -87,6 +87,7 @@ import com.iron.breakfast.ui.theme.Ink
 import com.iron.breakfast.ui.theme.InkSoft
 import com.iron.breakfast.ui.theme.OnGround
 import com.iron.breakfast.ui.theme.Paper
+import com.iron.breakfast.ui.theme.PenBlue
 import com.iron.breakfast.ui.theme.PenOnDarkInk
 import com.iron.breakfast.ui.theme.PenTonal
 import com.iron.breakfast.ui.theme.PenTonalInk
@@ -95,6 +96,7 @@ import com.iron.breakfast.ui.theme.Rule
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
+import java.math.BigDecimal
 import java.util.Locale
 
 @Composable
@@ -145,11 +147,12 @@ internal fun EntryDetailScreen(vm: BreakfastViewModel, entry: MealEntry) {
 @Composable
 internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
     BackHandler { vm.cancelEdit() }
-    var amount by remember(entry.id) { mutableStateOf(entry.enteredAmount.pretty()) }
+    var amount by remember(entry.id) { mutableStateOf(editAmountText(entry.enteredAmount)) }
     var unit by remember(entry.id) { mutableStateOf(entry.enteredUnit) }
     val food = vm.foods.firstOrNull { it.id == entry.foodId }
     val units = food?.let(vm::editUnits).orEmpty().ifEmpty { listOf(entry.enteredUnit) }
     val preview = amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { vm.draftCalculation(entry.foodId, it, unit) }
+    val draftChanged = entryDraftNutritionChanged(entry, amount, unit, entry.foodId)
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
@@ -187,7 +190,7 @@ internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
                     if (preview.approximate && food != null && unit != food.nutrition.unit) ApproxTag(baseText) else Text(baseText, color = Ink, fontWeight = FontWeight.Bold)
                     Text(", ${receiptKcal(preview.nutrition.calories)} kcal", color = Ink, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 } else Text("Enter a positive amount", color = InkSoft, modifier = Modifier.weight(1f))
-                Text("was ${receiptKcal(entry.nutritionSnapshot.calories)}", color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                if (draftChanged) Text("was ${receiptKcal(entry.nutritionSnapshot.calories)}", color = InkSoft, style = MaterialTheme.typography.bodySmall)
             }
             ReceiptPrimaryButton("Save", { vm.onInput("${amount.trim()} ${unit.displayLabel()}"); vm.submit() }, enabled = amount.toDoubleOrNull()?.let { it > 0.0 } == true)
             if (vm.editInvalid) Text(vm.mealDraftError ?: "Could not save this entry.", color = PrintRed)
@@ -195,13 +198,18 @@ internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
     }
 }
 
+private fun editAmountText(value: Double): String = BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
+
 private fun adjustAmount(value: String, delta: Double): String = (value.toDoubleOrNull()?.plus(delta)?.coerceAtLeast(0.1) ?: 1.0).let { if (it % 1.0 == 0.0) it.toInt().toString() else "%.1f".format(Locale.ROOT, it) }
+
+private fun entryDraftNutritionChanged(entry: MealEntry, amount: String, unit: MeasureUnit, foodId: String?): Boolean =
+    foodId != entry.foodId || amount.toDoubleOrNull()?.let { it != entry.enteredAmount } != false || unit != entry.enteredUnit
 
 @Composable
 internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
     BackHandler { vm.cancelEdit() }
     val selectedFood = vm.editingFood() ?: vm.foods.firstOrNull { it.id == entry.foodId }
-    var amount by remember(entry.id) { mutableStateOf(entry.enteredAmount.pretty()) }
+    var amount by remember(entry.id) { mutableStateOf(editAmountText(entry.enteredAmount)) }
     var unit by remember(entry.id) { mutableStateOf(entry.enteredUnit) }
     var meal by remember(entry.id) { mutableStateOf(entry.mealSlot) }
     var dayKey by remember(entry.id) { mutableStateOf(entry.dayKey) }
@@ -209,6 +217,7 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
     val date = runCatching { LocalDate.parse(dayKey) }.getOrElse { LocalDate.now() }
     val units = selectedFood?.let(vm::editUnits).orEmpty().ifEmpty { listOf(entry.enteredUnit) }
     val preview = selectedFood?.let { food -> amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { vm.draftCalculation(food.id, it, unit) } }
+    val draftChanged = entryDraftNutritionChanged(entry, amount, unit, selectedFood?.id)
     LaunchedEffect(selectedFood?.id) { if (unit !in units) unit = units.first() }
     Surface(Modifier.fillMaxSize(), color = Ground) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState())) {
@@ -233,7 +242,7 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
                             .clickable(role = Role.Button) { DatePickerDialog(context, { _, year, month, day -> dayKey = LocalDate.of(year, month + 1, day).toString() }, date.year, date.monthValue - 1, date.dayOfMonth).show() }
                             .padding(horizontal = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                    ) { Text(date.format(DateTimeFormatter.ofPattern("EEE d MMMM", Locale.ENGLISH)), Modifier.weight(1f), color = Ink); Icon(Icons.Default.CalendarMonth, "Change date", tint = InkSoft) }
+                    ) { Text(date.format(DateTimeFormatter.ofPattern("EEE d MMMM", Locale.ENGLISH)), Modifier.weight(1f), color = Ink); Icon(Icons.Default.CalendarMonth, "Change date", tint = PenBlue) }
                 }
             }
             ReceiptTornEdge(fill = Paper, Modifier.padding(horizontal = 14.dp))
@@ -242,7 +251,7 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Entry", color = InkSoft); Text("${receiptKcal(preview?.nutrition?.calories ?: entry.nutritionSnapshot.calories)} kcal", style = MaterialTheme.typography.titleLarge, color = Ink, fontWeight = FontWeight.Bold) }
                     val shown = preview?.nutrition ?: entry.nutritionSnapshot
                     Text("P ${shown.protein?.pretty() ?: "—"} g   C ${shown.carbohydrates?.pretty() ?: "—"} g   F ${shown.fat?.pretty() ?: "—"} g", color = Ink, modifier = Modifier.padding(top = 12.dp))
-                    if (preview != null) Text("was ${receiptKcal(entry.nutritionSnapshot.calories)} kcal", color = InkSoft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+                    if (draftChanged) Text("was ${receiptKcal(entry.nutritionSnapshot.calories)} kcal", color = InkSoft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
                 }
             }
             if (vm.editInvalid) Text(vm.mealDraftError ?: "Could not save this entry.", Modifier.padding(horizontal = 14.dp), color = PrintRed)
