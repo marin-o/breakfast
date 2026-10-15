@@ -155,6 +155,7 @@ import com.iron.breakfast.ui.screens.LibraryNoMatchScreen
 import com.iron.breakfast.ui.screens.OffSearchScreen
 import com.iron.breakfast.ui.screens.ProductReviewSheet
 import com.iron.breakfast.ui.screens.ResolveUnknownScreen
+import com.iron.breakfast.ui.screens.ScanReviewBackdrop
 import com.iron.breakfast.ui.screens.ScannerScreen
 import com.iron.breakfast.ui.components.ReceiptNavigationBar
 import com.iron.breakfast.ui.theme.BreakfastTheme
@@ -1343,6 +1344,9 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); vm.reloadToday() } }
     LaunchedEffect(vm.feedbackUntil, vm.resolverOpen) { while (vm.feedbackUntil > 0L) { kotlinx.coroutines.delay(1000); if (vm.resolverOpen) vm.holdFeedback() else if (System.currentTimeMillis() >= vm.feedbackUntil) { vm.expireFeedback(); break } } }
     if (vm.scannerOpen) { ScannerScreen(vm); return }
+    val scanReviewBackdropVisible = vm.selectedProduct != null && vm.selectedProductFromScan
+    if (scanReviewBackdropVisible) ScanReviewBackdrop(vm::clearSelectedProduct)
+    else {
     if (vm.selectedEntry != null) {
         EntryDetailScreen(vm, vm.selectedEntry!!)
         return
@@ -1367,6 +1371,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
             vm.slot == null -> DailyScreen(vm, Modifier.padding(pad))
             else -> MealScreen(vm, Modifier.padding(pad))
         }
+    }
     }
     when (vm.entryEditMode) {
         EntryEditMode.QUICK -> vm.editingEntry()?.let { EntryQuickEditSheet(vm, it) }
@@ -1393,7 +1398,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     }
     if (vm.libraryNoMatch()) LibraryNoMatchScreen(vm)
     if (vm.searchOpen) OffSearchScreen(vm)
-    if (vm.resolverOpen) ResolveUnknownScreen(vm)
+    if (vm.resolverOpen && !scanReviewBackdropVisible) ResolveUnknownScreen(vm)
     vm.selectedProduct?.let { ProductReviewSheet(vm, it) }
     if (vm.contributionReviewOpen) vm.pendingContribution?.let { ContributionReviewDialog(vm, it) }
     if (vm.contributionAuthOpen) ContributionAuthDialog(vm)

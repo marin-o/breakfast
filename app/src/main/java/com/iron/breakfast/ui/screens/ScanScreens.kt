@@ -177,6 +177,30 @@ import java.util.concurrent.atomic.AtomicBoolean
     }
 }
 
+/**
+ * Static scanner ground used after a barcode has been delivered to the product review sheet.
+ * CameraX is intentionally stopped at that point, so this keeps the scanner context visible
+ * without implying that another barcode can still be decoded behind the sheet.
+ */
+@Composable internal fun ScanReviewBackdrop(onBack: () -> Unit) {
+    Box(Modifier.fillMaxSize().background(CameraGround)) {
+        Text(
+            "camera",
+            Modifier.align(Alignment.Center).offset(y = (-262).dp),
+            color = OnGroundSoft,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Viewfinder(Modifier.align(Alignment.Center).offset(y = (-80).dp).size(width = 260.dp, height = 160.dp))
+        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack, Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnGround) }
+            Box(Modifier.weight(1f))
+            Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.FlashlightOff, contentDescription = null, tint = OnGround)
+            }
+        }
+    }
+}
+
 /** Manual entry on the one shared barcode rule: 8, 12, 13 or 14 ASCII digits. */
 @Composable private fun ManualBarcodeSheet(onDismiss: () -> Unit, onLookup: (String) -> Unit) {
     var text by remember { mutableStateOf("") }
