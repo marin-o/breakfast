@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
@@ -109,13 +110,13 @@ internal fun EntryDetailScreen(vm: BreakfastViewModel, entry: MealEntry) {
                     IconButton(onClick = vm::closeEntryDetail) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnGround) }
                     Text("Entry", style = MaterialTheme.typography.titleLarge, color = OnGround, fontWeight = FontWeight.Bold)
                 }
-                ReceiptTicket(mealName = entry.foodName, total = receiptKcal(entry.nutritionSnapshot.calories)) {
+                ReceiptTicket(mealName = entry.foodName, total = "${receiptKcal(entry.nutritionSnapshot.calories)} kcal") {
                     DetailFactRow("Amount") { if (entry.approximateConversion) ApproxTag("${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}") else Text("${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}", color = Ink) }
                     DetailFactRow("Weight") { Text(quantity.line, color = Ink) }
-                    Row(Modifier.fillMaxWidth().dashedTopRule().padding(horizontal = 14.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        MacroFact("Protein", entry.nutritionSnapshot.protein)
-                        MacroFact("Carbs", entry.nutritionSnapshot.carbohydrates)
-                        MacroFact("Fat", entry.nutritionSnapshot.fat)
+                    Row(Modifier.fillMaxWidth().dashedTopRule().padding(horizontal = 14.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CompactMacroFact("P", entry.nutritionSnapshot.protein)
+                        CompactMacroFact("C", entry.nutritionSnapshot.carbohydrates)
+                        CompactMacroFact("F", entry.nutritionSnapshot.fat)
                     }
                     DetailFactRow("Source") { Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { Text(entrySourceLabel(food), color = Ink); SourceBox(sourceLetter(food)) } }
                     matchedPhraseLabel(entry.sourcePhrase, entry.foodName)?.let { label -> DetailFactRow("Match") { Text(label, color = Ink) } }
@@ -132,7 +133,12 @@ internal fun EntryDetailScreen(vm: BreakfastViewModel, entry: MealEntry) {
     }
 }
 
-@Composable private fun androidx.compose.foundation.layout.RowScope.MacroFact(label: String, value: Double?) { Column(Modifier.weight(1f)) { Text(label, color = InkSoft, style = MaterialTheme.typography.labelSmall); Text(value?.let { "${it.pretty()} g" } ?: "—", color = Ink, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold) } }
+@Composable private fun androidx.compose.foundation.layout.RowScope.CompactMacroFact(label: String, value: Double?) {
+    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, color = InkSoft, style = MaterialTheme.typography.labelSmall)
+        Text(value?.let { "${it.pretty()} g" } ?: "—", color = Ink, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+    }
+}
 @Composable private fun DetailFactRow(label: String, value: @Composable () -> Unit) { Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).dashedTopRule().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) { Text(label, color = InkSoft, style = MaterialTheme.typography.bodyMedium); value() } }
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -147,8 +153,16 @@ internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
-    ReceiptBottomSheet(onDismissRequest = vm::cancelEdit) {
-        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ReceiptBottomSheet(onDismissRequest = vm::cancelEdit, skipPartiallyExpanded = true) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             Text(entry.foodName, style = MaterialTheme.typography.titleLarge, color = Ink, fontWeight = FontWeight.Bold)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 ReceiptTonalIconButton(Icons.Default.Remove, "Decrease amount", { amount = adjustAmount(amount, -1.0) })

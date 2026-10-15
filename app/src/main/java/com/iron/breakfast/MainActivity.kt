@@ -1362,7 +1362,9 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
         else LibraryFoodDetailDialog(vm, vm.selectedLibraryFood!!)
     }
     if (vm.libraryOpen && vm.selectedLibraryFood == null && !vm.customOpen && !vm.searchOpen && !vm.resolverOpen && vm.selectedProduct == null && vm.entryEditMode == EntryEditMode.NONE) {
-        BackHandler { vm.closeLibrary() }
+        // Archived foods is a child destination of Library. Keep system/predictive
+        // Back aligned with the top-bar arrow before leaving the Library flow.
+        BackHandler { if (vm.libraryArchivedOnly) vm.openLibrary() else vm.closeLibrary() }
     } else if (vm.slot != null && vm.entryEditMode == EntryEditMode.NONE && !vm.customOpen && !vm.searchOpen && !vm.resolverOpen && vm.selectedProduct == null && vm.selectedEntry == null) {
         BackHandler { vm.closeMeal() }
     }

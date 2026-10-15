@@ -149,7 +149,7 @@ fun ReceiptTicket(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val stackTime = usesSingleWidthAt(LocalDensity.current.fontScale) && time != null
+    val stackTime = shouldStackTicketTime(LocalDensity.current.fontScale, mealName, time)
     val titleStyle = receiptHeadingStyle(mealName)
     Column(modifier) {
         Column(
@@ -176,7 +176,7 @@ fun ReceiptTicket(
                 } else {
                     Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(mealName, style = titleStyle, color = OnGround, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f, fill = false))
-                        if (time != null) Text(time, style = MaterialTheme.typography.bodySmall, color = com.iron.breakfast.ui.theme.OnRedSoft)
+                        if (!time.isNullOrBlank()) Text(time, style = MaterialTheme.typography.bodySmall, color = com.iron.breakfast.ui.theme.OnRedSoft)
                     }
                 }
                 Text(total, style = MaterialTheme.typography.titleLarge, color = OnGround, fontWeight = FontWeight.Bold, maxLines = 1)
@@ -201,6 +201,13 @@ fun ReceiptTicket(
         ReceiptTornEdge(fill = if (addFoodLabel != null) PenTonal else Paper)
     }
 }
+
+/**
+ * Large text moves a real meal name's time below it. An empty name is used by
+ * the meal detail ticket, where stacking would create an empty row above time.
+ */
+internal fun shouldStackTicketTime(fontScale: Float, mealName: String, time: String?): Boolean =
+    usesSingleWidthAt(fontScale) && mealName.isNotBlank() && !time.isNullOrBlank()
 
 @Composable
 fun ReceiptSlip(
@@ -479,7 +486,9 @@ fun ReceiptQuickAddField(
             keyboardActions = KeyboardActions(onDone = { onImeDone() }),
             decorationBox = { inner -> Box { if (value.isBlank()) Text(placeholder, color = InkSoft, style = MaterialTheme.typography.bodyMedium); inner() } },
         )
-        IconButton(onClick = onLog, enabled = value.isNotBlank(), modifier = Modifier.size(46.dp)) {
+        // Keep the visual control at 46dp while giving the action the required
+        // 48dp touch target.
+        IconButton(onClick = onLog, enabled = value.isNotBlank(), modifier = Modifier.size(48.dp)) {
             if (value.isBlank()) {
                 Box(contentAlignment = Alignment.Center) { Icon(Icons.AutoMirrored.Filled.KeyboardReturn, contentDescription = logContentDescription, tint = BoxGrey) }
             } else {
@@ -620,7 +629,7 @@ fun ReceiptSearchPill(
             keyboardActions = KeyboardActions(onSearch = { onSearch?.invoke() }, onDone = { onSearch?.invoke() }),
         )
         if (value.isNotEmpty()) {
-            IconButton(onClick = onClear, modifier = Modifier.size(46.dp)) {
+            IconButton(onClick = onClear, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.Default.Close, contentDescription = "Clear", tint = InkSoft)
             }
         }

@@ -249,31 +249,38 @@ private fun defaultServingCalories(food: FoodRecord): String =
                 Text("Food", color = OnGround, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 TextButton(onClick = { vm.closeLibraryFood(); vm.openLibraryEdit(food) }, Modifier.heightIn(min = 48.dp)) { Text("Edit", color = PenOnDarkInk, fontWeight = FontWeight.Bold) }
             }
-            Surface(Modifier.fillMaxWidth(), color = Paper, shape = RoundedCornerShape(6.dp)) {
-                Column {
-                    Text(food.name, Modifier.fillMaxWidth().background(PrintRed).padding(14.dp), color = OnGround, style = receiptHeadingStyle(food.name), fontWeight = FontWeight.Bold)
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(listOfNotNull(food.brand, sourceLabel(letter)).joinToString(", "), color = Ink, modifier = Modifier.weight(1f))
-                            if (food.archived) { ArchivedTag(); Spacer(Modifier.width(8.dp)) }
-                            SourceBox(letter)
+            Column(Modifier.fillMaxWidth()) {
+                Surface(
+                    Modifier.fillMaxWidth(),
+                    color = Paper,
+                    shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp),
+                ) {
+                    Column {
+                        Text(food.name, Modifier.fillMaxWidth().background(PrintRed).padding(14.dp), color = OnGround, style = receiptHeadingStyle(food.name), fontWeight = FontWeight.Bold)
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text(listOfNotNull(food.brand, sourceLabel(letter)).joinToString(", "), color = Ink, modifier = Modifier.weight(1f))
+                                if (food.archived) { ArchivedTag(); Spacer(Modifier.width(8.dp)) }
+                                SourceBox(letter)
+                            }
+                            food.barcode?.let { Text("Barcode  $it", color = InkSoft, style = MaterialTheme.typography.bodySmall) }
                         }
-                        food.barcode?.let { Text("Barcode  $it", color = InkSoft, style = MaterialTheme.typography.bodySmall) }
-                    }
-                    LibrarySubhead(basisLabel(food.nutrition.amount, food.nutrition.unit))
-                    LibraryFactRow("Energy", "${food.nutrition.values.calories.pretty()} kcal")
-                    LibraryFactRow("Fat", "${food.nutrition.values.fat?.pretty() ?: "—"} g")
-                    LibraryFactRow("Carbohydrate", "${food.nutrition.values.carbohydrates?.pretty() ?: "—"} g")
-                    LibraryFactRow("Protein", "${food.nutrition.values.protein?.pretty() ?: "—"} g")
-                    if (servings.isNotEmpty()) {
-                        LibrarySubhead("Servings")
-                        servings.forEach { conversion -> LibraryFactRow("1 ${conversion.unit.displayLabel()}") { ServingValue(conversion, food) } }
-                    }
-                    if (food.aliases.isNotEmpty()) {
-                        LibrarySubhead("Aliases")
-                        food.aliases.forEachIndexed { index, alias -> Text(alias, Modifier.fillMaxWidth().then(if (index == 0) Modifier else Modifier.receiptDashedRule()).padding(horizontal = 14.dp, vertical = 10.dp), color = Ink) }
+                        LibrarySubhead(basisLabel(food.nutrition.amount, food.nutrition.unit))
+                        LibraryFactRow("Energy", "${food.nutrition.values.calories.pretty()} kcal")
+                        LibraryFactRow("Fat", "${food.nutrition.values.fat?.pretty() ?: "—"} g")
+                        LibraryFactRow("Carbohydrate", "${food.nutrition.values.carbohydrates?.pretty() ?: "—"} g")
+                        LibraryFactRow("Protein", "${food.nutrition.values.protein?.pretty() ?: "—"} g")
+                        if (servings.isNotEmpty()) {
+                            LibrarySubhead("Servings")
+                            servings.forEach { conversion -> LibraryFactRow("1 ${conversion.unit.displayLabel()}") { ServingValue(conversion, food) } }
+                        }
+                        if (food.aliases.isNotEmpty()) {
+                            LibrarySubhead("Aliases")
+                            food.aliases.forEachIndexed { index, alias -> Text(alias, Modifier.fillMaxWidth().then(if (index == 0) Modifier else Modifier.receiptDashedRule()).padding(horizontal = 14.dp, vertical = 10.dp), color = Ink) }
+                        }
                     }
                 }
+                ReceiptTornEdge(fill = Paper)
             }
             val logDescription = if (food.archived) "Log unavailable: this food is archived" else "Log to ${targetMeal.label()}"
             Row(Modifier.fillMaxWidth().padding(top = 28.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
