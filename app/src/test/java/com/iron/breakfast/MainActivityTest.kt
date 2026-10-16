@@ -1,5 +1,7 @@
 package com.iron.breakfast
 
+import com.iron.breakfast.data.toConversionEntities
+import com.iron.breakfast.data.toDomain
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.FoodRecord
@@ -173,6 +175,34 @@ class MainActivityTest {
         val removed = editedCustomFoodRecord(original, "Mine", "", "", "", values, 100.0, MeasureUnit.GRAM, servings = emptyList())
         assertEquals(listOf("custom basis"), removed.conversions.map { it.provenance })
         assertEquals(emptyList(), original.copy(conversions = removed.conversions).householdServings())
+    }
+
+    @Test
+    fun namedSameBasisServingsSurviveEditAndRoomRoundTrip() {
+        val bottle = ServingConversion(MeasureUnit.MILLILITER, 330.0, "personal serving", label = "bottle")
+        val glass = ServingConversion(MeasureUnit.MILLILITER, 250.0, "personal serving", approximate = true, label = "glass")
+        val original = food("custom", "Juice", origin = FoodOrigin.CUSTOM).copy(
+            nutrition = NutritionBasis(100.0, MeasureUnit.MILLILITER, NutritionValues(40.0, 0.0, 10.0, 0.0)),
+            conversions = listOf(ServingConversion(MeasureUnit.MILLILITER, 100.0, "custom basis"), bottle, glass),
+        )
+        val edited = editedCustomFoodRecord(
+            original, "Juice", "", "", "", NutritionValues(40.0, 0.0, 10.0, 0.0), 100.0, MeasureUnit.MILLILITER,
+            servings = listOf(bottle, glass),
+        )
+        val readBack = edited.toConversionEntities().map { it.toDomain() }
+        assertEquals(listOf(null, "bottle", "glass"), readBack.map { it.label })
+        assertEquals(listOf(330.0, 250.0), readBack.drop(1).map { it.baseUnitsPerServing })
+    }
+
+    @Test
+    fun draftKeepsMultipleNamedServingsWithTheSameUnit() {
+        val draft = FoodDraft()
+        draft.servings = listOf(ServingConversion(MeasureUnit.MILLILITER, 330.0, "personal", label = "bottle"))
+        draft.servingUnit = MeasureUnit.MILLILITER
+        draft.servingAmount = "250"
+        draft.servingLabel = "glass"
+        assertTrue(draft.commitServing())
+        assertEquals(listOf("bottle", "glass"), draft.servings.map { it.label })
     }
 
     @Test

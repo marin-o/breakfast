@@ -75,7 +75,7 @@ class BreakfastStore(context: Context) {
         context.applicationContext,
         BreakfastDatabase::class.java,
         "breakfast.db"
-    ).addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5).build()
+    ).addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6).build()
     private val writeMutex = Mutex()
 
     @Volatile
@@ -168,7 +168,7 @@ class BreakfastStore(context: Context) {
             val entity = database.foodDao().byBarcode(barcode)?.takeUnless { it.archived } ?: return@withContext null
             val aliases = database.foodAliasDao().all().filter { it.foodId == entity.id }.map { it.alias }
             val conversions = database.servingConversionDao().all().filter { it.foodId == entity.id }.map {
-                ServingConversion(MeasureUnit.valueOf(it.unit), it.baseUnitsPerServing, it.provenance, it.approximate)
+                it.toDomain()
             }
             entity.toDomain(aliases, conversions)
         }
@@ -195,6 +195,17 @@ class BreakfastStore(context: Context) {
             withContext(Dispatchers.IO) {
                 val current = database.foodDao().all().firstOrNull { it.id == id } ?: return@withContext
                 database.withTransaction { database.foodDao().upsert(current.copy(archived = true)) }
+                model = readSnapshot()
+            }
+        }
+    }
+
+    suspend fun restoreFood(id: String) {
+        requireReady()
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val current = database.foodDao().all().firstOrNull { it.id == id } ?: return@withContext
+                database.withTransaction { database.foodDao().upsert(current.copy(archived = false)) }
                 model = readSnapshot()
             }
         }
@@ -250,7 +261,8 @@ class BreakfastStore(context: Context) {
                         unit = MeasureUnit.valueOf(it.unit),
                         baseUnitsPerServing = it.baseUnitsPerServing,
                         provenance = it.provenance,
-                        approximate = it.approximate
+                        approximate = it.approximate,
+                        label = it.label
                     )
                 }
             )

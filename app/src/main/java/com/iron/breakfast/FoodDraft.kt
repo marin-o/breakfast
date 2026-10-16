@@ -34,6 +34,7 @@ class FoodDraft {
     var servingFormOpen by mutableStateOf(false)
     var servingUnit by mutableStateOf(MeasureUnit.PIECE)
     var servingAmount by mutableStateOf("")
+    var servingLabel by mutableStateOf("")
 
     fun reset() = load(null)
 
@@ -50,7 +51,7 @@ class FoodDraft {
         fromOff = false; barcodeFromScan = false; fullFormOpen = false
         aliases = food?.aliases.orEmpty(); aliasInput = ""; aliasFieldOpen = false
         servings = food?.householdServings().orEmpty()
-        servingFormOpen = false; servingUnit = MeasureUnit.PIECE; servingAmount = ""
+        servingFormOpen = false; servingUnit = MeasureUnit.PIECE; servingAmount = ""; servingLabel = ""
     }
 
     /** Aliases already added plus any typed but not yet confirmed in the alias field. */
@@ -63,8 +64,13 @@ class FoodDraft {
 
     fun commitServing(): Boolean {
         val base = servingAmount.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 } ?: return false
-        servings = servings.filter { it.unit != servingUnit } + ServingConversion(servingUnit, base, "personal serving")
-        servingFormOpen = false; servingAmount = ""
+        val label = servingLabel.trim().ifBlank { null }
+        servings = servings.filterNot { it.unit == servingUnit && it.label == label } + ServingConversion(servingUnit, base, "personal serving", label = label)
+        servingFormOpen = false; servingAmount = ""; servingLabel = ""
         return true
+    }
+
+    fun cancelServing() {
+        servingFormOpen = false; servingAmount = ""; servingLabel = ""
     }
 }

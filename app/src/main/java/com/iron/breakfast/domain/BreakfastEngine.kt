@@ -205,6 +205,8 @@ class BreakfastEngine(private val store: BreakfastStore) {
 
     suspend fun archiveFood(foodId: String) = store.archiveFood(foodId)
 
+    suspend fun restoreFood(foodId: String) = store.restoreFood(foodId)
+
     suspend fun updateFood(food: FoodRecord) {
         store.upsertFood(food.copy(personalOverride = true))
         matcherCatalog = null

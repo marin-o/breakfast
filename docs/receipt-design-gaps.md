@@ -2,16 +2,16 @@
 
 This ledger maps follow-up states to the locked R6 and R6D references. A row is a gap only when the current slice cannot build the state as drawn; behavior remains unchanged until its owning slice implements the reference.
 
-| State | Locked reference | Slice 1 status / implementation gap |
+| State | Locked reference | Status / implementation gap |
 | --- | --- | --- |
 | Contribution review | `R6-OFF-Contribute-Review.dc.html` | Designed; screen implementation remains in the contribution slice. |
 | Open Food Facts sign in | `R6-OFF-SignIn.dc.html` | Designed; screen implementation remains in the contribution slice. |
 | Open Food Facts submission failure | `R6-OFF-Submit-Failed.dc.html` | Designed; screen implementation remains in the contribution slice. |
-| Archived library list, menu, and detail | `R6-Library-Archived.dc.html`, `R6-Library-Menu.dc.html`, `R6-Food-Archived.dc.html` | Designed; archive screen implementation remains in the library slice. |
+| Archived library list, menu, and detail | `R6-Library-Archived.dc.html`, `R6-Library-Menu.dc.html`, `R6-Food-Archived.dc.html` | Library, menu, detail, and RESTORE are implemented. The existing `foods` schema stores only the archived flag, so the drawn archive date cannot be printed without inventing a value or adding a migration. |
 | Open Food Facts loading and error | `R6-Search-OFF-Loading.dc.html`, `R6-Search-OFF-Error.dc.html` | Designed; search screen implementation remains in the search slice. |
 | Barcode lookup, manual entry, permission denied, and no camera | `R6-Scan-Lookup.dc.html`, `R6-Scan-Manual.dc.html`, `R6-Scan-Denied.dc.html`, `R6-Scan-NoCamera.dc.html` | Designed; scanner states remain in the scanner slice. Camera marks use the fixed camera ground and light marks. |
-| Add serving | `R6-Food-Edit-AddServing.dc.html` | Designed; add-serving form remains in the Library and food slice. |
-| Restore archived food | `R6-Food-Archived.dc.html` | Designed; restore action remains in the library slice. |
+| Add serving | `R6-Food-Edit-AddServing.dc.html` | Implemented with named servings, g/ml unit choices, inline validation, and Room migration 5→6 for the optional serving label. |
+| Restore archived food | `R6-Food-Archived.dc.html` | RESTORE clears `archived`, preserves diary snapshots, and refreshes the detail so logging is enabled again. |
 | Scan review variants | `R6-Scan-Review-Details.dc.html`, `R6-Scan-Review-Library.dc.html`, `R6-Scan-Review-Queue.dc.html` | Designed; review variants remain in the scanner slice. |
 | Resolve search | `R6-Resolve-Search.dc.html` | Designed; resolve search remains in the search, scan, create, and contribute slice. |
 | Create food full form | `R6-Create-Food-FullForm.dc.html` | Designed; full form remains in the create-food slice. |

@@ -5,6 +5,7 @@ import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionValues
+import com.iron.breakfast.domain.ServingConversion
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -135,5 +136,15 @@ class RoomStorageMappingTest {
         )
         assertEquals(archived.nutrition.values.calories, entry.nutritionSnapshot.calories)
         assertEquals("historical snapshot", entry.conversionProvenance)
+    }
+
+    @Test
+    fun personalServingLabelRoundTripsThroughRoomMapping() {
+        val food = FoodCatalog.fixtures.first().copy(
+            conversions = listOf(ServingConversion(MeasureUnit.MILLILITER, 330.0, "personal serving", label = "bottle"))
+        )
+        val persisted = food.toConversionEntities().single()
+        val restored = food.toEntity().toDomain(food.aliases, listOf(persisted.toDomain()))
+        assertEquals("bottle", restored.conversions.single().label)
     }
 }

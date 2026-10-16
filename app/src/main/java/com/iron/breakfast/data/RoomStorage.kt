@@ -52,13 +52,23 @@ data class FoodAliasEntity(
     val alias: String
 )
 
-@Entity(tableName = "serving_conversions", primaryKeys = ["foodId", "unit"])
+@Entity(tableName = "serving_conversions", primaryKeys = ["foodId", "unit", "label"])
 data class ServingConversionEntity(
     val foodId: String,
     val unit: String,
     @ColumnInfo(name = "base_units_per_serving") val baseUnitsPerServing: Double,
     val provenance: String,
-    val approximate: Boolean
+    val approximate: Boolean,
+    /** Empty means the built-in, unlabeled conversion for this unit. */
+    val label: String = ""
+)
+
+fun ServingConversionEntity.toDomain(): ServingConversion = ServingConversion(
+    unit = MeasureUnit.valueOf(unit),
+    baseUnitsPerServing = baseUnitsPerServing,
+    provenance = provenance,
+    approximate = approximate,
+    label = label.takeIf { it.isNotBlank() },
 )
 
 @Entity(tableName = "preferences")
@@ -160,7 +170,7 @@ interface MealEntryDao {
         PreferenceEntity::class,
         MealEntryEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 abstract class BreakfastDatabase : RoomDatabase() {
@@ -207,6 +217,29 @@ val ROOM_MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
     }
 }
 
+val ROOM_MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE serving_conversions_new (
+                foodId TEXT NOT NULL,
+                unit TEXT NOT NULL,
+                base_units_per_serving REAL NOT NULL,
+                provenance TEXT NOT NULL,
+                approximate INTEGER NOT NULL,
+                label TEXT NOT NULL,
+                PRIMARY KEY(foodId, unit, label)
+            )
+        """.trimIndent())
+        db.execSQL("""
+            INSERT INTO serving_conversions_new (foodId, unit, base_units_per_serving, provenance, approximate, label)
+            SELECT foodId, unit, base_units_per_serving, provenance, approximate, ''
+            FROM serving_conversions
+        """.trimIndent())
+        db.execSQL("DROP TABLE serving_conversions")
+        db.execSQL("ALTER TABLE serving_conversions_new RENAME TO serving_conversions")
+    }
+}
+
 internal fun fixtureRowsMissingFrom(existingIds: Set<String>): List<FoodRecord> =
     FoodCatalog.fixtures.filterNot { it.id in existingIds }
 
@@ -244,7 +277,8 @@ fun FoodRecord.toConversionEntities(): List<ServingConversionEntity> = conversio
         unit = conversion.unit.name,
         baseUnitsPerServing = conversion.baseUnitsPerServing,
         provenance = conversion.provenance,
-        approximate = conversion.approximate
+        approximate = conversion.approximate,
+        label = conversion.label.orEmpty()
     )
 }
 

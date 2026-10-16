@@ -429,6 +429,16 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 .also { busy = false }
         }
     }
+    fun restoreLibraryFood(food: FoodRecord) {
+        if (!ready || busy || !food.archived) return
+        busy = true
+        viewModelScope.launch {
+            runCatching { engine.restoreFood(food.id) }
+                .onSuccess { refresh(); selectedLibraryFood = foods.firstOrNull { it.id == food.id }; refreshLibrary(); notice = "Food restored to your library." }
+                .onFailure { notice = it.message ?: "Could not restore this food." }
+                .also { busy = false }
+        }
+    }
     fun openEntryDetail(entry: MealEntry) { selectedEntry = entry; selectedEntryId = entry.id; savedState["entry_id"] = entry.id }
     fun closeEntryDetail() { selectedEntry = null; selectedEntryId = null; savedState["entry_id"] = null }
     fun editingEntry(): MealEntry? = editingEntryId?.let { id -> entries.firstOrNull { it.id == id } }
@@ -839,7 +849,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         customOpen = false; editingLibraryFoodId = null; rescanningBarcode = false; draft.reset()
         if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false
     }
-    fun commitDraftServing() { if (!draft.commitServing()) notice = "Enter a positive serving size." }
+    fun commitDraftServing() { draft.commitServing() }
     fun beginBarcodeRescan() { rescanningBarcode = true; beginScan() }
     fun openLibraryEdit(food: FoodRecord) {
         rescanningBarcode = false
@@ -1233,10 +1243,11 @@ internal fun editedCustomFoodRecord(
     val isCustom = original.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM
     val preserveImportedServings = !isCustom && original.nutrition.unit == basisUnit
     val basisConversion = com.iron.breakfast.domain.ServingConversion(basisUnit, basisAmount, "custom basis")
-    val extraServings = servings.orEmpty().filter { it.unit != basisUnit }
+    val extraServings = servings.orEmpty().filterNot { it.unit == basisUnit && it.label.isNullOrBlank() }
+    val importedBasis = original.conversions.filter { it.unit == basisUnit && it.label.isNullOrBlank() }
     val conversions = when {
         servings == null -> if (preserveImportedServings) original.conversions else listOf(basisConversion)
-        preserveImportedServings -> original.conversions.filter { it.unit == basisUnit } + extraServings
+        preserveImportedServings -> importedBasis + extraServings
         else -> listOf(basisConversion) + extraServings
     }
     val keepDefault = preserveImportedServings && (servings == null || original.defaultUnit == basisUnit || extraServings.any { it.unit == original.defaultUnit })
@@ -1359,7 +1370,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
             Box(Modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).imePadding()) {
                 when {
                     vm.entryEditMode != EntryEditMode.NONE -> Unit
-                    vm.libraryOpen -> LibraryComposer(vm)
+                    vm.libraryOpen && !vm.libraryArchivedOnly -> LibraryComposer(vm)
                     vm.slot == null -> DailyComposer(vm)
                     else -> MealComposer(vm, vm.slot!!)
                 }

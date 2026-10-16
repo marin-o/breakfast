@@ -124,6 +124,23 @@ class BreakfastDatabaseTest {
     }
 
     @Test
+    fun migration5To6AddsNullableServingLabelWithoutChangingExistingRows() {
+        val name = "migration-v6-${System.nanoTime()}.db"
+        val old = migrationHelper.createDatabase(name, 5)
+        old.execSQL("INSERT INTO serving_conversions (foodId, unit, base_units_per_serving, provenance, approximate) VALUES ('legacy','MILLILITER',330.0,'legacy',0)")
+        old.close()
+
+        val migrated = migrationHelper.runMigrationsAndValidate(name, 6, true, ROOM_MIGRATION_5_6)
+        assertEquals(1, migrated.query("SELECT COUNT(*) FROM serving_conversions").use { it.moveToFirst(); it.getInt(0) })
+        assertEquals("", migrated.query("SELECT label FROM serving_conversions WHERE foodId = 'legacy'").use { it.moveToFirst(); it.getString(0) })
+        migrated.execSQL("INSERT INTO serving_conversions VALUES ('legacy','MILLILITER',330.0,'personal',0,'bottle')")
+        migrated.execSQL("INSERT INTO serving_conversions VALUES ('legacy','MILLILITER',250.0,'personal',1,'glass')")
+        assertEquals(3, migrated.query("SELECT COUNT(*) FROM serving_conversions WHERE foodId = 'legacy'").use { it.moveToFirst(); it.getInt(0) })
+        assertEquals("bottle", migrated.query("SELECT label FROM serving_conversions WHERE foodId = 'legacy' AND label = 'bottle'").use { it.moveToFirst(); it.getString(0) })
+        migrated.close(); context.deleteDatabase(name)
+    }
+
+    @Test
     fun migration2To3PreservesFoodAliasAndEntry() {
         val name = "migration-v2-${System.nanoTime()}.db"
         val old = migrationHelper.createDatabase(name, 2)

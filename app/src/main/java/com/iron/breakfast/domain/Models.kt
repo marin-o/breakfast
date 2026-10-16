@@ -61,7 +61,9 @@ data class ServingConversion(
     val unit: MeasureUnit,
     val baseUnitsPerServing: Double,
     val provenance: String,
-    val approximate: Boolean = false
+    val approximate: Boolean = false,
+    /** Optional printed name for a personal serving such as "bottle" or "jar". */
+    val label: String? = null
 )
 
 @Serializable
@@ -90,7 +92,9 @@ data class FoodRecord(
     fun allNames(): List<String> = listOf(name) + aliases
 
     /** Serving conversions worth showing: the nutrition basis unit itself is implicit. */
-    fun householdServings(): List<ServingConversion> = conversions.filter { it.unit != nutrition.unit && it.unit != MeasureUnit.UNKNOWN }
+    fun householdServings(): List<ServingConversion> = conversions.filter {
+        (it.unit != nutrition.unit || !it.label.isNullOrBlank()) && it.unit != MeasureUnit.UNKNOWN
+    }
 }
 
 @Serializable
