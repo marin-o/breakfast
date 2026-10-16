@@ -16,8 +16,8 @@ This ledger tracks the former v5 gaps against the locked Receipt v6.5 light and 
 | Resolve re-search | `R6-Resolve-Search.dc.html`, `R6D-Resolve-Search.dc.html` | Done. |
 | Offline personal-food creation | `R6-Search-OFF-Offline.dc.html`, `R6D-Search-OFF-Offline.dc.html` | Done. |
 | Create food full form | `R6-Create-Food-FullForm.dc.html`, `R6D-Create-Food-FullForm.dc.html` | Done. Shorthand fills the fields and explicit full-form edits win. |
-| Large font scale | `R6-Daily-Font130.dc.html`, `R6-Daily-Font200.dc.html`, `R6D` twins | Implemented: 1.3 puts meal time on its own line; 2.0 abbreviates the day, uses two-line macros, wraps receipt columns, and stacks tray tabs. Owner phone verification remains open. |
-| Light and dark twins | Matching `R6-*` and `R6D-*` references | Implemented with system tokens and shared receipt components. Owner walk-through of every screen in system dark remains open. |
+| Large font scale | `R6-Daily-Font130.dc.html`, `R6-Daily-Font200.dc.html`, `R6D` twins | Verified on the Samsung phone at 1.3 and 2.0 in light, and on Daily at both scales in dark. Meal totals, Add Food buttons, two-line macros, abbreviated day, and stacked tray tabs fit after phone-found fixes. Populated meal times and rows were not available on the checked day. |
+| Light and dark twins | Matching `R6-*` and `R6D-*` references | Implemented with system tokens and shared receipt components. Phone walk-through covered dark Daily, Library, Library menu, archived list/detail, food detail/edit, no-local-match search, and Create Food. Remaining dark states still need a device walk-through. |
 | Camera ground | `R6-Scan.dc.html`, `R6D-Scan.dc.html` | Done: `#141218` ground and light registration marks are centralized. |
 | Source box contrast | `R6-Daily.dc.html`, `R6D-Daily.dc.html` and matching rows | Done: the v6.5 source box was removed; B/P/O is soft text. |
 | Entry detail contribution action | No R6 reference; contribution remains on Library food detail | Resolved by handoff: intentionally not added; contribution stays on Library food detail. |

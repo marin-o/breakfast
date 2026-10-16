@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -179,7 +180,7 @@ private fun defaultServingCalories(food: FoodRecord): String = printedFactKcal(c
 internal fun LibraryComposer(vm: BreakfastViewModel) {
     val colors = LocalReceiptColors.current
     val inMeal = vm.slot != null
-    ReceiptBottomTray(content = {
+    ReceiptBottomTray(modifier = if (inMeal) Modifier else Modifier.navigationBarsPadding(), content = {
         Row(Modifier.fillMaxWidth().then(if (inMeal) Modifier.navigationBarsPadding() else Modifier), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(Modifier.weight(1f).heightIn(min = 52.dp).border(2.dp, colors.ink).padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Search, null, tint = colors.ink, modifier = Modifier.size(18.dp))
@@ -266,6 +267,7 @@ internal fun LibraryFoodEditScreen(vm: BreakfastViewModel) {
     val colors = LocalReceiptColors.current
     val food = vm.foods.firstOrNull { it.id == vm.editingLibraryFoodId } ?: return
     val draft = vm.draft
+    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     BackHandler { vm.closeCustom() }
     Column(Modifier.fillMaxSize().background(colors.paper).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 4.dp)) {
         Row(Modifier.fillMaxWidth().padding(top = 20.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = vm::closeCustom) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = colors.ink) }; Text("EDIT FOOD", color = colors.ink, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)) }
@@ -298,7 +300,7 @@ internal fun LibraryFoodEditScreen(vm: BreakfastViewModel) {
                     TextButton(onClick = draft::cancelServing, Modifier.heightIn(min = 48.dp)) { Text("CANCEL", color = colors.ink, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline) }
                 }
             }
-        } else ReceiptOutlinedButton("+ Add serving", { draft.servingUnit = food.nutrition.unit.takeIf { it == MeasureUnit.GRAM || it == MeasureUnit.MILLILITER } ?: MeasureUnit.GRAM; draft.servingAmount = "0"; draft.servingLabel = ""; draft.servingFormOpen = true }, fillWidth = false)
+        } else ReceiptOutlinedButton("+ Add serving", { draft.servingUnit = food.nutrition.unit.takeIf { it == MeasureUnit.GRAM || it == MeasureUnit.MILLILITER } ?: MeasureUnit.GRAM; draft.servingAmount = "0"; draft.servingLabel = ""; draft.servingFormOpen = true }, Modifier.widthIn(min = 150.dp * fontScale), fillWidth = false)
         CharacterRule(); Text("ALIASES", color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp)); draft.aliases.forEach { alias -> Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).border(2.dp, colors.ink), verticalAlignment = Alignment.CenterVertically) { Text(alias, Modifier.weight(1f).padding(start = 10.dp), color = colors.ink); ReceiptTonalIconButton(Icons.Default.Close, "Remove alias $alias", { draft.aliases = draft.aliases - alias }) } }
         if (draft.aliasFieldOpen) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -208,8 +208,8 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
     Column(Modifier.fillMaxWidth().padding(top = 12.dp)) {
         Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = androidx.compose.ui.semantics.Role.Button) { vm.openMeal(slot) }) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-                Text(slot.name.uppercase(Locale.ENGLISH), style = MaterialTheme.typography.headlineMedium, color = colors.red, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f, fill = false))
-                if (!dailyMealTimeOwnLine(fontScale)) Text(earliestMealTime(entries).orEmpty(), color = colors.soft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp).weight(1f))
+                Text(slot.name.uppercase(Locale.ENGLISH), style = MaterialTheme.typography.headlineMedium, color = colors.red, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                if (!dailyMealTimeOwnLine(fontScale)) Text(earliestMealTime(entries).orEmpty(), color = colors.soft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp))
                 Text(receiptKcal(total.calories), style = MaterialTheme.typography.titleLarge, color = colors.red, fontWeight = FontWeight.Bold)
             }
             if (dailyMealTimeOwnLine(fontScale) && earliestMealTime(entries) != null) {
@@ -238,13 +238,13 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
             )
             if (vm.feedbackOpen(entry)) CorrectionStrip(vm, entry)
         }
-        // Keep the printed 48dp target wide enough for the leading plus while
-        // allowing the label to grow with the system font scale.
+        // Keep clear space around the label as the system font grows. Meal sections
+        // stack vertically, so the scaled target remains within the 360dp canvas.
         ReceiptOutlinedButton(
             "+ Add food",
             onClick = { vm.openFocusedLibrary(slot) },
             fillWidth = false,
-            modifier = Modifier.widthIn(min = 128.dp).padding(top = 4.dp, bottom = 8.dp),
+            modifier = Modifier.widthIn(min = 128.dp * fontScale.coerceAtLeast(1f)).padding(top = 4.dp, bottom = 8.dp),
         )
         CharacterRule('-', modifier = Modifier.padding(top = 2.dp))
     }
