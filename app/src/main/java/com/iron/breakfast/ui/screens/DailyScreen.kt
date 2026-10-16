@@ -205,7 +205,13 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
             )
             if (vm.feedbackOpen(entry)) CorrectionStrip(vm, entry)
         }
-        ReceiptOutlinedButton("+ Add food", onClick = { vm.openFocusedLibrary(slot) }, fillWidth = false, modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
+        // Keep the printed 48dp target wide enough for the leading plus at larger font scales.
+        ReceiptOutlinedButton(
+            "+ Add food",
+            onClick = { vm.openFocusedLibrary(slot) },
+            fillWidth = false,
+            modifier = Modifier.width(128.dp).padding(top = 4.dp, bottom = 8.dp),
+        )
         CharacterRule('-', modifier = Modifier.padding(top = 2.dp))
     }
 }
