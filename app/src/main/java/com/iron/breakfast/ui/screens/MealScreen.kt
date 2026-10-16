@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -80,6 +81,7 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
     val total = entries.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
     val (dayName, date) = dayTitle(vm.selectedDayKey)
     val colors = LocalReceiptColors.current
+    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     LazyColumn(
         modifier.fillMaxSize().background(colors.paper),
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 20.dp),
@@ -99,9 +101,18 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
         items(entries) { entry -> EntryRow(entry, foods[entry.foodId], vm, entries.firstOrNull()?.id == entry.id) }
         item {
             CharacterRule('-', modifier = Modifier.padding(top = 6.dp))
-            Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ReceiptOutlinedButton("+ Add food", { vm.openFocusedLibrary(target) }, fillWidth = false)
-                ReceiptOutlinedButton("Scan", vm::beginScan, fillWidth = false)
+            val addFoodModifier = Modifier.widthIn(min = 128.dp * fontScale)
+            val scanModifier = Modifier.widthIn(min = 80.dp * fontScale)
+            if (fontScale >= 1.8f) {
+                Column(Modifier.fillMaxWidth().padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ReceiptOutlinedButton("+ Add food", { vm.openFocusedLibrary(target) }, addFoodModifier, fillWidth = false)
+                    ReceiptOutlinedButton("Scan", vm::beginScan, scanModifier, fillWidth = false)
+                }
+            } else {
+                Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ReceiptOutlinedButton("+ Add food", { vm.openFocusedLibrary(target) }, addFoodModifier, fillWidth = false)
+                    ReceiptOutlinedButton("Scan", vm::beginScan, scanModifier, fillWidth = false)
+                }
             }
             vm.pendingContribution?.let { ContributionAction(vm) }
         }

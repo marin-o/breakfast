@@ -209,7 +209,7 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
         Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = androidx.compose.ui.semantics.Role.Button) { vm.openMeal(slot) }) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                 Text(slot.name.uppercase(Locale.ENGLISH), style = MaterialTheme.typography.headlineMedium, color = colors.red, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                if (!dailyMealTimeOwnLine(fontScale)) Text(earliestMealTime(entries).orEmpty(), color = colors.soft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp))
+                if (!dailyMealTimeOwnLine(fontScale)) Text(earliestMealTime(entries).orEmpty(), color = colors.soft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp, end = 8.dp))
                 Text(receiptKcal(total.calories), style = MaterialTheme.typography.titleLarge, color = colors.red, fontWeight = FontWeight.Bold)
             }
             if (dailyMealTimeOwnLine(fontScale) && earliestMealTime(entries) != null) {

@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -191,6 +192,7 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
     val colors = LocalReceiptColors.current
     BackHandler { vm.cancelEdit() }
     val selectedFood = vm.editingFood() ?: vm.foods.firstOrNull { it.id == entry.foodId }
+    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     var amount by remember(entry.id) { mutableStateOf(editAmountText(entry.enteredAmount)) }
     var unit by remember(entry.id) { mutableStateOf(entry.enteredUnit) }
     var meal by remember(entry.id) { mutableStateOf(entry.mealSlot) }
@@ -205,7 +207,7 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
             Row(Modifier.fillMaxWidth().padding(top = 8.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = vm::cancelEdit) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = colors.ink) }; Text("EDIT ENTRY", style = MaterialTheme.typography.headlineSmall, color = colors.ink, fontWeight = FontWeight.Bold) }
             CharacterRule('-', modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 4.dp))
             Column(Modifier.padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Bottom) { ReceiptField("Food", selectedFood?.name ?: entry.foodName, {}, Modifier.weight(1f), readOnly = true); ReceiptOutlinedButton("Replace", vm::openEditFoodPicker, fillWidth = false, modifier = Modifier.padding(bottom = 0.dp)) }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Bottom) { ReceiptField("Food", selectedFood?.name ?: entry.foodName, {}, Modifier.weight(1f), readOnly = true); ReceiptOutlinedButton("Replace", vm::openEditFoodPicker, fillWidth = false, modifier = Modifier.widthIn(min = 96.dp * fontScale).padding(bottom = 0.dp)) }
                 ReceiptField("Amount", amount, { amount = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.width(140.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { units.forEach { candidate -> ReceiptChoiceChip(candidate.displayLabel(), unit == candidate, { unit = candidate }) } }
                 Text("Meal", color = colors.soft, modifier = Modifier.padding(top = 8.dp))
