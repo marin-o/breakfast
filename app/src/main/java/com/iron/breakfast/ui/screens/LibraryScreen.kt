@@ -92,42 +92,32 @@ import com.iron.breakfast.ui.components.ReceiptNavigationBar
 import com.iron.breakfast.ui.components.ReceiptScanButton
 import com.iron.breakfast.ui.components.ReceiptTonalChip
 import com.iron.breakfast.ui.components.ReceiptTonalIconButton
-import com.iron.breakfast.ui.components.ReceiptTornEdge
+import com.iron.breakfast.ui.components.CharacterRule
+import com.iron.breakfast.ui.components.receiptFoodName
 import com.iron.breakfast.ui.components.ReceiptField
 import com.iron.breakfast.ui.components.SourceBox
 import com.iron.breakfast.ui.components.receiptDashedRule
 import com.iron.breakfast.ui.components.sourceLabel
-import com.iron.breakfast.ui.theme.BoxGrey
-import com.iron.breakfast.ui.theme.Ground
-import com.iron.breakfast.ui.theme.Ink
-import com.iron.breakfast.ui.theme.InkSoft
-import com.iron.breakfast.ui.theme.OnGround
-import com.iron.breakfast.ui.theme.OnGroundSoft
-import com.iron.breakfast.ui.theme.Paper
-import com.iron.breakfast.ui.theme.PenOnDarkInk
-import com.iron.breakfast.ui.theme.PenTonal
-import com.iron.breakfast.ui.theme.PenTonalInk
-import com.iron.breakfast.ui.theme.PrintRed
-import com.iron.breakfast.ui.theme.Rule
-import com.iron.breakfast.ui.theme.receiptHeadingStyle
+import com.iron.breakfast.ui.theme.LocalReceiptColors
 import java.time.LocalDate
 import java.util.Locale
 
 @Composable internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
+    val colors = LocalReceiptColors.current
     var menuOpen by remember { mutableStateOf(false) }
     val root = vm.slot == null
     val firstId = vm.libraryFoods.firstOrNull()?.id
-    LazyColumn(modifier.fillMaxSize().background(Ground).padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+    LazyColumn(modifier.fillMaxSize().background(colors.paper).padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
         item {
             if (root) {
                 Row(Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (vm.libraryArchivedOnly) {
-                        IconButton(onClick = vm::openLibrary) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to Library", tint = OnGround) }
+                        IconButton(onClick = vm::openLibrary) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to Library", tint = colors.ink) }
                     }
                     val title = if (vm.libraryArchivedOnly) "Archived foods" else "Library"
-                    Text(title, style = receiptHeadingStyle(title), color = OnGround, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(title, style = MaterialTheme.typography.headlineMedium, color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     Box {
-                        IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Library menu", tint = OnGround) }
+                        IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Library menu", tint = colors.ink) }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                             DropdownMenuItem(
                                 text = { Text(if (vm.libraryArchivedOnly) "Back to Library" else "Archived foods") },
@@ -139,40 +129,41 @@ import java.util.Locale
                 }
             } else {
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = vm::closeMeal) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnGround) }
+                    IconButton(onClick = vm::closeMeal) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = colors.ink) }
                     Column(Modifier.weight(1f)) {
-                        Text("Add to ${vm.slot!!.label()}", color = OnGround, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text(runCatching { LocalDate.parse(vm.selectedDayKey).format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMMM", Locale.ENGLISH)) }.getOrDefault(vm.selectedDayKey), color = OnGroundSoft, style = MaterialTheme.typography.bodySmall)
+                        Text("Add to ${vm.slot!!.label()}", color = colors.ink, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text(runCatching { LocalDate.parse(vm.selectedDayKey).format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMMM", Locale.ENGLISH)) }.getOrDefault(vm.selectedDayKey), color = colors.soft, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
-            Surface(Modifier.fillMaxWidth(), color = Paper, shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)) {
+            Surface(Modifier.fillMaxWidth(), color = colors.paper, shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp).heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("By last logged", style = MaterialTheme.typography.titleMedium, color = Ink, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Text(foodCountLabel(vm.libraryFoods.size), color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                    Text("By last logged", style = MaterialTheme.typography.titleMedium, color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(foodCountLabel(vm.libraryFoods.size), color = colors.soft, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
-        if (vm.libraryFoods.isEmpty()) item { Surface(Modifier.fillMaxWidth(), color = Paper) { Text("No local foods match this search.", Modifier.padding(14.dp), color = InkSoft) } }
+        if (vm.libraryFoods.isEmpty()) item { Surface(Modifier.fillMaxWidth(), color = colors.paper) { Text("No local foods match this search.", Modifier.padding(14.dp), color = colors.soft) } }
         items(vm.libraryFoods, key = { it.id }) { food -> LibraryFoodRow(vm, food, root, first = food.id == firstId) }
-        if (vm.libraryFoods.isNotEmpty()) item { ReceiptTornEdge(fill = Paper) }
+        if (vm.libraryFoods.isNotEmpty()) item { CharacterRule() }
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boolean, first: Boolean) {
+    val colors = LocalReceiptColors.current
     val last = vm.lastLoggedEntry(food)
     val repeatAmount = last?.enteredAmount ?: food.defaultAmount
     val repeatUnit = last?.enteredUnit ?: food.defaultUnit
     val expanded = root && vm.expandedLibraryFoodId == food.id
     val target = vm.slot
-    Surface(Modifier.fillMaxWidth(), color = Paper) {
+    Surface(Modifier.fillMaxWidth(), color = colors.paper) {
         Column {
             Row(Modifier.fillMaxWidth().then(if (first) Modifier else Modifier.receiptDashedRule()).padding(start = 14.dp, end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f).heightIn(min = 48.dp).clickable(role = Role.Button) { vm.openLibraryFood(food) }.padding(vertical = 6.dp), verticalArrangement = Arrangement.Center) {
-                    Text(food.name, color = Ink, style = MaterialTheme.typography.bodyLarge)
+                    Text(receiptFoodName(food.name), color = colors.ink, style = MaterialTheme.typography.bodyLarge)
                     val detail = "${repeatAmount.pretty()} ${repeatUnit.displayLabel()}, ${if (last == null) "${defaultServingCalories(food)} kcal" else "last ${printedFactKcal(last.nutritionSnapshot.calories)} kcal"}"
-                    Text(if (food.archived) "Archived, $detail" else detail, color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                    Text(if (food.archived) "Archived, $detail" else detail, color = colors.soft, style = MaterialTheme.typography.bodySmall)
                 }
                 SourceBox(sourceLetter(food), Modifier.padding(horizontal = 10.dp))
                 ReceiptTonalIconButton(
@@ -208,22 +199,23 @@ private fun defaultServingCalories(food: FoodRecord): String =
 
 /** Search pill, scan button and (outside a meal) the navigation bar, as drawn in the locked Library tray. */
 @Composable internal fun LibraryComposer(vm: BreakfastViewModel) {
+    val colors = LocalReceiptColors.current
     val inMeal = vm.slot != null
     ReceiptBottomTray(
         content = {
             Row(Modifier.fillMaxWidth().then(if (inMeal) Modifier.navigationBarsPadding() else Modifier), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(Modifier.weight(1f).heightIn(min = 54.dp).background(Paper, RoundedCornerShape(27.dp)).padding(start = 16.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Search, contentDescription = null, tint = InkSoft, modifier = Modifier.size(20.dp))
+                Row(Modifier.weight(1f).heightIn(min = 54.dp).background(colors.paper, RoundedCornerShape(27.dp)).padding(start = 16.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Search, contentDescription = null, tint = colors.soft, modifier = Modifier.size(20.dp))
                     BasicTextField(
                         value = vm.input,
                         onValueChange = vm::onInput,
                         modifier = Modifier.weight(1f).padding(start = 10.dp)
                             .onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { vm.submitLibraryInput(); true } else false },
                         singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = Ink),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = colors.ink),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { vm.submitLibraryInput() }),
-                        decorationBox = { inner -> Box(contentAlignment = Alignment.CenterStart) { if (vm.input.isBlank()) Text("Search foods", color = InkSoft, style = MaterialTheme.typography.bodyMedium); inner() } },
+                        decorationBox = { inner -> Box(contentAlignment = Alignment.CenterStart) { if (vm.input.isBlank()) Text("Search foods", color = colors.soft, style = MaterialTheme.typography.bodyMedium); inner() } },
                     )
                 }
                 ReceiptScanButton(vm::beginScan)
@@ -236,44 +228,47 @@ private fun defaultServingCalories(food: FoodRecord): String =
 }
 
 @Composable private fun ArchivedTag() {
-    Text("Archived", color = InkSoft, style = MaterialTheme.typography.labelSmall, modifier = Modifier.border(1.5.dp, BoxGrey, RoundedCornerShape(3.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
+    val colors = LocalReceiptColors.current
+    Text("Archived", color = colors.soft, style = MaterialTheme.typography.labelSmall, modifier = Modifier.border(1.5.dp, colors.soft, RoundedCornerShape(3.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
 }
 
 /** One serving line: "1 carton" with its base amount, or the red approximation chip when the conversion is a guess. */
 @Composable private fun ServingValue(conversion: ServingConversion, food: FoodRecord) {
+    val colors = LocalReceiptColors.current
     val value = "${conversion.baseUnitsPerServing.pretty()} ${food.nutrition.unit.label}"
-    if (conversion.approximate) ApproxTag(value) else Text(value, color = Ink, fontWeight = FontWeight.Bold)
+    if (conversion.approximate) ApproxTag(value) else Text(value, color = colors.ink, fontWeight = FontWeight.Bold)
 }
 
 @Composable internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
+    val colors = LocalReceiptColors.current
     var amountSheetOpen by remember(food.id) { mutableStateOf(false) }
     var mealMenuOpen by remember(food.id) { mutableStateOf(false) }
     var targetMeal by remember(food.id) { mutableStateOf(vm.slot ?: MealSlot.LUNCH) }
     val letter = sourceLetter(food)
     val servings = food.householdServings()
     BackHandler { vm.closeLibraryFood() }
-    Surface(Modifier.fillMaxSize(), color = Ground) {
+    Surface(Modifier.fillMaxSize(), color = colors.paper) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(start = 14.dp, end = 14.dp, bottom = 24.dp)) {
             Row(Modifier.fillMaxWidth().padding(top = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = vm::closeLibraryFood) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnGround) }
-                Text("Food", color = OnGround, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                TextButton(onClick = { vm.closeLibraryFood(); vm.openLibraryEdit(food) }, Modifier.heightIn(min = 48.dp)) { Text("Edit", color = PenOnDarkInk, fontWeight = FontWeight.Bold) }
+                IconButton(onClick = vm::closeLibraryFood) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = colors.ink) }
+                Text("Food", color = colors.ink, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                TextButton(onClick = { vm.closeLibraryFood(); vm.openLibraryEdit(food) }, Modifier.heightIn(min = 48.dp)) { Text("Edit", color = colors.ink, fontWeight = FontWeight.Bold) }
             }
             Column(Modifier.fillMaxWidth()) {
                 Surface(
                     Modifier.fillMaxWidth(),
-                    color = Paper,
+                    color = colors.paper,
                     shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp),
                 ) {
                     Column {
-                        Text(food.name, Modifier.fillMaxWidth().background(PrintRed).padding(14.dp), color = OnGround, style = receiptHeadingStyle(food.name), fontWeight = FontWeight.Bold)
+                        Text(receiptFoodName(food.name), Modifier.fillMaxWidth().background(colors.red).padding(14.dp), color = colors.paper, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text(listOfNotNull(food.brand, sourceLabel(letter)).joinToString(", "), color = Ink, modifier = Modifier.weight(1f))
+                                Text(listOfNotNull(food.brand, sourceLabel(letter)).joinToString(", "), color = colors.ink, modifier = Modifier.weight(1f))
                                 if (food.archived) { ArchivedTag(); Spacer(Modifier.width(8.dp)) }
                                 SourceBox(letter)
                             }
-                            food.barcode?.let { Text("Barcode  $it", color = InkSoft, style = MaterialTheme.typography.bodySmall) }
+                            food.barcode?.let { Text("Barcode  $it", color = colors.soft, style = MaterialTheme.typography.bodySmall) }
                         }
                         LibrarySubhead(basisLabel(food.nutrition.amount, food.nutrition.unit))
                         LibraryFactRow("Energy", "${printedFactKcal(food.nutrition.values.calories)} kcal")
@@ -286,11 +281,11 @@ private fun defaultServingCalories(food: FoodRecord): String =
                         }
                         if (food.aliases.isNotEmpty()) {
                             LibrarySubhead("Aliases")
-                            food.aliases.forEachIndexed { index, alias -> Text(alias, Modifier.fillMaxWidth().then(if (index == 0) Modifier else Modifier.receiptDashedRule()).padding(horizontal = 14.dp, vertical = 10.dp), color = Ink) }
+                            food.aliases.forEachIndexed { index, alias -> Text(alias, Modifier.fillMaxWidth().then(if (index == 0) Modifier else Modifier.receiptDashedRule()).padding(horizontal = 14.dp, vertical = 10.dp), color = colors.ink) }
                         }
                     }
                 }
-                ReceiptTornEdge(fill = Paper)
+                CharacterRule()
             }
             val logDescription = if (food.archived) "Log unavailable: this food is archived" else "Log to ${targetMeal.label()}"
             Row(Modifier.fillMaxWidth().padding(top = 28.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -300,7 +295,7 @@ private fun defaultServingCalories(food: FoodRecord): String =
                     enabled = !food.archived,
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { contentDescription = logDescription },
                     shape = RoundedCornerShape(24.dp),
-                    colors = if (amountSheetOpen) ButtonDefaults.buttonColors(containerColor = PenTonal, contentColor = PenTonalInk) else ButtonDefaults.buttonColors(),
+                    colors = if (amountSheetOpen) ButtonDefaults.buttonColors(containerColor = colors.paper, contentColor = colors.ink) else ButtonDefaults.buttonColors(),
                 ) { Text("Log to ${targetMeal.label()}") }
                 Box {
                     ReceiptActionChip(targetMeal.label(), { mealMenuOpen = true }, trailingIcon = Icons.Default.ArrowDropDown)
@@ -310,18 +305,19 @@ private fun defaultServingCalories(food: FoodRecord): String =
                 }
             }
             if (contributionAvailable(food)) OutlinedButton(onClick = { vm.closeLibraryFood(); vm.openContributionForFood(food) }, Modifier.fillMaxWidth().padding(top = 42.dp).heightIn(min = 48.dp), shape = RoundedCornerShape(24.dp)) { Text("Contribute to Open Food Facts") }
-            if (food.origin == FoodOrigin.CUSTOM && !food.archived) TextButton(onClick = { vm.archiveLibraryFood(food) }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Archive personal food", color = PrintRed) }
+            if (food.origin == FoodOrigin.CUSTOM && !food.archived) TextButton(onClick = { vm.archiveLibraryFood(food) }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Archive personal food", color = colors.red) }
         }
     }
     if (amountSheetOpen) LibraryAmountSheet(vm, food, targetMeal, onDismiss = { amountSheetOpen = false })
 }
 
-@Composable private fun LibrarySubhead(text: String) { Text(text, Modifier.fillMaxWidth().receiptDashedRule().padding(horizontal = 14.dp, vertical = 12.dp), color = Ink, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+@Composable private fun LibrarySubhead(text: String) { val colors = LocalReceiptColors.current; Text(text, Modifier.fillMaxWidth().receiptDashedRule().padding(horizontal = 14.dp, vertical = 12.dp), color = colors.ink, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
 
-@Composable private fun LibraryFactRow(label: String, value: String) = LibraryFactRow(label) { Text(value, color = Ink, fontWeight = FontWeight.Bold) }
+@Composable private fun LibraryFactRow(label: String, value: String) { val colors = LocalReceiptColors.current; LibraryFactRow(label) { Text(value, color = colors.ink, fontWeight = FontWeight.Bold) } }
 
 @Composable private fun LibraryFactRow(label: String, value: @Composable () -> Unit) {
-    Row(Modifier.fillMaxWidth().receiptDashedRule().padding(horizontal = 14.dp, vertical = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(label, color = Ink); value() }
+    val colors = LocalReceiptColors.current
+    Row(Modifier.fillMaxWidth().receiptDashedRule().padding(horizontal = 14.dp, vertical = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(label, color = colors.ink); value() }
 }
 
 @Composable internal fun FocusedFoodAddDialog(vm: BreakfastViewModel, food: FoodRecord) {
@@ -348,36 +344,38 @@ private fun defaultServingCalories(food: FoodRecord): String =
 }
 
 @Composable private fun AliasChip(alias: String, onRemove: () -> Unit) {
-    Row(Modifier.heightIn(min = 48.dp).border(1.5.dp, Rule, RoundedCornerShape(24.dp)).padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(alias, color = PenTonalInk, style = MaterialTheme.typography.labelMedium)
-        IconButton(onClick = onRemove, Modifier.size(48.dp)) { Icon(Icons.Default.Close, "Remove alias $alias", tint = PenTonalInk, modifier = Modifier.size(18.dp)) }
+    val colors = LocalReceiptColors.current
+    Row(Modifier.heightIn(min = 48.dp).border(1.5.dp, colors.soft, RoundedCornerShape(24.dp)).padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(alias, color = colors.ink, style = MaterialTheme.typography.labelMedium)
+        IconButton(onClick = onRemove, Modifier.size(48.dp)) { Icon(Icons.Default.Close, "Remove alias $alias", tint = colors.ink, modifier = Modifier.size(18.dp)) }
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun LibraryFoodEditScreen(vm: BreakfastViewModel) {
+    val colors = LocalReceiptColors.current
     val food = vm.foods.firstOrNull { it.id == vm.editingLibraryFoodId } ?: return
     val draft = vm.draft
     val letter = sourceLetter(food)
     val servingUnits = listOf(MeasureUnit.TABLESPOON, MeasureUnit.TEASPOON, MeasureUnit.PIECE).filter { it != food.nutrition.unit }
     BackHandler { vm.closeCustom() }
-    Surface(Modifier.fillMaxSize(), color = Ground) {
+    Surface(Modifier.fillMaxSize(), color = colors.paper) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(start = 14.dp, end = 14.dp, bottom = 24.dp)) {
             Row(Modifier.fillMaxWidth().padding(top = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = vm::closeCustom) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnGround) }
-                Text("Edit food", color = OnGround, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                TextButton(onClick = vm::saveCustom, Modifier.heightIn(min = 48.dp)) { Text("Save", color = PenOnDarkInk, fontWeight = FontWeight.Bold) }
+                IconButton(onClick = vm::closeCustom) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = colors.ink) }
+                Text("Edit food", color = colors.ink, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                TextButton(onClick = vm::saveCustom, Modifier.heightIn(min = 48.dp)) { Text("Save", color = colors.ink, fontWeight = FontWeight.Bold) }
             }
-            Surface(Modifier.fillMaxWidth(), color = Paper, shape = RoundedCornerShape(6.dp)) {
+            Surface(Modifier.fillMaxWidth(), color = colors.paper, shape = RoundedCornerShape(6.dp)) {
                 Column {
-                    Text(food.name, Modifier.fillMaxWidth().background(PrintRed).padding(14.dp), color = OnGround, style = receiptHeadingStyle(food.name), fontWeight = FontWeight.Bold)
+                    Text(receiptFoodName(food.name), Modifier.fillMaxWidth().background(colors.red).padding(14.dp), color = colors.paper, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         ReceiptField("Name", draft.name, { draft.name = it }, onPaper = true)
                         ReceiptField("Brand", draft.brand, { draft.brand = it }, onPaper = true)
                         FoodBarcodeField(vm)
-                        Text("Source", color = InkSoft, style = MaterialTheme.typography.labelMedium)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(sourceLabel(letter), color = Ink); SourceBox(letter) }
-                        if (letter == "O") Text("Local edits stay on this device", color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                        Text("Source", color = colors.soft, style = MaterialTheme.typography.labelMedium)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(sourceLabel(letter), color = colors.ink); SourceBox(letter) }
+                        if (letter == "O") Text("Local edits stay on this device", color = colors.soft, style = MaterialTheme.typography.bodySmall)
                     }
                     LibrarySubhead(basisLabel(food.nutrition.amount, food.nutrition.unit))
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -388,7 +386,7 @@ private fun defaultServingCalories(food: FoodRecord): String =
                     draft.servings.forEach { conversion ->
                         Row(Modifier.fillMaxWidth().receiptDashedRule().padding(start = 14.dp, end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("1 ${conversion.unit.displayLabel()}" + if (conversion.approximate) "" else " = ${conversion.baseUnitsPerServing.pretty()} ${food.nutrition.unit.label}", color = Ink)
+                                Text("1 ${conversion.unit.displayLabel()}" + if (conversion.approximate) "" else " = ${conversion.baseUnitsPerServing.pretty()} ${food.nutrition.unit.label}", color = colors.ink)
                                 if (conversion.approximate) ApproxTag("${conversion.baseUnitsPerServing.pretty()} ${food.nutrition.unit.label}")
                             }
                             ReceiptTonalIconButton(Icons.Default.Close, "Remove 1 ${conversion.unit.displayLabel()} serving", { draft.servings = draft.servings - conversion })
@@ -400,7 +398,7 @@ private fun defaultServingCalories(food: FoodRecord): String =
                             ReceiptField("1 ${draft.servingUnit.displayLabel()} = how many ${food.nutrition.unit.label}", draft.servingAmount, { draft.servingAmount = it.asciiDigits(allowDecimalPoint = true) }, onPaper = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 ReceiptTonalChip("Add", vm::commitDraftServing)
-                                TextButton(onClick = { draft.servingFormOpen = false }, Modifier.heightIn(min = 48.dp)) { Text("Cancel", color = InkSoft) }
+                                TextButton(onClick = { draft.servingFormOpen = false }, Modifier.heightIn(min = 48.dp)) { Text("Cancel", color = colors.soft) }
                             }
                         } else ReceiptTonalChip("Add serving", { draft.servingUnit = servingUnits.firstOrNull() ?: MeasureUnit.PIECE; draft.servingFormOpen = true }, Icons.Default.Add, Modifier.fillMaxWidth())
                     }
@@ -417,11 +415,11 @@ private fun defaultServingCalories(food: FoodRecord): String =
                     }
                 }
             }
-            ReceiptTornEdge(fill = Paper)
-            if (food.origin == FoodOrigin.CUSTOM && !food.archived) TextButton(onClick = { vm.archiveLibraryFood(food) }, Modifier.fillMaxWidth().padding(top = 18.dp).heightIn(min = 56.dp).background(Paper, RoundedCornerShape(6.dp))) {
-                Icon(Icons.Default.Delete, contentDescription = null, tint = PrintRed, modifier = Modifier.size(20.dp))
+            CharacterRule()
+            if (food.origin == FoodOrigin.CUSTOM && !food.archived) TextButton(onClick = { vm.archiveLibraryFood(food) }, Modifier.fillMaxWidth().padding(top = 18.dp).heightIn(min = 56.dp).background(colors.paper, RoundedCornerShape(6.dp))) {
+                Icon(Icons.Default.Delete, contentDescription = null, tint = colors.red, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Archive food", color = PrintRed, fontWeight = FontWeight.Bold)
+                Text("Archive food", color = colors.red, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -429,6 +427,7 @@ private fun defaultServingCalories(food: FoodRecord): String =
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable private fun LibraryAmountSheet(vm: BreakfastViewModel, food: FoodRecord, target: MealSlot, onDismiss: () -> Unit) {
+    val colors = LocalReceiptColors.current
     var amountText by remember(food.id, target) { mutableStateOf((vm.lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount).pretty()) }
     var unit by remember(food.id, target) { mutableStateOf(vm.lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit) }
     var chosenMeal by remember(food.id, target) { mutableStateOf(target) }
@@ -446,17 +445,17 @@ private fun defaultServingCalories(food: FoodRecord): String =
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(food.name, color = Ink, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text(sourceLabel(letter), color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                Text(receiptFoodName(food.name), color = colors.ink, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(sourceLabel(letter), color = colors.soft, style = MaterialTheme.typography.bodySmall)
                 SourceBox(letter, Modifier.padding(start = 8.dp))
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
                 ReceiptField("Amount", amountText, { amountText = it.asciiDigits(allowDecimalPoint = true) }, Modifier.width(112.dp), onPaper = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                 FlowRow(Modifier.weight(1f).padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { units.forEach { candidate -> ReceiptChoiceChip(candidate.displayLabel(), unit == candidate, { unit = candidate }) } }
             }
-            Text("Meal", color = InkSoft, style = MaterialTheme.typography.labelMedium)
+            Text("Meal", color = colors.soft, style = MaterialTheme.typography.labelMedium)
             ReceiptMealChips(chosenMeal, { chosenMeal = it })
-            Text(calc?.let { "${receiptKcal(it.nutrition.calories)} kcal, P ${it.nutrition.protein?.pretty() ?: "—"} g, C ${it.nutrition.carbohydrates?.pretty() ?: "—"} g, F ${it.nutrition.fat?.pretty() ?: "—"} g" } ?: "Enter a positive amount", Modifier.fillMaxWidth().receiptDashedRule().padding(top = 12.dp), color = InkSoft)
+            Text(calc?.let { "${receiptKcal(it.nutrition.calories)} kcal, P ${it.nutrition.protein?.pretty() ?: "—"} g, C ${it.nutrition.carbohydrates?.pretty() ?: "—"} g, F ${it.nutrition.fat?.pretty() ?: "—"} g" } ?: "Enter a positive amount", Modifier.fillMaxWidth().receiptDashedRule().padding(top = 12.dp), color = colors.soft)
             Button(onClick = { val amount = amountText.toDoubleOrNull(); if (amount != null && amount > 0.0 && calc?.supported == true) { vm.logLibraryFood(food, chosenMeal, amount, unit); onDismiss() } else vm.noticeForInvalidLibraryAmount() }, enabled = !food.archived && calc?.supported == true, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(24.dp)) { Text("Add to ${chosenMeal.label()}") }
         }
     }

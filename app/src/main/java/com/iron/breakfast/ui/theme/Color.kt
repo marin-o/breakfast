@@ -1,29 +1,21 @@
 package com.iron.breakfast.ui.theme
 
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
-/** Receipt v5 colours. Keep screen code on these named roles instead of hex literals. */
-val Ground = Color(0xFF2A2730)
-val Tray = Color(0xFF1F1D24)
-val OnGround = Color(0xFFECEBE6)
-val OnGroundSoft = Color(0xFFB5B0BF)
-val Paper = Color(0xFFE6E6DF)
-val Sticker = Color(0xFFF0EFE9)
-val PaperFresh = Color(0xFFD6D6CC)
-val Ink = Color(0xFF1E1B24)
-val InkSoft = Color(0xFF544F5E)
-val Rule = Color(0xFFB3B0BD)
-val BoxGrey = Color(0xFF8C8798)
-val PrintRed = Color(0xFF9C2F25)
-val OnRedSoft = Color(0xFFF2D4CC)
-val PenBlue = Color(0xFF3D63D9)
-val OnPen = Color(0xFFFFFFFF)
-val PenTonal = Color(0xFFD3DAEC)
-val PenTonalInk = Color(0xFF1F3D94)
-val PenOnDark = Color(0xFF9DB2EC)
-val PenOnDarkInk = Color(0xFFDDE4F7)
-val NavIndicator = Color(0xFFAFC0EE)
-val NavIndicatorInk = Color(0xFF12245E)
-val Scrim = Color(0x9E0F0D12)
+data class ReceiptColors(
+    val paper: Color, val ink: Color, val soft: Color, val red: Color,
+    val redFill: Color, val onRedFill: Color, val pendingOnInk: Color,
+    val scrim: Color, val cameraGround: Color,
+)
 
-val CameraGround = Color(0xFF141218)
+val LightReceiptColors = ReceiptColors(
+    Color(0xFFEEEFEC), Color(0xFF2E3036), Color(0xFF5E616A), Color(0xFFB8263A),
+    Color(0xFFB8263A), Color(0xFFEEEFEC), Color(0xFFF2A79B), Color(0x8C2E3036), Color(0xFF141218),
+)
+val DarkReceiptColors = ReceiptColors(
+    Color(0xFF232428), Color(0xFFE2E3DE), Color(0xFF9C9FA8), Color(0xFFEE7280),
+    Color(0xFFB8263A), Color(0xFFF0F0EC), Color(0xFFB8263A), Color(0x99000000), Color(0xFF141218),
+)
+
+val LocalReceiptColors = staticCompositionLocalOf { LightReceiptColors }

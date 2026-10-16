@@ -59,15 +59,7 @@ import com.iron.breakfast.ui.components.ReceiptTonalChip
 import com.iron.breakfast.ui.components.ReceiptTicket
 import com.iron.breakfast.ui.components.ReceiptTokenVisualTransformation
 import com.iron.breakfast.domain.NutritionValues
-import com.iron.breakfast.ui.theme.Ground
-import com.iron.breakfast.ui.theme.Ink
-import com.iron.breakfast.ui.theme.OnGround
-import com.iron.breakfast.ui.theme.OnGroundSoft
-import com.iron.breakfast.ui.theme.PaperFresh
-import com.iron.breakfast.ui.theme.Tray
-import com.iron.breakfast.ui.theme.receiptHeadingStyle
-import com.iron.breakfast.ui.theme.PenTonalInk
-import com.iron.breakfast.ui.theme.PenOnDarkInk
+import com.iron.breakfast.ui.theme.LocalReceiptColors
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -80,6 +72,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
         return
     }
     val selected = vm.entries.filter { it.dayKey == vm.selectedDayKey }
+    val colors = LocalReceiptColors.current
     val foods = vm.foods.associateBy { it.id }
     val dailyTotal = selected.fold(NutritionValues.ZERO) { total, entry -> total + entry.nutritionSnapshot }
     val (dayName, subtitle) = dayTitle(vm.selectedDayKey)
@@ -88,7 +81,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
     val swipeThreshold = with(androidx.compose.ui.platform.LocalDensity.current) { 96.dp.toPx() }
 
     LazyColumn(
-        modifier = modifier.fillMaxSize().background(Ground).pointerInput(vm.selectedDayKey) {
+        modifier = modifier.fillMaxSize().background(colors.paper).pointerInput(vm.selectedDayKey) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 var dx = 0f
@@ -123,9 +116,8 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                         Icon(Icons.Default.ChevronLeft, contentDescription = "Previous day")
                     }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        val headingStyle = receiptHeadingStyle(dayName)
-                        Text(dayName, style = headingStyle, color = OnGround)
-                        Text(subtitle, style = MaterialTheme.typography.titleSmall, color = OnGroundSoft)
+                        Text(dayName, style = MaterialTheme.typography.headlineMedium, color = colors.ink)
+                        Text(subtitle, style = MaterialTheme.typography.titleSmall, color = colors.soft)
                     }
                     IconButton(onClick = { vm.shiftSelectedDay(1) }) {
                         Icon(Icons.Default.ChevronRight, contentDescription = "Next day")
@@ -133,7 +125,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 }
                 if (!isToday) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = vm::goToday) { Text("Today", color = PenOnDarkInk, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
+                        TextButton(onClick = vm::goToday) { Text("Today", color = colors.ink, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
                     }
                 }
                 ReceiptSlip(
@@ -147,7 +139,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 )
             }
         }
-        vm.mealDraftError?.let { message -> item { Text(message, color = OnGround) } }
+        vm.mealDraftError?.let { message -> item { Text(message, color = colors.ink) } }
         itemsIndexed(MealSlot.entries) { _, slot ->
             val entries = selected.filter { it.mealSlot == slot }
             MealCard(slot, entries, foods, vm)
@@ -158,6 +150,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
 
 @Composable
 private fun QuickAddDaily(vm: BreakfastViewModel, modifier: Modifier) {
+    val colors = LocalReceiptColors.current
     val selected = vm.entries.filter { it.dayKey == vm.selectedDayKey }
     val foods = vm.foods.associateBy { it.id }
     val target = vm.quickAddTargetMeal() ?: MealSlot.LUNCH
@@ -166,7 +159,7 @@ private fun QuickAddDaily(vm: BreakfastViewModel, modifier: Modifier) {
     val dayTotal = selected.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
     val mealTotal = existing.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
     val pendingKcal = previews.fold(NutritionValues.ZERO) { sum, preview -> sum + preview.calculation.nutrition }.calories
-    Column(modifier.fillMaxSize().background(Ground).padding(horizontal = 14.dp)) {
+    Column(modifier.fillMaxSize().background(colors.paper).padding(horizontal = 14.dp)) {
         // Day total stays the printed fact; pending foods show only as the red "+N" and as stickers, never as ticket rows.
         ReceiptSlip(
             label = shortDateLabel(vm.selectedDayKey),
@@ -184,10 +177,11 @@ private fun QuickAddDaily(vm: BreakfastViewModel, modifier: Modifier) {
 
 @Composable
 internal fun DailyComposer(vm: BreakfastViewModel) {
+    val colors = LocalReceiptColors.current
     val previews = vm.quickAddPreviews()
     val suggestions = vm.quickAddSuggestions()
     val placeholder = if (vm.selectedDayKey == dayKeyForToday()) "2 eggs, 1 banana" else "Add to ${shortDateLabel(vm.selectedDayKey)}"
-    Column(Modifier.fillMaxWidth().background(Tray)) {
+    Column(Modifier.fillMaxWidth().background(colors.paper)) {
         if (vm.loggedBatchMessage != null) vm.loggedBatchMessage?.let { message ->
             ReceiptSnackbar(
                 message = message,
@@ -249,7 +243,7 @@ internal fun DailyComposer(vm: BreakfastViewModel) {
                         onImeDone = vm::submit,
                         placeholder = placeholder,
                         expanded = vm.input.contains(',') || vm.input.length > 28,
-                        visualTransformation = ReceiptTokenVisualTransformation(tokenRangesForInput(vm.input, vm::isRecognizedFood)),
+                        visualTransformation = ReceiptTokenVisualTransformation(tokenRangesForInput(vm.input, vm::isRecognizedFood), redFill = colors.redFill, onRedFill = colors.onRedFill),
                     )
                 }
             },
@@ -326,8 +320,9 @@ private fun MealCard(
 
 @Composable
 private fun CorrectionStrip(vm: BreakfastViewModel, entry: MealEntry) {
+    val colors = LocalReceiptColors.current
     Row(
-        Modifier.fillMaxWidth().background(PaperFresh).horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 4.dp),
+        Modifier.fillMaxWidth().background(colors.paper).horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         ReceiptTonalChip("Confirm", onClick = { vm.confirm(entry) })

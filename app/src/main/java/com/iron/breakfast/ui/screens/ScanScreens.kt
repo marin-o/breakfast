@@ -42,7 +42,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.heightIn
 import com.iron.breakfast.domain.NutritionValues
-import com.iron.breakfast.ui.theme.PenTonalInk
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -93,18 +92,13 @@ import com.iron.breakfast.ui.components.ReceiptTonalButton
 import com.iron.breakfast.ui.components.SourceBox
 import com.iron.breakfast.ui.components.receiptDashedRule
 import com.iron.breakfast.ui.components.sourceLabel
-import com.iron.breakfast.ui.theme.CameraGround
-import com.iron.breakfast.ui.theme.Ink
-import com.iron.breakfast.ui.theme.InkSoft
-import com.iron.breakfast.ui.theme.OnGround
-import com.iron.breakfast.ui.theme.OnGroundSoft
-import com.iron.breakfast.ui.theme.PrintRed
-import com.iron.breakfast.ui.theme.Rule
-import com.iron.breakfast.ui.theme.Sticker
+import com.iron.breakfast.ui.components.receiptFoodName
+import com.iron.breakfast.ui.theme.LocalReceiptColors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Real CameraX preview with the corner-bracket viewfinder, a torch toggle (when the camera has a flash unit) and manual entry. */
 @Composable internal fun ScannerScreen(vm: BreakfastViewModel) {
+    val colors = LocalReceiptColors.current
     val context = LocalContext.current
     val session = remember { ScannerSession() }
     DisposableEffect(Unit) { onDispose { session.dispose() } }
@@ -116,7 +110,7 @@ import java.util.concurrent.atomic.AtomicBoolean
     LaunchedEffect(Unit) { if (!hasPermission) launcher.launch(Manifest.permission.CAMERA) }
     LaunchedEffect(torchOn, torchAvailable) { if (torchAvailable) session.camera?.cameraControl?.enableTorch(torchOn) }
     BackHandler { vm.endScan() }
-    Box(Modifier.fillMaxSize().background(CameraGround)) {
+    Box(Modifier.fillMaxSize().background(colors.cameraGround)) {
         if (hasPermission && !vm.scannerUnavailableState) AndroidView(factory = { ctx -> PreviewView(ctx).also { view ->
             val providerFuture = ProcessCameraProvider.getInstance(ctx)
             providerFuture.addListener({ runCatching {
@@ -142,14 +136,14 @@ import java.util.concurrent.atomic.AtomicBoolean
             if (vm.scannerUnavailableState) "Camera unavailable. Enter a barcode manually."
             else "Camera permission is required to scan.",
             Modifier.align(Alignment.TopCenter).padding(top = 150.dp),
-            color = OnGroundSoft,
+            color = androidx.compose.ui.graphics.Color(0xFFE2E3DE),
         )
         Viewfinder(Modifier.align(Alignment.Center).offset(y = (-80).dp).size(width = 260.dp, height = 160.dp))
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = vm::endScan, Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnGround) }
+            IconButton(onClick = vm::endScan, Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = androidx.compose.ui.graphics.Color(0xFFE2E3DE)) }
             Box(Modifier.weight(1f))
             if (torchAvailable) IconToggleButton(checked = torchOn, onCheckedChange = { torchOn = it }, Modifier.size(48.dp).semantics { role = Role.Switch; stateDescription = if (torchOn) "On" else "Off" }) {
-                Icon(if (torchOn) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff, contentDescription = "Torch", tint = OnGround)
+                Icon(if (torchOn) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff, contentDescription = "Torch", tint = androidx.compose.ui.graphics.Color(0xFFE2E3DE))
             }
         }
         ReceiptTonalButton("Manual barcode", { manualOpen = true }, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(start = 14.dp, end = 14.dp, bottom = 28.dp))
@@ -167,7 +161,7 @@ import java.util.concurrent.atomic.AtomicBoolean
         val h = size.height - inset
         fun corner(x: Float, y: Float, dx: Float, dy: Float) = drawPath(
             Path().apply { moveTo(x, y + dy * arm); lineTo(x, y); lineTo(x + dx * arm, y) },
-            color = OnGround,
+            color = androidx.compose.ui.graphics.Color(0xFFE2E3DE),
             style = stroke,
         )
         corner(inset, inset, 1f, 1f)
@@ -183,19 +177,20 @@ import java.util.concurrent.atomic.AtomicBoolean
  * without implying that another barcode can still be decoded behind the sheet.
  */
 @Composable internal fun ScanReviewBackdrop(onBack: () -> Unit) {
-    Box(Modifier.fillMaxSize().background(CameraGround)) {
+    val colors = LocalReceiptColors.current
+    Box(Modifier.fillMaxSize().background(colors.cameraGround)) {
         Text(
             "camera",
             Modifier.align(Alignment.Center).offset(y = (-262).dp),
-            color = OnGroundSoft,
+            color = androidx.compose.ui.graphics.Color(0xFFE2E3DE),
             style = MaterialTheme.typography.bodySmall,
         )
         Viewfinder(Modifier.align(Alignment.Center).offset(y = (-80).dp).size(width = 260.dp, height = 160.dp))
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack, Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnGround) }
+            IconButton(onClick = onBack, Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = androidx.compose.ui.graphics.Color(0xFFE2E3DE)) }
             Box(Modifier.weight(1f))
             Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.FlashlightOff, contentDescription = null, tint = OnGround)
+                Icon(Icons.Default.FlashlightOff, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFFE2E3DE))
             }
         }
     }
@@ -203,6 +198,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /** Manual entry on the one shared barcode rule: 8, 12, 13 or 14 ASCII digits. */
 @Composable private fun ManualBarcodeSheet(onDismiss: () -> Unit, onLookup: (String) -> Unit) {
+    val colors = LocalReceiptColors.current
     var text by remember { mutableStateOf("") }
     val barcode = normalizeBarcode(text)
     val focus = remember { FocusRequester() }
@@ -214,14 +210,14 @@ import java.util.concurrent.atomic.AtomicBoolean
                 fieldModifier = Modifier.focusRequester(focus),
                 value = text,
                 onValueChange = { text = it.asciiDigits() },
-                labelColor = InkSoft,
-                container = Sticker,
-                outline = Rule,
+                labelColor = colors.soft,
+                container = colors.paper,
+                outline = colors.soft,
                 error = barcode == null && text.length > 7,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 keyboardActions = KeyboardActions(onDone = { barcode?.let(onLookup) }),
             )
-            if (barcode == null && text.length > 7) Text("Enter an 8, 12, 13 or 14 digit barcode.", color = PrintRed, style = MaterialTheme.typography.bodySmall)
+            if (barcode == null && text.length > 7) Text("Enter an 8, 12, 13 or 14 digit barcode.", color = colors.red, style = MaterialTheme.typography.bodySmall)
             ReceiptPrimaryButton("Look up", { barcode?.let(onLookup) }, enabled = barcode != null)
         }
     }
@@ -235,6 +231,7 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
  * meal on the selected day with the typed amount; closing the sheet writes nothing.
  */
 @Composable internal fun ProductReviewSheet(vm: BreakfastViewModel, food: FoodRecord) {
+    val colors = LocalReceiptColors.current
     val letter = sourceLetter(food)
     val basis = food.nutrition
     var amountText by remember(food.id) { mutableStateOf(amountFieldText(vm)) }
@@ -261,8 +258,8 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
-                    Text(vm.productName.ifBlank { food.name }, color = Ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
-                    Text(listOfNotNull(food.brand, sourceLabel(letter)).joinToString(", "), color = InkSoft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 3.dp))
+                    Text(receiptFoodName(vm.productName.ifBlank { food.name }), color = colors.ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                    Text(listOfNotNull(food.brand, sourceLabel(letter)).joinToString(", "), color = colors.soft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 3.dp))
                 }
                 SourceBox(letter, Modifier.padding(top = 1.dp))
             }
@@ -274,7 +271,7 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
                     append(", C "); append(macro(values.carbohydrates))
                     append(", F "); append(macro(values.fat))
                 },
-                color = Ink,
+                color = colors.ink,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp).receiptDashedRule().padding(top = 12.dp),
             )
@@ -288,39 +285,39 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
                     if (next != null) vm.onProductUnit(next.unit.displayLabel())
                 },
                 modifier = Modifier.padding(top = 16.dp),
-                labelColor = InkSoft,
-                container = Sticker,
-                outline = Rule,
+                labelColor = colors.soft,
+                container = colors.paper,
+                outline = colors.soft,
                 error = parsed == null && amountText.isNotBlank(),
                 trailing = approx?.let { label -> { ApproxTag(label) } },
             )
             TextButton(onClick = { editing = !editing }, Modifier.heightIn(min = 48.dp).semantics { stateDescription = if (editing) "Expanded" else "Collapsed" }) {
-                Text(if (editing) "Hide details" else "Edit details", color = PenTonalInk, fontWeight = FontWeight.Bold)
+                Text(if (editing) "Hide details" else "Edit details", color = colors.ink, fontWeight = FontWeight.Bold)
             }
             if (editing) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ReceiptField("Name", vm.productName, vm::onProductName, labelColor = InkSoft, container = Sticker, outline = Rule)
-                ReceiptField("Calories, kcal", vm.productCalories, { vm.onProductCalories(it.asciiDigits(allowDecimalPoint = true)) }, labelColor = InkSoft, container = Sticker, outline = Rule, keyboardOptions = decimal, error = vm.productCalories.toDoubleOrNull() == null)
+                ReceiptField("Name", vm.productName, vm::onProductName, labelColor = colors.soft, container = colors.paper, outline = colors.soft)
+                ReceiptField("Calories, kcal", vm.productCalories, { vm.onProductCalories(it.asciiDigits(allowDecimalPoint = true)) }, labelColor = colors.soft, container = colors.paper, outline = colors.soft, keyboardOptions = decimal, error = vm.productCalories.toDoubleOrNull() == null)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ReceiptField("Protein, g", vm.productProtein, { vm.onProductProtein(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), labelColor = InkSoft, container = Sticker, outline = Rule, keyboardOptions = decimal)
-                    ReceiptField("Carbs, g", vm.productCarbs, { vm.onProductCarbs(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), labelColor = InkSoft, container = Sticker, outline = Rule, keyboardOptions = decimal)
-                    ReceiptField("Fat, g", vm.productFat, { vm.onProductFat(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), labelColor = InkSoft, container = Sticker, outline = Rule, keyboardOptions = decimal)
+                    ReceiptField("Protein, g", vm.productProtein, { vm.onProductProtein(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), labelColor = colors.soft, container = colors.paper, outline = colors.soft, keyboardOptions = decimal)
+                    ReceiptField("Carbs, g", vm.productCarbs, { vm.onProductCarbs(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), labelColor = colors.soft, container = colors.paper, outline = colors.soft, keyboardOptions = decimal)
+                    ReceiptField("Fat, g", vm.productFat, { vm.onProductFat(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), labelColor = colors.soft, container = colors.paper, outline = colors.soft, keyboardOptions = decimal)
                 }
             }
-            if (queueMeal != null) Text("Meal  ${queueMeal.label()}", color = InkSoft, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 14.dp))
+            if (queueMeal != null) Text("Meal  ${queueMeal.label()}", color = colors.soft, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 14.dp))
             else ReceiptMealChips(meal, { meal = it }, Modifier.padding(top = 14.dp))
             Row(Modifier.fillMaxWidth().padding(top = 14.dp).receiptDashedRule().padding(top = 12.dp, bottom = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                Text("Result", color = InkSoft, style = MaterialTheme.typography.labelMedium)
+                Text("Result", color = colors.soft, style = MaterialTheme.typography.labelMedium)
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text(calculation?.takeIf { it.supported }?.let { receiptKcal(it.nutrition.calories) } ?: "—", color = Ink, style = MaterialTheme.typography.displayLarge)
-                    Text(" kcal", color = InkSoft, style = MaterialTheme.typography.labelMedium)
+                    Text(calculation?.takeIf { it.supported }?.let { receiptKcal(it.nutrition.calories) } ?: "—", color = colors.ink, style = MaterialTheme.typography.displayLarge)
+                    Text(" kcal", color = colors.soft, style = MaterialTheme.typography.labelMedium)
                 }
             }
             ReceiptPrimaryButton("Add to ${(queueMeal ?: meal).label()}", { vm.addSelected(queueMeal ?: meal) }, enabled = canAdd)
             if (canSaveProductToLibrary(vm.slot, vm.resolutionContinuation, vm.unknownQueue.isNotEmpty())) {
                 ReceiptTonalButton("Save to library", vm::saveSelectedToLibrary, Modifier.padding(top = 10.dp), enabled = canAdd)
             }
-            TextButton(onClick = { vm.clearSelectedProduct(); vm.openSearch(fromResolver = vm.resolutionContinuation) }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Find better match", color = PenTonalInk) }
-            TextButton(onClick = { vm.clearSelectedProduct(); vm.beginScan() }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Rescan", color = PenTonalInk) }
+            TextButton(onClick = { vm.clearSelectedProduct(); vm.openSearch(fromResolver = vm.resolutionContinuation) }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Find better match", color = colors.ink) }
+            TextButton(onClick = { vm.clearSelectedProduct(); vm.beginScan() }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Rescan", color = colors.ink) }
         }
     }
 }

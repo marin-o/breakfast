@@ -74,20 +74,7 @@ import com.iron.breakfast.ui.components.ReceiptSticker
 import com.iron.breakfast.ui.components.ReceiptSnackbar
 import com.iron.breakfast.ui.components.ReceiptTicket
 import com.iron.breakfast.ui.components.ReceiptTokenVisualTransformation
-import com.iron.breakfast.ui.theme.Ground
-import com.iron.breakfast.ui.theme.Ink
-import com.iron.breakfast.ui.theme.OnGround
-import com.iron.breakfast.ui.theme.OnGroundSoft
-import com.iron.breakfast.ui.theme.Paper
-import com.iron.breakfast.ui.theme.PaperFresh
-import com.iron.breakfast.ui.theme.PenBlue
-import com.iron.breakfast.ui.theme.PenOnDark
-import com.iron.breakfast.ui.theme.PenOnDarkInk
-import com.iron.breakfast.ui.theme.PenTonal
-import com.iron.breakfast.ui.theme.PenTonalInk
-import com.iron.breakfast.ui.theme.PrintRed
-import com.iron.breakfast.ui.theme.Tray
-import com.iron.breakfast.ui.theme.receiptHeadingStyle
+import com.iron.breakfast.ui.theme.LocalReceiptColors
 import kotlin.math.roundToInt
 
 @Composable
@@ -97,9 +84,10 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
     val foods = vm.foods.associateBy { it.id }
     val total = entries.fold(NutritionValues.ZERO) { a, e -> a + e.nutritionSnapshot }
     val (_, subtitle) = dayTitle(vm.selectedDayKey)
+    val colors = LocalReceiptColors.current
 
     LazyColumn(
-        modifier.fillMaxSize().background(Ground),
+        modifier.fillMaxSize().background(colors.paper),
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -107,13 +95,13 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
             Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = vm::closeMeal) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
                 Column(Modifier.weight(1f)) {
-                    val headingStyle = receiptHeadingStyle(target.label())
-                    Text(target.label(), style = headingStyle, color = OnGround)
-                    Text(subtitle, style = MaterialTheme.typography.titleSmall, color = OnGroundSoft)
+                    val headingStyle = MaterialTheme.typography.headlineMedium
+                    Text(target.label(), style = headingStyle, color = colors.ink)
+                    Text(subtitle, style = MaterialTheme.typography.titleSmall, color = colors.soft)
                 }
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text(receiptKcal(total.calories), style = MaterialTheme.typography.titleLarge, color = OnGround, fontWeight = FontWeight.Bold)
-                    Text(" kcal", style = MaterialTheme.typography.titleSmall, color = OnGroundSoft)
+                    Text(receiptKcal(total.calories), style = MaterialTheme.typography.titleLarge, color = colors.ink, fontWeight = FontWeight.Bold)
+                    Text(" kcal", style = MaterialTheme.typography.titleSmall, color = colors.soft)
                 }
             }
         }
@@ -128,8 +116,8 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
                     onClick = { vm.openFocusedLibrary(target) },
                     modifier = Modifier.heightIn(min = 48.dp),
                     colors = if (vm.input.isBlank()) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(
-                        containerColor = PenTonal,
-                        contentColor = PenTonalInk,
+                        containerColor = colors.paper,
+                        contentColor = colors.ink,
                     ),
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null)
@@ -147,9 +135,10 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
 
 @Composable
 internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot) {
+    val colors = LocalReceiptColors.current
     val previews = vm.quickAddPreviews()
     val suggestions = vm.quickAddSuggestions()
-    Column(Modifier.fillMaxWidth().background(Tray).navigationBarsPadding()) {
+    Column(Modifier.fillMaxWidth().background(colors.paper).navigationBarsPadding()) {
         vm.undoEntry?.let { deleted ->
             ReceiptSnackbar(
                 message = "${deleted.foodName} deleted",
@@ -187,7 +176,7 @@ internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot) {
                         onImeDone = vm::submit,
                         placeholder = "Add to ${target.label()}",
                         expanded = vm.input.contains(',') || vm.input.length > 28,
-                        visualTransformation = ReceiptTokenVisualTransformation(tokenRangesForInput(vm.input, vm::isRecognizedFood)),
+                        visualTransformation = ReceiptTokenVisualTransformation(tokenRangesForInput(vm.input, vm::isRecognizedFood), redFill = colors.redFill, onRedFill = colors.onRedFill),
                     )
                 }
             },
@@ -210,20 +199,21 @@ private fun MealPendingSticker(preview: QuickAddPreview) {
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel, first: Boolean) {
+    val colors = LocalReceiptColors.current
     var revealOffset by remember(entry.id) { mutableFloatStateOf(0f) }
     var rowHeight by remember(entry.id) { androidx.compose.runtime.mutableIntStateOf(0) }
     val deleteWidth = with(LocalDensity.current) { 96.dp.toPx() }
     val touchSlop = LocalViewConfiguration.current.touchSlop
     val density = LocalDensity.current
     val quantity = quantityRateDisplay(entry, food)
-    Box(Modifier.fillMaxWidth().background(Paper).onSizeChanged { rowHeight = it.height }) {
+    Box(Modifier.fillMaxWidth().background(colors.paper).onSizeChanged { rowHeight = it.height }) {
         if (revealOffset < 0f) Row(
-            Modifier.align(Alignment.CenterEnd).width(96.dp).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).background(PrintRed).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { vm.delete(entry); revealOffset = 0f }.padding(horizontal = 8.dp),
+            Modifier.align(Alignment.CenterEnd).width(96.dp).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).background(colors.red).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { vm.delete(entry); revealOffset = 0f }.padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
-            Icon(Icons.Default.Delete, contentDescription = null, tint = OnGround)
-            Text("Delete", color = OnGround, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 4.dp))
+            Icon(Icons.Default.Delete, contentDescription = null, tint = colors.paper)
+            Text("Delete", color = colors.paper, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 4.dp))
         }
         ReceiptEntryRow(
             name = entry.foodName,

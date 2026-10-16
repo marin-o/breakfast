@@ -50,7 +50,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -78,21 +77,11 @@ import com.iron.breakfast.ui.components.SourceBox
 import com.iron.breakfast.ui.components.receiptDashedRule
 import com.iron.breakfast.ui.components.ReceiptTicket
 import com.iron.breakfast.ui.theme.ReceiptPaperShape
-import com.iron.breakfast.ui.theme.Sticker
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.semantics.Role
-import com.iron.breakfast.ui.components.ReceiptTornEdge
-import com.iron.breakfast.ui.theme.Ground
-import com.iron.breakfast.ui.theme.Ink
-import com.iron.breakfast.ui.theme.InkSoft
-import com.iron.breakfast.ui.theme.OnGround
-import com.iron.breakfast.ui.theme.Paper
-import com.iron.breakfast.ui.theme.PenBlue
-import com.iron.breakfast.ui.theme.PenOnDarkInk
-import com.iron.breakfast.ui.theme.PenTonal
-import com.iron.breakfast.ui.theme.PenTonalInk
-import com.iron.breakfast.ui.theme.PrintRed
-import com.iron.breakfast.ui.theme.Rule
+import com.iron.breakfast.ui.components.CharacterRule
+import com.iron.breakfast.ui.components.receiptFoodName
+import com.iron.breakfast.ui.theme.LocalReceiptColors
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
@@ -101,51 +90,54 @@ import java.util.Locale
 
 @Composable
 internal fun EntryDetailScreen(vm: BreakfastViewModel, entry: MealEntry) {
+    val colors = LocalReceiptColors.current
     BackHandler { vm.closeEntryDetail() }
     val food = vm.foods.firstOrNull { it.id == entry.foodId }
     val quantity = quantityRateDisplay(entry, food)
     val loggedLabel = entryDateLabel(entry.dayKey)
-    Surface(Modifier.fillMaxSize(), color = Ground) {
+    Surface(Modifier.fillMaxSize(), color = colors.paper) {
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 14.dp, end = 14.dp, bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(Modifier.fillMaxWidth().padding(top = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = vm::closeEntryDetail) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnGround) }
-                    Text("Entry", style = MaterialTheme.typography.titleLarge, color = OnGround, fontWeight = FontWeight.Bold)
+                    IconButton(onClick = vm::closeEntryDetail) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = colors.ink) }
+                    Text("Entry", style = MaterialTheme.typography.titleLarge, color = colors.ink, fontWeight = FontWeight.Bold)
                 }
                 ReceiptTicket(mealName = entry.foodName, total = "${receiptKcal(entry.nutritionSnapshot.calories)} kcal") {
-                    DetailFactRow("Amount") { if (entry.approximateConversion) ApproxTag("${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}") else Text("${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}", color = Ink) }
-                    DetailFactRow("Weight") { Text(quantity.line, color = Ink) }
-                    Row(Modifier.fillMaxWidth().dashedTopRule().padding(horizontal = 14.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    DetailFactRow("Amount") { if (entry.approximateConversion) ApproxTag("${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}") else Text("${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}", color = colors.ink) }
+                    DetailFactRow("Weight") { Text(quantity.line, color = colors.ink) }
+                    Row(Modifier.fillMaxWidth().receiptDashedRule().padding(horizontal = 14.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         CompactMacroFact("P", entry.nutritionSnapshot.protein)
                         CompactMacroFact("C", entry.nutritionSnapshot.carbohydrates)
                         CompactMacroFact("F", entry.nutritionSnapshot.fat)
                     }
-                    DetailFactRow("Source") { Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { Text(entrySourceLabel(food), color = Ink); SourceBox(sourceLetter(food)) } }
-                    matchedPhraseLabel(entry.sourcePhrase, entry.foodName)?.let { label -> DetailFactRow("Match") { Text(label, color = Ink) } }
-                    Text("${entry.mealSlot.label()}, $loggedLabel, logged ${entry.savedAtEpochMs.formatClock()}", Modifier.padding(14.dp), color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                    DetailFactRow("Source") { Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { Text(entrySourceLabel(food), color = colors.ink); SourceBox(sourceLetter(food)) } }
+                    matchedPhraseLabel(entry.sourcePhrase, entry.foodName)?.let { label -> DetailFactRow("Match") { Text(label, color = colors.ink) } }
+                    Text("${entry.mealSlot.label()}, $loggedLabel, logged ${entry.savedAtEpochMs.formatClock()}", Modifier.padding(14.dp), color = colors.soft, style = MaterialTheme.typography.bodySmall)
                 }
                 Button(onClick = { vm.closeEntryDetail(); vm.beginQuickEdit(entry) }, Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(24.dp)) { Icon(Icons.Default.Edit, null); Text("Edit amount", Modifier.padding(start = 8.dp)) }
                 ReceiptOutlinedButton("Replace food", { vm.closeEntryDetail(); vm.beginFullEdit(entry) })
-                TextButton(onClick = { vm.openLibraryFoodDetail(entry) }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Open in Library", color = PenOnDarkInk, fontWeight = FontWeight.Bold) }
+                TextButton(onClick = { vm.openLibraryFoodDetail(entry) }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Open in Library", color = colors.ink, fontWeight = FontWeight.Bold) }
             }
-            Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 14.dp).navigationBarsPadding().padding(bottom = 8.dp), color = Paper, shape = RoundedCornerShape(6.dp)) {
-                TextButton(onClick = { vm.closeEntryDetail(); vm.delete(entry) }, Modifier.fillMaxWidth().heightIn(min = 60.dp)) { Icon(Icons.Default.Delete, null, tint = PrintRed); Text("Delete entry", Modifier.padding(start = 8.dp), color = PrintRed, fontWeight = FontWeight.Bold) }
+            Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 14.dp).navigationBarsPadding().padding(bottom = 8.dp), color = colors.paper, shape = RoundedCornerShape(6.dp)) {
+                TextButton(onClick = { vm.closeEntryDetail(); vm.delete(entry) }, Modifier.fillMaxWidth().heightIn(min = 60.dp)) { Icon(Icons.Default.Delete, null, tint = colors.red); Text("Delete entry", Modifier.padding(start = 8.dp), color = colors.red, fontWeight = FontWeight.Bold) }
             }
         }
     }
 }
 
 @Composable private fun androidx.compose.foundation.layout.RowScope.CompactMacroFact(label: String, value: Double?) {
+    val colors = LocalReceiptColors.current
     Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, color = InkSoft, style = MaterialTheme.typography.labelSmall)
-        Text(value?.let { "${it.pretty()} g" } ?: "—", color = Ink, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+        Text(label, color = colors.soft, style = MaterialTheme.typography.labelSmall)
+        Text(value?.let { "${it.pretty()} g" } ?: "—", color = colors.ink, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
     }
 }
-@Composable private fun DetailFactRow(label: String, value: @Composable () -> Unit) { Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).dashedTopRule().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) { Text(label, color = InkSoft, style = MaterialTheme.typography.bodyMedium); value() } }
+@Composable private fun DetailFactRow(label: String, value: @Composable () -> Unit) { val colors = LocalReceiptColors.current; Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).receiptDashedRule().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) { Text(label, color = colors.soft, style = MaterialTheme.typography.bodyMedium); value() } }
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
+    val colors = LocalReceiptColors.current
     BackHandler { vm.cancelEdit() }
     var amount by remember(entry.id) { mutableStateOf(editAmountText(entry.enteredAmount)) }
     var unit by remember(entry.id) { mutableStateOf(entry.enteredUnit) }
@@ -166,7 +158,7 @@ internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
                 .padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(entry.foodName, style = MaterialTheme.typography.titleLarge, color = Ink, fontWeight = FontWeight.Bold)
+            Text(receiptFoodName(entry.foodName), style = MaterialTheme.typography.titleLarge, color = colors.ink, fontWeight = FontWeight.Bold)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 ReceiptTonalIconButton(Icons.Default.Remove, "Decrease amount", { amount = adjustAmount(amount, -1.0) })
                 ReceiptField(
@@ -187,13 +179,13 @@ internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
             Row(Modifier.fillMaxWidth().receiptDashedRule().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (preview != null) {
                     val baseText = "${preview.resolvedBaseAmount.pretty()} ${food?.nutrition?.unit?.displayLabel() ?: unit.displayLabel()}"
-                    if (preview.approximate && food != null && unit != food.nutrition.unit) ApproxTag(baseText) else Text(baseText, color = Ink, fontWeight = FontWeight.Bold)
-                    Text(", ${receiptKcal(preview.nutrition.calories)} kcal", color = Ink, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                } else Text("Enter a positive amount", color = InkSoft, modifier = Modifier.weight(1f))
-                if (draftChanged) Text("was ${receiptKcal(entry.nutritionSnapshot.calories)}", color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                    if (preview.approximate && food != null && unit != food.nutrition.unit) ApproxTag(baseText) else Text(baseText, color = colors.ink, fontWeight = FontWeight.Bold)
+                    Text(", ${receiptKcal(preview.nutrition.calories)} kcal", color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                } else Text("Enter a positive amount", color = colors.soft, modifier = Modifier.weight(1f))
+                if (draftChanged) Text("was ${receiptKcal(entry.nutritionSnapshot.calories)}", color = colors.soft, style = MaterialTheme.typography.bodySmall)
             }
             ReceiptPrimaryButton("Save", { vm.onInput("${amount.trim()} ${unit.displayLabel()}"); vm.submit() }, enabled = amount.toDoubleOrNull()?.let { it > 0.0 } == true)
-            if (vm.editInvalid) Text(vm.mealDraftError ?: "Could not save this entry.", color = PrintRed)
+            if (vm.editInvalid) Text(vm.mealDraftError ?: "Could not save this entry.", color = colors.red)
         }
     }
 }
@@ -207,6 +199,7 @@ private fun entryDraftNutritionChanged(entry: MealEntry, amount: String, unit: M
 
 @Composable
 internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
+    val colors = LocalReceiptColors.current
     BackHandler { vm.cancelEdit() }
     val selectedFood = vm.editingFood() ?: vm.foods.firstOrNull { it.id == entry.foodId }
     var amount by remember(entry.id) { mutableStateOf(editAmountText(entry.enteredAmount)) }
@@ -219,42 +212,42 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
     val preview = selectedFood?.let { food -> amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { vm.draftCalculation(food.id, it, unit) } }
     val draftChanged = entryDraftNutritionChanged(entry, amount, unit, selectedFood?.id)
     LaunchedEffect(selectedFood?.id) { if (unit !in units) unit = units.first() }
-    Surface(Modifier.fillMaxSize(), color = Ground) {
+    Surface(Modifier.fillMaxSize(), color = colors.paper) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState())) {
             Row(Modifier.fillMaxWidth().padding(top = 18.dp, start = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = vm::cancelEdit) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnGround) }
-                Text("Edit entry", style = MaterialTheme.typography.titleLarge, color = OnGround, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                TextButton(onClick = { selectedFood?.let { vm.saveFullEdit(it.id, amount, unit, meal, dayKey) } }, enabled = !vm.busy) { Text("Save", color = PenOnDarkInk, fontWeight = FontWeight.Bold) }
+                IconButton(onClick = vm::cancelEdit) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = colors.ink) }
+                Text("Edit entry", style = MaterialTheme.typography.titleLarge, color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                TextButton(onClick = { selectedFood?.let { vm.saveFullEdit(it.id, amount, unit, meal, dayKey) } }, enabled = !vm.busy) { Text("Save", color = colors.ink, fontWeight = FontWeight.Bold) }
             }
-            Surface(Modifier.padding(horizontal = 14.dp), color = Paper, shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)) {
+            Surface(Modifier.padding(horizontal = 14.dp), color = colors.paper, shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         ReceiptField("Food", selectedFood?.name ?: entry.foodName, {}, Modifier.weight(1f), onPaper = true, readOnly = true)
-                        TextButton(onClick = vm::openEditFoodPicker, Modifier.padding(top = 22.dp).heightIn(min = 48.dp).background(PenTonal, RoundedCornerShape(24.dp))) { Text("Replace", color = PenTonalInk, fontWeight = FontWeight.Bold) }
+                        TextButton(onClick = vm::openEditFoodPicker, Modifier.padding(top = 22.dp).heightIn(min = 48.dp).background(colors.paper, RoundedCornerShape(24.dp))) { Text("Replace", color = colors.ink, fontWeight = FontWeight.Bold) }
                     }
                     ReceiptField("Amount", amount, { amount = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.width(140.dp), onPaper = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { units.forEach { candidate -> ReceiptChoiceChip(candidate.displayLabel(), unit == candidate, { unit = candidate }) } }
-                    Text("Meal", color = InkSoft)
+                    Text("Meal", color = colors.soft)
                     MealSlot.entries.chunked(2).forEach { row -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { row.forEach { candidate -> ReceiptChoiceChip(candidate.label(), meal == candidate, { meal = candidate }, Modifier.weight(1f)) } } }
-                    Text("Date", color = InkSoft)
+                    Text("Date", color = colors.soft)
                     Row(
-                        Modifier.fillMaxWidth().heightIn(min = 54.dp).background(Sticker, ReceiptPaperShape).border(1.5.dp, Rule, ReceiptPaperShape)
+                        Modifier.fillMaxWidth().heightIn(min = 54.dp).background(colors.paper, ReceiptPaperShape).border(1.5.dp, colors.soft, ReceiptPaperShape)
                             .clickable(role = Role.Button) { DatePickerDialog(context, { _, year, month, day -> dayKey = LocalDate.of(year, month + 1, day).toString() }, date.year, date.monthValue - 1, date.dayOfMonth).show() }
                             .padding(horizontal = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                    ) { Text(date.format(DateTimeFormatter.ofPattern("EEE d MMMM", Locale.ENGLISH)), Modifier.weight(1f), color = Ink); Icon(Icons.Default.CalendarMonth, "Change date", tint = PenBlue) }
+                    ) { Text(date.format(DateTimeFormatter.ofPattern("EEE d MMMM", Locale.ENGLISH)), Modifier.weight(1f), color = colors.ink); Icon(Icons.Default.CalendarMonth, "Change date", tint = colors.ink) }
                 }
             }
-            ReceiptTornEdge(fill = Paper, Modifier.padding(horizontal = 14.dp))
-            Surface(Modifier.padding(14.dp), color = Paper, shape = RoundedCornerShape(6.dp)) {
+            CharacterRule(modifier = Modifier.padding(horizontal = 14.dp))
+            Surface(Modifier.padding(14.dp), color = colors.paper, shape = RoundedCornerShape(6.dp)) {
                 Column(Modifier.padding(14.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Entry", color = InkSoft); Text("${receiptKcal(preview?.nutrition?.calories ?: entry.nutritionSnapshot.calories)} kcal", style = MaterialTheme.typography.titleLarge, color = Ink, fontWeight = FontWeight.Bold) }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Entry", color = colors.soft); Text("${receiptKcal(preview?.nutrition?.calories ?: entry.nutritionSnapshot.calories)} kcal", style = MaterialTheme.typography.titleLarge, color = colors.ink, fontWeight = FontWeight.Bold) }
                     val shown = preview?.nutrition ?: entry.nutritionSnapshot
-                    Text("P ${shown.protein?.pretty() ?: "—"} g   C ${shown.carbohydrates?.pretty() ?: "—"} g   F ${shown.fat?.pretty() ?: "—"} g", color = Ink, modifier = Modifier.padding(top = 12.dp))
-                    if (draftChanged) Text("was ${receiptKcal(entry.nutritionSnapshot.calories)} kcal", color = InkSoft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+                    Text("P ${shown.protein?.pretty() ?: "—"} g   C ${shown.carbohydrates?.pretty() ?: "—"} g   F ${shown.fat?.pretty() ?: "—"} g", color = colors.ink, modifier = Modifier.padding(top = 12.dp))
+                    if (draftChanged) Text("was ${receiptKcal(entry.nutritionSnapshot.calories)} kcal", color = colors.soft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
                 }
             }
-            if (vm.editInvalid) Text(vm.mealDraftError ?: "Could not save this entry.", Modifier.padding(horizontal = 14.dp), color = PrintRed)
+            if (vm.editInvalid) Text(vm.mealDraftError ?: "Could not save this entry.", Modifier.padding(horizontal = 14.dp), color = colors.red)
         }
     }
 }
@@ -262,13 +255,13 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 internal fun EntryFoodPicker(vm: BreakfastViewModel) {
+    val colors = LocalReceiptColors.current
     ReceiptBottomSheet(onDismissRequest = vm::closeEditFoodPicker) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Replace food", style = MaterialTheme.typography.titleLarge, color = Ink, fontWeight = FontWeight.Bold)
-            vm.foods.filterNot { it.archived }.take(30).forEach { food -> TextButton(onClick = { vm.chooseEditFood(food) }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(food.name, color = Ink) } }
+            Text("Replace food", style = MaterialTheme.typography.titleLarge, color = colors.ink, fontWeight = FontWeight.Bold)
+            vm.foods.filterNot { it.archived }.take(30).forEach { food -> TextButton(onClick = { vm.chooseEditFood(food) }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(receiptFoodName(food.name), color = colors.ink) } }
         }
     }
 }
 
-private fun Modifier.dashedTopRule(): Modifier = drawBehind { drawLine(com.iron.breakfast.ui.theme.Rule, androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(size.width, 0f), 1.5.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))) }
 private fun Long.formatClock(): String = java.time.Instant.ofEpochMilli(this).atZone(java.time.ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT))

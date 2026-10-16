@@ -69,3 +69,5 @@ The diary, search and food-detail patterns follow MyFitnessPal so the app feels 
 ## Accessibility & Inclusion
 
 The baseline is Android defaults: WCAG AA contrast, support for system font scaling, 48dp touch targets, and TalkBack custom actions for every gesture-only interaction (detail, quick edit, full edit, delete). Food names in English and Macedonian, in both Latin and Cyrillic, must render and wrap correctly, including long names. Light and dark themes are expected.
+
+**Theme:** Receipt v6.5 light and dark printer tokens, following the system setting.

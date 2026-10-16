@@ -159,8 +159,8 @@ import com.iron.breakfast.ui.screens.ScanReviewBackdrop
 import com.iron.breakfast.ui.screens.ScannerScreen
 import com.iron.breakfast.ui.components.ReceiptNavigationBar
 import com.iron.breakfast.ui.theme.BreakfastTheme
-import com.iron.breakfast.ui.theme.Ground
-import com.iron.breakfast.ui.theme.Tray
+import com.iron.breakfast.ui.theme.DarkReceiptColors
+import com.iron.breakfast.ui.theme.LightReceiptColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
@@ -178,10 +178,10 @@ import kotlin.math.hypot
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Dark-only app: light bar icons regardless of the system theme, graphite scrims behind them.
+        // Keep system bars aligned with the same light/dark paper token as the receipt.
         enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.dark(Ground.toArgb()),
-            navigationBarStyle = SystemBarStyle.dark(Tray.toArgb()),
+            statusBarStyle = SystemBarStyle.auto(LightReceiptColors.paper.toArgb(), DarkReceiptColors.paper.toArgb()),
+            navigationBarStyle = SystemBarStyle.auto(LightReceiptColors.paper.toArgb(), DarkReceiptColors.paper.toArgb()),
         )
         setContent { BreakfastTheme { IronApp() } }
     }
@@ -1352,7 +1352,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
         return
     }
     Scaffold(
-        containerColor = Ground,
+        containerColor = com.iron.breakfast.ui.theme.LocalReceiptColors.current.paper,
         contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout),
         bottomBar = {
             // The tray rides above the keyboard and clear of a side display cutout.

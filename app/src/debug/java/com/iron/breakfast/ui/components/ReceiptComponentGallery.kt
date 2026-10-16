@@ -12,8 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.ui.theme.BreakfastTheme
-import com.iron.breakfast.ui.theme.Ground
-import com.iron.breakfast.ui.theme.Ink
+import com.iron.breakfast.ui.theme.LocalReceiptColors
 
 /** Ground level preview board for Receipt v5 shared components. */
 @Composable
@@ -21,10 +20,11 @@ import com.iron.breakfast.ui.theme.Ink
 @androidx.compose.ui.tooling.preview.Preview(showBackground = true, widthDp = 390, heightDp = 844, fontScale = 1.3f)
 private fun ReceiptComponentGallery() {
     BreakfastTheme {
+        val colors = LocalReceiptColors.current
         Column(
             Modifier
                 .fillMaxWidth()
-                .background(Ground)
+                .background(colors.paper)
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -46,7 +46,7 @@ private fun ReceiptComponentGallery() {
                 ),
             )
             ReceiptBottomTray(
-                content = { Text("1,424 kcal  ·  P 95 g  ·  C 193 g  ·  F 32 g", color = Ink) },
+                content = { Text("1,424 kcal  ·  P 95 g  ·  C 193 g  ·  F 32 g", color = colors.ink) },
                 nav = { ReceiptNavigationBar(selectedDaily = true, onDaily = {}, onLibrary = {}) },
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -55,7 +55,7 @@ private fun ReceiptComponentGallery() {
             }
             ReceiptSnackbar("Saved meal", "UNDO", {})
             ReceiptSticker("Kikiriki puter", "31", "1 tsp", fields = listOf("1 tbsp", "16 g"))
-            Text("Receipt v5 component gallery", color = Ink)
+            Text("Receipt v5 component gallery", color = colors.ink)
         }
     }
 }
@@ -65,8 +65,9 @@ private fun ReceiptComponentGallery() {
 @androidx.compose.ui.tooling.preview.Preview(showBackground = true, widthDp = 390, heightDp = 844)
 private fun ReceiptSheetGallery() {
     BreakfastTheme {
+        val colors = LocalReceiptColors.current
         ReceiptBottomSheet(onDismissRequest = {}) {
-            Text("Add food", color = Ink, modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp))
+            Text("Add food", color = colors.ink, modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp))
         }
     }
 }

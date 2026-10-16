@@ -50,13 +50,9 @@ import com.iron.breakfast.ui.components.ReceiptTokenVisualTransformation
 import com.iron.breakfast.ui.components.ReceiptTonalIconButton
 import com.iron.breakfast.ui.components.ReceiptTopBar
 import com.iron.breakfast.ui.components.receiptDashedRule
-import com.iron.breakfast.ui.theme.BoxGrey
-import com.iron.breakfast.ui.theme.Ground
-import com.iron.breakfast.ui.theme.Ink
-import com.iron.breakfast.ui.theme.InkSoft
-import com.iron.breakfast.ui.theme.Paper
-import com.iron.breakfast.ui.theme.PenOnDarkInk
+import com.iron.breakfast.ui.theme.LocalReceiptColors
 import com.iron.breakfast.ui.theme.ReceiptPaperShape
+import com.iron.breakfast.ui.theme.LocalReceiptColors
 
 /**
  * New personal food. The shorthand field is the main input; the slip shows what was understood, and
@@ -69,14 +65,15 @@ import com.iron.breakfast.ui.theme.ReceiptPaperShape
     val state = createFoodState(draft.nutritionInput(), draft.name, barcodeError)
     val slip = nutritionSlipValues(state.nutrition)
     val parsed = parseNutritionShorthand(draft.shorthand)
-    val highlight = remember(parsed) { ReceiptTokenVisualTransformation(parsed.recognisedRanges.map { ReceiptTokenRange(it, ReceiptTokenKind.Quantity) }) }
+    val colors = LocalReceiptColors.current
+    val highlight = remember(parsed, colors) { ReceiptTokenVisualTransformation(parsed.recognisedRanges.map { ReceiptTokenRange(it, ReceiptTokenKind.Quantity) }, redFill = colors.redFill, onRedFill = colors.onRedFill) }
     val decimal = KeyboardOptions(keyboardType = KeyboardType.Decimal)
     BackHandler(onBack = vm::closeCustom)
-    Surface(Modifier.fillMaxSize(), color = Ground) {
+    Surface(Modifier.fillMaxSize(), color = colors.paper) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).imePadding().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             ReceiptTopBar("New food", vm::closeCustom, Modifier.padding(start = 4.dp), trailing = {
                 TextButton(onClick = vm::saveCustom, enabled = state.canSave, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text("Save", color = if (state.canSave) PenOnDarkInk else BoxGrey, fontWeight = FontWeight.Bold)
+                    Text("Save", color = if (state.canSave) colors.ink else colors.soft, fontWeight = FontWeight.Bold)
                 }
             })
             Column(Modifier.padding(horizontal = 14.dp).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -114,10 +111,10 @@ import com.iron.breakfast.ui.theme.ReceiptPaperShape
                 )
             }
             Column(
-                Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp).fillMaxWidth().background(Paper, ReceiptPaperShape).padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 12.dp)
+                Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp).fillMaxWidth().background(colors.paper, ReceiptPaperShape).padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 12.dp)
                     .semantics(mergeDescendants = true) { },
             ) {
-                Text(slip.label, color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                Text(slip.label, color = colors.soft, style = MaterialTheme.typography.bodySmall)
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp).receiptDashedRule().padding(top = 8.dp)) {
                     SlipCell("kcal", slip.calories, Modifier.weight(1f))
                     SlipCell("protein", slip.protein, Modifier.weight(1f))
@@ -129,8 +126,8 @@ import com.iron.breakfast.ui.theme.ReceiptPaperShape
                 onClick = { draft.fullFormOpen = !draft.fullFormOpen },
                 modifier = Modifier.padding(start = 10.dp, top = 6.dp).heightIn(min = 48.dp).semantics { stateDescription = if (draft.fullFormOpen) "Expanded" else "Collapsed" },
             ) {
-                Text("Full form", color = PenOnDarkInk, fontWeight = FontWeight.Medium)
-                Icon(if (draft.fullFormOpen) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, contentDescription = null, tint = PenOnDarkInk)
+                Text("Full form", color = colors.ink, fontWeight = FontWeight.Medium)
+                Icon(if (draft.fullFormOpen) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, contentDescription = null, tint = colors.ink)
             }
             Column(Modifier.padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 if (draft.fullFormOpen) {
@@ -156,9 +153,10 @@ import com.iron.breakfast.ui.theme.ReceiptPaperShape
 }
 
 @Composable private fun SlipCell(label: String, value: String?, modifier: Modifier) {
+    val colors = LocalReceiptColors.current
     Column(modifier) {
-        Text(label, color = InkSoft, style = MaterialTheme.typography.labelSmall)
-        if (value != null) Text(value, color = Ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-        else Text("unknown", color = InkSoft, style = MaterialTheme.typography.labelMedium)
+        Text(label, color = colors.soft, style = MaterialTheme.typography.labelSmall)
+        if (value != null) Text(value, color = colors.ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+        else Text("unknown", color = colors.soft, style = MaterialTheme.typography.labelMedium)
     }
 }

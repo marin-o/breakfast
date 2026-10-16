@@ -46,35 +46,30 @@ import com.iron.breakfast.ui.components.ReceiptPaperTicket
 import com.iron.breakfast.ui.components.ReceiptPlainSlip
 import com.iron.breakfast.ui.components.ReceiptPrimaryButton
 import com.iron.breakfast.ui.components.ReceiptSearchPill
+import com.iron.breakfast.ui.components.receiptFoodName
 import com.iron.breakfast.ui.components.ReceiptSubhead
 import com.iron.breakfast.ui.components.ReceiptTag
 import com.iron.breakfast.ui.components.ReceiptTonalButton
 import com.iron.breakfast.ui.components.ReceiptTopBar
-import com.iron.breakfast.ui.theme.Ground
-import com.iron.breakfast.ui.theme.Ink
-import com.iron.breakfast.ui.theme.InkSoft
-import com.iron.breakfast.ui.theme.OnGround
-import com.iron.breakfast.ui.theme.OnGroundSoft
-import com.iron.breakfast.ui.theme.PenOnDarkInk
-import com.iron.breakfast.ui.theme.PrintRed
+import com.iron.breakfast.ui.theme.LocalReceiptColors
 import com.iron.breakfast.ui.theme.ReceiptPillShape
 import com.iron.breakfast.ui.theme.ReceiptStickerShape
-import com.iron.breakfast.ui.theme.Sticker
 
 /** Local search that found nothing: the way on is Open Food Facts or a personal food. */
 @Composable internal fun LibraryNoMatchScreen(vm: BreakfastViewModel) {
+    val colors = LocalReceiptColors.current
     val query = vm.libraryQuery
     // Leaving a no-match result must keep the Daily quick-add draft intact.
     val clear = { vm.onLibraryQuery("") }
     BackHandler(onBack = clear)
-    Surface(Modifier.fillMaxSize(), color = Ground) {
+    Surface(Modifier.fillMaxSize(), color = colors.paper) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 14.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                IconButton(onClick = clear, Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = OnGround) }
+                IconButton(onClick = clear, Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = colors.ink) }
                 ReceiptSearchPill(query, vm::onLibraryQuery, onClear = clear, label = "Search library", modifier = Modifier.weight(1f))
             }
             ReceiptPlainSlip(Modifier.padding(start = 14.dp, end = 14.dp, top = 16.dp)) {
-                Text("No local match for $query", color = Ink, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
+                Text("No local match for $query", color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
                 Spacer(Modifier.height(16.dp))
                 ReceiptPrimaryButton("Search Open Food Facts", { vm.openSearch(query.trim()) })
                 Spacer(Modifier.height(10.dp))
@@ -86,8 +81,9 @@ import com.iron.breakfast.ui.theme.Sticker
 
 /** Explicit Open Food Facts search: nothing is sent until Search (or the keyboard's search key) is used. */
 @Composable internal fun OffSearchScreen(vm: BreakfastViewModel) {
+    val colors = LocalReceiptColors.current
     BackHandler(onBack = vm::closeSearch)
-    Surface(Modifier.fillMaxSize(), color = Ground) {
+    Surface(Modifier.fillMaxSize(), color = colors.paper) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState())) {
             ReceiptTopBar("Open Food Facts", vm::closeSearch, Modifier.padding(horizontal = 4.dp))
             Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -115,10 +111,10 @@ import com.iron.breakfast.ui.theme.Sticker
                     if (vm.offSearchUnavailable) {
                         ReceiptPlainSlip {
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
-                                Icon(Icons.Default.WifiOff, contentDescription = null, tint = PrintRed, modifier = Modifier.size(32.dp))
+                                Icon(Icons.Default.WifiOff, contentDescription = null, tint = colors.red, modifier = Modifier.size(32.dp))
                                 Column {
-                                    Text("No connection", color = Ink, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
-                                    Text("Open Food Facts needs internet. Local foods still work.", color = InkSoft, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
+                                    Text("No connection", color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
+                                    Text("Open Food Facts needs internet. Local foods still work.", color = colors.soft, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
                                 }
                             }
                         }
@@ -126,12 +122,12 @@ import com.iron.breakfast.ui.theme.Sticker
                         ReceiptTonalButton("Create personal food", { vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) })
                     } else if (message.startsWith("No usable result")) {
                         ReceiptPlainSlip {
-                            Text(message, color = Ink, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
+                            Text(message, color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
                             Spacer(Modifier.height(16.dp))
                             ReceiptTonalButton("Create personal food", { vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) })
                         }
                     } else {
-                        ReceiptPlainSlip { Text(message, color = Ink, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() }) }
+                        ReceiptPlainSlip { Text(message, color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() }) }
                         ReceiptOutlinedButton("Retry", vm::submitSearch)
                     }
                 }
@@ -142,6 +138,7 @@ import com.iron.breakfast.ui.theme.Sticker
 
 /** The unknown-food resolution queue: the kept quantity stays on the sticker; each match logs it for the selected day and meal. */
 @Composable internal fun ResolveUnknownScreen(vm: BreakfastViewModel) {
+    val colors = LocalReceiptColors.current
     val raw = vm.unknownQueue.firstOrNull().orEmpty()
     val display = unknownDisplay(raw)
     val (position, total) = resolvePosition(vm.unknownQueueTotal, vm.unknownQueue.size)
@@ -152,23 +149,22 @@ import com.iron.breakfast.ui.theme.Sticker
     ).joinToString(", ").ifBlank { null }
     LaunchedEffect(raw) { vm.onResolverQuery(display.name) }
     BackHandler(onBack = vm::closeResolver)
-    Surface(Modifier.fillMaxSize(), color = Ground) {
+    Surface(Modifier.fillMaxSize(), color = colors.paper) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState())) {
             ReceiptTopBar("Resolve", vm::closeResolver, Modifier.padding(horizontal = 4.dp), subtitle = subtitle)
             Column(
                 Modifier
                     .padding(start = 14.dp, end = 14.dp, top = 10.dp)
                     .fillMaxWidth()
-                    .shadow(1.dp, ReceiptStickerShape)
-                    .background(Sticker, ReceiptStickerShape)
+                    .background(colors.paper, ReceiptStickerShape)
                     .padding(horizontal = 14.dp, vertical = 12.dp)
                     .semantics(mergeDescendants = true) { },
             ) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                     if (display.quantity != null) ReceiptTag(display.quantity) else Spacer(Modifier.size(1.dp))
-                    Text("$position of $total", color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                    Text("$position of $total", color = colors.soft, style = MaterialTheme.typography.bodySmall)
                 }
-                Text(display.name, color = Ink, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 8.dp))
+                Text(receiptFoodName(display.name), color = colors.ink, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 8.dp))
             }
             Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 16.dp)) {
                 ReceiptSearchPill(vm.resolverQuery, vm::onResolverQuery, onClear = { vm.onResolverQuery("") }, label = "Search your foods", modifier = Modifier.padding(bottom = 16.dp))
@@ -191,7 +187,7 @@ import com.iron.breakfast.ui.theme.Sticker
                 Column(Modifier.padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     ReceiptTonalButton("Search Open Food Facts", { vm.openSearch(vm.currentUnknownName(), fromResolver = true) })
                     ReceiptOutlinedButton("Create personal food", { vm.openCustom(vm.currentUnknownName(), fromResolver = true) })
-                    TextButton(onClick = vm::skipCurrentUnknown, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Skip", color = PenOnDarkInk) }
+                    TextButton(onClick = vm::skipCurrentUnknown, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Skip", color = colors.ink) }
                 }
             }
         }
