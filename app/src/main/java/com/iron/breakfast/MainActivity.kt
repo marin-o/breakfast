@@ -44,6 +44,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -100,6 +101,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -1558,10 +1560,10 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
                 }
                 ContributionLine("Barcode", draft.barcode)
                 Text("per 100 ${draft.basisUnit.label}", color = colors.soft, modifier = Modifier.padding(top = 6.dp))
-                ContributionLine("Energy", "${normalized.calories.pretty()} kcal")
-                ContributionLine("Fat", "${normalized.fat?.pretty() ?: "0"} g")
-                ContributionLine("Carbohydrate", "${normalized.carbohydrates?.pretty() ?: "0"} g")
-                ContributionLine("Protein", "${normalized.protein?.pretty() ?: "0"} g")
+                ContributionLine("Energy", normalized.calories.pretty(), "kcal")
+                ContributionLine("Fat", normalized.fat?.pretty() ?: "0", "g")
+                ContributionLine("Carbohydrate", normalized.carbohydrates?.pretty() ?: "0", "g")
+                ContributionLine("Protein", normalized.protein?.pretty() ?: "0", "g")
             }
             Text(if (draft.createNewProduct) "New product: Breakfast creates it." else "Existing product: only nutrition changes.", color = colors.soft, modifier = Modifier.padding(top = 10.dp))
             if (draft.createNewProduct) {
@@ -1620,11 +1622,19 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     }
 }
 
-@Composable private fun ContributionLine(label: String, value: String) {
+@Composable private fun ContributionLine(label: String, value: String, unit: String? = null) {
     val colors = com.iron.breakfast.ui.theme.LocalReceiptColors.current
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = colors.ink)
-        Text(value, color = colors.ink, fontWeight = FontWeight.Bold)
+    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, color = colors.ink, modifier = Modifier.weight(1f))
+        Text(
+            value,
+            color = colors.ink,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.End,
+            modifier = if (unit == null) Modifier else Modifier.width(64.dp * fontScale),
+        )
+        if (unit != null) Text(unit, color = colors.soft, modifier = Modifier.width(44.dp * fontScale).padding(start = 8.dp))
     }
 }
 

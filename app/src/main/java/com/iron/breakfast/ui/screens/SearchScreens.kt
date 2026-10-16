@@ -2,6 +2,7 @@ package com.iron.breakfast.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -31,6 +33,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.BreakfastViewModel
 import com.iron.breakfast.label
@@ -43,7 +47,6 @@ import com.iron.breakfast.ui.components.ReceiptOutlinedButton
 import com.iron.breakfast.ui.components.ReceiptPrimaryButton
 import com.iron.breakfast.ui.components.ReceiptSearchPill
 import com.iron.breakfast.ui.components.receiptFoodName
-import com.iron.breakfast.ui.components.ReceiptTag
 import com.iron.breakfast.ui.components.ReceiptTopBar
 import com.iron.breakfast.ui.components.TertiaryLink
 import com.iron.breakfast.ui.theme.LocalReceiptColors
@@ -84,14 +87,14 @@ import com.iron.breakfast.ui.theme.ReceiptStickerShape
     Surface(Modifier.fillMaxSize(), color = colors.paper) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState())) {
             ReceiptTopBar("Open Food Facts", vm::closeSearch, Modifier.padding(horizontal = 4.dp))
-            Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 ReceiptSearchPill(vm.searchQuery, vm::onSearch, onClear = { vm.onSearch("") }, label = "Search Open Food Facts", modifier = Modifier.weight(1f), onSearch = vm::submitSearch)
-                if (vm.searchBusy) ReceiptOutlinedButton("Search", vm::submitSearch, fillWidth = false, enabled = false)
-                else ReceiptPrimaryButton("Search", vm::submitSearch, fillWidth = false)
+                if (vm.searchBusy) ReceiptOutlinedButton("Search", vm::submitSearch, Modifier.width(104.dp), fillWidth = false, enabled = false)
+                else ReceiptPrimaryButton("Search", vm::submitSearch, Modifier.width(104.dp), fillWidth = false)
             }
             Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 when {
-                    vm.searchBusy -> Column { CharacterRule('-'); PrintedProgress("Searching", vm.searchQuery, progressSteps = 5, modifier = Modifier.padding(vertical = 14.dp)); CharacterRule('-'); TertiaryLink("Cancel", vm::closeSearch, Modifier.padding(top = 4.dp)) }
+                    vm.searchBusy -> Column { CharacterRule('-'); PrintedProgress("Searching", vm.searchQuery, modifier = Modifier.padding(vertical = 14.dp)); CharacterRule('-'); TertiaryLink("Cancel", vm::closeSearch, Modifier.padding(top = 4.dp)) }
                     vm.offResults.isNotEmpty() -> {
                         CharacterRule('-')
                         Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -149,11 +152,14 @@ import com.iron.breakfast.ui.theme.ReceiptStickerShape
                     .padding(start = 14.dp, end = 14.dp, top = 10.dp)
                     .fillMaxWidth()
                     .background(colors.paper, ReceiptStickerShape)
+                    .drawBehind {
+                        drawRect(colors.ink, style = Stroke(width = 2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 6.dp.toPx()))))
+                    }
                     .padding(horizontal = 14.dp, vertical = 12.dp)
                     .semantics(mergeDescendants = true) { },
             ) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                    if (display.quantity != null) ReceiptTag(display.quantity) else Spacer(Modifier.size(1.dp))
+                    if (display.quantity != null) Text(display.quantity, color = colors.ink, fontWeight = FontWeight.Bold) else Spacer(Modifier.size(1.dp))
                     Text("$position of $total", color = colors.soft, style = MaterialTheme.typography.bodySmall)
                 }
                 Text(receiptFoodName(display.name), color = colors.ink, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 8.dp))

@@ -94,6 +94,7 @@ import com.iron.breakfast.label
 import com.iron.breakfast.canSaveProductToLibrary
 import com.iron.breakfast.pretty
 import com.iron.breakfast.ui.components.ApproxTag
+import com.iron.breakfast.ui.components.CharacterRule
 import com.iron.breakfast.ui.components.ReceiptBottomSheet
 import com.iron.breakfast.ui.components.ReceiptField
 import com.iron.breakfast.ui.components.ReceiptMealChips
@@ -191,16 +192,20 @@ import java.util.concurrent.atomic.AtomicBoolean
 private fun ScannerUnavailableScreen(noCamera: Boolean, onBack: () -> Unit, onManual: () -> Unit, onSettings: () -> Unit) {
     val colors = LocalReceiptColors.current
     Surface(Modifier.fillMaxSize(), color = colors.paper) {
-        Column(Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.fillMaxSize().statusBarsPadding()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                // The header stays at the top while the unavailable copy follows the fixed mock position.
                 IconButton(onClick = onBack, Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = colors.ink) }
                 Text("SCAN", color = colors.ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.headlineSmall)
             }
-            Column(Modifier.fillMaxWidth().weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(top = 198.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(if (noCamera) "NO CAMERA" else "NO CAMERA ACCESS", color = colors.ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.headlineMedium)
                 Text(if (noCamera) "This phone has no usable camera." else "Allow the camera in Android settings.", color = colors.soft, modifier = Modifier.padding(top = 4.dp))
-                ReceiptPrimaryButton(if (noCamera) "Manual barcode" else "Open settings", if (noCamera) onManual else onSettings, Modifier.padding(top = 18.dp))
-                if (!noCamera) ReceiptOutlinedButton("Manual barcode", onManual, Modifier.padding(top = 10.dp))
+                CharacterRule('-', modifier = Modifier.padding(top = 32.dp))
+                Column(Modifier.fillMaxWidth().padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ReceiptPrimaryButton(if (noCamera) "Manual barcode" else "Open settings", if (noCamera) onManual else onSettings)
+                    if (!noCamera) ReceiptOutlinedButton("Manual barcode", onManual)
+                }
             }
         }
     }
@@ -209,7 +214,7 @@ private fun ScannerUnavailableScreen(noCamera: Boolean, onBack: () -> Unit, onMa
 @Composable
 private fun LookupSheet(code: String, onCancel: () -> Unit, modifier: Modifier = Modifier) {
     ReceiptSheet(modifier.fillMaxWidth().navigationBarsPadding()) {
-        PrintedProgress("Looking up", code, progressSteps = 5, modifier = Modifier.padding(top = 6.dp))
+        PrintedProgress("Looking up", code, modifier = Modifier.padding(top = 6.dp))
         TertiaryLink("Cancel", onCancel, Modifier.align(Alignment.CenterHorizontally))
     }
 }
@@ -329,18 +334,20 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
                 }
                 if (queueMeal != null) Text("${resolveQueuePosition(vm)}", color = colors.soft, modifier = Modifier.padding(start = 4.dp))
             }
-            Text(
-                buildAnnotatedString {
-                    append("${basisLabel(basis.amount, basis.unit)}: ")
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(receiptKcal(values.calories)) }
-                    append(" kcal, P "); append(macro(values.protein))
-                    append(", C "); append(macro(values.carbohydrates))
-                    append(", F "); append(macro(values.fat))
-                },
-                color = colors.ink,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp).receiptDashedRule().padding(top = 12.dp),
-            )
+            if (!editing) {
+                Text(
+                    buildAnnotatedString {
+                        append("${basisLabel(basis.amount, basis.unit)}: ")
+                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(receiptKcal(values.calories)) }
+                        append(" kcal, P "); append(macro(values.protein))
+                        append(", C "); append(macro(values.carbohydrates))
+                        append(", F "); append(macro(values.fat))
+                    },
+                    color = colors.ink,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp).receiptDashedRule().padding(top = 12.dp),
+                )
+            }
             if (editing) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 ReceiptField("Name", vm.productName, vm::onProductName, labelColor = colors.soft, container = colors.paper, outline = colors.soft)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -383,7 +390,7 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
                 ReceiptPrimaryButton("Save to library", vm::saveSelectedToLibrary, enabled = canAdd)
             }
             Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                TertiaryLink("EDIT DETAILS", { editing = !editing }, Modifier.weight(1f).semantics { stateDescription = if (editing) "Expanded" else "Collapsed" })
+                TertiaryLink(if (editing) "HIDE DETAILS" else "EDIT DETAILS", { editing = !editing }, Modifier.weight(1f).semantics { stateDescription = if (editing) "Expanded" else "Collapsed" })
                 TertiaryLink("FIND BETTER MATCH", { vm.clearSelectedProduct(); vm.openSearch(fromResolver = vm.resolutionContinuation) }, Modifier.weight(1f))
                 TertiaryLink("RESCAN", { vm.clearSelectedProduct(); vm.beginScan() }, Modifier.weight(1f))
             }

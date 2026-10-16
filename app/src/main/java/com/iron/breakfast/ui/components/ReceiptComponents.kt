@@ -5,6 +5,7 @@ package com.iron.breakfast.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,7 +36,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.material3.Icon
@@ -53,7 +56,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.AnnotatedString
@@ -74,6 +79,11 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import com.iron.breakfast.ui.theme.LocalReceiptColors
 import com.iron.breakfast.ui.theme.TicketBandHeight
 import com.iron.breakfast.ui.theme.TicketAddHeight
@@ -571,12 +581,29 @@ fun ReceiptSearchPill(
     val colors = LocalReceiptColors.current
     Row(
         modifier
-            .heightIn(min = 54.dp)
+            .heightIn(min = 52.dp)
             .background(colors.paper)
             .border(2.dp, colors.ink)
-            .padding(start = 12.dp, end = 4.dp),
+            .padding(start = 11.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Canvas(Modifier.size(18.dp)) {
+            val strokeWidth = 2.dp.toPx()
+            drawCircle(
+                color = colors.ink,
+                radius = 4.dp.toPx(),
+                center = Offset(7.dp.toPx(), 7.dp.toPx()),
+                style = Stroke(width = strokeWidth),
+            )
+            drawLine(
+                color = colors.ink,
+                start = Offset(10.dp.toPx(), 10.dp.toPx()),
+                end = Offset(14.dp.toPx(), 14.dp.toPx()),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Square,
+            )
+        }
+        Spacer(Modifier.width(8.dp))
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
@@ -773,14 +800,28 @@ fun ReceiptMealChips(selected: MealSlot, onSelect: (MealSlot) -> Unit, modifier:
         content()
     }
 }
-@Composable fun PrintedProgress(label: String, detail: String, progressSteps: Int = 5, modifier: Modifier = Modifier) {
+@Composable fun PrintedProgress(label: String, detail: String, modifier: Modifier = Modifier) {
     val colors = LocalReceiptColors.current
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    val transition = rememberInfiniteTransition(label = "printed-progress")
+    val animatedSteps by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 12f,
+        animationSpec = infiniteRepeatable(tween(durationMillis = 3600, easing = LinearEasing)),
+        label = "printed-progress-steps",
+    )
+    val completedSteps = animatedSteps.toInt().coerceIn(0, 12)
+    Column(
+        modifier.fillMaxWidth().semantics {
+            contentDescription = "${label.uppercase()} progress, $completedSteps of 12 steps"
+            progressBarRangeInfo = ProgressBarRangeInfo(animatedSteps / 12f, 0f..1f, 11)
+        },
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
         Text(label.uppercase(), color = colors.ink, fontWeight = FontWeight.Bold)
         Text(detail, color = colors.soft, style = MaterialTheme.typography.bodySmall)
         Row(Modifier.fillMaxWidth().height(28.dp).border(2.dp, colors.ink).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             repeat(12) { index ->
-                Box(Modifier.weight(1f).height(20.dp).background(if (index < progressSteps.coerceIn(0, 12)) colors.ink else colors.paper))
+                Box(Modifier.weight(1f).height(20.dp).background(if (index < completedSteps) colors.ink else colors.paper))
             }
         }
     }
