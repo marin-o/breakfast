@@ -291,6 +291,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private var libraryRefreshGeneration = 0L
     /** Daily input present before entering Library; Library-owned typing is restored to this on exit. */
     private var libraryInputBeforeOpen: String? = null
+    private var libraryDraftCaptured = false
     private var offSearchJob: Job? = null
     private var offSearchGeneration = 0L
     var libraryBatchMealPickerOpen by mutableStateOf(false); private set
@@ -340,20 +341,27 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun shiftSelectedDay(delta: Long) { selectDay(runCatching { LocalDate.parse(selectedDayKey).plusDays(delta).toString() }.getOrDefault(selectedDayKey)); barcodeRequestToken++ }
     fun goToday() { selectDay(dayKeyForEpochMs(System.currentTimeMillis())); barcodeRequestToken++ }
     fun openLibrary() {
-        if (!libraryOpen) libraryInputBeforeOpen = input
+        if (!libraryOpen) {
+            libraryInputBeforeOpen = input
+            libraryDraftCaptured = true
+        }
         cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = false; refreshLibrary()
     }
     fun openArchivedLibrary() {
-        if (!libraryOpen) libraryInputBeforeOpen = input
+        if (!libraryOpen) {
+            libraryInputBeforeOpen = input
+            libraryDraftCaptured = true
+        }
         cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = true; refreshLibrary()
     }
     fun closeLibrary() {
-        val restoreInput = if (libraryOpen) libraryInputBeforeOpen else null
+        val restoreInput = if (libraryOpen && libraryDraftCaptured) libraryInputBeforeOpen.orEmpty() else null
         libraryRefreshJob?.cancel(); libraryRefreshGeneration++; libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null; expandedLibraryFoodId = null; libraryPendingAmount = null; libraryPendingUnit = null; libraryPendingBatch = emptyList(); libraryBatchMealPickerOpen = false; libraryArchivedOnly = false; selectMeal(null)
         libraryQuery = ""
         libraryResultsQuery = null
         if (restoreInput != null) input = restoreInput
         libraryInputBeforeOpen = null
+        libraryDraftCaptured = false
     }
     fun cancelLibraryMealPicker() { libraryMealPickerFood = null; libraryPendingAmount = null; libraryPendingUnit = null }
     fun onLibraryQuery(value: String) { libraryQuery = value; refreshLibrary() }
@@ -468,7 +476,15 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 .also { busy = false }
         }
     }
-    fun openEntryDetail(entry: MealEntry) { selectedEntry = entry; selectedEntryId = entry.id; savedState["entry_id"] = entry.id }
+    fun openEntryDetail(entry: MealEntry) {
+        // A double tap is resolved by combinedClickable into quick edit. If a
+        // delayed single-tap callback arrives after that, it must not reopen
+        // the detail route over the edit sheet.
+        if (entryEditMode != EntryEditMode.NONE) return
+        selectedEntry = entry
+        selectedEntryId = entry.id
+        savedState["entry_id"] = entry.id
+    }
     fun closeEntryDetail() { selectedEntry = null; selectedEntryId = null; savedState["entry_id"] = null }
     fun editingEntry(): MealEntry? = editingEntryId?.let { id -> entries.firstOrNull { it.id == id } }
     fun saveFullEdit(foodId: String, amount: String, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
@@ -561,7 +577,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun openFocusedLibrary(meal: MealSlot?, query: String = "") {
         abandonUnknownResolution()
         cancelEdit()
-        if (!libraryOpen) libraryInputBeforeOpen = ""
+        if (!libraryOpen) {
+            libraryInputBeforeOpen = null
+            libraryDraftCaptured = false
+        }
         selectMeal(meal)
         libraryOpen = true
         libraryQuery = query
@@ -571,7 +590,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun openLibraryFoodDetail(entry: MealEntry) {
         closeEntryDetail()
         cancelEdit()
-        if (!libraryOpen) libraryInputBeforeOpen = ""
+        if (!libraryOpen) {
+            libraryInputBeforeOpen = null
+            libraryDraftCaptured = false
+        }
         selectMeal(null)
         libraryOpen = true
         libraryQuery = entry.foodName
@@ -709,6 +731,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     fun beginQuickEdit(entry: MealEntry) {
         if (busy) return
+        closeEntryDetail()
         editReturnToDaily = slot == null
         selectMeal(entry.mealSlot)
         editSession += 1
@@ -728,6 +751,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     fun beginFullEdit(entry: MealEntry) {
         if (busy) return
+        closeEntryDetail()
         editReturnToDaily = slot == null
         selectMeal(entry.mealSlot)
         editSession += 1
@@ -1494,7 +1518,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     AlertDialog(
         onDismissRequest = vm::cancelLibraryMealPicker,
         title = { Text("Add ${food.name} to which meal?") },
-        text = { Column { Text("${vm.selectedDayKey} · choose a meal"); MealSlot.entries.forEach { target -> TextButton({ vm.chooseLibraryMeal(target) }, Modifier.fillMaxWidth()) { Text(target.label()) } } } },
+        text = { Column { Text("Choose a meal on ${vm.selectedDayKey}"); MealSlot.entries.forEach { target -> TextButton({ vm.chooseLibraryMeal(target) }, Modifier.fillMaxWidth()) { Text(target.label()) } } } },
         confirmButton = { TextButton(vm::cancelLibraryMealPicker) { Text("Cancel") } }
     )
 }

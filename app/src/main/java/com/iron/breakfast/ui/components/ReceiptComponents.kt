@@ -71,6 +71,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.iron.breakfast.ui.theme.LocalReceiptColors
@@ -198,6 +199,8 @@ fun ReceiptEntryRow(
     showRule: Boolean = true,
 ) {
     val colors = LocalReceiptColors.current
+    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    val calorieWidth = 54.dp * fontScale
     Box(
         modifier
             .fillMaxWidth()
@@ -210,14 +213,14 @@ fun ReceiptEntryRow(
                 Text(receiptFoodName(name), color = colors.ink, style = MaterialTheme.typography.bodyLarge)
                 if (approximate != null || quantityLine.isNotBlank()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (approximate != null) ApproxTag(approximate)
-                    if (quantityLine.isNotBlank()) Text(quantityLine, color = colors.soft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f, fill = false))
+                    if (quantityLine.isNotBlank()) Text(quantityLine, color = colors.soft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                 }
             }
             Column(Modifier.padding(start = 10.dp), horizontalAlignment = Alignment.End) {
-                Text(calories, color = colors.ink, style = MaterialTheme.typography.displaySmall, modifier = Modifier.width(54.dp), textAlign = TextAlign.End)
+                Text(calories, color = colors.ink, style = MaterialTheme.typography.displaySmall, modifier = Modifier.width(calorieWidth), textAlign = TextAlign.End)
                 if (calorieCaption != null) Text(calorieCaption, color = colors.soft, style = MaterialTheme.typography.labelSmall)
             }
-            SourceBox(source, Modifier.padding(start = 10.dp, top = 1.dp))
+            SourceBox(source, Modifier.padding(start = 10.dp, top = 1.dp).width(22.dp * fontScale))
         }
         if (fresh) Text("*", color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 11.dp))
     }
@@ -401,14 +404,16 @@ fun ReceiptQuickAddField(
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalReceiptColors.current
+    val stacked = LocalDensity.current.fontScale >= 1.8f
+    val effectiveExpanded = expanded || stacked
     var focused by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     Row(
         modifier
             .fillMaxWidth()
-            .heightIn(min = if (expanded) 76.dp else QuickAddHeight)
+            .heightIn(min = if (effectiveExpanded) 76.dp else QuickAddHeight)
             .background(colors.paper)
             .border(if (focused) 3.dp else 2.dp, colors.ink)
-            .padding(start = 10.dp, end = 0.dp),
+            .padding(start = 10.dp, end = 0.dp, top = if (stacked) 8.dp else 0.dp, bottom = if (stacked) 8.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -421,9 +426,9 @@ fun ReceiptQuickAddField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier.weight(1f).onFocusChanged { focused = it.isFocused },
-            singleLine = !expanded,
-            minLines = if (expanded) 2 else 1,
-            maxLines = if (expanded) 2 else 1,
+            singleLine = !effectiveExpanded,
+            minLines = if (effectiveExpanded) 2 else 1,
+            maxLines = if (effectiveExpanded) 2 else 1,
             textStyle = MaterialTheme.typography.bodyMedium.copy(color = colors.ink),
             visualTransformation = visualTransformation,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -497,20 +502,35 @@ fun ReceiptBottomTray(content: @Composable () -> Unit, nav: @Composable () -> Un
 
 @Composable
 fun ReceiptNavigationBar(selectedDaily: Boolean, onDaily: () -> Unit, onLibrary: () -> Unit, modifier: Modifier = Modifier) {
-    val colors = LocalReceiptColors.current
-    Row(modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf("DAILY" to onDaily, "LIBRARY" to onLibrary).forEachIndexed { index, (label, action) ->
-            val selected = if (index == 0) selectedDaily else !selectedDaily
-            Box(
-                Modifier.weight(1f).heightIn(min = 48.dp)
-                    .background(if (selected) colors.ink else colors.paper)
-                    .border(2.dp, colors.ink)
-                    .clickable(role = Role.Tab, onClick = action),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(label, color = if (selected) colors.paper else colors.ink, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+    val stacked = LocalDensity.current.fontScale >= 1.8f
+    val container = modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 8.dp)
+    val tabData = listOf("DAILY" to onDaily, "LIBRARY" to onLibrary)
+    if (stacked) {
+        Column(container, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            tabData.forEachIndexed { index, (label, action) ->
+                ReceiptNavTab(label, selected = if (index == 0) selectedDaily else !selectedDaily, action = action, modifier = Modifier.fillMaxWidth())
             }
         }
+    } else {
+        Row(container, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            tabData.forEachIndexed { index, (label, action) ->
+                ReceiptNavTab(label, selected = if (index == 0) selectedDaily else !selectedDaily, action = action, modifier = Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReceiptNavTab(label: String, selected: Boolean, action: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = LocalReceiptColors.current
+    Box(
+        modifier.heightIn(min = 48.dp)
+            .background(if (selected) colors.ink else colors.paper)
+            .border(2.dp, colors.ink)
+            .clickable(role = Role.Tab, onClick = action),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = if (selected) colors.paper else colors.ink, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
     }
 }
 

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -41,6 +42,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
@@ -49,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.iron.breakfast.BreakfastViewModel
 import com.iron.breakfast.ContributionAction
 import com.iron.breakfast.EntryEditMode
@@ -90,6 +93,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
     val (dayName, date) = dayTitle(vm.selectedDayKey)
     val isToday = vm.selectedDayKey == dayKeyForToday()
     val colors = LocalReceiptColors.current
+    val fontScale = LocalDensity.current.fontScale
     val touchSlop = LocalViewConfiguration.current.touchSlop
     val swipeThreshold = with(androidx.compose.ui.platform.LocalDensity.current) { 96.dp.toPx() }
 
@@ -122,7 +126,12 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { vm.shiftSelectedDay(-1) }) { Icon(Icons.Default.ChevronLeft, "Previous day", tint = colors.ink) }
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(dayName.uppercase(Locale.ENGLISH), style = MaterialTheme.typography.headlineLarge, color = colors.ink, textAlign = TextAlign.Center)
+                    Text(
+                        dailyHeaderTitle(dayName, fontScale),
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = colors.ink,
+                        textAlign = TextAlign.Center,
+                    )
                     Text(date, style = MaterialTheme.typography.bodyLarge, color = colors.soft)
                     Text("Receipt ${receiptNumber(vm.selectedDayKey)}", color = colors.soft, style = MaterialTheme.typography.bodyLarge)
                 }
@@ -135,12 +144,12 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
             }
             CharacterRule('-', modifier = Modifier.padding(top = 4.dp))
             TotalBlock(total = receiptKcal(total.calories))
-            MacroTable(total)
+            MacroTable(total, fontScale)
             CharacterRule('=', modifier = Modifier.padding(top = 8.dp))
         }
         vm.mealDraftError?.let { message -> item { Text(message, color = colors.red, modifier = Modifier.padding(vertical = 6.dp)) } }
         items(MealSlot.entries) { slot ->
-            DailyMealSection(slot, selected.filter { it.mealSlot == slot }, foods, vm)
+            DailyMealSection(slot, selected.filter { it.mealSlot == slot }, foods, vm, fontScale)
         }
         item {
             DailyFooter(selected, foods, vm.selectedDayKey)
@@ -150,23 +159,42 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
 }
 
 @Composable
-private fun MacroTable(total: NutritionValues) {
+private fun MacroTable(total: NutritionValues, fontScale: Float) {
     val colors = LocalReceiptColors.current
+    val continuationIndent = with(LocalDensity.current) { 36.sp.toPx().toDp() }
     Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-        Row(Modifier.fillMaxWidth()) {
-            Spacer(Modifier.weight(1f))
-            Text("g", color = colors.soft, textAlign = TextAlign.End, modifier = Modifier.width(54.dp))
-            Text("kcal", color = colors.soft, textAlign = TextAlign.End, modifier = Modifier.width(58.dp))
-        }
-        listOf(
+        val macros = listOf(
             "Protein" to (total.protein to total.protein?.times(4.0)),
             "Carbs" to (total.carbohydrates to total.carbohydrates?.times(4.0)),
             "Fat" to (total.fat to total.fat?.times(9.0)),
-        ).forEach { (label, values) ->
+        )
+        if (dailyMacroUsesTwoLines(fontScale)) {
+            macros.forEach { (label, values) ->
+                Text(
+                    "$label ${values.first?.macro()?.removeSuffix(" g") ?: "0"} g",
+                    color = colors.ink,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "${receiptKcal(values.second ?: 0.0)} kcal",
+                    color = colors.soft,
+                    modifier = Modifier.padding(start = continuationIndent),
+                )
+            }
+        } else {
+            val gramsWidth = 54.dp * fontScale.coerceAtLeast(1f)
+            val kcalWidth = 58.dp * fontScale.coerceAtLeast(1f)
             Row(Modifier.fillMaxWidth()) {
-                Text(label, color = colors.ink, modifier = Modifier.weight(1f))
-                Text(values.first?.macro()?.removeSuffix(" g") ?: "0", color = colors.ink, textAlign = TextAlign.End, modifier = Modifier.width(54.dp))
-                Text(receiptKcal(values.second ?: 0.0), color = colors.ink, textAlign = TextAlign.End, modifier = Modifier.width(58.dp))
+                Spacer(Modifier.weight(1f))
+                Text("g", color = colors.soft, textAlign = TextAlign.End, modifier = Modifier.width(gramsWidth))
+                Text("kcal", color = colors.soft, textAlign = TextAlign.End, modifier = Modifier.width(kcalWidth))
+            }
+            macros.forEach { (label, values) ->
+                Row(Modifier.fillMaxWidth()) {
+                    Text(label, color = colors.ink, modifier = Modifier.weight(1f))
+                    Text(values.first?.macro()?.removeSuffix(" g") ?: "0", color = colors.ink, textAlign = TextAlign.End, modifier = Modifier.width(gramsWidth))
+                    Text(receiptKcal(values.second ?: 0.0), color = colors.ink, textAlign = TextAlign.End, modifier = Modifier.width(kcalWidth))
+                }
             }
         }
     }
@@ -174,14 +202,19 @@ private fun MacroTable(total: NutritionValues) {
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Map<String, FoodRecord>, vm: BreakfastViewModel) {
+private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Map<String, FoodRecord>, vm: BreakfastViewModel, fontScale: Float) {
     val colors = LocalReceiptColors.current
     val total = entries.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
     Column(Modifier.fillMaxWidth().padding(top = 12.dp)) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = androidx.compose.ui.semantics.Role.Button) { vm.openMeal(slot) }, verticalAlignment = Alignment.Bottom) {
-            Text(slot.name.uppercase(Locale.ENGLISH), style = MaterialTheme.typography.headlineMedium, color = colors.red, fontWeight = FontWeight.Bold)
-            Text(earliestMealTime(entries).orEmpty(), color = colors.soft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp).weight(1f))
-            Text(receiptKcal(total.calories), style = MaterialTheme.typography.titleLarge, color = colors.red, fontWeight = FontWeight.Bold)
+        Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = androidx.compose.ui.semantics.Role.Button) { vm.openMeal(slot) }) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+                Text(slot.name.uppercase(Locale.ENGLISH), style = MaterialTheme.typography.headlineMedium, color = colors.red, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f, fill = false))
+                if (!dailyMealTimeOwnLine(fontScale)) Text(earliestMealTime(entries).orEmpty(), color = colors.soft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp).weight(1f))
+                Text(receiptKcal(total.calories), style = MaterialTheme.typography.titleLarge, color = colors.red, fontWeight = FontWeight.Bold)
+            }
+            if (dailyMealTimeOwnLine(fontScale) && earliestMealTime(entries) != null) {
+                Text(earliestMealTime(entries).orEmpty(), color = colors.soft, style = MaterialTheme.typography.bodySmall)
+            }
         }
         entries.forEach { entry ->
             val quantity = quantityRateDisplay(entry, foods[entry.foodId], includeRateUnit = false, asciiMultiply = true)
@@ -205,12 +238,13 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
             )
             if (vm.feedbackOpen(entry)) CorrectionStrip(vm, entry)
         }
-        // Keep the printed 48dp target wide enough for the leading plus at larger font scales.
+        // Keep the printed 48dp target wide enough for the leading plus while
+        // allowing the label to grow with the system font scale.
         ReceiptOutlinedButton(
             "+ Add food",
             onClick = { vm.openFocusedLibrary(slot) },
             fillWidth = false,
-            modifier = Modifier.width(128.dp).padding(top = 4.dp, bottom = 8.dp),
+            modifier = Modifier.widthIn(min = 128.dp).padding(top = 4.dp, bottom = 8.dp),
         )
         CharacterRule('-', modifier = Modifier.padding(top = 2.dp))
     }
@@ -219,19 +253,22 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
 @Composable
 private fun DailyFooter(entries: List<MealEntry>, foods: Map<String, FoodRecord>, dayKey: String) {
     val colors = LocalReceiptColors.current
+    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    val kcalWidth = 54.dp * fontScale
+    val sourceWidth = 20.dp * fontScale
     val sourceTotals = listOf("B" to "Bundled", "P" to "Personal", "O" to "Open Food Facts")
     Column(Modifier.fillMaxWidth().padding(top = 10.dp)) {
         Row(Modifier.fillMaxWidth()) {
             Text("ITEMS", color = colors.soft, modifier = Modifier.weight(1f))
-            Text(entries.size.toString(), color = colors.soft, textAlign = TextAlign.End, modifier = Modifier.width(54.dp))
-            Spacer(Modifier.width(20.dp))
+            Text(entries.size.toString(), color = colors.soft, textAlign = TextAlign.End, modifier = Modifier.width(kcalWidth))
+            Spacer(Modifier.width(sourceWidth))
         }
         sourceTotals.forEach { (letter, label) ->
             val sourceEntries = entries.filter { sourceLetter(foods[it.foodId]) == letter }
             Row(Modifier.fillMaxWidth()) {
                 Text(label, color = colors.soft, modifier = Modifier.weight(1f))
-                Text(receiptKcal(sourceEntries.sumOf { it.nutritionSnapshot.calories }), color = colors.soft, textAlign = TextAlign.End, modifier = Modifier.width(54.dp))
-                Text(letter, color = colors.soft, textAlign = TextAlign.End, modifier = Modifier.width(20.dp))
+                Text(receiptKcal(sourceEntries.sumOf { it.nutritionSnapshot.calories }), color = colors.soft, textAlign = TextAlign.End, modifier = Modifier.width(kcalWidth))
+                Text(letter, color = colors.soft, textAlign = TextAlign.End, modifier = Modifier.width(sourceWidth))
             }
         }
         CharacterRule('=', modifier = Modifier.padding(top = 8.dp))
@@ -307,3 +344,10 @@ private fun CorrectionStrip(vm: BreakfastViewModel, entry: MealEntry) {
 private fun dayKeyForToday(): String = com.iron.breakfast.domain.dayKeyForEpochMs(System.currentTimeMillis())
 
 private fun shortDateLabel(dayKey: String): String = runCatching { LocalDate.parse(dayKey).format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH)) }.getOrDefault(dayKey)
+
+internal fun dailyHeaderTitle(dayName: String, fontScale: Float): String =
+    if (fontScale >= 1.8f) dayName.take(3).uppercase(Locale.ENGLISH) else dayName.uppercase(Locale.ENGLISH)
+
+internal fun dailyMealTimeOwnLine(fontScale: Float): Boolean = fontScale >= 1.25f
+
+internal fun dailyMacroUsesTwoLines(fontScale: Float): Boolean = fontScale >= 1.8f

@@ -148,6 +148,7 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
 @Composable
 private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boolean, archived: Boolean) {
     val colors = LocalReceiptColors.current
+    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     val last = vm.lastLoggedEntry(food)
     val repeatAmount = last?.enteredAmount ?: food.defaultAmount
     val repeatUnit = last?.enteredUnit ?: food.defaultUnit
@@ -159,8 +160,8 @@ private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boole
                 Text(receiptFoodName(food.name), color = colors.ink)
                 Text(if (archived) "archived" else if (last == null) "${repeatAmount.pretty()} ${repeatUnit.displayLabel()}" else "last ${repeatAmount.pretty()} ${repeatUnit.displayLabel()}", color = colors.soft)
             }
-            Text(last?.let { printedFactKcal(it.nutritionSnapshot.calories) } ?: defaultServingCalories(food), color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.width(50.dp), textAlign = TextAlign.End)
-            Text(sourceLetter(food), color = colors.soft, modifier = Modifier.width(20.dp), textAlign = TextAlign.End)
+            Text(last?.let { printedFactKcal(it.nutritionSnapshot.calories) } ?: defaultServingCalories(food), color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.width(50.dp * fontScale), textAlign = TextAlign.End)
+            Text(sourceLetter(food), color = colors.soft, modifier = Modifier.width(20.dp * fontScale), textAlign = TextAlign.End)
             if (!archived) ReceiptTonalIconButton(icon = if (expanded) Icons.Default.Close else Icons.Default.Add, contentDescription = if (target == null) "Add ${food.name} to a meal" else "Add ${food.name} to ${target.label()}", onClick = { if (root) vm.toggleLibraryFoodPicker(food) else vm.logLibraryFood(food, target!!, repeatAmount, repeatUnit) }, enabled = !food.archived, modifier = Modifier.padding(start = 8.dp))
         }
         if (expanded) {

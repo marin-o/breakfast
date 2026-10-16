@@ -19,3 +19,6 @@ val DarkReceiptColors = ReceiptColors(
 )
 
 val LocalReceiptColors = staticCompositionLocalOf { LightReceiptColors }
+
+/** Camera registration marks stay light against the fixed camera ground in both themes. */
+val CameraMarkColor = Color(0xFFE2E3DE)

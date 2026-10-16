@@ -107,6 +107,7 @@ import com.iron.breakfast.ui.components.receiptDashedRule
 import com.iron.breakfast.ui.components.sourceLabel
 import com.iron.breakfast.ui.components.receiptFoodName
 import com.iron.breakfast.ui.theme.LocalReceiptColors
+import com.iron.breakfast.ui.theme.CameraMarkColor
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Real CameraX preview with the corner-bracket viewfinder, a torch toggle (when the camera has a flash unit) and manual entry. */
@@ -170,14 +171,14 @@ import java.util.concurrent.atomic.AtomicBoolean
             if (vm.scannerUnavailableState) "Camera unavailable. Enter a barcode manually."
             else "Camera permission is required to scan.",
             Modifier.align(Alignment.TopCenter).padding(top = 150.dp),
-            color = androidx.compose.ui.graphics.Color(0xFFE2E3DE),
+            color = CameraMarkColor,
         )
         Viewfinder(Modifier.align(Alignment.Center).offset(y = (-80).dp).size(width = 260.dp, height = 160.dp))
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = vm::endScan, Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = androidx.compose.ui.graphics.Color(0xFFE2E3DE)) }
+            IconButton(onClick = vm::endScan, Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CameraMarkColor) }
             Box(Modifier.weight(1f))
             if (torchAvailable) IconToggleButton(checked = torchOn, onCheckedChange = { torchOn = it }, Modifier.size(48.dp).semantics { role = Role.Switch; stateDescription = if (torchOn) "On" else "Off" }) {
-                Icon(if (torchOn) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff, contentDescription = "Torch", tint = androidx.compose.ui.graphics.Color(0xFFE2E3DE))
+                Icon(if (torchOn) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff, contentDescription = "Torch", tint = CameraMarkColor)
             }
         }
         if (vm.scannerLookupBusy) LookupSheet(vm.scannerLookupCode, vm::cancelBarcodeLookup, Modifier.align(Alignment.BottomCenter))
@@ -223,7 +224,7 @@ private fun LookupSheet(code: String, onCancel: () -> Unit, modifier: Modifier =
         val h = size.height - inset
         fun corner(x: Float, y: Float, dx: Float, dy: Float) = drawPath(
             Path().apply { moveTo(x, y + dy * arm); lineTo(x, y); lineTo(x + dx * arm, y) },
-            color = androidx.compose.ui.graphics.Color(0xFFE2E3DE),
+            color = CameraMarkColor,
             style = stroke,
         )
         corner(inset, inset, 1f, 1f)
@@ -244,15 +245,15 @@ private fun LookupSheet(code: String, onCancel: () -> Unit, modifier: Modifier =
         Text(
             "camera",
             Modifier.align(Alignment.Center).offset(y = (-262).dp),
-            color = androidx.compose.ui.graphics.Color(0xFFE2E3DE),
+            color = CameraMarkColor,
             style = MaterialTheme.typography.bodySmall,
         )
         Viewfinder(Modifier.align(Alignment.Center).offset(y = (-80).dp).size(width = 260.dp, height = 160.dp))
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack, Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = androidx.compose.ui.graphics.Color(0xFFE2E3DE)) }
+            IconButton(onClick = onBack, Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CameraMarkColor) }
             Box(Modifier.weight(1f))
             Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.FlashlightOff, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFFE2E3DE))
+                Icon(Icons.Default.FlashlightOff, contentDescription = null, tint = CameraMarkColor)
             }
         }
     }

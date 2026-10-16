@@ -232,6 +232,16 @@ class ReceiptScreenDataTest {
     }
 
     @Test
+    fun dailyLargeFontLayoutUsesTheDrawnFallbacks() {
+        assertEquals("WEDNESDAY", dailyHeaderTitle("Wednesday", 1.3f))
+        assertEquals("WED", dailyHeaderTitle("Wednesday", 2.0f))
+        assertEquals(true, dailyMealTimeOwnLine(1.3f))
+        assertEquals(false, dailyMealTimeOwnLine(1.1f))
+        assertEquals(true, dailyMacroUsesTwoLines(2.0f))
+        assertEquals(false, dailyMacroUsesTwoLines(1.3f))
+    }
+
+    @Test
     fun receiptDateTimeRangeUsesEarliestAndLatestEntry() {
         val early = entry.copy(savedAtEpochMs = 7 * 60 * 60 * 1000L)
         val late = entry.copy(savedAtEpochMs = 16 * 60 * 60 * 1000L + 40 * 60 * 1000L)

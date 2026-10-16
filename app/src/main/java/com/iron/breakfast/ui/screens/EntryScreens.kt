@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -85,6 +86,7 @@ import java.util.Locale
 @Composable
 internal fun EntryDetailScreen(vm: BreakfastViewModel, entry: MealEntry) {
     val colors = LocalReceiptColors.current
+    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     BackHandler { vm.closeEntryDetail() }
     val food = vm.foods.firstOrNull { it.id == entry.foodId }
     val quantity = quantityRateDisplay(entry, food)
@@ -100,8 +102,8 @@ internal fun EntryDetailScreen(vm: BreakfastViewModel, entry: MealEntry) {
                 CharacterRule('-', modifier = Modifier.padding(top = 6.dp))
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.Top) {
                     Text(receiptFoodName(entry.foodName), color = colors.ink, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Text(receiptKcal(entry.nutritionSnapshot.calories), color = colors.ink, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, modifier = Modifier.width(54.dp))
-                    Text(sourceLetter(food), color = colors.soft, modifier = Modifier.width(22.dp), textAlign = TextAlign.End)
+                    Text(receiptKcal(entry.nutritionSnapshot.calories), color = colors.ink, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, modifier = Modifier.width(54.dp * fontScale))
+                    Text(sourceLetter(food), color = colors.soft, modifier = Modifier.width(22.dp * fontScale), textAlign = TextAlign.End)
                 }
                 if (quantity.approximateLabel != null) {
                     Row(Modifier.padding(start = 36.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -135,10 +137,13 @@ internal fun EntryDetailScreen(vm: BreakfastViewModel, entry: MealEntry) {
 @Composable
 private fun MacroTable(entry: MealEntry) {
     val colors = LocalReceiptColors.current
+    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    val gramsWidth = 54.dp * fontScale
+    val kcalWidth = 58.dp * fontScale
     Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
-        Row(Modifier.fillMaxWidth()) { Text("", Modifier.weight(1f)); Text("g", color = colors.soft, modifier = Modifier.width(54.dp), textAlign = TextAlign.End); Text("kcal", color = colors.soft, modifier = Modifier.width(58.dp), textAlign = TextAlign.End) }
+        Row(Modifier.fillMaxWidth()) { Text("", Modifier.weight(1f)); Text("g", color = colors.soft, modifier = Modifier.width(gramsWidth), textAlign = TextAlign.End); Text("kcal", color = colors.soft, modifier = Modifier.width(kcalWidth), textAlign = TextAlign.End) }
         listOf("Protein" to (entry.nutritionSnapshot.protein to entry.nutritionSnapshot.protein?.times(4.0)), "Carbs" to (entry.nutritionSnapshot.carbohydrates to entry.nutritionSnapshot.carbohydrates?.times(4.0)), "Fat" to (entry.nutritionSnapshot.fat to entry.nutritionSnapshot.fat?.times(9.0))).forEach { (label, values) ->
-            Row(Modifier.fillMaxWidth()) { Text(label, color = colors.ink, modifier = Modifier.weight(1f)); Text(values.first?.pretty() ?: "0", color = colors.ink, modifier = Modifier.width(54.dp), textAlign = TextAlign.End); Text(receiptKcal(values.second ?: 0.0), color = colors.ink, modifier = Modifier.width(58.dp), textAlign = TextAlign.End) }
+            Row(Modifier.fillMaxWidth()) { Text(label, color = colors.ink, modifier = Modifier.weight(1f)); Text(values.first?.pretty() ?: "0", color = colors.ink, modifier = Modifier.width(gramsWidth), textAlign = TextAlign.End); Text(receiptKcal(values.second ?: 0.0), color = colors.ink, modifier = Modifier.width(kcalWidth), textAlign = TextAlign.End) }
         }
     }
 }

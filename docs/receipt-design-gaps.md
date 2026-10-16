@@ -1,21 +1,25 @@
 # Receipt v6.5 design gaps
 
-This ledger maps follow-up states to the locked R6 and R6D references. A row is a gap only when the current slice cannot build the state as drawn; behavior remains unchanged until its owning slice implements the reference.
+This ledger tracks the former v5 gaps against the locked Receipt v6.5 light and dark references. A row is still open only when the drawing cannot be reproduced honestly from the current data or when the owner device check remains outstanding.
 
-| State | Locked reference | Status / implementation gap |
+| State | Locked reference(s) | Status / concrete gap |
 | --- | --- | --- |
-| Contribution review | `R6-OFF-Contribute-Review.dc.html` | Designed; screen implementation remains in the contribution slice. |
-| Open Food Facts sign in | `R6-OFF-SignIn.dc.html` | Designed; screen implementation remains in the contribution slice. |
-| Open Food Facts submission failure | `R6-OFF-Submit-Failed.dc.html` | Designed; screen implementation remains in the contribution slice. |
-| Archived library list, menu, and detail | `R6-Library-Archived.dc.html`, `R6-Library-Menu.dc.html`, `R6-Food-Archived.dc.html` | Library, menu, detail, and RESTORE are implemented. The existing `foods` schema stores only the archived flag, so the drawn archive date cannot be printed without inventing a value or adding a migration. |
-| Open Food Facts loading and error | `R6-Search-OFF-Loading.dc.html`, `R6-Search-OFF-Error.dc.html` | Designed; search screen implementation remains in the search slice. |
-| Barcode lookup, manual entry, permission denied, and no camera | `R6-Scan-Lookup.dc.html`, `R6-Scan-Manual.dc.html`, `R6-Scan-Denied.dc.html`, `R6-Scan-NoCamera.dc.html` | Designed; scanner states remain in the scanner slice. Camera marks use the fixed camera ground and light marks. |
-| Add serving | `R6-Food-Edit-AddServing.dc.html` | Implemented with named servings, g/ml unit choices, inline validation, and Room migration 5→6 for the optional serving label. |
-| Restore archived food | `R6-Food-Archived.dc.html` | RESTORE clears `archived`, preserves diary snapshots, and refreshes the detail so logging is enabled again. |
-| Scan review variants | `R6-Scan-Review-Details.dc.html`, `R6-Scan-Review-Library.dc.html`, `R6-Scan-Review-Queue.dc.html` | Designed; review variants remain in the scanner slice. |
-| Resolve search | `R6-Resolve-Search.dc.html` | Designed; resolve search remains in the search, scan, create, and contribute slice. |
-| Create food full form | `R6-Create-Food-FullForm.dc.html` | Designed; full form remains in the create-food slice. |
-| Large font states | `R6-Daily-Font130.dc.html`, `R6-Daily-Font200.dc.html` | Designed; large-font layout remains in slice 5. Dead scale policy was removed from the foundation. |
-| Light and dark twins | Matching R6 and R6D references | Tokens and shared primitives support both themes. Screen phone verification is pending the owner QA gate. |
+| Contribution review | `R6-OFF-Contribute-Review.dc.html`, `R6D-OFF-Contribute-Review.dc.html` | Done in the contribution slice. |
+| Open Food Facts sign in | `R6-OFF-SignIn.dc.html`, `R6D-OFF-SignIn.dc.html` | Done in the contribution slice. |
+| Open Food Facts submission failure | `R6-OFF-Submit-Failed.dc.html`, `R6D-OFF-Submit-Failed.dc.html` | Done in the contribution slice. |
+| Archived library list and menu | `R6-Library-Archived.dc.html`, `R6-Library-Menu.dc.html`, dark twins | Done. |
+| Archived food detail and restore | `R6-Food-Archived.dc.html`, `R6D-Food-Archived.dc.html` | Done. RESTORE clears `archived` and keeps diary snapshots. The schema has no archive date, so the drawn `archived 02.10.2026` date remains an honest data gap; the app prints the state without inventing a date. |
+| Open Food Facts loading and error | `R6-Search-OFF-Loading.dc.html`, `R6-Search-OFF-Error.dc.html`, dark twins | Done. |
+| Barcode lookup, manual entry, permission denied, no camera | `R6-Scan-Lookup.dc.html`, `R6-Scan-Manual.dc.html`, `R6-Scan-Denied.dc.html`, `R6-Scan-NoCamera.dc.html`, dark twins | Done. Camera ground is fixed and camera marks stay light in both themes. |
+| Add serving inline form | `R6-Food-Edit-AddServing.dc.html`, `R6D-Food-Edit-AddServing.dc.html` | Done with named servings, g/ml choices, validation, and the Room 5→6 migration. |
+| Scan review details, Library, and queue variants | `R6-Scan-Review-Details.dc.html`, `R6-Scan-Review-Library.dc.html`, `R6-Scan-Review-Queue.dc.html`, dark twins | Done. |
+| Resolve re-search | `R6-Resolve-Search.dc.html`, `R6D-Resolve-Search.dc.html` | Done. |
+| Offline personal-food creation | `R6-Search-OFF-Offline.dc.html`, `R6D-Search-OFF-Offline.dc.html` | Done. |
+| Create food full form | `R6-Create-Food-FullForm.dc.html`, `R6D-Create-Food-FullForm.dc.html` | Done. Shorthand fills the fields and explicit full-form edits win. |
+| Large font scale | `R6-Daily-Font130.dc.html`, `R6-Daily-Font200.dc.html`, `R6D` twins | Implemented: 1.3 puts meal time on its own line; 2.0 abbreviates the day, uses two-line macros, wraps receipt columns, and stacks tray tabs. Owner phone verification remains open. |
+| Light and dark twins | Matching `R6-*` and `R6D-*` references | Implemented with system tokens and shared receipt components. Owner walk-through of every screen in system dark remains open. |
+| Camera ground | `R6-Scan.dc.html`, `R6D-Scan.dc.html` | Done: `#141218` ground and light registration marks are centralized. |
+| Source box contrast | `R6-Daily.dc.html`, `R6D-Daily.dc.html` and matching rows | Done: the v6.5 source box was removed; B/P/O is soft text. |
+| Entry detail contribution action | No R6 reference; contribution remains on Library food detail | Resolved by handoff: intentionally not added; contribution stays on Library food detail. |
 
-See [the v6.5 handoff](codex-handoff-receipt-v65.md) and [the v6.5 gap brief](../design/canvas/BRIEF-v65-gaps.md) for the full state inventory and binding control details.
+See [the v6.5 handoff](codex-handoff-receipt-v65.md) and [the v6.5 gap brief](../design/canvas/BRIEF-v65-gaps.md) for the complete state inventory and binding control details.
