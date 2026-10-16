@@ -2,6 +2,9 @@ package com.iron.breakfast.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -38,6 +41,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.heightIn
@@ -56,6 +60,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.role
@@ -66,15 +71,20 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import com.iron.breakfast.BreakfastViewModel
+import com.iron.breakfast.ProductReviewOrigin
+import com.iron.breakfast.ScannerUnavailableReason
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.asciiDigits
@@ -88,8 +98,11 @@ import com.iron.breakfast.ui.components.ReceiptBottomSheet
 import com.iron.breakfast.ui.components.ReceiptField
 import com.iron.breakfast.ui.components.ReceiptMealChips
 import com.iron.breakfast.ui.components.ReceiptPrimaryButton
+import com.iron.breakfast.ui.components.ReceiptOutlinedButton
+import com.iron.breakfast.ui.components.PrintedProgress
+import com.iron.breakfast.ui.components.ReceiptSheet
+import com.iron.breakfast.ui.components.TertiaryLink
 import com.iron.breakfast.ui.components.ReceiptTonalButton
-import com.iron.breakfast.ui.components.SourceBox
 import com.iron.breakfast.ui.components.receiptDashedRule
 import com.iron.breakfast.ui.components.sourceLabel
 import com.iron.breakfast.ui.components.receiptFoodName
@@ -103,14 +116,35 @@ import java.util.concurrent.atomic.AtomicBoolean
     val session = remember { ScannerSession() }
     DisposableEffect(Unit) { onDispose { session.dispose() } }
     var hasPermission by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
+    val lifecycleOwner = LocalLifecycleOwner.current
     var torchAvailable by remember { mutableStateOf(false) }
     var torchOn by remember { mutableStateOf(false) }
     var manualOpen by remember { mutableStateOf(false) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasPermission = granted; if (!granted) vm.scannerUnavailable() }
-    LaunchedEffect(Unit) { if (!hasPermission) launcher.launch(Manifest.permission.CAMERA) }
+    val hasCameraHardware = remember { context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasPermission = granted; if (!granted) vm.scannerPermissionDenied() }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+                hasPermission = granted
+                if (granted && vm.scannerUnavailableReason == ScannerUnavailableReason.PERMISSION_DENIED) vm.beginScan()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(Unit) { if (hasCameraHardware && !hasPermission) launcher.launch(Manifest.permission.CAMERA) }
+    LaunchedEffect(hasCameraHardware) { if (!hasCameraHardware) vm.scannerUnavailable() }
     LaunchedEffect(torchOn, torchAvailable) { if (torchAvailable) session.camera?.cameraControl?.enableTorch(torchOn) }
     BackHandler { vm.endScan() }
-    Box(Modifier.fillMaxSize().background(colors.cameraGround)) {
+    if (vm.scannerUnavailableState) {
+        ScannerUnavailableScreen(
+            noCamera = !hasCameraHardware || vm.scannerUnavailableReason == ScannerUnavailableReason.NO_USABLE_CAMERA,
+            onBack = vm::endScan,
+            onManual = { manualOpen = true },
+            onSettings = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) },
+        )
+    } else Box(Modifier.fillMaxSize().background(colors.cameraGround)) {
         if (hasPermission && !vm.scannerUnavailableState) AndroidView(factory = { ctx -> PreviewView(ctx).also { view ->
             val providerFuture = ProcessCameraProvider.getInstance(ctx)
             providerFuture.addListener({ runCatching {
@@ -146,9 +180,37 @@ import java.util.concurrent.atomic.AtomicBoolean
                 Icon(if (torchOn) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff, contentDescription = "Torch", tint = androidx.compose.ui.graphics.Color(0xFFE2E3DE))
             }
         }
-        ReceiptTonalButton("Manual barcode", { manualOpen = true }, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(start = 14.dp, end = 14.dp, bottom = 28.dp))
+        if (vm.scannerLookupBusy) LookupSheet(vm.scannerLookupCode, vm::cancelBarcodeLookup, Modifier.align(Alignment.BottomCenter))
+        else ReceiptOutlinedButton("Manual barcode", { manualOpen = true }, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(start = 14.dp, end = 14.dp, bottom = 28.dp))
     }
     if (manualOpen) ManualBarcodeSheet(onDismiss = { manualOpen = false }, onLookup = { code -> manualOpen = false; vm.onBarcode(code) })
+}
+
+@Composable
+private fun ScannerUnavailableScreen(noCamera: Boolean, onBack: () -> Unit, onManual: () -> Unit, onSettings: () -> Unit) {
+    val colors = LocalReceiptColors.current
+    Surface(Modifier.fillMaxSize(), color = colors.paper) {
+        Column(Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack, Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = colors.ink) }
+                Text("SCAN", color = colors.ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.headlineSmall)
+            }
+            Column(Modifier.fillMaxWidth().weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Text(if (noCamera) "NO CAMERA" else "NO CAMERA ACCESS", color = colors.ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.headlineMedium)
+                Text(if (noCamera) "This phone has no usable camera." else "Allow the camera in Android settings.", color = colors.soft, modifier = Modifier.padding(top = 4.dp))
+                ReceiptPrimaryButton(if (noCamera) "Manual barcode" else "Open settings", if (noCamera) onManual else onSettings, Modifier.padding(top = 18.dp))
+                if (!noCamera) ReceiptOutlinedButton("Manual barcode", onManual, Modifier.padding(top = 10.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun LookupSheet(code: String, onCancel: () -> Unit, modifier: Modifier = Modifier) {
+    ReceiptSheet(modifier.fillMaxWidth().navigationBarsPadding()) {
+        PrintedProgress("Looking up", code, progressSteps = 5, modifier = Modifier.padding(top = 6.dp))
+        TertiaryLink("Cancel", onCancel, Modifier.align(Alignment.CenterHorizontally))
+    }
 }
 
 /** Four 3dp corner brackets, drawn square-capped so they read as printed registration marks. */
@@ -218,7 +280,8 @@ import java.util.concurrent.atomic.AtomicBoolean
                 keyboardActions = KeyboardActions(onDone = { barcode?.let(onLookup) }),
             )
             if (barcode == null && text.length > 7) Text("Enter an 8, 12, 13 or 14 digit barcode.", color = colors.red, style = MaterialTheme.typography.bodySmall)
-            ReceiptPrimaryButton("Look up", { barcode?.let(onLookup) }, enabled = barcode != null)
+            if (barcode != null) ReceiptPrimaryButton("Look up", { barcode.let(onLookup) })
+            else ReceiptOutlinedButton("Look up", {}, enabled = false)
         }
     }
 }
@@ -236,7 +299,8 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
     val basis = food.nutrition
     var amountText by remember(food.id) { mutableStateOf(amountFieldText(vm)) }
     // While a resolve queue is active the meal is the queue's own: shown as a printed line, not a choice.
-    val queueMeal = vm.unknownQueueTarget.takeIf { vm.resolutionContinuation && vm.unknownQueue.isNotEmpty() }
+    val queueMeal = vm.unknownQueueTarget.takeIf { vm.selectedProductOrigin == ProductReviewOrigin.QUEUE && vm.unknownQueue.isNotEmpty() }
+    val fromLibrary = vm.selectedProductOrigin == ProductReviewOrigin.LIBRARY
     var meal by remember(food.id) { mutableStateOf(queueMeal ?: vm.slot ?: MealSlot.LUNCH) }
     var editing by remember(food.id) { mutableStateOf(false) }
     val decimal = KeyboardOptions(keyboardType = KeyboardType.Decimal)
@@ -259,9 +323,10 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
                     Text(receiptFoodName(vm.productName.ifBlank { food.name }), color = colors.ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
-                    Text(listOfNotNull(food.brand, sourceLabel(letter)).joinToString(", "), color = colors.soft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 3.dp))
+                    if (!food.brand.isNullOrBlank()) Text(food.brand.orEmpty(), color = colors.soft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 3.dp))
+                    Text("${letter}  ${sourceLabel(letter)}", color = colors.soft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 3.dp))
                 }
-                SourceBox(letter, Modifier.padding(top = 1.dp))
+                if (queueMeal != null) Text("${resolveQueuePosition(vm)}", color = colors.soft, modifier = Modifier.padding(start = 4.dp))
             }
             Text(
                 buildAnnotatedString {
@@ -275,6 +340,17 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp).receiptDashedRule().padding(top = 12.dp),
             )
+            if (editing) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ReceiptField("Name", vm.productName, vm::onProductName, labelColor = colors.soft, container = colors.paper, outline = colors.soft)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ReceiptField("kcal", vm.productCalories, { vm.onProductCalories(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), labelColor = colors.soft, container = colors.paper, outline = colors.soft, keyboardOptions = decimal)
+                    ReceiptField("Protein, g", vm.productProtein, { vm.onProductProtein(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), labelColor = colors.soft, container = colors.paper, outline = colors.soft, keyboardOptions = decimal)
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ReceiptField("Carbs, g", vm.productCarbs, { vm.onProductCarbs(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), labelColor = colors.soft, container = colors.paper, outline = colors.soft, keyboardOptions = decimal)
+                    ReceiptField("Fat, g", vm.productFat, { vm.onProductFat(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), labelColor = colors.soft, container = colors.paper, outline = colors.soft, keyboardOptions = decimal)
+                }
+            }
             ReceiptField(
                 label = "Amount",
                 value = amountText,
@@ -291,35 +367,37 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
                 error = parsed == null && amountText.isNotBlank(),
                 trailing = approx?.let { label -> { ApproxTag(label) } },
             )
-            TextButton(onClick = { editing = !editing }, Modifier.heightIn(min = 48.dp).semantics { stateDescription = if (editing) "Expanded" else "Collapsed" }) {
-                Text(if (editing) "Hide details" else "Edit details", color = colors.ink, fontWeight = FontWeight.Bold)
+            if (!fromLibrary) {
+                if (queueMeal != null) Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text("Meal", color = colors.soft); Text(queueMeal.label().uppercase(), color = colors.ink, fontWeight = FontWeight.Bold) }
+                else ReceiptMealChips(meal, { meal = it }, Modifier.padding(top = 14.dp))
+                Row(Modifier.fillMaxWidth().padding(top = 14.dp).receiptDashedRule().padding(top = 12.dp, bottom = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+                    Text("RESULT", color = colors.ink, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(calculation?.takeIf { it.supported }?.let { receiptKcal(it.nutrition.calories) } ?: "—", color = colors.ink, style = MaterialTheme.typography.displayLarge)
+                        Text(" kcal", color = colors.soft, style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+                ReceiptPrimaryButton("Add to ${(queueMeal ?: meal).label()}", { vm.addSelected(queueMeal ?: meal) }, enabled = canAdd)
+            } else {
+                ReceiptPrimaryButton("Save to library", vm::saveSelectedToLibrary, enabled = canAdd)
             }
-            if (editing) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ReceiptField("Name", vm.productName, vm::onProductName, labelColor = colors.soft, container = colors.paper, outline = colors.soft)
-                ReceiptField("Calories, kcal", vm.productCalories, { vm.onProductCalories(it.asciiDigits(allowDecimalPoint = true)) }, labelColor = colors.soft, container = colors.paper, outline = colors.soft, keyboardOptions = decimal, error = vm.productCalories.toDoubleOrNull() == null)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ReceiptField("Protein, g", vm.productProtein, { vm.onProductProtein(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), labelColor = colors.soft, container = colors.paper, outline = colors.soft, keyboardOptions = decimal)
-                    ReceiptField("Carbs, g", vm.productCarbs, { vm.onProductCarbs(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), labelColor = colors.soft, container = colors.paper, outline = colors.soft, keyboardOptions = decimal)
-                    ReceiptField("Fat, g", vm.productFat, { vm.onProductFat(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), labelColor = colors.soft, container = colors.paper, outline = colors.soft, keyboardOptions = decimal)
+            Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                TertiaryLink("EDIT DETAILS", { editing = !editing }, Modifier.weight(1f).semantics { stateDescription = if (editing) "Expanded" else "Collapsed" })
+                TertiaryLink("FIND BETTER MATCH", { vm.clearSelectedProduct(); vm.openSearch(fromResolver = vm.resolutionContinuation) }, Modifier.weight(1f))
+                TertiaryLink("RESCAN", { vm.clearSelectedProduct(); vm.beginScan() }, Modifier.weight(1f))
+            }
+            if (queueMeal != null) {
+                vm.unknownQueue.drop(1).firstOrNull()?.let { next ->
+                    Text("Next: $next", color = colors.soft, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
                 }
             }
-            if (queueMeal != null) Text("Meal  ${queueMeal.label()}", color = colors.soft, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 14.dp))
-            else ReceiptMealChips(meal, { meal = it }, Modifier.padding(top = 14.dp))
-            Row(Modifier.fillMaxWidth().padding(top = 14.dp).receiptDashedRule().padding(top = 12.dp, bottom = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                Text("Result", color = colors.soft, style = MaterialTheme.typography.labelMedium)
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(calculation?.takeIf { it.supported }?.let { receiptKcal(it.nutrition.calories) } ?: "—", color = colors.ink, style = MaterialTheme.typography.displayLarge)
-                    Text(" kcal", color = colors.soft, style = MaterialTheme.typography.labelMedium)
-                }
-            }
-            ReceiptPrimaryButton("Add to ${(queueMeal ?: meal).label()}", { vm.addSelected(queueMeal ?: meal) }, enabled = canAdd)
-            if (canSaveProductToLibrary(vm.slot, vm.resolutionContinuation, vm.unknownQueue.isNotEmpty())) {
-                ReceiptTonalButton("Save to library", vm::saveSelectedToLibrary, Modifier.padding(top = 10.dp), enabled = canAdd)
-            }
-            TextButton(onClick = { vm.clearSelectedProduct(); vm.openSearch(fromResolver = vm.resolutionContinuation) }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Find better match", color = colors.ink) }
-            TextButton(onClick = { vm.clearSelectedProduct(); vm.beginScan() }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Rescan", color = colors.ink) }
         }
     }
+}
+
+private fun resolveQueuePosition(vm: BreakfastViewModel): String {
+    val shown = maxOf(vm.unknownQueueTotal, vm.unknownQueue.size)
+    return "${(shown - vm.unknownQueue.size + 1).coerceIn(1, maxOf(1, shown))} of $shown"
 }
 
 private class ScannerSession {

@@ -24,6 +24,11 @@ class FoodDraft {
     var protein by mutableStateOf("")
     var carbs by mutableStateOf("")
     var fat by mutableStateOf("")
+    var caloriesEdited by mutableStateOf(false)
+    var proteinEdited by mutableStateOf(false)
+    var carbsEdited by mutableStateOf(false)
+    var fatEdited by mutableStateOf(false)
+    var basisEdited by mutableStateOf(false)
     var basisAmount by mutableStateOf("100")
     var basisUnit by mutableStateOf("g")
     var fromOff by mutableStateOf(false)
@@ -49,6 +54,7 @@ class FoodDraft {
         basisAmount = food?.nutrition?.amount?.toString() ?: "100"
         basisUnit = food?.nutrition?.unit?.label ?: "g"
         fromOff = false; barcodeFromScan = false; fullFormOpen = false
+        caloriesEdited = false; proteinEdited = false; carbsEdited = false; fatEdited = false; basisEdited = false
         aliases = food?.aliases.orEmpty(); aliasInput = ""; aliasFieldOpen = false
         servings = food?.householdServings().orEmpty()
         servingFormOpen = false; servingUnit = MeasureUnit.PIECE; servingAmount = ""; servingLabel = ""

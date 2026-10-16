@@ -47,10 +47,11 @@ import com.iron.breakfast.ui.components.ReceiptTag
 import com.iron.breakfast.ui.components.ReceiptTokenKind
 import com.iron.breakfast.ui.components.ReceiptTokenRange
 import com.iron.breakfast.ui.components.ReceiptTokenVisualTransformation
+import com.iron.breakfast.ui.components.CharacterRule
+import com.iron.breakfast.ui.components.ReceiptPrimaryButton
 import com.iron.breakfast.ui.components.ReceiptTonalIconButton
 import com.iron.breakfast.ui.components.ReceiptTopBar
 import com.iron.breakfast.ui.components.receiptDashedRule
-import com.iron.breakfast.ui.theme.LocalReceiptColors
 import com.iron.breakfast.ui.theme.ReceiptPaperShape
 import com.iron.breakfast.ui.theme.LocalReceiptColors
 
@@ -70,12 +71,9 @@ import com.iron.breakfast.ui.theme.LocalReceiptColors
     val decimal = KeyboardOptions(keyboardType = KeyboardType.Decimal)
     BackHandler(onBack = vm::closeCustom)
     Surface(Modifier.fillMaxSize(), color = colors.paper) {
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).imePadding().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-            ReceiptTopBar("New food", vm::closeCustom, Modifier.padding(start = 4.dp), trailing = {
-                TextButton(onClick = vm::saveCustom, enabled = state.canSave, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text("Save", color = if (state.canSave) colors.ink else colors.soft, fontWeight = FontWeight.Bold)
-                }
-            })
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).imePadding().padding(bottom = 12.dp)) {
+            ReceiptTopBar("New food", vm::closeCustom, Modifier.padding(start = 4.dp))
             Column(Modifier.padding(horizontal = 14.dp).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 ReceiptField("Name", draft.name, { draft.name = it })
                 ReceiptField("Brand", draft.brand, { draft.brand = it })
@@ -131,22 +129,34 @@ import com.iron.breakfast.ui.theme.LocalReceiptColors
             }
             Column(Modifier.padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 if (draft.fullFormOpen) {
+                    val basisAmount = if (draft.basisEdited) draft.basisAmount else editableNumber(state.nutrition.basisAmount)
+                    val basisUnit = if (draft.basisEdited) draft.basisUnit else state.nutrition.basisUnit.label
+                    val calories = if (draft.caloriesEdited) draft.calories else state.nutrition.calories?.let(::editableNumber).orEmpty()
+                    val protein = if (draft.proteinEdited) draft.protein else state.nutrition.protein?.let(::editableNumber).orEmpty()
+                    val carbs = if (draft.carbsEdited) draft.carbs else state.nutrition.carbohydrates?.let(::editableNumber).orEmpty()
+                    val fat = if (draft.fatEdited) draft.fat else state.nutrition.fat?.let(::editableNumber).orEmpty()
+                    Text("Shorthand fills these. Edits here win.", color = colors.soft, style = MaterialTheme.typography.bodySmall)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = androidx.compose.ui.Alignment.Bottom) {
-                        ReceiptField("Basis amount", draft.basisAmount, { draft.basisAmount = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f), keyboardOptions = decimal)
+                        ReceiptField("Basis", basisAmount, { draft.basisEdited = true; draft.basisAmount = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f), keyboardOptions = decimal)
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("g", "ml").forEach { unit -> ReceiptChoiceChip(unit, draft.basisUnit == unit, { draft.basisUnit = unit }) }
+                            listOf("g", "ml").forEach { unit -> ReceiptChoiceChip(unit, basisUnit == unit, { draft.basisEdited = true; draft.basisUnit = unit }) }
                         }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ReceiptField("Calories *", draft.calories, { draft.calories = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f), keyboardOptions = decimal, error = state.showRequired)
-                        ReceiptField("Protein, g", draft.protein, { draft.protein = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f), keyboardOptions = decimal)
+                        ReceiptField("kcal", calories, { draft.caloriesEdited = true; draft.calories = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f), keyboardOptions = decimal, error = state.showRequired)
+                        ReceiptField("Protein, g", protein, { draft.proteinEdited = true; draft.protein = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f), keyboardOptions = decimal)
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ReceiptField("Carbs, g", draft.carbs, { draft.carbs = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f), keyboardOptions = decimal)
-                        ReceiptField("Fat, g", draft.fat, { draft.fat = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f), keyboardOptions = decimal)
+                        ReceiptField("Carbs, g", carbs, { draft.carbsEdited = true; draft.carbs = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f), keyboardOptions = decimal)
+                        ReceiptField("Fat, g", fat, { draft.fatEdited = true; draft.fat = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f), keyboardOptions = decimal)
                     }
                 }
                 ReceiptField("Alias", draft.aliasInput, { draft.aliasInput = it })
+            }
+            }
+            Column(Modifier.fillMaxWidth().imePadding().padding(horizontal = 14.dp, vertical = 8.dp)) {
+                CharacterRule('=')
+                ReceiptPrimaryButton("Save", vm::saveCustom, Modifier.padding(top = 8.dp), enabled = state.canSave)
             }
         }
     }

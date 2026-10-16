@@ -11,6 +11,22 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class MainActivityRoutingTest {
+    @Test fun contributionAuthCannotDismissWhileSubmitting() {
+        assertEquals(false, contributionAuthCanDismiss(true))
+        assertEquals(true, contributionAuthCanDismiss(false))
+    }
+
+    @Test fun scannedProductReviewKeepsLibraryOriginSeparateFromMealAndQueue() {
+        assertEquals(ProductReviewOrigin.LIBRARY, productReviewOrigin(null, resolving = false, queueNotEmpty = false))
+        assertEquals(ProductReviewOrigin.MEAL, productReviewOrigin(MealSlot.DINNER, resolving = false, queueNotEmpty = false))
+        assertEquals(ProductReviewOrigin.QUEUE, productReviewOrigin(null, resolving = true, queueNotEmpty = true))
+    }
+
+    @Test fun libraryOriginCanSaveWithoutCreatingDiaryLogPlan() {
+        assertEquals(true, canSaveProductToLibrary(null, resolutionContinuation = false, queueNotEmpty = false))
+        assertEquals(false, canSaveProductToLibrary(null, resolutionContinuation = true, queueNotEmpty = true))
+    }
+
     @Test fun mealWordsInsideFoodNamesAreNotMarkers() {
         assertEquals(emptyList<MealSlot>(), mealMarkerSlots("breakfast cereal, 100g oats"))
         assertEquals(emptyList<MealSlot>(), mealMarkerSlots("100g oats, lunch meat"))

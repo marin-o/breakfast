@@ -522,15 +522,16 @@ fun ReceiptTopBar(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
+    backEnabled: Boolean = true,
     trailing: @Composable () -> Unit = {},
 ) {
     val colors = LocalReceiptColors.current
     Row(modifier.fillMaxWidth().padding(top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+        IconButton(onClick = onBack, enabled = backEnabled, modifier = Modifier.size(48.dp)) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = colors.ink)
         }
         Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
-            Text(title, color = colors.ink, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+            Text(title.uppercase(), color = colors.ink, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
             if (subtitle != null) Text(subtitle, color = colors.soft, style = MaterialTheme.typography.bodySmall)
         }
         trailing()
@@ -666,7 +667,7 @@ fun ReceiptField(
 @Composable
 fun ReceiptPrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, fillWidth: Boolean = true) {
     val colors = LocalReceiptColors.current
-    Box(modifier.then(if (fillWidth) Modifier.fillMaxWidth() else Modifier).heightIn(min = 52.dp).background(if (enabled) colors.ink else colors.paper).clickable(enabled = enabled, role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
+    Box(modifier.then(if (fillWidth) Modifier.fillMaxWidth() else Modifier).heightIn(min = 52.dp).then(if (enabled) Modifier.background(colors.ink) else Modifier.border(2.dp, colors.soft)).clickable(enabled = enabled, role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
         Text(text.uppercase(), color = if (enabled) colors.paper else colors.soft, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
     }
 }
@@ -674,7 +675,7 @@ fun ReceiptPrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier =
 @Composable
 fun ReceiptTonalButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val colors = LocalReceiptColors.current
-    Box(modifier.fillMaxWidth().heightIn(min = 48.dp).border(2.dp, colors.ink).clickable(enabled = enabled, role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
+    Box(modifier.fillMaxWidth().heightIn(min = 48.dp).border(2.dp, if (enabled) colors.ink else colors.soft).clickable(enabled = enabled, role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
         Text(text.uppercase(), color = if (enabled) colors.ink else colors.soft, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
     }
 }
@@ -682,7 +683,7 @@ fun ReceiptTonalButton(text: String, onClick: () -> Unit, modifier: Modifier = M
 @Composable
 fun ReceiptOutlinedButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, fillWidth: Boolean = true, enabled: Boolean = true) {
     val colors = LocalReceiptColors.current
-    Box(modifier.then(if (fillWidth) Modifier.fillMaxWidth() else Modifier).heightIn(min = 48.dp).border(2.dp, colors.ink).clickable(enabled = enabled, role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
+    Box(modifier.then(if (fillWidth) Modifier.fillMaxWidth() else Modifier).heightIn(min = 48.dp).border(2.dp, if (enabled) colors.ink else colors.soft).clickable(enabled = enabled, role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
         Text(text.uppercase(), color = if (enabled) colors.ink else colors.soft, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
     }
 }
@@ -757,6 +758,10 @@ fun ReceiptMealChips(selected: MealSlot, onSelect: (MealSlot) -> Unit, modifier:
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label.uppercase(), color = colors.ink, fontWeight = FontWeight.Bold)
         Text(detail, color = colors.soft, style = MaterialTheme.typography.bodySmall)
-        Box(Modifier.fillMaxWidth().height(28.dp).border(2.dp, colors.ink).padding(3.dp)) { Box(Modifier.fillMaxWidth(progressSteps.coerceIn(0, 12) / 12f).background(colors.ink).height(20.dp)) }
+        Row(Modifier.fillMaxWidth().height(28.dp).border(2.dp, colors.ink).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            repeat(12) { index ->
+                Box(Modifier.weight(1f).height(20.dp).background(if (index < progressSteps.coerceIn(0, 12)) colors.ink else colors.paper))
+            }
+        }
     }
 }

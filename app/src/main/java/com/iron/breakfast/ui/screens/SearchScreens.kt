@@ -16,23 +16,18 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.WifiOff
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -40,19 +35,18 @@ import androidx.compose.ui.unit.dp
 import com.iron.breakfast.BreakfastViewModel
 import com.iron.breakfast.label
 import com.iron.breakfast.resolvePosition
-import com.iron.breakfast.ui.components.ReceiptEntryRow
+import com.iron.breakfast.pretty
+import com.iron.breakfast.ui.components.CharacterRule
+import com.iron.breakfast.ui.components.ItemRow
+import com.iron.breakfast.ui.components.PrintedProgress
 import com.iron.breakfast.ui.components.ReceiptOutlinedButton
-import com.iron.breakfast.ui.components.ReceiptPaperTicket
-import com.iron.breakfast.ui.components.ReceiptPlainSlip
 import com.iron.breakfast.ui.components.ReceiptPrimaryButton
 import com.iron.breakfast.ui.components.ReceiptSearchPill
 import com.iron.breakfast.ui.components.receiptFoodName
-import com.iron.breakfast.ui.components.ReceiptSubhead
 import com.iron.breakfast.ui.components.ReceiptTag
-import com.iron.breakfast.ui.components.ReceiptTonalButton
 import com.iron.breakfast.ui.components.ReceiptTopBar
+import com.iron.breakfast.ui.components.TertiaryLink
 import com.iron.breakfast.ui.theme.LocalReceiptColors
-import com.iron.breakfast.ui.theme.ReceiptPillShape
 import com.iron.breakfast.ui.theme.ReceiptStickerShape
 
 /** Local search that found nothing: the way on is Open Food Facts or a personal food. */
@@ -68,12 +62,16 @@ import com.iron.breakfast.ui.theme.ReceiptStickerShape
                 IconButton(onClick = clear, Modifier.size(48.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = colors.ink) }
                 ReceiptSearchPill(query, vm::onLibraryQuery, onClear = clear, label = "Search library", modifier = Modifier.weight(1f))
             }
-            ReceiptPlainSlip(Modifier.padding(start = 14.dp, end = 14.dp, top = 16.dp)) {
-                Text("No local match for $query", color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
-                Spacer(Modifier.height(16.dp))
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                CharacterRule('-')
+                Column(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("NO LOCAL MATCH", color = colors.ink, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
+                    Text(query, color = colors.ink, fontWeight = FontWeight.Bold)
+                }
+                CharacterRule('-')
+                Spacer(Modifier.height(8.dp))
                 ReceiptPrimaryButton("Search Open Food Facts", { vm.openSearch(query.trim()) })
-                Spacer(Modifier.height(10.dp))
-                ReceiptTonalButton("Create personal food", { vm.openCustom(query.trim()) })
+                ReceiptOutlinedButton("Create personal food", { vm.openCustom(query.trim()) })
             }
         }
     }
@@ -88,47 +86,41 @@ import com.iron.breakfast.ui.theme.ReceiptStickerShape
             ReceiptTopBar("Open Food Facts", vm::closeSearch, Modifier.padding(horizontal = 4.dp))
             Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ReceiptSearchPill(vm.searchQuery, vm::onSearch, onClear = { vm.onSearch("") }, label = "Search Open Food Facts", modifier = Modifier.weight(1f), onSearch = vm::submitSearch)
-                // Loading keeps its existing form until a dedicated design arrives: the button reads "Searching…".
-                ReceiptPrimaryButton(if (vm.searchBusy) "Searching…" else "Search", vm::submitSearch, enabled = !vm.searchBusy, fillWidth = false)
+                if (vm.searchBusy) ReceiptOutlinedButton("Search", vm::submitSearch, fillWidth = false, enabled = false)
+                else ReceiptPrimaryButton("Search", vm::submitSearch, fillWidth = false)
             }
             Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (vm.offResults.isNotEmpty()) {
-                    ReceiptPaperTicket {
-                        ReceiptSubhead(if (vm.offResults.size == 1) "1 result" else "${vm.offResults.size} results")
-                        vm.offResults.forEach { food ->
-                            ReceiptEntryRow(
-                                name = food.name,
-                                quantityLine = food.brand.orEmpty(),
-                                calories = receiptKcal(food.nutrition.values.calories),
-                                calorieCaption = basisCaption(food.nutrition.amount, food.nutrition.unit),
-                                source = sourceLetter(food),
-                                onClick = { vm.chooseProduct(food) },
-                            )
+                when {
+                    vm.searchBusy -> Column { CharacterRule('-'); PrintedProgress("Searching", vm.searchQuery, progressSteps = 5, modifier = Modifier.padding(vertical = 14.dp)); CharacterRule('-'); TertiaryLink("Cancel", vm::closeSearch, Modifier.padding(top = 4.dp)) }
+                    vm.offResults.isNotEmpty() -> {
+                        CharacterRule('-')
+                        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("${vm.offResults.size} RESULTS", color = colors.soft)
+                            Text("/${vm.offResults.first().nutrition.amount.pretty()} ${vm.offResults.first().nutrition.unit.label}", color = colors.soft)
                         }
+                        CharacterRule('-')
+                        vm.offResults.forEach { food ->
+                            ItemRow(food.name, food.brand.orEmpty(), receiptKcal(food.nutrition.values.calories), sourceLetter(food), approximate = null, onClick = { vm.chooseProduct(food) })
+                        }
+                        CharacterRule('=')
                     }
                 }
                 vm.offSearchMessage?.let { message ->
                     if (vm.offSearchUnavailable) {
-                        ReceiptPlainSlip {
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
-                                Icon(Icons.Default.WifiOff, contentDescription = null, tint = colors.red, modifier = Modifier.size(32.dp))
-                                Column {
-                                    Text("No connection", color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
-                                    Text("Open Food Facts needs internet. Local foods still work.", color = colors.soft, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
-                                }
-                            }
-                        }
+                        CharacterRule('-')
+                        Text("NO CONNECTION", color = colors.ink, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
+                        Text("Open Food Facts needs internet. Local foods still work.", color = colors.soft)
                         ReceiptOutlinedButton("Retry", vm::submitSearch)
-                        ReceiptTonalButton("Create personal food", { vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) })
+                        ReceiptOutlinedButton("Create personal food", { vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) })
                     } else if (message.startsWith("No usable result")) {
-                        ReceiptPlainSlip {
-                            Text(message, color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
-                            Spacer(Modifier.height(16.dp))
-                            ReceiptTonalButton("Create personal food", { vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) })
-                        }
+                        Text("NO RESULTS", color = colors.ink, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
+                        ReceiptOutlinedButton("Create personal food", { vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) })
                     } else {
-                        ReceiptPlainSlip { Text(message, color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() }) }
+                        CharacterRule('-')
+                        Text("SEARCH FAILED", color = colors.ink, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
+                        Text("Open Food Facts returned an error.", color = colors.soft)
                         ReceiptOutlinedButton("Retry", vm::submitSearch)
+                        ReceiptOutlinedButton("Create personal food", { vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) })
                     }
                 }
             }
@@ -167,13 +159,18 @@ import com.iron.breakfast.ui.theme.ReceiptStickerShape
                 Text(receiptFoodName(display.name), color = colors.ink, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 8.dp))
             }
             Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 16.dp)) {
-                ReceiptSearchPill(vm.resolverQuery, vm::onResolverQuery, onClear = { vm.onResolverQuery("") }, label = "Search your foods", modifier = Modifier.padding(bottom = 16.dp))
+                if (vm.resolverSearchOpen) {
+                    ReceiptSearchPill(vm.resolverQuery, vm::onResolverQuery, onClear = { vm.onResolverQuery("") }, label = "Search your foods", modifier = Modifier.padding(bottom = 16.dp))
+                } else {
+                    TertiaryLink("Search your foods", vm::beginResolverSearch, Modifier.padding(bottom = 16.dp))
+                }
                 if (vm.resolverResults.isNotEmpty()) {
-                    ReceiptPaperTicket {
-                        ReceiptSubhead("Local matches")
-                        vm.resolverResults.forEach { ranked ->
+                CharacterRule('-')
+                Text("LOCAL MATCHES", color = colors.soft, fontWeight = FontWeight.Bold)
+                CharacterRule('-')
+                vm.resolverResults.forEach { ranked ->
                             val match = matchDisplay(ranked.food, raw)
-                            ReceiptEntryRow(
+                            ItemRow(
                                 name = ranked.food.name,
                                 quantityLine = match.detail,
                                 approximate = match.approximateLabel,
@@ -182,12 +179,11 @@ import com.iron.breakfast.ui.theme.ReceiptStickerShape
                                 onClick = { vm.resolveUnknown(ranked.food) },
                             )
                         }
-                    }
                 }
                 Column(Modifier.padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ReceiptTonalButton("Search Open Food Facts", { vm.openSearch(vm.currentUnknownName(), fromResolver = true) })
+                    ReceiptOutlinedButton("Search Open Food Facts", { vm.openSearch(vm.currentUnknownName(), fromResolver = true) })
                     ReceiptOutlinedButton("Create personal food", { vm.openCustom(vm.currentUnknownName(), fromResolver = true) })
-                    TextButton(onClick = vm::skipCurrentUnknown, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Skip", color = colors.ink) }
+                    TertiaryLink("Skip", vm::skipCurrentUnknown)
                 }
             }
         }
