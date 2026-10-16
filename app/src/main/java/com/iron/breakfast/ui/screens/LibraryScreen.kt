@@ -236,10 +236,23 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
 @Composable
 private fun LibraryFactRow(label: String, number: String, unit: String) {
     val colors = LocalReceiptColors.current
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, color = colors.ink, modifier = Modifier.weight(1f))
-        Text(number, color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.width(60.dp), textAlign = TextAlign.End)
-        Text(unit, color = colors.soft, modifier = Modifier.width(50.dp).padding(start = 10.dp))
+    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    val numberWidth = 60.dp * fontScale
+    val unitWidth = 50.dp * fontScale
+    if (fontScale >= 1.75f) {
+        Column(Modifier.fillMaxWidth()) {
+            Text(label, color = colors.ink)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                Text(number, color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.width(numberWidth), textAlign = TextAlign.End)
+                Text(unit, color = colors.soft, maxLines = 1, modifier = Modifier.width(unitWidth).padding(start = 10.dp))
+            }
+        }
+    } else {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, color = colors.ink, modifier = Modifier.weight(1f))
+            Text(number, color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.width(numberWidth), textAlign = TextAlign.End)
+            Text(unit, color = colors.soft, maxLines = 1, modifier = Modifier.width(unitWidth).padding(start = 10.dp))
+        }
     }
 }
 

@@ -1625,16 +1625,22 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
 @Composable private fun ContributionLine(label: String, value: String, unit: String? = null) {
     val colors = com.iron.breakfast.ui.theme.LocalReceiptColors.current
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(label, color = colors.ink, modifier = Modifier.weight(1f))
-        Text(
-            value,
-            color = colors.ink,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.End,
-            modifier = if (unit == null) Modifier else Modifier.width(64.dp * fontScale),
-        )
-        if (unit != null) Text(unit, color = colors.soft, modifier = Modifier.width(44.dp * fontScale).padding(start = 8.dp))
+    val valueModifier = if (unit == null) Modifier else Modifier.width(64.dp * fontScale)
+    val unitModifier = Modifier.width(44.dp * fontScale).padding(start = 8.dp)
+    if (unit != null && fontScale >= 1.75f) {
+        Column(Modifier.fillMaxWidth()) {
+            Text(label, color = colors.ink)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Text(value, color = colors.ink, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, modifier = valueModifier)
+                Text(unit, color = colors.soft, maxLines = 1, modifier = unitModifier)
+            }
+        }
+    } else {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(label, color = colors.ink, modifier = Modifier.weight(1f))
+            Text(value, color = colors.ink, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, modifier = valueModifier)
+            if (unit != null) Text(unit, color = colors.soft, maxLines = 1, modifier = unitModifier)
+        }
     }
 }
 
