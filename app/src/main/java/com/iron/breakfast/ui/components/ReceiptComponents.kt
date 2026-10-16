@@ -194,29 +194,32 @@ fun ReceiptEntryRow(
     modifier: Modifier = Modifier,
     /** Small grey line under the kcal figure, such as "/100 ml". */
     calorieCaption: String? = null,
+    /** Daily and meal receipts place one printed rule between sections instead of row rules. */
+    showRule: Boolean = true,
 ) {
     val colors = LocalReceiptColors.current
-    Row(
+    Box(
         modifier
             .fillMaxWidth()
             .then(if (fresh) Modifier.background(colors.paper) else Modifier)
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
-            .then(if (first) Modifier else Modifier.receiptDashedRule())
-            .padding(horizontal = 14.dp, vertical = 11.dp),
-        verticalAlignment = Alignment.Top,
+            .then(if (first || !showRule) Modifier else Modifier.receiptDashedRule()),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(receiptFoodName(name), color = colors.ink, style = MaterialTheme.typography.bodyLarge)
-            if (approximate != null || quantityLine.isNotBlank()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (approximate != null) ApproxTag(approximate)
-                if (quantityLine.isNotBlank()) Text(quantityLine, color = colors.soft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f, fill = false))
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.Top) {
+            Column(Modifier.weight(1f)) {
+                Text(receiptFoodName(name), color = colors.ink, style = MaterialTheme.typography.bodyLarge)
+                if (approximate != null || quantityLine.isNotBlank()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (approximate != null) ApproxTag(approximate)
+                    if (quantityLine.isNotBlank()) Text(quantityLine, color = colors.soft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f, fill = false))
+                }
             }
+            Column(Modifier.padding(start = 10.dp), horizontalAlignment = Alignment.End) {
+                Text(calories, color = colors.ink, style = MaterialTheme.typography.displaySmall, modifier = Modifier.width(54.dp), textAlign = TextAlign.End)
+                if (calorieCaption != null) Text(calorieCaption, color = colors.soft, style = MaterialTheme.typography.labelSmall)
+            }
+            SourceBox(source, Modifier.padding(start = 10.dp, top = 1.dp))
         }
-        Column(Modifier.padding(start = 10.dp), horizontalAlignment = Alignment.End) {
-            Text(calories, color = colors.ink, style = MaterialTheme.typography.displaySmall, modifier = Modifier.width(54.dp), textAlign = TextAlign.End)
-            if (calorieCaption != null) Text(calorieCaption, color = colors.soft, style = MaterialTheme.typography.labelSmall)
-        }
-        SourceBox(source, Modifier.padding(start = 10.dp, top = 1.dp))
+        if (fresh) Text("*", color = colors.ink, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 11.dp))
     }
 }
 

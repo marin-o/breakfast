@@ -2,39 +2,34 @@ package com.iron.breakfast.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -56,23 +51,23 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.BreakfastViewModel
-import com.iron.breakfast.EntryEditMode
+import com.iron.breakfast.ContributionAction
 import com.iron.breakfast.QuickAddPreview
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.displayLabel
-import com.iron.breakfast.macro
 import com.iron.breakfast.pretty
 import com.iron.breakfast.label
+import com.iron.breakfast.ui.components.CharacterRule
 import com.iron.breakfast.ui.components.ReceiptBottomTray
 import com.iron.breakfast.ui.components.ReceiptChoiceChip
 import com.iron.breakfast.ui.components.ReceiptEntryRow
+import com.iron.breakfast.ui.components.ReceiptOutlinedButton
 import com.iron.breakfast.ui.components.ReceiptQuickAddField
-import com.iron.breakfast.ui.components.ReceiptSticker
 import com.iron.breakfast.ui.components.ReceiptSnackbar
-import com.iron.breakfast.ui.components.ReceiptTicket
+import com.iron.breakfast.ui.components.ReceiptSticker
 import com.iron.breakfast.ui.components.ReceiptTokenVisualTransformation
 import com.iron.breakfast.ui.theme.LocalReceiptColors
 import kotlin.math.roundToInt
@@ -82,54 +77,34 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
     val target = vm.slot ?: return
     val entries = vm.entries.filter { it.dayKey == vm.selectedDayKey && it.mealSlot == target }
     val foods = vm.foods.associateBy { it.id }
-    val total = entries.fold(NutritionValues.ZERO) { a, e -> a + e.nutritionSnapshot }
-    val (_, subtitle) = dayTitle(vm.selectedDayKey)
+    val total = entries.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
+    val (dayName, date) = dayTitle(vm.selectedDayKey)
     val colors = LocalReceiptColors.current
-
     LazyColumn(
         modifier.fillMaxSize().background(colors.paper),
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         item {
-            Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = vm::closeMeal) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = vm::closeMeal) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = colors.ink) }
                 Column(Modifier.weight(1f)) {
-                    val headingStyle = MaterialTheme.typography.headlineMedium
-                    Text(target.label(), style = headingStyle, color = colors.ink)
-                    Text(subtitle, style = MaterialTheme.typography.titleSmall, color = colors.soft)
+                    Text(target.name.uppercase(), style = MaterialTheme.typography.headlineSmall, color = colors.red, fontWeight = FontWeight.Bold)
+                    Text("${dayName.take(3)} $date", color = colors.soft, style = MaterialTheme.typography.bodyLarge)
                 }
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(receiptKcal(total.calories), style = MaterialTheme.typography.titleLarge, color = colors.ink, fontWeight = FontWeight.Bold)
-                    Text(" kcal", style = MaterialTheme.typography.titleSmall, color = colors.soft)
-                }
+                Text(receiptKcal(total.calories), style = MaterialTheme.typography.headlineMedium, color = colors.red, fontWeight = FontWeight.Bold)
             }
+            CharacterRule('-', modifier = Modifier.padding(top = 6.dp))
         }
+        items(entries) { entry -> EntryRow(entry, foods[entry.foodId], vm, entries.firstOrNull()?.id == entry.id) }
         item {
-            ReceiptTicket(total = receiptKcal(total.calories), time = earliestMealTime(entries), mealName = "") {
-                entries.forEachIndexed { index, entry -> EntryRow(entry, foods[entry.foodId], vm, index == 0) }
+            CharacterRule('-', modifier = Modifier.padding(top = 6.dp))
+            Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ReceiptOutlinedButton("+ Add food", { vm.openFocusedLibrary(target) }, fillWidth = false)
+                ReceiptOutlinedButton("Scan", vm::beginScan, fillWidth = false)
             }
+            vm.pendingContribution?.let { ContributionAction(vm) }
         }
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(
-                    onClick = { vm.openFocusedLibrary(target) },
-                    modifier = Modifier.heightIn(min = 48.dp),
-                    colors = if (vm.input.isBlank()) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(
-                        containerColor = colors.paper,
-                        contentColor = colors.ink,
-                    ),
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Text("Add food", modifier = Modifier.padding(start = 8.dp))
-                }
-                OutlinedButton(onClick = vm::beginScan, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Icon(Icons.Default.QrCodeScanner, contentDescription = null)
-                    Text("Scan", modifier = Modifier.padding(start = 8.dp))
-                }
-            }
-        }
-        item { vm.pendingContribution?.let { com.iron.breakfast.ContributionAction(vm) } }
     }
 }
 
@@ -139,45 +114,13 @@ internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot) {
     val previews = vm.quickAddPreviews()
     val suggestions = vm.quickAddSuggestions()
     Column(Modifier.fillMaxWidth().background(colors.paper).navigationBarsPadding()) {
-        vm.undoEntry?.let { deleted ->
-            ReceiptSnackbar(
-                message = "${deleted.foodName} deleted",
-                actionLabel = "Undo",
-                onAction = vm::undo,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-            )
-        }
+        vm.undoEntry?.let { deleted -> ReceiptSnackbar("${deleted.foodName} deleted", "Undo", vm::undo, Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) }
         ReceiptBottomTray(
             content = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (previews.isNotEmpty()) {
-                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            previews.forEach { preview -> MealPendingSticker(preview) }
-                        }
-                    }
-                    if (suggestions.isNotEmpty()) {
-                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            suggestions.forEachIndexed { index, ranked ->
-                                if (index == 0) {
-                                    com.iron.breakfast.ui.components.ReceiptTonalChip(
-                                        vm.quickAddSuggestionLabel(ranked.food),
-                                        { vm.chooseQuickSuggestion(ranked.food) },
-                                    )
-                                } else {
-                                    ReceiptChoiceChip(ranked.food.name, false, { vm.chooseQuickSuggestion(ranked.food) })
-                                }
-                            }
-                        }
-                    }
-                    ReceiptQuickAddField(
-                        value = vm.input,
-                        onValueChange = vm::onInput,
-                        onLog = vm::submit,
-                        onImeDone = vm::submit,
-                        placeholder = "Add to ${target.label()}",
-                        expanded = vm.input.contains(',') || vm.input.length > 28,
-                        visualTransformation = ReceiptTokenVisualTransformation(tokenRangesForInput(vm.input, vm::isRecognizedFood), redFill = colors.redFill, onRedFill = colors.onRedFill),
-                    )
+                    if (previews.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { previews.forEach { MealPendingSticker(it) } }
+                    if (suggestions.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { suggestions.forEachIndexed { index, ranked -> ReceiptChoiceChip(vm.quickAddSuggestionLabel(ranked.food), index == 0, { vm.chooseQuickSuggestion(ranked.food) }, Modifier.width(200.dp)) } }
+                    ReceiptQuickAddField(vm.input, vm::onInput, vm::submit, "Add to ${target.label()}", vm.input.contains(',') || vm.input.length > 28, ReceiptTokenVisualTransformation(tokenRangesForInput(vm.input, vm::isRecognizedFood), colors.redFill, colors.onRedFill), vm::submit)
                 }
             },
             nav = {},
@@ -187,13 +130,7 @@ internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot) {
 
 @Composable
 private fun MealPendingSticker(preview: QuickAddPreview) {
-    ReceiptSticker(
-        name = preview.food.name,
-        value = receiptKcal(preview.calculation.nutrition.calories),
-        detail = "${preview.amount.pretty()} ${preview.unit.displayLabel()}",
-        fields = listOf("${preview.calculation.resolvedBaseAmount.pretty()} ${preview.food.nutrition.unit.displayLabel()}", sourceLetter(preview.food)),
-        approximateDetail = preview.calculation.approximate,
-    )
+    ReceiptSticker(preview.food.name, receiptKcal(preview.calculation.nutrition.calories), "${preview.amount.pretty()} ${preview.unit.displayLabel()}", listOf("${preview.calculation.resolvedBaseAmount.pretty()} ${preview.food.nutrition.unit.displayLabel()}", sourceLetter(preview.food)), preview.calculation.approximate)
 }
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -205,15 +142,15 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel
     val deleteWidth = with(LocalDensity.current) { 96.dp.toPx() }
     val touchSlop = LocalViewConfiguration.current.touchSlop
     val density = LocalDensity.current
-    val quantity = quantityRateDisplay(entry, food)
+    val quantity = quantityRateDisplay(entry, food, includeRateUnit = false, asciiMultiply = true)
     Box(Modifier.fillMaxWidth().background(colors.paper).onSizeChanged { rowHeight = it.height }) {
         if (revealOffset < 0f) Row(
-            Modifier.align(Alignment.CenterEnd).width(96.dp).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).background(colors.red).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { vm.delete(entry); revealOffset = 0f }.padding(horizontal = 8.dp),
+            Modifier.align(Alignment.CenterEnd).width(96.dp).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).background(colors.redFill).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { vm.delete(entry); revealOffset = 0f },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
-            Icon(Icons.Default.Delete, contentDescription = null, tint = colors.paper)
-            Text("Delete", color = colors.paper, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 4.dp))
+            Icon(Icons.Default.Delete, null, tint = colors.onRedFill)
+            Text("DELETE", color = colors.onRedFill, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
         }
         ReceiptEntryRow(
             name = entry.foodName,
@@ -221,50 +158,36 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel
             approximate = quantity.approximateLabel,
             calories = receiptKcal(entry.nutritionSnapshot.calories),
             source = sourceLetter(food),
-            first = first,
+            first = true,
+            showRule = false,
             fresh = vm.feedbackOpen(entry),
-            modifier = Modifier
-                .offset { IntOffset(revealOffset.roundToInt(), 0) }
-                .semantics {
-                    onClick(label = "Open details for ${entry.foodName}") { vm.openEntryDetail(entry); true }
-                    customActions = listOf(
-                        CustomAccessibilityAction("Quick edit amount") { vm.beginQuickEdit(entry); true },
-                        CustomAccessibilityAction("Edit food and amount") { vm.beginFullEdit(entry); true },
-                        CustomAccessibilityAction("Delete ${entry.foodName}") { vm.delete(entry); true },
-                    )
-                }
-                .combinedClickable(
-                    onClick = { vm.openEntryDetail(entry) },
-                    onDoubleClick = { vm.beginQuickEdit(entry) },
-                    onLongClick = { vm.beginFullEdit(entry) },
+            modifier = Modifier.offset { IntOffset(revealOffset.roundToInt(), 0) }.semantics {
+                onClick(label = "Open details for ${entry.foodName}") { vm.openEntryDetail(entry); true }
+                customActions = listOf(
+                    CustomAccessibilityAction("Quick edit amount") { vm.beginQuickEdit(entry); true },
+                    CustomAccessibilityAction("Edit food and amount") { vm.beginFullEdit(entry); true },
+                    CustomAccessibilityAction("Delete ${entry.foodName}") { vm.delete(entry); true },
                 )
-                .pointerInput(entry.id) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        var dx = 0f
-                        var dy = 0f
-                        var horizontal = false
-                        var vertical = false
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            val deltaX = change.position.x - change.previousPosition.x
-                            val deltaY = change.position.y - change.previousPosition.y
-                            dx += deltaX
-                            dy += deltaY
-                            if (!horizontal && !vertical && kotlin.math.hypot(dx.toDouble(), dy.toDouble()) > touchSlop) {
-                                horizontal = kotlin.math.abs(dx) > kotlin.math.abs(dy)
-                                vertical = !horizontal
-                            }
-                            if (horizontal && dx < 0f) {
-                                revealOffset = (revealOffset + deltaX).coerceIn(-deleteWidth, 0f)
-                                change.consume()
-                            }
-                            if (!change.pressed) break
-                        }
-                        if (horizontal) revealOffset = if (revealOffset <= -deleteWidth * .65f) -deleteWidth else 0f
+            }.combinedClickable(onClick = { vm.openEntryDetail(entry) }, onDoubleClick = { vm.beginQuickEdit(entry) }, onLongClick = { vm.beginFullEdit(entry) }).pointerInput(entry.id) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var dx = 0f
+                    var dy = 0f
+                    var horizontal = false
+                    var vertical = false
+                    while (true) {
+                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                        val deltaX = change.position.x - change.previousPosition.x
+                        val deltaY = change.position.y - change.previousPosition.y
+                        dx += deltaX
+                        dy += deltaY
+                        if (!horizontal && !vertical && kotlin.math.hypot(dx.toDouble(), dy.toDouble()) > touchSlop) { horizontal = kotlin.math.abs(dx) > kotlin.math.abs(dy); vertical = !horizontal }
+                        if (horizontal && dx < 0f) { revealOffset = (revealOffset + deltaX).coerceIn(-deleteWidth, 0f); change.consume() }
+                        if (!change.pressed) break
                     }
-                },
+                    if (horizontal) revealOffset = if (revealOffset <= -deleteWidth * .65f) -deleteWidth else 0f
+                }
+            },
         )
     }
 }

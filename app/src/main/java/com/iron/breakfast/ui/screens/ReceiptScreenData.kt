@@ -54,7 +54,12 @@ internal fun receiptKcal(value: Double): String = round(value).toInt().toString(
 internal fun printedFactKcal(value: Double): String =
     String.format(Locale.ROOT, "%.1f", value).removeSuffix(".0")
 
-internal fun quantityRateDisplay(entry: MealEntry, food: FoodRecord?): ReceiptQuantityDisplay {
+internal fun quantityRateDisplay(
+    entry: MealEntry,
+    food: FoodRecord?,
+    includeRateUnit: Boolean = true,
+    asciiMultiply: Boolean = false,
+): ReceiptQuantityDisplay {
     val basisUnit = entry.resolvedBaseUnit.takeUnless { it == MeasureUnit.UNKNOWN }
         ?: provenanceBasisUnit(entry.conversionProvenance)
         ?: entry.enteredUnit
@@ -66,13 +71,14 @@ internal fun quantityRateDisplay(entry: MealEntry, food: FoodRecord?): ReceiptQu
     val printed = choosePrintedQuantity(rawAmount, rate, entry.nutritionSnapshot.calories)
     val base = "(${printed.amountText} ${basisUnit.displayLabel()})"
     val rateUnit = basisUnit.displayLabel()
+    val multiply = if (asciiMultiply) "x" else "×"
     val line = when {
-        converted && !approximate -> "$entered $base × ${printed.rateText}"
-        converted -> "$base × ${printed.rateText}"
-        else -> "${printed.amountText} ${entry.enteredUnit.displayLabel()} × ${printed.rateText}".trim()
+        converted && !approximate -> "$entered $base $multiply ${printed.rateText}"
+        converted -> "$base $multiply ${printed.rateText}"
+        else -> "${printed.amountText} ${entry.enteredUnit.displayLabel()} $multiply ${printed.rateText}".trim()
     }
     return ReceiptQuantityDisplay(
-        line = withRateUnit(line, rateUnit, approximate),
+        line = if (includeRateUnit) withRateUnit(line, rateUnit, approximate) else line,
         approximateLabel = entered.takeIf { approximate },
     )
 }
@@ -153,7 +159,23 @@ internal fun earliestMealTime(entries: List<MealEntry>, zoneId: ZoneId = ZoneId.
 internal fun dayTitle(dayKey: String, zoneId: ZoneId = ZoneId.systemDefault()): Pair<String, String> {
     val date = runCatching { java.time.LocalDate.parse(dayKey) }.getOrNull() ?: return dayKey to dayKey
     val day = date.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, Locale.ENGLISH)
-    return day to date.format(DateTimeFormatter.ofPattern("d MMMM", Locale.ENGLISH))
+    return day to date.format(DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.ENGLISH))
+}
+
+/** Receipt v6.5 prints the calendar day number as its receipt number. */
+internal fun receiptNumber(dayKey: String): Int =
+    runCatching { java.time.LocalDate.parse(dayKey).dayOfYear }.getOrDefault(0)
+
+internal fun receiptDate(dayKey: String): String =
+    runCatching { java.time.LocalDate.parse(dayKey).format(DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.ROOT)) }
+        .getOrDefault(dayKey)
+
+internal fun receiptDateTimeRange(entries: List<MealEntry>, zoneId: ZoneId = ZoneId.systemDefault()): String? {
+    if (entries.isEmpty()) return null
+    val formatter = DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT).withZone(zoneId)
+    val start = entries.minOf { it.savedAtEpochMs }
+    val end = entries.maxOf { it.savedAtEpochMs }
+    return "${formatter.format(Instant.ofEpochMilli(start))}-${formatter.format(Instant.ofEpochMilli(end))}"
 }
 
 /** Underline means "recognised": a food phrase is marked only when [isRecognized] resolves it. */

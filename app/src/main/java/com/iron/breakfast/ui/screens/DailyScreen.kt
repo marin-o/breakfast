@@ -2,18 +2,23 @@ package com.iron.breakfast.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -29,36 +34,44 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.BreakfastViewModel
-import com.iron.breakfast.EntryEditMode
 import com.iron.breakfast.ContributionAction
+import com.iron.breakfast.EntryEditMode
 import com.iron.breakfast.QuickAddPreview
-import com.iron.breakfast.macro
-import com.iron.breakfast.pretty
-import com.iron.breakfast.label
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
+import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.displayLabel
+import com.iron.breakfast.label
+import com.iron.breakfast.macro
+import com.iron.breakfast.pretty
+import com.iron.breakfast.ui.components.CharacterRule
 import com.iron.breakfast.ui.components.ReceiptBottomTray
 import com.iron.breakfast.ui.components.ReceiptChoiceChip
 import com.iron.breakfast.ui.components.ReceiptEntryRow
 import com.iron.breakfast.ui.components.ReceiptNavigationBar
+import com.iron.breakfast.ui.components.ReceiptOutlinedButton
 import com.iron.breakfast.ui.components.ReceiptQuickAddField
-import com.iron.breakfast.ui.components.ReceiptSlip
 import com.iron.breakfast.ui.components.ReceiptSnackbar
 import com.iron.breakfast.ui.components.ReceiptSticker
-import com.iron.breakfast.ui.components.ReceiptTonalChip
-import com.iron.breakfast.ui.components.ReceiptTicket
 import com.iron.breakfast.ui.components.ReceiptTokenVisualTransformation
-import com.iron.breakfast.domain.NutritionValues
+import com.iron.breakfast.ui.components.TotalBlock
 import com.iron.breakfast.ui.theme.LocalReceiptColors
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -72,11 +85,11 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
         return
     }
     val selected = vm.entries.filter { it.dayKey == vm.selectedDayKey }
-    val colors = LocalReceiptColors.current
     val foods = vm.foods.associateBy { it.id }
-    val dailyTotal = selected.fold(NutritionValues.ZERO) { total, entry -> total + entry.nutritionSnapshot }
-    val (dayName, subtitle) = dayTitle(vm.selectedDayKey)
+    val total = selected.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
+    val (dayName, date) = dayTitle(vm.selectedDayKey)
     val isToday = vm.selectedDayKey == dayKeyForToday()
+    val colors = LocalReceiptColors.current
     val touchSlop = LocalViewConfiguration.current.touchSlop
     val swipeThreshold = with(androidx.compose.ui.platform.LocalDensity.current) { 96.dp.toPx() }
 
@@ -89,8 +102,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 var horizontal = false
                 var vertical = false
                 while (true) {
-                    val event = awaitPointerEvent()
-                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
                     dx += change.position.x - change.previousPosition.x
                     dy += change.position.y - change.previousPosition.y
                     if (!horizontal && !vertical && kotlin.math.hypot(dx.toDouble(), dy.toDouble()) > touchSlop) {
@@ -103,48 +115,122 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 if (horizontal && abs(dx) >= swipeThreshold) vm.shiftSelectedDay(if (dx < 0f) 1 else -1)
             }
         },
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp, end = 14.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         item {
-            Column {
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(onClick = { vm.shiftSelectedDay(-1) }) {
-                        Icon(Icons.Default.ChevronLeft, contentDescription = "Previous day")
-                    }
-                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(dayName, style = MaterialTheme.typography.headlineMedium, color = colors.ink)
-                        Text(subtitle, style = MaterialTheme.typography.titleSmall, color = colors.soft)
-                    }
-                    IconButton(onClick = { vm.shiftSelectedDay(1) }) {
-                        Icon(Icons.Default.ChevronRight, contentDescription = "Next day")
-                    }
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { vm.shiftSelectedDay(-1) }) { Icon(Icons.Default.ChevronLeft, "Previous day", tint = colors.ink) }
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(dayName.uppercase(Locale.ENGLISH), style = MaterialTheme.typography.headlineLarge, color = colors.ink, textAlign = TextAlign.Center)
+                    Text(date, style = MaterialTheme.typography.bodyLarge, color = colors.soft)
+                    Text("Receipt ${receiptNumber(vm.selectedDayKey)}", color = colors.soft, style = MaterialTheme.typography.bodyLarge)
                 }
-                if (!isToday) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = vm::goToday) { Text("Today", color = colors.ink, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
-                    }
+                IconButton(onClick = { vm.shiftSelectedDay(1) }) { Icon(Icons.Default.ChevronRight, "Next day", tint = colors.ink) }
+            }
+            if (!isToday) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = vm::goToday) { Text("TODAY", color = colors.ink, textDecoration = TextDecoration.Underline) }
                 }
-                ReceiptSlip(
-                    label = if (isToday) "Today" else shortDateLabel(vm.selectedDayKey),
-                    total = receiptKcal(dailyTotal.calories),
-                    macros = listOf(
-                        "P ${dailyTotal.protein.macro()}",
-                        "C ${dailyTotal.carbohydrates.macro()}",
-                        "F ${dailyTotal.fat.macro()}",
-                    ),
-                )
+            }
+            CharacterRule('-', modifier = Modifier.padding(top = 4.dp))
+            TotalBlock(total = receiptKcal(total.calories))
+            MacroTable(total)
+            CharacterRule('=', modifier = Modifier.padding(top = 8.dp))
+        }
+        vm.mealDraftError?.let { message -> item { Text(message, color = colors.red, modifier = Modifier.padding(vertical = 6.dp)) } }
+        items(MealSlot.entries) { slot ->
+            DailyMealSection(slot, selected.filter { it.mealSlot == slot }, foods, vm)
+        }
+        item {
+            DailyFooter(selected, foods, vm.selectedDayKey)
+            vm.pendingContribution?.let { ContributionAction(vm) }
+        }
+    }
+}
+
+@Composable
+private fun MacroTable(total: NutritionValues) {
+    val colors = LocalReceiptColors.current
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Row(Modifier.fillMaxWidth()) {
+            Spacer(Modifier.weight(1f))
+            Text("g", color = colors.soft, textAlign = TextAlign.End, modifier = Modifier.width(54.dp))
+            Text("kcal", color = colors.soft, textAlign = TextAlign.End, modifier = Modifier.width(58.dp))
+        }
+        listOf(
+            "Protein" to (total.protein to total.protein?.times(4.0)),
+            "Carbs" to (total.carbohydrates to total.carbohydrates?.times(4.0)),
+            "Fat" to (total.fat to total.fat?.times(9.0)),
+        ).forEach { (label, values) ->
+            Row(Modifier.fillMaxWidth()) {
+                Text(label, color = colors.ink, modifier = Modifier.weight(1f))
+                Text(values.first?.macro()?.removeSuffix(" g") ?: "0", color = colors.ink, textAlign = TextAlign.End, modifier = Modifier.width(54.dp))
+                Text(receiptKcal(values.second ?: 0.0), color = colors.ink, textAlign = TextAlign.End, modifier = Modifier.width(58.dp))
             }
         }
-        vm.mealDraftError?.let { message -> item { Text(message, color = colors.ink) } }
-        itemsIndexed(MealSlot.entries) { _, slot ->
-            val entries = selected.filter { it.mealSlot == slot }
-            MealCard(slot, entries, foods, vm)
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Map<String, FoodRecord>, vm: BreakfastViewModel) {
+    val colors = LocalReceiptColors.current
+    val total = entries.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
+    Column(Modifier.fillMaxWidth().padding(top = 12.dp)) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = androidx.compose.ui.semantics.Role.Button) { vm.openMeal(slot) }, verticalAlignment = Alignment.Bottom) {
+            Text(slot.name.uppercase(Locale.ENGLISH), style = MaterialTheme.typography.headlineMedium, color = colors.red, fontWeight = FontWeight.Bold)
+            Text(earliestMealTime(entries).orEmpty(), color = colors.soft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp).weight(1f))
+            Text(receiptKcal(total.calories), style = MaterialTheme.typography.titleLarge, color = colors.red, fontWeight = FontWeight.Bold)
         }
-        vm.pendingContribution?.let { item { ContributionAction(vm) } }
+        entries.forEach { entry ->
+            val quantity = quantityRateDisplay(entry, foods[entry.foodId], includeRateUnit = false, asciiMultiply = true)
+            ReceiptEntryRow(
+                name = entry.foodName,
+                quantityLine = quantity.line,
+                approximate = quantity.approximateLabel,
+                calories = receiptKcal(entry.nutritionSnapshot.calories),
+                source = sourceLetter(foods[entry.foodId]),
+                fresh = vm.feedbackOpen(entry),
+                first = true,
+                showRule = false,
+                modifier = Modifier.semantics {
+                    onClick(label = "Open details for ${entry.foodName}") { vm.openEntryDetail(entry); true }
+                    customActions = listOf(
+                        CustomAccessibilityAction("Quick edit amount") { vm.beginQuickEdit(entry); true },
+                        CustomAccessibilityAction("Edit food and amount") { vm.beginFullEdit(entry); true },
+                        CustomAccessibilityAction("Delete ${entry.foodName}") { vm.delete(entry); true },
+                    )
+                }.combinedClickable(onClick = { vm.openEntryDetail(entry) }, onDoubleClick = { vm.beginQuickEdit(entry) }, onLongClick = { vm.beginFullEdit(entry) }),
+            )
+            if (vm.feedbackOpen(entry)) CorrectionStrip(vm, entry)
+        }
+        ReceiptOutlinedButton("+ Add food", onClick = { vm.openFocusedLibrary(slot) }, fillWidth = false, modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
+        CharacterRule('-', modifier = Modifier.padding(top = 2.dp))
+    }
+}
+
+@Composable
+private fun DailyFooter(entries: List<MealEntry>, foods: Map<String, FoodRecord>, dayKey: String) {
+    val colors = LocalReceiptColors.current
+    val sourceTotals = listOf("B" to "Bundled", "P" to "Personal", "O" to "Open Food Facts")
+    Column(Modifier.fillMaxWidth().padding(top = 10.dp)) {
+        Row(Modifier.fillMaxWidth()) {
+            Text("ITEMS", color = colors.soft, modifier = Modifier.weight(1f))
+            Text(entries.size.toString(), color = colors.soft, textAlign = TextAlign.End, modifier = Modifier.width(54.dp))
+            Spacer(Modifier.width(20.dp))
+        }
+        sourceTotals.forEach { (letter, label) ->
+            val sourceEntries = entries.filter { sourceLetter(foods[it.foodId]) == letter }
+            Row(Modifier.fillMaxWidth()) {
+                Text(label, color = colors.soft, modifier = Modifier.weight(1f))
+                Text(receiptKcal(sourceEntries.sumOf { it.nutritionSnapshot.calories }), color = colors.soft, textAlign = TextAlign.End, modifier = Modifier.width(54.dp))
+                Text(letter, color = colors.soft, textAlign = TextAlign.End, modifier = Modifier.width(20.dp))
+            }
+        }
+        CharacterRule('=', modifier = Modifier.padding(top = 8.dp))
+        Text(buildString { append(receiptDate(dayKey)); receiptDateTimeRange(entries)?.let { append("  ").append(it) } }, color = colors.soft, modifier = Modifier.fillMaxWidth().padding(top = 8.dp), textAlign = TextAlign.Center)
+        if (entries.isNotEmpty()) Text("Receipt ${receiptNumber(dayKey)} of ${dayKey.take(4)}", color = colors.soft, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
     }
 }
 
@@ -156,22 +242,22 @@ private fun QuickAddDaily(vm: BreakfastViewModel, modifier: Modifier) {
     val target = vm.quickAddTargetMeal() ?: MealSlot.LUNCH
     val existing = selected.filter { it.mealSlot == target }
     val previews = vm.quickAddPreviews()
-    val dayTotal = selected.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
+    val total = selected.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
     val mealTotal = existing.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
-    val pendingKcal = previews.fold(NutritionValues.ZERO) { sum, preview -> sum + preview.calculation.nutrition }.calories
+    val pendingKcal = previews.sumOf { it.calculation.nutrition.calories }
     Column(modifier.fillMaxSize().background(colors.paper).padding(horizontal = 14.dp)) {
-        // Day total stays the printed fact; pending foods show only as the red "+N" and as stickers, never as ticket rows.
-        ReceiptSlip(
-            label = shortDateLabel(vm.selectedDayKey),
-            total = receiptKcal(dayTotal.calories),
-            pending = if (previews.isEmpty()) null else "+${receiptKcal(pendingKcal)}",
-        )
-        ReceiptTicket(mealName = target.label(), total = receiptKcal(mealTotal.calories), time = earliestMealTime(existing)) {
-            existing.forEachIndexed { index, entry ->
-                val quantity = quantityRateDisplay(entry, foods[entry.foodId])
-                ReceiptEntryRow(name = entry.foodName, quantityLine = quantity.line, calories = receiptKcal(entry.nutritionSnapshot.calories), source = sourceLetter(foods[entry.foodId]), approximate = quantity.approximateLabel, first = index == 0)
-            }
+        TotalBlock(receiptKcal(total.calories), if (previews.isEmpty()) null else "+${receiptKcal(pendingKcal)}", Modifier.padding(top = 8.dp))
+        CharacterRule('-', modifier = Modifier.padding(top = 8.dp))
+        Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.Bottom) {
+            Text(target.name.uppercase(Locale.ENGLISH), style = MaterialTheme.typography.headlineMedium, color = colors.red, fontWeight = FontWeight.Bold)
+            Text(earliestMealTime(existing).orEmpty(), color = colors.soft, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp).weight(1f))
+            Text(receiptKcal(mealTotal.calories), style = MaterialTheme.typography.titleLarge, color = colors.red, fontWeight = FontWeight.Bold)
         }
+        existing.forEach { entry ->
+            val quantity = quantityRateDisplay(entry, foods[entry.foodId], includeRateUnit = false, asciiMultiply = true)
+            ReceiptEntryRow(entry.foodName, quantity.line, receiptKcal(entry.nutritionSnapshot.calories), sourceLetter(foods[entry.foodId]), quantity.approximateLabel, first = true, showRule = false)
+        }
+        CharacterRule('=', modifier = Modifier.padding(top = 8.dp))
     }
 }
 
@@ -181,160 +267,37 @@ internal fun DailyComposer(vm: BreakfastViewModel) {
     val previews = vm.quickAddPreviews()
     val suggestions = vm.quickAddSuggestions()
     val placeholder = if (vm.selectedDayKey == dayKeyForToday()) "2 eggs, 1 banana" else "Add to ${shortDateLabel(vm.selectedDayKey)}"
-    Column(Modifier.fillMaxWidth().background(colors.paper)) {
-        if (vm.loggedBatchMessage != null) vm.loggedBatchMessage?.let { message ->
-            ReceiptSnackbar(
-                message = message,
-                actionLabel = "Undo",
-                onAction = vm::undoLoggedBatch,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-            )
-        } else if (vm.feedbackCount() > 0) {
-            ReceiptSnackbar(
-                message = "${vm.feedbackCount()} food${if (vm.feedbackCount() == 1) "" else "s"} logged",
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-            )
-        }
-        vm.undoEntry?.let { deleted ->
-            ReceiptSnackbar(
-                message = "${deleted.foodName} deleted",
-                actionLabel = "Undo",
-                onAction = vm::undo,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-            )
-        }
+    Column(Modifier.fillMaxWidth().background(colors.paper).navigationBarsPadding()) {
+        vm.loggedBatchMessage?.let { ReceiptSnackbar(it, "Undo", vm::undoLoggedBatch, Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) }
+        vm.undoEntry?.let { ReceiptSnackbar("${it.foodName} deleted", "Undo", vm::undo, Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) }
         ReceiptBottomTray(
             content = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (previews.isNotEmpty()) {
-                        Row(
-                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            previews.forEach { preview -> PendingSticker(preview) }
-                        }
-                    }
-                    if (suggestions.isNotEmpty()) {
-                        Row(
-                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            suggestions.forEachIndexed { index, ranked ->
-                                val food = ranked.food
-                                if (index == 0) {
-                                    ReceiptTonalChip(
-                                        label = vm.quickAddSuggestionLabel(food),
-                                        onClick = { vm.chooseQuickSuggestion(food) },
-                                    )
-                                } else {
-                                    ReceiptChoiceChip(
-                                        label = food.name,
-                                        selected = false,
-                                        onClick = { vm.chooseQuickSuggestion(food) },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    ReceiptQuickAddField(
-                        value = vm.input,
-                        onValueChange = vm::onInput,
-                        onLog = vm::submit,
-                        onImeDone = vm::submit,
-                        placeholder = placeholder,
-                        expanded = vm.input.contains(',') || vm.input.length > 28,
-                        visualTransformation = ReceiptTokenVisualTransformation(tokenRangesForInput(vm.input, vm::isRecognizedFood), redFill = colors.redFill, onRedFill = colors.onRedFill),
-                    )
+                    if (previews.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { previews.forEach { PendingSticker(it) } }
+                    if (suggestions.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { suggestions.forEachIndexed { index, ranked -> ReceiptChoiceChip(vm.quickAddSuggestionLabel(ranked.food), index == 0, { vm.chooseQuickSuggestion(ranked.food) }, Modifier.width(200.dp)) } }
+                    ReceiptQuickAddField(vm.input, vm::onInput, vm::submit, placeholder, vm.input.contains(',') || vm.input.length > 28, ReceiptTokenVisualTransformation(tokenRangesForInput(vm.input, vm::isRecognizedFood), colors.redFill, colors.onRedFill), vm::submit)
                 }
             },
-            nav = {
-                if (vm.input.isBlank()) {
-                ReceiptNavigationBar(
-                    selectedDaily = true,
-                    onDaily = { vm.closeMeal(); vm.closeLibrary() },
-                    onLibrary = { vm.closeMeal(); vm.openLibrary() },
-                )
-                }
-            },
+            nav = { if (vm.input.isBlank()) ReceiptNavigationBar(true, { vm.closeMeal(); vm.closeLibrary() }, { vm.closeMeal(); vm.openLibrary() }) },
         )
     }
 }
 
 @Composable
 private fun PendingSticker(preview: QuickAddPreview) {
-    val baseUnit = preview.food.nutrition.unit
-    ReceiptSticker(
-        name = preview.food.name,
-        value = receiptKcal(preview.calculation.nutrition.calories),
-        detail = "${preview.amount.pretty()} ${preview.unit.displayLabel()}",
-        fields = listOf("${preview.calculation.resolvedBaseAmount.pretty()} ${baseUnit.displayLabel()}", sourceLetter(preview.food)),
-        approximateDetail = preview.calculation.approximate,
-    )
-}
-
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable
-private fun MealCard(
-    slot: MealSlot,
-    entries: List<MealEntry>,
-    foods: Map<String, FoodRecord>,
-    vm: BreakfastViewModel,
-) {
-    val total = entries.fold(NutritionValues.ZERO) { a, e -> a + e.nutritionSnapshot }
-    ReceiptTicket(
-        mealName = slot.label(),
-        total = receiptKcal(total.calories),
-        time = earliestMealTime(entries),
-        addFoodLabel = "Add food",
-        onAddFood = { vm.openFocusedLibrary(slot) },
-        onMealClick = { vm.openMeal(slot) },
-    ) {
-        entries.forEachIndexed { index, entry ->
-            val food = foods[entry.foodId]
-            val quantity = quantityRateDisplay(entry, food)
-            ReceiptEntryRow(
-                name = entry.foodName,
-                quantityLine = quantity.line,
-                approximate = quantity.approximateLabel,
-                calories = receiptKcal(entry.nutritionSnapshot.calories),
-                source = sourceLetter(food),
-                fresh = vm.feedbackOpen(entry),
-                first = index == 0,
-                modifier = Modifier.semantics {
-                    onClick(label = "Open details for ${entry.foodName}") { vm.openEntryDetail(entry); true }
-                    customActions = listOf(
-                        CustomAccessibilityAction("Quick edit amount") { vm.beginQuickEdit(entry); true },
-                        CustomAccessibilityAction("Edit food and amount") { vm.beginFullEdit(entry); true },
-                        CustomAccessibilityAction("Delete ${entry.foodName}") { vm.delete(entry); true },
-                    )
-                }.combinedClickable(
-                    onClick = { vm.openEntryDetail(entry) },
-                    onDoubleClick = { vm.beginQuickEdit(entry) },
-                    onLongClick = { vm.beginFullEdit(entry) },
-                ),
-            )
-            if (vm.feedbackOpen(entry)) CorrectionStrip(vm, entry)
-        }
-    }
+    ReceiptSticker(preview.food.name, receiptKcal(preview.calculation.nutrition.calories), "${preview.amount.pretty()} ${preview.unit.displayLabel()}", listOf("${preview.calculation.resolvedBaseAmount.pretty()} ${preview.food.nutrition.unit.displayLabel()}", sourceLetter(preview.food)), preview.calculation.approximate)
 }
 
 @Composable
 private fun CorrectionStrip(vm: BreakfastViewModel, entry: MealEntry) {
     val colors = LocalReceiptColors.current
-    Row(
-        Modifier.fillMaxWidth().background(colors.paper).horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        ReceiptTonalChip("Confirm", onClick = { vm.confirm(entry) })
-        vm.alternatives(entry).forEach { alternative ->
-            ReceiptTonalChip(alternative.food.name, onClick = { vm.chooseAlternative(entry, alternative.food) })
-        }
-        ReceiptTonalChip("Search", onClick = { vm.openSearch(entry.foodName) }, leadingIcon = androidx.compose.material.icons.Icons.Default.Search)
+    Row(Modifier.fillMaxWidth().background(colors.paper).horizontalScroll(rememberScrollState()).padding(start = 14.dp, bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ReceiptChoiceChip("Confirm", true, { vm.confirm(entry) }, Modifier.width(150.dp))
+        vm.alternatives(entry).forEach { alternative -> ReceiptChoiceChip(alternative.food.name, false, { vm.chooseAlternative(entry, alternative.food) }, Modifier.width(200.dp)) }
+        ReceiptChoiceChip("Search", false, { vm.openSearch(entry.foodName) }, Modifier.width(150.dp))
     }
 }
 
 private fun dayKeyForToday(): String = com.iron.breakfast.domain.dayKeyForEpochMs(System.currentTimeMillis())
 
-private fun shortDateLabel(dayKey: String): String = runCatching {
-    java.time.LocalDate.parse(dayKey).format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH))
-}.getOrDefault(dayKey)
+private fun shortDateLabel(dayKey: String): String = runCatching { LocalDate.parse(dayKey).format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH)) }.getOrDefault(dayKey)

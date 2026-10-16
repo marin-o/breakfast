@@ -188,6 +188,11 @@ class ReceiptScreenDataTest {
     }
 
     @Test
+    fun dailyAndMealQuantityLinesUseAsciiXWithoutRateUnit() {
+        assertEquals("(5.3 g) x 5.88", quantityRateDisplay(entry, generic, includeRateUnit = false, asciiMultiply = true).line)
+    }
+
+    @Test
     fun editableNumbersDropTrailingZero() {
         assertEquals("19", editableNumber(19.0))
         assertEquals("389.5", editableNumber(389.5))
@@ -218,5 +223,19 @@ class ReceiptScreenDataTest {
     fun printedFactKcalDropsOnlyInsignificantTenths() {
         assertEquals("105", printedFactKcal(105.0000001))
         assertEquals("148.1", printedFactKcal(148.1))
+    }
+
+    @Test
+    fun receiptNumberUsesDayOfYear() {
+        assertEquals(287, receiptNumber("2026-10-14"))
+        assertEquals(1, receiptNumber("2026-01-01"))
+    }
+
+    @Test
+    fun receiptDateTimeRangeUsesEarliestAndLatestEntry() {
+        val early = entry.copy(savedAtEpochMs = 7 * 60 * 60 * 1000L)
+        val late = entry.copy(savedAtEpochMs = 16 * 60 * 60 * 1000L + 40 * 60 * 1000L)
+        assertEquals("07:00-16:40", receiptDateTimeRange(listOf(late, early), ZoneOffset.UTC))
+        assertEquals(null, receiptDateTimeRange(emptyList(), ZoneOffset.UTC))
     }
 }
