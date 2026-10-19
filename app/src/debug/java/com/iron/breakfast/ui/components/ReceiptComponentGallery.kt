@@ -1,5 +1,7 @@
 package com.iron.breakfast.ui.components
 
+import com.iron.breakfast.ui.theme.*
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column

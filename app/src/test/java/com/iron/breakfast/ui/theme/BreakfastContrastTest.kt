@@ -5,8 +5,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.pow
 
-/** WCAG spot checks for the Receipt v6.5 light and dark token pairs. */
-class ReceiptContrastTest {
+/** WCAG spot checks for the Monochrome light and dark token pairs. */
+class BreakfastContrastTest {
     private fun channel(v: Float): Double {
         val c = v.toDouble()
         return if (c <= 0.03928) c / 12.92 else ((c + 0.055) / 1.055).pow(2.4)
@@ -20,13 +20,13 @@ class ReceiptContrastTest {
         assertTrue("$name contrast %.2f:1 is below 4.5:1".format(ratio(fg, bg)), ratio(fg, bg) >= 4.5)
     }
     @Test fun lightTextPairsMeetAa() {
-        assertAa("light ink", LightReceiptColors.ink, LightReceiptColors.paper)
-        assertAa("light soft", LightReceiptColors.soft, LightReceiptColors.paper)
-        assertAa("light inverse", LightReceiptColors.paper, LightReceiptColors.ink)
+        assertAa("light ink", LightBreakfastColors.ink, LightBreakfastColors.bg)
+        assertAa("light soft", LightBreakfastColors.soft, LightBreakfastColors.bg)
+        assertAa("light inverse", LightBreakfastColors.bg, LightBreakfastColors.ink)
     }
     @Test fun darkTextPairsMeetAa() {
-        assertAa("dark ink", DarkReceiptColors.ink, DarkReceiptColors.paper)
-        assertAa("dark soft", DarkReceiptColors.soft, DarkReceiptColors.paper)
-        assertAa("dark inverse", DarkReceiptColors.paper, DarkReceiptColors.ink)
+        assertAa("dark ink", DarkBreakfastColors.ink, DarkBreakfastColors.bg)
+        assertAa("dark soft", DarkBreakfastColors.soft, DarkBreakfastColors.bg)
+        assertAa("dark inverse", DarkBreakfastColors.bg, DarkBreakfastColors.ink)
     }
 }

@@ -2,18 +2,14 @@ package com.iron.breakfast.ui.theme
 
 import androidx.compose.ui.unit.dp
 
-/** Receipt spacing and component measurements; artboard px map directly to dp. */
-val Hairline = 4.dp
-val Tight = 6.dp
-val Gap = 8.dp
-val GapWide = 10.dp
-val RowY = 11.dp
-val Margin = 14.dp
-val TicketGap = 16.dp
-val SheetInset = 20.dp
-val TicketBandHeight = 52.dp
-val TicketAddHeight = 50.dp
-val EntryRowHeight = 56.dp
-val QuickAddHeight = 54.dp
-val NavBarHeight = 80.dp
-val TouchTarget = 48.dp
+/** Monochrome measurements; design px map directly to dp. */
+val Gutter = 24.dp
+val HeaderHeight = 52.dp
+val IconTarget = 44.dp
+val FieldMinHeight = 52.dp
+val PrimaryHeight = 52.dp
+val SecondaryHeight = 48.dp
+val TertiaryHeight = 44.dp
+val ChoiceMinHeight = 44.dp
+val AddCircleSize = 32.dp
+val ComposerHeight = 52.dp

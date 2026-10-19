@@ -1,5 +1,7 @@
 package com.iron.breakfast
 
+import com.iron.breakfast.ui.theme.*
+
 import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
@@ -174,8 +176,8 @@ import com.iron.breakfast.ui.components.TertiaryLink
 import com.iron.breakfast.ui.components.ReceiptTopBar
 import com.iron.breakfast.ui.components.receiptDashedRule
 import com.iron.breakfast.ui.theme.BreakfastTheme
-import com.iron.breakfast.ui.theme.DarkReceiptColors
-import com.iron.breakfast.ui.theme.LightReceiptColors
+import com.iron.breakfast.ui.theme.DarkBreakfastColors
+import com.iron.breakfast.ui.theme.LightBreakfastColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
@@ -195,8 +197,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // Keep system bars aligned with the same light/dark paper token as the receipt.
         enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.auto(LightReceiptColors.paper.toArgb(), DarkReceiptColors.paper.toArgb()),
-            navigationBarStyle = SystemBarStyle.auto(LightReceiptColors.paper.toArgb(), DarkReceiptColors.paper.toArgb()),
+            statusBarStyle = SystemBarStyle.auto(LightBreakfastColors.paper.toArgb(), DarkBreakfastColors.paper.toArgb()),
+            navigationBarStyle = SystemBarStyle.auto(LightBreakfastColors.paper.toArgb(), DarkBreakfastColors.paper.toArgb()),
         )
         setContent { BreakfastTheme { IronApp() } }
     }

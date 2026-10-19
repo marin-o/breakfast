@@ -3,22 +3,22 @@ package com.iron.breakfast.ui.theme
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
-data class ReceiptColors(
-    val paper: Color, val ink: Color, val soft: Color, val red: Color,
-    val redFill: Color, val onRedFill: Color, val pendingOnInk: Color,
-    val scrim: Color, val cameraGround: Color,
+/** Monochrome tokens. Green (`ok`) and red (`bad`) are the only semantic colours. */
+data class BreakfastColors(
+    val bg: Color, val ink: Color, val soft: Color, val line: Color,
+    val ok: Color, val onOk: Color, val bad: Color, val scrim: Color,
+    val cameraGround: Color, val cameraMark: Color,
 )
 
-val LightReceiptColors = ReceiptColors(
-    Color(0xFFEEEFEC), Color(0xFF2E3036), Color(0xFF5E616A), Color(0xFFB8263A),
-    Color(0xFFB8263A), Color(0xFFEEEFEC), Color(0xFFF2A79B), Color(0x8C2E3036), Color(0xFF141218),
+val LightBreakfastColors = BreakfastColors(
+    bg = Color(0xFFD0D4D8), ink = Color(0xFF111214), soft = Color(0xFF56595E), line = Color(0xFFBBBFC2),
+    ok = Color(0xFF13804F), onOk = Color(0xFFFFFFFF), bad = Color(0xFFA3291F), scrim = Color(0x52111214),
+    cameraGround = Color(0xFF0B0C0E), cameraMark = Color(0xFFFFFFFF),
 )
-val DarkReceiptColors = ReceiptColors(
-    Color(0xFF232428), Color(0xFFE2E3DE), Color(0xFF9C9FA8), Color(0xFFEE7280),
-    Color(0xFFB8263A), Color(0xFFF0F0EC), Color(0xFFB8263A), Color(0x99000000), Color(0xFF141218),
+val DarkBreakfastColors = BreakfastColors(
+    bg = Color(0xFF111214), ink = Color(0xFFF2F3F5), soft = Color(0xFF9A9DA4), line = Color(0xFF26282C),
+    ok = Color(0xFF3DBE7E), onOk = Color(0xFF0B1F14), bad = Color(0xFFF0675B), scrim = Color(0x99000000),
+    cameraGround = Color(0xFF0B0C0E), cameraMark = Color(0xFFFFFFFF),
 )
 
-val LocalReceiptColors = staticCompositionLocalOf { LightReceiptColors }
-
-/** Camera registration marks stay light against the fixed camera ground in both themes. */
-val CameraMarkColor = Color(0xFFE2E3DE)
+val LocalBreakfastColors = staticCompositionLocalOf { LightBreakfastColors }

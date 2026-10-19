@@ -2,6 +2,8 @@
 
 package com.iron.breakfast.ui.components
 
+import com.iron.breakfast.ui.theme.*
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable

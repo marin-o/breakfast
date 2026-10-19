@@ -1,14 +1,20 @@
 package com.iron.breakfast.ui.theme
 
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Shapes
 import androidx.compose.ui.unit.dp
 
-val ReceiptShapes = Shapes(
-    extraSmall = RoundedCornerShape(0.dp), small = RoundedCornerShape(0.dp), medium = RoundedCornerShape(0.dp),
-    large = RoundedCornerShape(0.dp), extraLarge = RoundedCornerShape(0.dp),
+val FieldShape = RoundedCornerShape(12.dp)
+val ChoiceShape = RoundedCornerShape(12.dp)
+val SecondaryShape = RoundedCornerShape(14.dp)
+val SnackbarShape = RoundedCornerShape(14.dp)
+val PrimaryShape = RoundedCornerShape(16.dp)
+val ComposerShape = RoundedCornerShape(16.dp)
+val SheetShape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+val AddCircleShape = CircleShape
+
+val BreakfastShapes = Shapes(
+    extraSmall = FieldShape, small = FieldShape, medium = SecondaryShape,
+    large = PrimaryShape, extraLarge = SheetShape,
 )
-val ReceiptPaperShape = RoundedCornerShape(0.dp)
-val ReceiptStickerShape = RoundedCornerShape(0.dp)
-val ReceiptPillShape = RoundedCornerShape(0.dp)
-val ReceiptFieldPillShape = RoundedCornerShape(0.dp)
