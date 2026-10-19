@@ -1,6 +1,6 @@
 package com.iron.breakfast
 
-import com.iron.breakfast.ui.theme.*
+
 
 import android.Manifest
 import android.app.Application
@@ -85,7 +85,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerInput
@@ -166,6 +165,7 @@ import com.iron.breakfast.ui.screens.ProductReviewSheet
 import com.iron.breakfast.ui.screens.ResolveUnknownScreen
 import com.iron.breakfast.ui.screens.ScanReviewBackdrop
 import com.iron.breakfast.ui.screens.ScannerScreen
+import com.iron.breakfast.ui.components.ButtonKind
 import com.iron.breakfast.ui.components.Field
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.ChoiceOption
@@ -1583,7 +1583,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
                 SectionHeading("Not sent")
                 Text("Amounts, aliases, servings", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 4.dp))
             }
-            PrimaryButton("Continue to sign in", vm::confirmContribution, Modifier.padding(top = 24.dp))
+            PrimaryButton("Continue to sign in", vm::confirmContribution, Modifier.padding(top = 24.dp), kind = ButtonKind.Neutral)
             TertiaryButton("Decline", vm::dismissContributionReview, Modifier.fillMaxWidth())
         }
     }
@@ -1607,7 +1607,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
                 keyboardActions = KeyboardActions(onDone = { vm.submitContribution() }),
             )
             Text("Password is not saved.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 12.dp))
-            PrimaryButton(if (vm.contributionBusy) "Submitting" else "Submit", vm::submitContribution, Modifier.padding(top = 24.dp), enabled = !vm.contributionBusy)
+            PrimaryButton(if (vm.contributionBusy) "Submitting" else "Submit", vm::submitContribution, Modifier.padding(top = 24.dp), enabled = !vm.contributionBusy, kind = ButtonKind.Neutral)
             if (contributionAuthCanDismiss(vm.contributionBusy)) TertiaryButton("Cancel", vm::dismissContributionAuth, Modifier.fillMaxWidth())
         }
     }
@@ -1624,7 +1624,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
                 Text(message, color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 4.dp))
                 Text("Your food and entries are saved on this phone.", color = colors.ink, style = BreakfastType.Body, modifier = Modifier.padding(top = 8.dp))
             }
-            PrimaryButton("Retry", vm::retryContribution, Modifier.padding(top = 24.dp))
+            PrimaryButton("Retry", vm::retryContribution, Modifier.padding(top = 24.dp), kind = ButtonKind.Neutral)
             TertiaryButton("Dismiss", vm::dismissContributionFailure, Modifier.fillMaxWidth())
         }
     }

@@ -47,6 +47,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
@@ -189,6 +194,7 @@ internal fun LibraryComposer(vm: BreakfastViewModel) {
                 label = "Search foods",
                 modifier = Modifier.weight(1f),
                 onSearch = vm::submitLibraryInput,
+                fieldModifier = Modifier.onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { vm.submitLibraryInput(); true } else false },
             )
             IconButton(onClick = vm::beginScan, modifier = Modifier.size(44.dp)) {
                 Icon(Icons.Outlined.QrCodeScanner, contentDescription = "Scan barcode", tint = colors.ink)

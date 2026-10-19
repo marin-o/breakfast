@@ -1,6 +1,5 @@
 package com.iron.breakfast.ui.screens
 
-import com.iron.breakfast.ui.theme.*
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -57,6 +56,8 @@ import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.SecondaryButton
 import com.iron.breakfast.ui.components.Snackbar
 import com.iron.breakfast.ui.components.TopBar
+import com.iron.breakfast.ui.theme.BreakfastType
+import com.iron.breakfast.ui.theme.Gutter
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import kotlin.math.roundToInt
 

@@ -1,6 +1,5 @@
 package com.iron.breakfast.ui.screens
 
-import com.iron.breakfast.ui.theme.*
 
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodCatalog

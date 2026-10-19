@@ -53,7 +53,6 @@ import androidx.compose.ui.focus.FocusState
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.SolidColor
-
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -69,7 +68,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.domain.MealSlot
-import com.iron.breakfast.label
 import com.iron.breakfast.label
 import com.iron.breakfast.ui.theme.AddCircleSize
 import com.iron.breakfast.ui.theme.BreakfastType
@@ -169,6 +167,7 @@ fun TertiaryButton(
     Box(
         modifier
             .heightIn(min = TertiaryHeight)
+            .alpha(if (enabled) 1f else 0.45f)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 14.dp),
         contentAlignment = Alignment.Center,
@@ -184,6 +183,7 @@ fun DestructiveButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     outlined: Boolean = false,
+    enabled: Boolean = true,
 ) {
     val colors = LocalBreakfastColors.current
     if (outlined) {
@@ -191,15 +191,17 @@ fun DestructiveButton(
             modifier
                 .fillMaxWidth()
                 .heightIn(min = PrimaryHeight)
+                .alpha(if (enabled) 1f else 0.45f)
                 .border(1.dp, colors.bad, PrimaryShape)
-                .clickable(role = Role.Button, onClick = onClick),
+                .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
             contentAlignment = Alignment.Center,
         ) { Text(text, color = colors.bad, style = BreakfastType.Button, textAlign = TextAlign.Center) }
     } else {
         Box(
             modifier
                 .heightIn(min = TertiaryHeight)
-                .clickable(role = Role.Button, onClick = onClick)
+                .alpha(if (enabled) 1f else 0.45f)
+                .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
                 .padding(horizontal = 14.dp),
             contentAlignment = Alignment.Center,
         ) { Text(text, color = colors.bad, style = BreakfastType.Button, textAlign = TextAlign.Center) }
@@ -327,6 +329,8 @@ fun SearchField(
     label: String,
     modifier: Modifier = Modifier,
     onSearch: (() -> Unit)? = null,
+    /** Applied to the text field itself, such as a hardware Enter handler. */
+    fieldModifier: Modifier = Modifier,
 ) {
     val colors = LocalBreakfastColors.current
     FieldFrame(error = false, modifier = modifier.fillMaxWidth()) { onFocus ->
@@ -334,7 +338,7 @@ fun SearchField(
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
-            modifier = Modifier.weight(1f).onFocusChanged(onFocus).semantics { contentDescription = label },
+            modifier = Modifier.weight(1f).then(fieldModifier).onFocusChanged(onFocus).semantics { contentDescription = label },
             singleLine = true,
             textStyle = BreakfastType.Body.copy(color = colors.ink),
             cursorBrush = SolidColor(colors.ink),
