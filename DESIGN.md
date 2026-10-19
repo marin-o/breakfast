@@ -1,68 +1,99 @@
 ---
 name: Breakfast
-description: A thermal till receipt printed in paper, ink, and a second red ink.
+description: Monochrome. Soft grey ground, ink type, one big figure per screen, green and red only for actions.
 colors:
-  paper: "#EEEFEC"
-  ink: "#2E3036"
-  soft: "#5E616A"
-  red: "#B8263A"
-  red-fill: "#B8263A"
-  on-red-fill: "#EEEFEC"
-  pending-on-ink: "#F2A79B"
-  scrim: "rgba(46,48,54,0.55)"
-  camera-ground: "#141218"
+  bg: "#D0D4D8"
+  ink: "#111214"
+  soft: "#56595E"
+  line: "#BBBFC2"
+  ok: "#13804F"
+  on-ok: "#FFFFFF"
+  bad: "#A3291F"
+  scrim: "rgba(17,18,20,0.32)"
+  camera-ground: "#0B0C0E"
+  camera-mark: "#FFFFFF"
 dark-colors:
-  paper: "#232428"
-  ink: "#E2E3DE"
-  soft: "#9C9FA8"
-  red: "#EE7280"
-  red-fill: "#B8263A"
-  on-red-fill: "#F0F0EC"
-  pending-on-ink: "#B8263A"
+  bg: "#111214"
+  ink: "#F2F3F5"
+  soft: "#9A9DA4"
+  line: "#26282C"
+  ok: "#3DBE7E"
+  on-ok: "#0B1F14"
+  bad: "#F0675B"
   scrim: "rgba(0,0,0,0.6)"
-  camera-ground: "#141218"
+  camera-ground: "#0B0C0E"
+  camera-mark: "#FFFFFF"
 typography:
-  family: "Iosevka Charon Mono"
-  weights: [500, 700]
-  root: "18sp/24sp 500"
-  page-title: "26sp/32sp 700"
-  meal-heading: "23sp/30sp 700 red"
-  total: "24sp/32sp 700"
-  entry-title: "22sp/28sp 700"
-  meal-time: "14sp/20sp soft"
+  family: "Geologica (300, 400, 500, 600), tabular numbers, mk locale on the root style"
+  hero: "72sp/76sp 300, tracking -0.04em, one per screen"
+  large-input: "26sp/34sp 300"
+  section: "20sp/26sp 500"
+  title: "17sp/22sp 500"
+  macro-value: "20sp/26sp 500"
+  body: "16sp/22sp 400"
+  button: "16sp/22sp 500"
+  secondary: "14sp/19sp 400 soft"
+  meta: "13sp/18sp 400 soft"
 shapes:
-  corners: "0dp"
-  minimum-target: "48dp"
-  field-height: "52dp"
+  field-and-choice: "12dp"
+  secondary-and-snackbar: "14dp"
+  primary-and-composer: "16dp"
+  sheet-top: "20dp"
+  add-circle: "full"
+  gutter: "24dp"
+  header: "52dp"
+  icon-target: "44dp"
+  primary-height: "52dp"
+  secondary-height: "48dp"
+  field-min-height: "52dp"
 ---
 
-# Design System: Receipt v6.5
+# Design System: Monochrome
 
-Receipt is a thermal till receipt. The screen is full-bleed paper with printed ink and thermal red as the second ink. Hierarchy comes from bold type, larger type, inverse print, character rules, columns, and spacing. Light is the primary theme; dark is the same receipt printed in negative and follows the dark token table above.
+Breakfast is a calm, content-first calorie log. Numbers and food names carry each screen. Chrome is quiet: soft grey ground, ink type, 1dp hairlines between regions, whitespace for grouping. Light is the primary theme; dark follows the system setting with the token table above.
 
 ## Rules
 
-- Use Iosevka Charon Mono at weights 500 and 700 only. Weight 500 is the normal body weight; tabular numbers are enabled.
-- Keep every corner square. Touch targets are at least 48dp and fields are at least 52dp.
-- Rules are repeated `-` and `=` characters, clipped to width. Dashes use `soft`; equals use `ink`.
-- Item rows use name, bold kcal in a 5-character column, and a soft source letter in a 2-character column. Quantity lines are soft and indented two characters; use `x`.
-- Approximate quantities use inverse red print, for example `≈1 tbsp`.
-- Inverse blocks (TOTAL, primary actions, active tabs, and snackbars) use ink fill with paper text in light mode and light ink fill with dark text in dark mode.
-- Icons are stroke icons with square caps. There are no spinners, shadows, pills, tonal fills, blue, torn edges, stretched type, or CSS-style rules.
-- The camera ground is `#141218` in both themes and its viewfinder marks stay light.
+- Colours are only the tokens above. Interactive elements are ink. Green (`ok`) is only for constructive actions (add, save, log, restore). Red (`bad`) is only for delete, archive and error. Nothing else is coloured.
+- One big figure per screen at most (the 72sp day total or entry kcal). Everything else is calm.
+- No cards, no shadows (the one exception is the Library overflow popover), no gradients (the composer's `bg` fade is the only one), no chips or pills, no fills behind content.
+- Sentence case everywhere. No all-caps labels, no middle dots, no emoji, no decimal commas. Decimals use a dot; numbers are tabular with no thousands separators.
+- Source (Bundled, Personal, Open Food Facts) appears only as a soft line on entry, food and search detail. It never appears in lists.
+- Approximate amounts are written plainly in the quantity line: `≈1 tbsp, 16 g`.
+- Icons: stroke 1.8, round caps and joins, 20 to 22dp, ink or soft.
+- Touch targets are at least 44dp. No spinners: progress is a 2dp `line` track with a 2dp `ink` sweep and a soft caption.
 
 ## Controls
 
-Primary is inverse print and appears at most once per screen. Secondary controls have a 2dp ink border and no fill. Selected choices and best guesses use two 1dp ink lines with a 1dp gap. Tertiary actions are underlined ink text. Destructive actions use a 2dp red border and red text after a dashed rule.
+- **PrimaryButton**: `ok` fill with `on-ok` text for constructive actions; `ink` fill with `bg` text for neutral ones (Continue, Retry, Edit amount). 16sp/500, radius 16, 52dp. One per screen. Disabled at 45% alpha.
+- **SecondaryButton**: 1dp `line` outline, ink text, radius 14, 48dp.
+- **TertiaryButton**: ink text, 44dp, no underline. `soft` for low emphasis.
+- **DestructiveButton**: `bad` text. Inside sheets and confirmations, a full-width 1dp `bad` outline, radius 16, 52dp.
+- **ChoiceOption**: unselected 1dp `line` outline with soft text; selected 1.5dp `ink` outline with ink 500. Radius 12, min 44dp. Optional soft second line (kcal).
+- **AddCircle**: 32dp circle, 1.5dp ink outline and a `+` (or another icon), in a 44dp target.
+- **Field**: label 13sp soft above; 1dp `line` box, radius 12, min 52dp, 16sp text. Focus 1.5dp `ink`. Error 1.5dp `bad` and 13sp `bad` text below. Optional soft trailing hint.
+- **SearchField**: a Field with a leading magnifier and a trailing clear.
+- **Composer**: `ink` bar, radius 16, 52dp, placeholder in `bg` at 60%, scan icon on the right. Fixed at the bottom over a `bg` fade.
+- **BottomNav**: centred text tabs "Today" and "Library", 40dp apart, 14sp/500. Active ink, inactive soft.
+- **Sheet**: `bg`, top radius 20, 36x5 `line` grabber, 24dp padding, `scrim` behind.
+- **Snackbar**: `ink` fill, radius 14, `bg` text, the action in `bg` 500 on the right, 16dp from the edges.
 
-Receipt fields have a 2dp ink border, square corners, and 52dp minimum height. Focus is 3dp ink; errors are 3dp red with red text below. The quick-add field starts with a bold `>` prompt and divides the `↵` log block with a 2dp line.
+## Lists and totals
+
+- **FoodRow**: name 16sp ink, quantity line 14sp soft beneath, kcal right-aligned in soft (ink 500 for totals). 9dp top padding, no separators.
+- **MealHeader**: a 30dp gap, a 1dp hairline, then 16dp, then the heading (20sp/500), the time (13sp soft), the total (17sp/500) and an AddCircle. "Nothing yet" in soft for an empty meal.
+- **DayHeader**: date title 17sp/500 on the left, a Today text button when not on today, previous and next arrows on the right.
+- **DayTotal**: 72sp/300 kcal, "kilocalories today" in soft 14sp, then three macro columns: a 2dp `line` track with a 2dp `ink` fill (the macro's share of kcal), the value 20sp/500 with its unit in soft 14sp, and a soft 13sp label.
+
+## Layout
+
+- Gutters are 24dp. The status bar is 40dp as the system gives it. The header is 52dp.
+- Regions are separated by 30dp of space, a 1dp `line` hairline, and 16dp.
 
 ## Shared components
 
-The single implementation lives in `ui/components/ReceiptComponents.kt`: PrimaryButton, SecondaryButton, ChoiceBox, TertiaryLink, DestructiveButton, ReceiptField, CharacterRule, ItemRow, ApproxTag, TotalBlock, ReceiptSheet, ReceiptSnackbar, PrintedProgress, tray/navigation, and square-cap icons. Existing `Receipt*` entry points are compatibility names while screens migrate to the foundation.
+The single implementation of each control lives in `ui/components/Components.kt`. Screens build their controls from those components; no screen draws its own copy of a control.
 
-## Layout and behavior
+## Source of truth
 
-Daily and Library alone have the paper tray, an `=` rule, their field, and DAILY/LIBRARY tabs. Sub-screens use a back arrow and bold title without navigation. Preserve all v5 behavior deltas and product rules; v6.5 changes the visual grammar only. Macedonian food names use the font's `mk` locale forms where spans set a locale.
-
-The locked references are in `design/canvas/project/R6-*.dc.html` and `R6D-*.dc.html`; the binding token and control details are in `design/canvas/BRIEF-v65-system.md`. When a state cannot be built as drawn, record the concrete reason in `docs/receipt-design-gaps.md`.
+The locked references are `design/canvas/BRIEF-mono-system.md` (tokens, type and controls) and the `M-*` mocks in `design/canvas/project/` and `design/canvas/shots/`. Where a state cannot be built as drawn, the closest honest version is built and the gap is recorded in the gaps ledger (`docs/receipt-design-gaps.md`, renamed to `docs/design-gaps.md` in the cleanup slice).
