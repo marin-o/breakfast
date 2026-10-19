@@ -144,7 +144,6 @@ private fun dailyMacroStats(total: NutritionValues): List<MacroStat> {
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Map<String, FoodRecord>, vm: BreakfastViewModel) {
-    val colors = LocalBreakfastColors.current
     val total = entries.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
     MealHeader(
         name = slot.label(),
@@ -204,8 +203,8 @@ internal fun DailyComposer(vm: BreakfastViewModel) {
     val suggestions = vm.quickAddSuggestions()
     val placeholder = if (vm.selectedDayKey == dayKeyForToday()) "2 eggs, 1 banana" else "Add to ${shortDateLabel(vm.selectedDayKey)}"
     Column(Modifier.fillMaxWidth().background(colors.bg).navigationBarsPadding()) {
-        vm.loggedBatchMessage?.let { Snackbar(it, "Undo", vm::undoLoggedBatch, Modifier.padding(horizontal = Gutter, vertical = 6.dp)) }
-        vm.undoEntry?.let { Snackbar("${it.foodName} deleted", "Undo", vm::undo, Modifier.padding(horizontal = Gutter, vertical = 6.dp)) }
+        vm.loggedBatchMessage?.let { Snackbar(it, "Undo", vm::undoLoggedBatch, Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) }
+        vm.undoEntry?.let { Snackbar("${it.foodName} deleted", "Undo", vm::undo, Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) }
         Column(Modifier.fillMaxWidth().padding(start = Gutter, end = Gutter, top = 8.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (previews.isNotEmpty()) Column { previews.forEach { PendingFood(it) } }
             if (suggestions.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

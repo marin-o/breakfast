@@ -110,7 +110,7 @@ internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot) {
     val previews = vm.quickAddPreviews()
     val suggestions = vm.quickAddSuggestions()
     Column(Modifier.fillMaxWidth().background(colors.bg).navigationBarsPadding()) {
-        vm.undoEntry?.let { deleted -> Snackbar("${deleted.foodName} deleted", "Undo", vm::undo, Modifier.padding(horizontal = Gutter, vertical = 6.dp)) }
+        vm.undoEntry?.let { deleted -> Snackbar("${deleted.foodName} deleted", "Undo", vm::undo, Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) }
         Column(Modifier.fillMaxWidth().padding(start = Gutter, end = Gutter, top = 8.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (previews.isNotEmpty()) Column { previews.forEach { PendingFood(it) } }
             if (suggestions.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
