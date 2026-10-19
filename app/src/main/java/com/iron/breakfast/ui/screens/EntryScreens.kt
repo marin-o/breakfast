@@ -89,26 +89,25 @@ internal fun EntryDetailScreen(vm: BreakfastViewModel, entry: MealEntry) {
     BackHandler { vm.closeEntryDetail() }
     val food = vm.foods.firstOrNull { it.id == entry.foodId }
     val quantity = quantityRateDisplay(entry, food)
-    val date = runCatching { LocalDate.parse(entry.dayKey).format(DateTimeFormatter.ofPattern("EEE dd.MM.yyyy", Locale.ENGLISH)) }.getOrDefault(entry.dayKey)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)).navigationBarsPadding()) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Gutter, vertical = 8.dp)) {
-                TopBar("Entry", vm::closeEntryDetail)
-                Text("${entry.mealSlot.label()}  $date  ${entry.savedAtEpochMs.formatClock()}", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 4.dp))
-                Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.Top) {
-                    Text(foodText(entry.foodName), color = colors.ink, style = BreakfastType.Section, modifier = Modifier.weight(1f))
-                    Text(receiptKcal(entry.nutritionSnapshot.calories), color = colors.ink, style = BreakfastType.Section, textAlign = TextAlign.End)
-                }
-                Text(quantity.plainLine(), color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 2.dp))
-                Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 4.dp))
-                MacroTable(entry, Modifier.padding(top = 24.dp))
-                Column(Modifier.fillMaxWidth().padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                TopBar("Entry", vm::closeEntryDetail, subtitle = "${entry.mealSlot.label()}, ${shortDateLabel(entry.dayKey)}, ${entry.savedAtEpochMs.formatClock()}")
+                Text(foodText(entry.foodName), color = colors.ink, style = BreakfastType.Section, modifier = Modifier.padding(top = 22.dp))
+                Text(quantity.plainLine(), color = colors.soft, style = BreakfastType.Secondary)
+                Text(receiptKcal(entry.nutritionSnapshot.calories), color = colors.ink, style = BreakfastType.Hero, modifier = Modifier.padding(top = 22.dp))
+                Text("kilocalories", color = colors.soft, style = BreakfastType.Secondary)
+                MacroTable(entry, Modifier.padding(top = 22.dp))
+                Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 22.dp))
+                Hairline(Modifier.padding(top = 30.dp))
+                Column(Modifier.fillMaxWidth().padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     PrimaryButton("Edit amount", { vm.closeEntryDetail(); vm.beginQuickEdit(entry) }, kind = ButtonKind.Neutral)
-                    SecondaryButton("Replace food", { vm.closeEntryDetail(); vm.beginFullEdit(entry) })
-                    TertiaryButton("Open in Library", { vm.openLibraryFoodDetail(entry) }, Modifier.fillMaxWidth())
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SecondaryButton("Replace food", { vm.closeEntryDetail(); vm.beginFullEdit(entry) }, Modifier.weight(1f), fillWidth = false)
+                        SecondaryButton("Open in Library", { vm.openLibraryFoodDetail(entry) }, Modifier.weight(1f), fillWidth = false)
+                    }
                 }
-                Hairline(Modifier.padding(top = 32.dp))
-                DestructiveButton("Delete entry", { vm.closeEntryDetail(); vm.delete(entry) }, Modifier.padding(top = 16.dp), outlined = true)
+                DestructiveButton("Delete entry", { vm.closeEntryDetail(); vm.delete(entry) }, Modifier.padding(top = 8.dp))
             }
         }
     }
