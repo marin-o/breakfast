@@ -453,6 +453,8 @@ fun DayHeader(
     showToday: Boolean = false,
     onToday: () -> Unit = {},
     onTitleClick: (() -> Unit)? = null,
+    /** False on today: Next is dimmed and does nothing. */
+    nextEnabled: Boolean = true,
 ) {
     val colors = LocalBreakfastColors.current
     Row(modifier.fillMaxWidth().heightIn(min = HeaderHeight), verticalAlignment = Alignment.CenterVertically) {
@@ -466,8 +468,8 @@ fun DayHeader(
         IconButton(onClick = onPrevious, modifier = Modifier.size(IconTarget)) {
             Icon(Icons.Outlined.ChevronLeft, contentDescription = "Previous day", tint = colors.ink, modifier = Modifier.size(22.dp))
         }
-        IconButton(onClick = onNext, modifier = Modifier.size(IconTarget)) {
-            Icon(Icons.Outlined.ChevronRight, contentDescription = "Next day", tint = colors.ink, modifier = Modifier.size(22.dp))
+        IconButton(onClick = onNext, enabled = nextEnabled, modifier = Modifier.size(IconTarget)) {
+            Icon(Icons.Outlined.ChevronRight, contentDescription = "Next day", tint = colors.ink.copy(alpha = if (nextEnabled) 1f else 0.4f), modifier = Modifier.size(22.dp))
         }
     }
 }

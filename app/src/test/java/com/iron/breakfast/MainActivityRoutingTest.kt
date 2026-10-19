@@ -78,4 +78,13 @@ class MainActivityRoutingTest {
         )
         assertEquals(100.0, defaultServingCalculation(food).nutrition.calories, 0.0)
     }
+    @Test fun logMealPickerLabelPrefersChosenThenTypedThenMeal() {
+        assertEquals("Meal", logMealPickerLabel(null, null))
+        assertEquals("Dinner", logMealPickerLabel(null, MealSlot.DINNER))
+        assertEquals("Lunch", logMealPickerLabel(MealSlot.LUNCH, MealSlot.DINNER))
+    }
+
+    @Test fun removeAllMealMarkerTokensDropsMealWordsOnly() {
+        assertEquals("2 eggs, 1 banana", removeAllMealMarkerTokens("lunch, 2 eggs, dinner, 1 banana"))
+    }
 }

@@ -145,7 +145,7 @@ import com.iron.breakfast.domain.toMeasureUnit
 import com.iron.breakfast.domain.dayKeyForEpochMs
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.ui.screens.DailyScreen
-import com.iron.breakfast.ui.screens.DailyComposer
+import com.iron.breakfast.ui.screens.LogScreen
 import com.iron.breakfast.ui.screens.EntryDetailScreen
 import com.iron.breakfast.ui.screens.EntryFullEditScreen
 import com.iron.breakfast.ui.screens.EntryFoodPicker
@@ -156,7 +156,6 @@ import com.iron.breakfast.ui.screens.FoodBarcodeField
 import com.iron.breakfast.ui.screens.LibraryFoodDetailDialog
 import com.iron.breakfast.ui.screens.LibraryFoodEditScreen
 import com.iron.breakfast.ui.screens.LibraryScreen
-import com.iron.breakfast.ui.screens.MealComposer
 import com.iron.breakfast.ui.screens.MealScreen
 import com.iron.breakfast.ui.screens.CreateFoodScreen
 import com.iron.breakfast.ui.screens.LibraryNoMatchScreen
@@ -201,6 +200,8 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.auto(LightBreakfastColors.bg.toArgb(), DarkBreakfastColors.bg.toArgb()),
             navigationBarStyle = SystemBarStyle.auto(LightBreakfastColors.bg.toArgb(), DarkBreakfastColors.bg.toArgb()),
         )
+        // The system's contrast scrim is a white veil in light mode, which showed as a white nav bar under `bg`.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) window.isNavigationBarContrastEnforced = false
         setContent { BreakfastTheme { IronApp() } }
     }
 }
@@ -278,7 +279,14 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var contributionPackageQuantityMl by mutableStateOf(""); private set
     var undoEntry by mutableStateOf<MealEntry?>(null); private set
     var mealDraftError by mutableStateOf<String?>(null); private set
-    var mealPickerOpen by mutableStateOf(false); private set
+    /** The full-screen Log page. [logMeal] is the preset or the meal chosen in its picker; null means "from the typed word". */
+    var logOpen by mutableStateOf(false); private set
+    var logMeal by mutableStateOf<MealSlot?>(null); private set
+    var logMealMenuOpen by mutableStateOf(false); private set
+    /** True when the meal menu was opened by Add with no meal known, so choosing a meal logs straight away. */
+    private var logMealSubmitPending = false
+    /** Library's mixed batch without a meal: asks which meal, then saves the typed text. */
+    var mixedMealPickerOpen by mutableStateOf(false); private set
     var libraryOpen by mutableStateOf(false); private set
     var libraryQuery by mutableStateOf(""); private set
     /** True only on the explicit Archived foods destination; active foods are never mixed in. */
@@ -343,8 +351,14 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun reloadToday() { if (ready) refresh() }
     private fun selectDay(value: String) { selectedDayKey = value; savedState["selected_day"] = value }
     private fun selectMeal(value: MealSlot?) { slot = value; savedState["meal_slot"] = value?.name }
-    fun shiftSelectedDay(delta: Long) { selectDay(runCatching { LocalDate.parse(selectedDayKey).plusDays(delta).toString() }.getOrDefault(selectedDayKey)); barcodeRequestToken++ }
-    fun goToday() { selectDay(dayKeyForEpochMs(System.currentTimeMillis())); barcodeRequestToken++ }
+    fun shiftSelectedDay(delta: Long) { goToDay(runCatching { LocalDate.parse(selectedDayKey).plusDays(delta).toString() }.getOrDefault(selectedDayKey)) }
+    fun goToday() = goToDay(dayKeyForEpochMs(System.currentTimeMillis()))
+    /** Selects a day from the arrows, swipe or date picker. Days after today are refused, so Next stops at today. */
+    fun goToDay(dayKey: String) {
+        if (dayKey > dayKeyForEpochMs(System.currentTimeMillis())) return
+        selectDay(dayKey)
+        barcodeRequestToken++
+    }
     fun openLibrary() {
         if (!libraryOpen) {
             libraryInputBeforeOpen = input
@@ -625,7 +639,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         input = v
         if (libraryOpen && parser.parse(v).amount == null) onLibraryQuery(v)
     }
-    internal fun quickAddTargetMeal(): MealSlot? = slot ?: mealMarkers(input).singleOrNull()
+    /** The meal the Log page writes to: the chosen or preset meal, else the one typed meal word. */
+    internal fun logTargetMeal(): MealSlot? = logMeal ?: logTypedMeal()
+    /** The single meal word typed in the Log input, if any. */
+    internal fun logTypedMeal(): MealSlot? = mealMarkers(input).singleOrNull()
     private fun quickAddSegments(): List<String> = input.split(',').map(String::trim).filter(String::isNotBlank)
     private fun quickAddActiveSegment(): String = input.substringAfterLast(',').trim()
     internal fun quickAddSuggestions(): List<RankedFood> {
@@ -635,13 +652,13 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val parsed = parser.parse(active)
         return engine.suggestions(parsed.foodPhrase).take(4)
     }
-    internal fun quickAddSuggestionLabel(food: FoodRecord): String {
+    /** The typed food phrase of the segment being typed: the name of the ambiguous group. */
+    internal fun quickAddActivePhrase(): String = parser.parse(quickAddActiveSegment()).foodPhrase
+    /** kcal of [food] at the amount typed for the active segment, or its default amount. */
+    internal fun quickAddSuggestionCalories(food: FoodRecord): Double {
         val parsed = parser.parse(quickAddActiveSegment())
-        return listOfNotNull(parsed.amount?.pretty(), parsed.unit?.displayLabel(), food.name)
-            .joinToString(" ")
+        return calculator.calculate(food, parsed.amount ?: food.defaultAmount, parsed.unit ?: food.defaultUnit).nutrition.calories
     }
-    /** True when a typed food phrase resolves to a food (drives the "recognised" underline). */
-    fun isRecognizedFood(phrase: String): Boolean = ready && phrase.isNotBlank() && engine.search(phrase).isNotEmpty()
 
     internal fun quickAddPreviews(): List<QuickAddPreview> {
         if (!ready || input.isBlank()) return emptyList()
@@ -683,7 +700,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             if (effectiveTarget == null) {
                 libraryPendingBatch = emptyList()
                 notice = "Choose a meal before adding a mixed batch with an unquantified food."
-                mealPickerOpen = true
+                mixedMealPickerOpen = true
                 return
             }
             submitLibraryMixedInput(cleaned, effectiveTarget)
@@ -813,27 +830,58 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }
         if (input.isBlank()) { mealDraftError = "Add at least one food."; return }
         amountlessDailySearch(input)?.let { intent ->
-            openFocusedLibrary(intent.meal, intent.phrase)
+            closeLog()
+            openFocusedLibrary(logTargetMeal() ?: intent.meal, intent.phrase)
             input = ""
             return
         }
-        val target = slot ?: run {
-            val markers = mealMarkers(input)
-            when {
-                markers.isEmpty() -> { mealPickerOpen = true; mealDraftError = null; return }
-                markers.size > 1 -> { mealDraftError = "Choose one meal marker, or remove the extra markers."; return }
-                else -> markers.single()
-            }
+        val target = logTargetMeal() ?: run {
+            if (mealMarkers(input).size > 1) { mealDraftError = "Choose one meal marker, or remove the extra markers."; return }
+            mealDraftError = null
+            logMealSubmitPending = true
+            logMealMenuOpen = true
+            return
         }
         submitToMeal(target)
     }
 
-    fun chooseMeal(target: MealSlot) {
-        mealPickerOpen = false
-        submitToMeal(target)
+    /** Opens the Log page. [preset] is the meal of the `+` or composer that opened it; null for the Daily composer. */
+    fun openLog(preset: MealSlot?) {
+        if (entryEditMode != EntryEditMode.NONE) return
+        logMeal = preset
+        logMealMenuOpen = false
+        logMealSubmitPending = false
+        mealDraftError = null
+        logOpen = true
     }
 
-    fun dismissMealPicker() { mealPickerOpen = false }
+    /** Closes the Log page. The draft stays in [input]. */
+    fun closeLog() {
+        logOpen = false
+        logMealMenuOpen = false
+        logMealSubmitPending = false
+    }
+
+    fun openLogMealMenu() { logMealMenuOpen = true }
+    fun dismissLogMealMenu() { logMealMenuOpen = false; logMealSubmitPending = false }
+
+    /** Choosing a meal sets the target, overriding a typed meal word; it logs at once only if Add asked for it. */
+    fun chooseLogMeal(target: MealSlot) {
+        logMeal = target
+        logMealMenuOpen = false
+        if (logMealSubmitPending) {
+            logMealSubmitPending = false
+            submit()
+        }
+    }
+
+    fun dismissMixedMealPicker() { mixedMealPickerOpen = false }
+
+    /** Library's mixed batch without a meal: the chosen meal saves the typed text. */
+    fun chooseMixedMeal(target: MealSlot) {
+        mixedMealPickerOpen = false
+        submitToMeal(target)
+    }
 
     private fun submitToMeal(target: MealSlot) {
         if (!ready || busy) return
@@ -862,11 +910,12 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             }
             return
         }
-        val cleaned = removeMealMarker(input, target)
+        val cleaned = removeAllMealMarkerTokens(input)
         if (cleaned.isBlank()) { mealDraftError = "Add at least one food."; return }
         busy = true
         viewModelScope.launch {
             runCatching { engine.save(cleaned, mealSlot = target, dayKey = selectedDayKey) }.onSuccess { saved ->
+                closeLog()
                 refresh(); if (input == captured) input = saved.unresolvedSegments.joinToString(", "); unknownQueue = saved.unresolvedSegments; unknownQueueTotal = saved.unresolvedSegments.size; unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }; resolutionContinuation = saved.unresolvedSegments.isNotEmpty(); resolverOpen = saved.unresolvedSegments.isNotEmpty(); mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
                 feedbackIds = saved.entries.filter { it.approximateConversion }.mapTo(mutableSetOf()) { it.id }; feedbackUntil = if (feedbackIds.isEmpty()) 0L else System.currentTimeMillis() + 30_000L
                 loggedBatchIds = saved.entries.map { it.id }
@@ -1427,6 +1476,14 @@ internal fun removeMealMarkerToken(value: String, target: MealSlot): String = Sh
     .filterNot { mealMarkerSlots(it).singleOrNull() == target }
     .joinToString(", ")
 
+/** Drops every meal-word segment; the Log page's chosen meal then wins over a typed one. */
+internal fun removeAllMealMarkerTokens(value: String): String = ShorthandParser().split(value)
+    .filter { mealMarkerSlots(it).isEmpty() }
+    .joinToString(", ")
+
+/** The Log page's meal picker label: the chosen meal, else the typed meal word, else "Meal". */
+internal fun logMealPickerLabel(chosen: MealSlot?, typed: MealSlot?): String = (chosen ?: typed)?.label() ?: "Meal"
+
 internal fun MealSlot.label() = name.lowercase().replaceFirstChar { it.titlecase() }
 internal fun Double.pretty() = if (this % 1 == 0.0) "%.0f".format(Locale.ROOT, this) else "%.1f".format(Locale.ROOT, this)
 internal fun Double?.macro() = this?.let { "${it.pretty()} g" } ?: "—"
@@ -1437,6 +1494,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); vm.reloadToday() } }
     LaunchedEffect(vm.feedbackUntil, vm.resolverOpen) { while (vm.feedbackUntil > 0L) { kotlinx.coroutines.delay(1000); if (vm.resolverOpen) vm.holdFeedback() else if (System.currentTimeMillis() >= vm.feedbackUntil) { vm.expireFeedback(); break } } }
     if (vm.scannerOpen) { ScannerScreen(vm); return }
+    if (vm.logOpen) { LogScreen(vm); return }
     val scanReviewBackdropVisible = vm.selectedProduct != null && vm.selectedProductFromScan
     if (scanReviewBackdropVisible) ScanReviewBackdrop(vm::clearSelectedProduct)
     else {
@@ -1450,12 +1508,8 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
         bottomBar = {
             // The tray rides above the keyboard and clear of a side display cutout.
             Box(Modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).imePadding()) {
-                when {
-                    vm.entryEditMode != EntryEditMode.NONE -> Unit
-                    vm.libraryOpen && !vm.libraryArchivedOnly -> LibraryComposer(vm)
-                    vm.slot == null -> DailyComposer(vm)
-                    else -> MealComposer(vm, vm.slot!!)
-                }
+                // Daily and Meal composers float over their own content; only Library uses this bar.
+                if (vm.entryEditMode == EntryEditMode.NONE && vm.libraryOpen && !vm.libraryArchivedOnly) LibraryComposer(vm)
             }
         }
     ) { pad ->
@@ -1483,7 +1537,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     } else if (vm.slot != null && vm.entryEditMode == EntryEditMode.NONE && !vm.customOpen && !vm.searchOpen && !vm.resolverOpen && vm.selectedProduct == null && vm.selectedEntry == null) {
         BackHandler { vm.closeMeal() }
     }
-    if (vm.mealPickerOpen) MealPickerDialog(vm)
+    if (vm.mixedMealPickerOpen) MixedMealPickerDialog(vm)
     if (vm.libraryMealPickerFood != null) LibraryMealPickerDialog(vm, vm.libraryMealPickerFood!!)
     if (vm.libraryBatchMealPickerOpen) LibraryBatchMealPickerDialog(vm)
     if (vm.customOpen) {
@@ -1503,19 +1557,19 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
 
 
 
-@Composable private fun MealPickerDialog(vm: BreakfastViewModel) {
+@Composable private fun MixedMealPickerDialog(vm: BreakfastViewModel) {
     AlertDialog(
-        onDismissRequest = vm::dismissMealPicker,
+        onDismissRequest = vm::dismissMixedMealPicker,
         title = { Text("Which meal?") },
         text = {
             Column {
                 Text("Choose where to add this batch.")
                 MealSlot.entries.forEach { target ->
-                    TextButton({ vm.chooseMeal(target) }, Modifier.fillMaxWidth()) { Text(target.label()) }
+                    TextButton({ vm.chooseMixedMeal(target) }, Modifier.fillMaxWidth()) { Text(target.label()) }
                 }
             }
         },
-        confirmButton = { TextButton(vm::dismissMealPicker) { Text("Cancel") } }
+        confirmButton = { TextButton(vm::dismissMixedMealPicker) { Text("Cancel") } }
     )
 }
 

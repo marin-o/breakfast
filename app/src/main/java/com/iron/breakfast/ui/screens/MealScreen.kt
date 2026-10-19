@@ -4,7 +4,6 @@ package com.iron.breakfast.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -15,14 +14,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -44,13 +41,12 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.BreakfastViewModel
 import com.iron.breakfast.ContributionAction
-import com.iron.breakfast.QuickAddPreview
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.label
-import com.iron.breakfast.ui.components.ChoiceOption
+import com.iron.breakfast.ui.components.Composer
 import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.SecondaryButton
@@ -67,58 +63,57 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
     val entries = vm.entries.filter { it.dayKey == vm.selectedDayKey && it.mealSlot == target }
     val foods = vm.foods.associateBy { it.id }
     val total = entries.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
-    val (dayName, date) = dayTitle(vm.selectedDayKey)
     val colors = LocalBreakfastColors.current
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
-    LazyColumn(
-        modifier.fillMaxSize().background(colors.bg),
-        contentPadding = PaddingValues(start = Gutter, end = Gutter, bottom = 20.dp),
-    ) {
-        item {
-            TopBar(
-                title = target.label(),
-                onBack = vm::closeMeal,
-                modifier = Modifier.padding(top = 8.dp),
-                subtitle = "${dayName.take(3)} $date",
-                trailing = { Text(receiptKcal(total.calories), color = colors.ink, style = BreakfastType.Title, modifier = Modifier.padding(end = 12.dp)) },
-            )
-            Hairline(Modifier.padding(top = 8.dp))
-        }
-        items(entries) { entry -> EntryRow(entry, foods[entry.foodId], vm) }
-        item {
-            Hairline(Modifier.padding(top = 8.dp))
-            val addFoodModifier = Modifier.widthIn(min = 128.dp * fontScale)
-            val scanModifier = Modifier.widthIn(min = 80.dp * fontScale)
-            if (fontScale >= 1.8f) {
-                Column(Modifier.fillMaxWidth().padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SecondaryButton("Add food", { vm.openFocusedLibrary(target) }, addFoodModifier, fillWidth = false)
-                    SecondaryButton("Scan", vm::beginScan, scanModifier, fillWidth = false)
-                }
-            } else {
-                Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SecondaryButton("Add food", { vm.openFocusedLibrary(target) }, addFoodModifier, fillWidth = false)
-                    SecondaryButton("Scan", vm::beginScan, scanModifier, fillWidth = false)
-                }
+    Box(modifier.fillMaxSize().background(colors.bg)) {
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            // Room for the composer over the fade at the bottom.
+            contentPadding = PaddingValues(start = Gutter, end = Gutter, bottom = 170.dp),
+        ) {
+            item {
+                TopBar(
+                    title = target.label(),
+                    onBack = vm::closeMeal,
+                    modifier = Modifier.padding(top = 8.dp),
+                    subtitle = shortDateLabel(vm.selectedDayKey),
+                    trailing = {
+                        Row(Modifier.padding(end = 12.dp), verticalAlignment = Alignment.Bottom) {
+                            Text(receiptKcal(total.calories), color = colors.ink, style = BreakfastType.Title)
+                            Text(" kcal", color = colors.soft, style = BreakfastType.Secondary)
+                        }
+                    },
+                )
+                Hairline(Modifier.padding(top = 14.dp))
             }
-            vm.pendingContribution?.let { ContributionAction(vm) }
+            items(entries) { entry -> EntryRow(entry, foods[entry.foodId], vm) }
+            item {
+                val addFoodModifier = Modifier.widthIn(min = 128.dp * fontScale)
+                val scanModifier = Modifier.widthIn(min = 80.dp * fontScale)
+                if (fontScale >= 1.8f) {
+                    Column(Modifier.fillMaxWidth().padding(top = 30.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SecondaryButton("Add food", { vm.openFocusedLibrary(target) }, addFoodModifier, fillWidth = false)
+                        SecondaryButton("Scan", vm::beginScan, scanModifier, fillWidth = false)
+                    }
+                } else {
+                    Row(Modifier.fillMaxWidth().padding(top = 30.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SecondaryButton("Add food", { vm.openFocusedLibrary(target) }, addFoodModifier, fillWidth = false)
+                        SecondaryButton("Scan", vm::beginScan, scanModifier, fillWidth = false)
+                    }
+                }
+                vm.pendingContribution?.let { ContributionAction(vm) }
+            }
         }
+        MealComposer(vm, target, Modifier.align(Alignment.BottomCenter))
     }
 }
 
+/** Ink composer that opens the Log page with this meal preset, over the fade. */
 @Composable
-internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot) {
-    val colors = LocalBreakfastColors.current
-    val previews = vm.quickAddPreviews()
-    val suggestions = vm.quickAddSuggestions()
-    Column(Modifier.fillMaxWidth().background(colors.bg).navigationBarsPadding()) {
-        vm.undoEntry?.let { deleted -> Snackbar("${deleted.foodName} deleted", "Undo", vm::undo, Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) }
-        Column(Modifier.fillMaxWidth().padding(start = Gutter, end = Gutter, top = 8.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (previews.isNotEmpty()) Column { previews.forEach { PendingFood(it) } }
-            if (suggestions.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                suggestions.forEachIndexed { index, ranked -> ChoiceOption(vm.quickAddSuggestionLabel(ranked.food), index == 0, { vm.chooseQuickSuggestion(ranked.food) }, Modifier.width(200.dp)) }
-            }
-            QuickAddInput(vm, "Add to ${target.label()}")
-        }
+internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot, modifier: Modifier = Modifier) {
+    ComposerFade(modifier) {
+        vm.undoEntry?.let { deleted -> Snackbar("${deleted.foodName} deleted", "Undo", vm::undo, Modifier.padding(bottom = 8.dp)) }
+        Composer("Add to ${target.label()}", onClick = { vm.openLog(target) }, onScan = vm::beginScan)
     }
 }
 
