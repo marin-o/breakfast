@@ -17,8 +17,6 @@ import com.iron.breakfast.domain.parseStrictAmountUnit
 import com.iron.breakfast.domain.resolveNutrition
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.pretty
-import com.iron.breakfast.ui.components.ReceiptTokenKind
-import com.iron.breakfast.ui.components.ReceiptTokenRange
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -48,6 +46,9 @@ internal data class ReceiptQuantityDisplay(
     val line: String,
     val approximateLabel: String? = null,
 )
+
+/** The quantity written plainly for a row: `≈1 tbsp, 16 g` when approximate. */
+internal fun ReceiptQuantityDisplay.plainLine(): String = approximateLabel?.let { "≈$it, $line" } ?: line
 
 /** Printed receipt figures use whole kcal consistently across rows and slips. */
 internal fun receiptKcal(value: Double): String = round(value).toInt().toString()
@@ -113,7 +114,15 @@ internal fun matchedPhraseLabel(sourcePhrase: String, foodName: String): String?
 }
 
 /** Source label beside the O/B/P box on the entry detail. */
-internal fun entrySourceLabel(food: FoodRecord?): String = com.iron.breakfast.ui.components.sourceLabel(sourceLetter(food))
+internal fun entrySourceLabel(food: FoodRecord?): String = sourceLabel(sourceLetter(food))
+
+/** Spoken and written name for a source letter. */
+internal fun sourceLabel(letter: String): String = when (letter) {
+    "B" -> "Bundled"
+    "P" -> "Personal"
+    "O" -> "Open Food Facts"
+    else -> "Unknown source"
+}
 
 private fun provenanceBasisUnit(provenance: String): MeasureUnit? {
     val match = Regex("(?:applied to per-[0-9.]+|on [0-9.]+)\\s*(g|ml)\\b", RegexOption.IGNORE_CASE)
@@ -164,21 +173,6 @@ internal fun dayTitle(dayKey: String, zoneId: ZoneId = ZoneId.systemDefault()): 
     return day to date.format(DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.ENGLISH))
 }
 
-/** Receipt v6.5 prints the calendar day number as its receipt number. */
-internal fun receiptNumber(dayKey: String): Int =
-    runCatching { java.time.LocalDate.parse(dayKey).dayOfYear }.getOrDefault(0)
-
-internal fun receiptDate(dayKey: String): String =
-    runCatching { java.time.LocalDate.parse(dayKey).format(DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.ROOT)) }
-        .getOrDefault(dayKey)
-
-internal fun receiptDateTimeRange(entries: List<MealEntry>, zoneId: ZoneId = ZoneId.systemDefault()): String? {
-    if (entries.isEmpty()) return null
-    val formatter = DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT).withZone(zoneId)
-    val start = entries.minOf { it.savedAtEpochMs }
-    val end = entries.maxOf { it.savedAtEpochMs }
-    return "${formatter.format(Instant.ofEpochMilli(start))}-${formatter.format(Instant.ofEpochMilli(end))}"
-}
 
 /** Underline means "recognised": a food phrase is marked only when [isRecognized] resolves it. */
 internal fun tokenRangesForInput(value: String, isRecognized: (String) -> Boolean = { true }): List<ReceiptTokenRange> {
@@ -300,3 +294,8 @@ internal fun nutritionSlipValues(nutrition: ResolvedNutrition): NutritionSlipVal
     carbs = nutrition.carbohydrates?.let { "${it.pretty()} g" },
     fat = nutrition.fat?.let { "${it.pretty()} g" },
 )
+
+/** Character spans of the quick-add input, classed as meal word, quantity or food. Used by the parser tests. */
+internal enum class ReceiptTokenKind { Meal, Quantity, Food }
+
+internal data class ReceiptTokenRange(val range: IntRange, val kind: ReceiptTokenKind)

@@ -225,27 +225,4 @@ class ReceiptScreenDataTest {
         assertEquals("148.1", printedFactKcal(148.1))
     }
 
-    @Test
-    fun receiptNumberUsesDayOfYear() {
-        assertEquals(287, receiptNumber("2026-10-14"))
-        assertEquals(1, receiptNumber("2026-01-01"))
-    }
-
-    @Test
-    fun dailyLargeFontLayoutUsesTheDrawnFallbacks() {
-        assertEquals("WEDNESDAY", dailyHeaderTitle("Wednesday", 1.3f))
-        assertEquals("WED", dailyHeaderTitle("Wednesday", 2.0f))
-        assertEquals(true, dailyMealTimeOwnLine(1.3f))
-        assertEquals(false, dailyMealTimeOwnLine(1.1f))
-        assertEquals(true, dailyMacroUsesTwoLines(2.0f))
-        assertEquals(false, dailyMacroUsesTwoLines(1.3f))
-    }
-
-    @Test
-    fun receiptDateTimeRangeUsesEarliestAndLatestEntry() {
-        val early = entry.copy(savedAtEpochMs = 7 * 60 * 60 * 1000L)
-        val late = entry.copy(savedAtEpochMs = 16 * 60 * 60 * 1000L + 40 * 60 * 1000L)
-        assertEquals("07:00-16:40", receiptDateTimeRange(listOf(late, early), ZoneOffset.UTC))
-        assertEquals(null, receiptDateTimeRange(emptyList(), ZoneOffset.UTC))
-    }
 }

@@ -1,6 +1,5 @@
 package com.iron.breakfast.ui.screens
 
-import com.iron.breakfast.ui.components.ReceiptTokenKind
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

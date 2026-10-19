@@ -166,15 +166,16 @@ import com.iron.breakfast.ui.screens.ProductReviewSheet
 import com.iron.breakfast.ui.screens.ResolveUnknownScreen
 import com.iron.breakfast.ui.screens.ScanReviewBackdrop
 import com.iron.breakfast.ui.screens.ScannerScreen
-import com.iron.breakfast.ui.components.ReceiptNavigationBar
-import com.iron.breakfast.ui.components.CharacterRule
-import com.iron.breakfast.ui.components.ChoiceBox
-import com.iron.breakfast.ui.components.ReceiptField
-import com.iron.breakfast.ui.components.ReceiptOutlinedButton
-import com.iron.breakfast.ui.components.ReceiptPrimaryButton
-import com.iron.breakfast.ui.components.TertiaryLink
-import com.iron.breakfast.ui.components.ReceiptTopBar
-import com.iron.breakfast.ui.components.receiptDashedRule
+import com.iron.breakfast.ui.components.Field
+import com.iron.breakfast.ui.components.Hairline
+import com.iron.breakfast.ui.components.ChoiceOption
+import com.iron.breakfast.ui.components.SectionHeading
+import com.iron.breakfast.ui.components.PrimaryButton
+import com.iron.breakfast.ui.components.TertiaryButton
+import com.iron.breakfast.ui.components.TopBar
+import com.iron.breakfast.ui.theme.BreakfastType
+import com.iron.breakfast.ui.theme.Gutter
+import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import com.iron.breakfast.ui.theme.BreakfastTheme
 import com.iron.breakfast.ui.theme.DarkBreakfastColors
 import com.iron.breakfast.ui.theme.LightBreakfastColors
@@ -195,10 +196,10 @@ import kotlin.math.hypot
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Keep system bars aligned with the same light/dark paper token as the receipt.
+        // Keep system bars aligned with the light/dark background token.
         enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.auto(LightBreakfastColors.paper.toArgb(), DarkBreakfastColors.paper.toArgb()),
-            navigationBarStyle = SystemBarStyle.auto(LightBreakfastColors.paper.toArgb(), DarkBreakfastColors.paper.toArgb()),
+            statusBarStyle = SystemBarStyle.auto(LightBreakfastColors.bg.toArgb(), DarkBreakfastColors.bg.toArgb()),
+            navigationBarStyle = SystemBarStyle.auto(LightBreakfastColors.bg.toArgb(), DarkBreakfastColors.bg.toArgb()),
         )
         setContent { BreakfastTheme { IronApp() } }
     }
@@ -1444,7 +1445,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
         return
     }
     Scaffold(
-        containerColor = com.iron.breakfast.ui.theme.LocalReceiptColors.current.paper,
+        containerColor = LocalBreakfastColors.current.bg,
         contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout),
         bottomBar = {
             // The tray rides above the keyboard and clear of a side display cutout.
@@ -1546,102 +1547,107 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
 }
 
 @Composable private fun ContributionReviewScreen(vm: BreakfastViewModel, draft: OffContributionDraft) {
-    val colors = com.iron.breakfast.ui.theme.LocalReceiptColors.current
+    val colors = LocalBreakfastColors.current
     BackHandler(onBack = vm::dismissContributionReview)
     val normalized = draft.normalizedNutrition
-    Surface(Modifier.fillMaxSize(), color = colors.paper) {
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 6.dp)) {
-            ReceiptTopBar("CONTRIBUTE", vm::dismissContributionReview, Modifier.padding(horizontal = 0.dp))
-            CharacterRule('-')
-            Text(listOfNotNull(draft.name, draft.brand).joinToString(", "), color = colors.soft, modifier = Modifier.padding(top = 4.dp))
-            Column(Modifier.fillMaxWidth().padding(top = 10.dp).drawBehind { drawRect(colors.ink, style = Stroke(2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx())))) }.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                Text("WILL SEND", color = colors.ink, fontWeight = FontWeight.Bold)
+    Surface(Modifier.fillMaxSize(), color = colors.bg) {
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter)) {
+            TopBar("Contribute", vm::dismissContributionReview)
+            Text(listOfNotNull(draft.name, draft.brand).joinToString(", "), color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 4.dp))
+            Column(Modifier.fillMaxWidth().padding(top = 24.dp)) {
+                SectionHeading("Will send")
                 if (draft.createNewProduct) {
                     ContributionLine("Name", draft.name)
                     draft.brand?.let { ContributionLine("Brand", it) }
                 }
                 ContributionLine("Barcode", draft.barcode)
-                Text("per 100 ${draft.basisUnit.label}", color = colors.soft, modifier = Modifier.padding(top = 6.dp))
+                Text("per 100 ${draft.basisUnit.label}", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 6.dp))
                 ContributionLine("Energy", normalized.calories.pretty(), "kcal")
                 ContributionLine("Fat", normalized.fat?.pretty() ?: "0", "g")
                 ContributionLine("Carbohydrate", normalized.carbohydrates?.pretty() ?: "0", "g")
                 ContributionLine("Protein", normalized.protein?.pretty() ?: "0", "g")
             }
-            Text(if (draft.createNewProduct) "New product: Breakfast creates it." else "Existing product: only nutrition changes.", color = colors.soft, modifier = Modifier.padding(top = 10.dp))
+            Text(
+                if (draft.createNewProduct) "New product: Breakfast creates it." else "Existing product: only nutrition changes.",
+                color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 16.dp),
+            )
             if (draft.createNewProduct) {
-                Text("Language", color = colors.soft, modifier = Modifier.padding(top = 10.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ChoiceBox("EN", vm.contributionLanguageCode == "en", { vm.onContributionLanguage("en") }, Modifier.weight(1f))
-                    ChoiceBox("MK", vm.contributionLanguageCode == "mk", { vm.onContributionLanguage("mk") }, Modifier.weight(1f))
+                Text("Language", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 24.dp))
+                Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ChoiceOption("EN", vm.contributionLanguageCode == "en", { vm.onContributionLanguage("en") }, Modifier.weight(1f))
+                    ChoiceOption("MK", vm.contributionLanguageCode == "mk", { vm.onContributionLanguage("mk") }, Modifier.weight(1f))
                 }
-                if (draft.basisUnit == MeasureUnit.MILLILITER) ReceiptField("Package quantity, ml", vm.contributionPackageQuantityMl, vm::onContributionPackageQuantityMl, Modifier.padding(top = 10.dp), labelColor = colors.soft, container = colors.paper, outline = colors.ink)
+                if (draft.basisUnit == MeasureUnit.MILLILITER) Field("Package quantity, ml", vm.contributionPackageQuantityMl, vm::onContributionPackageQuantityMl, Modifier.padding(top = 16.dp))
             }
-            CharacterRule('-' , modifier = Modifier.padding(top = 10.dp))
-            Text("NOT SENT", color = colors.soft, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
-            Text("Amounts, aliases, servings", color = colors.soft)
-            CharacterRule('=', modifier = Modifier.padding(top = 10.dp))
-            ReceiptPrimaryButton("Continue to sign in", vm::confirmContribution, Modifier.padding(top = 16.dp))
-            TertiaryLink("Decline", vm::dismissContributionReview)
+            Column(Modifier.fillMaxWidth().padding(top = 24.dp)) {
+                SectionHeading("Not sent")
+                Text("Amounts, aliases, servings", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 4.dp))
+            }
+            PrimaryButton("Continue to sign in", vm::confirmContribution, Modifier.padding(top = 24.dp))
+            TertiaryButton("Decline", vm::dismissContributionReview, Modifier.fillMaxWidth())
         }
     }
 }
 
 @Composable private fun ContributionSignInScreen(vm: BreakfastViewModel) {
-    val colors = com.iron.breakfast.ui.theme.LocalReceiptColors.current
+    val colors = LocalBreakfastColors.current
     val passwordFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { passwordFocus.requestFocus() }
     BackHandler(enabled = contributionAuthCanDismiss(vm.contributionBusy), onBack = vm::dismissContributionAuth)
-    Surface(Modifier.fillMaxSize(), color = colors.paper) {
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 6.dp)) {
-            ReceiptTopBar("SIGN IN", vm::dismissContributionAuth, backEnabled = contributionAuthCanDismiss(vm.contributionBusy))
-            CharacterRule('-')
-            Text("Open Food Facts account", color = colors.soft, modifier = Modifier.padding(top = 4.dp))
-            ReceiptField("Username", vm.contributionUsername, vm::onContributionUsername, Modifier.padding(top = 10.dp), labelColor = colors.soft, container = colors.paper, outline = colors.ink)
-            ReceiptField("Password", vm.contributionPassword, vm::onContributionPassword, Modifier.padding(top = 10.dp), labelColor = colors.soft, container = colors.paper, outline = colors.ink, fieldModifier = Modifier.focusRequester(passwordFocus), visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { vm.submitContribution() }))
-            Text("Password is not saved.", color = colors.soft, modifier = Modifier.padding(top = 10.dp))
-            ReceiptPrimaryButton(if (vm.contributionBusy) "Submitting" else "Submit", vm::submitContribution, Modifier.padding(top = 16.dp), enabled = !vm.contributionBusy)
-            if (contributionAuthCanDismiss(vm.contributionBusy)) TertiaryLink("Cancel", vm::dismissContributionAuth)
+    Surface(Modifier.fillMaxSize(), color = colors.bg) {
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter)) {
+            TopBar("Sign in", vm::dismissContributionAuth, backEnabled = contributionAuthCanDismiss(vm.contributionBusy))
+            Text("Open Food Facts account", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 4.dp))
+            Field("Username", vm.contributionUsername, vm::onContributionUsername, Modifier.padding(top = 16.dp))
+            Field(
+                "Password", vm.contributionPassword, vm::onContributionPassword, Modifier.padding(top = 16.dp),
+                fieldModifier = Modifier.focusRequester(passwordFocus),
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { vm.submitContribution() }),
+            )
+            Text("Password is not saved.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 12.dp))
+            PrimaryButton(if (vm.contributionBusy) "Submitting" else "Submit", vm::submitContribution, Modifier.padding(top = 24.dp), enabled = !vm.contributionBusy)
+            if (contributionAuthCanDismiss(vm.contributionBusy)) TertiaryButton("Cancel", vm::dismissContributionAuth, Modifier.fillMaxWidth())
         }
     }
 }
 
 @Composable private fun ContributionFailureScreen(vm: BreakfastViewModel, message: String) {
-    val colors = com.iron.breakfast.ui.theme.LocalReceiptColors.current
+    val colors = LocalBreakfastColors.current
     BackHandler(onBack = vm::dismissContributionFailure)
-    Surface(Modifier.fillMaxSize(), color = colors.paper) {
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 14.dp, vertical = 6.dp)) {
-            ReceiptTopBar("CONTRIBUTE", vm::dismissContributionFailure)
-            Column(Modifier.fillMaxWidth().padding(top = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                CharacterRule('-')
-                Text("NOT SENT", color = colors.ink, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
-                Text(message, color = colors.soft, modifier = Modifier.padding(top = 4.dp))
-                Text("Your food and entries are saved on this phone.", color = colors.ink, modifier = Modifier.padding(top = 8.dp))
-                CharacterRule('-', modifier = Modifier.padding(top = 10.dp))
+    Surface(Modifier.fillMaxSize(), color = colors.bg) {
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter)) {
+            TopBar("Contribute", vm::dismissContributionFailure)
+            Column(Modifier.fillMaxWidth().padding(top = 24.dp)) {
+                SectionHeading("Not sent")
+                Text(message, color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 4.dp))
+                Text("Your food and entries are saved on this phone.", color = colors.ink, style = BreakfastType.Body, modifier = Modifier.padding(top = 8.dp))
             }
-            ReceiptPrimaryButton("Retry", vm::retryContribution, Modifier.padding(top = 18.dp))
-            TertiaryLink("Dismiss", vm::dismissContributionFailure)
+            PrimaryButton("Retry", vm::retryContribution, Modifier.padding(top = 24.dp))
+            TertiaryButton("Dismiss", vm::dismissContributionFailure, Modifier.fillMaxWidth())
         }
     }
 }
 
 @Composable private fun ContributionLine(label: String, value: String, unit: String? = null) {
-    val colors = com.iron.breakfast.ui.theme.LocalReceiptColors.current
+    val colors = LocalBreakfastColors.current
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     val valueModifier = if (unit == null) Modifier else Modifier.width(64.dp * fontScale)
     val unitModifier = Modifier.width(44.dp * fontScale).padding(start = 8.dp)
     if (unit != null && fontScale >= 1.75f) {
-        Column(Modifier.fillMaxWidth()) {
-            Text(label, color = colors.ink)
+        Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+            Text(label, color = colors.ink, style = BreakfastType.Body)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Text(value, color = colors.ink, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, modifier = valueModifier)
-                Text(unit, color = colors.soft, maxLines = 1, modifier = unitModifier)
+                Text(value, color = colors.ink, style = BreakfastType.BodyMedium, textAlign = TextAlign.End, modifier = valueModifier)
+                Text(unit, color = colors.soft, style = BreakfastType.Secondary, maxLines = 1, modifier = unitModifier)
             }
         }
     } else {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(label, color = colors.ink, modifier = Modifier.weight(1f))
-            Text(value, color = colors.ink, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, modifier = valueModifier)
-            if (unit != null) Text(unit, color = colors.soft, maxLines = 1, modifier = unitModifier)
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(label, color = colors.ink, style = BreakfastType.Body, modifier = Modifier.weight(1f))
+            Text(value, color = colors.ink, style = BreakfastType.BodyMedium, textAlign = TextAlign.End, modifier = valueModifier)
+            if (unit != null) Text(unit, color = colors.soft, style = BreakfastType.Secondary, maxLines = 1, modifier = unitModifier)
         }
     }
 }

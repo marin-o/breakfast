@@ -30,6 +30,7 @@ object BreakfastType {
     val Title = style(17, 22, FontWeight.Medium)
     val MacroValue = style(20, 26, FontWeight.Medium)
     val Body = style(16, 22)
+    val BodyMedium = style(16, 22, FontWeight.Medium)
     val Button = style(16, 22, FontWeight.Medium)
     val Secondary = style(14, 19)
     val SecondaryMedium = style(14, 19, FontWeight.Medium)
