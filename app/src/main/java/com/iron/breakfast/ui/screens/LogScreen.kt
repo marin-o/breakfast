@@ -53,6 +53,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.BreakfastViewModel
+import com.iron.breakfast.domain.DraftRow
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.label
@@ -76,15 +77,13 @@ internal fun LogScreen(vm: BreakfastViewModel) {
     BackHandler(onBack = vm::closeLog)
     // One resolution pass per draft: rows, choices and the add-bar sum all come from the same planner run.
     val draft = remember(vm.input, vm.foods, vm.ready) { vm.logDraftView() }
-    val previews = draft.previews
-    val suggestions = draft.suggestions
+    val suggestions = draft.choices
     val target = vm.logTargetMeal()
     // The bar counts what Add will save, including the active segment's preselected match.
     val logged = draft.logged
     val kcal = logged.sumOf { it.calculation.nutrition.calories }
     // Any draft can be added: unresolved segments open the resolve-unknown flow, as before.
     val canAdd = vm.input.isNotBlank() && !vm.busy
-    val unresolved = draft.unresolved
     val placeholder = if (vm.selectedDayKey == dayKeyForToday()) "2 eggs, 1 banana" else "Add to ${shortDateLabel(vm.selectedDayKey)}"
     val requester = remember { FocusRequester() }
     LaunchedEffect(Unit) { requester.requestFocus() }
@@ -123,22 +122,22 @@ internal fun LogScreen(vm: BreakfastViewModel) {
             )
             Hairline(Modifier.padding(top = 22.dp))
             vm.mealDraftError?.let { Text(it, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(top = 8.dp)) }
-            previews.forEach { preview ->
-                FoodRow(
-                    name = preview.food.name,
-                    quantityLine = previewQuantityLine(preview.amount, preview.unit, preview.calculation.approximate),
-                    calories = formatKcal(preview.calculation.nutrition.calories),
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-            // Typed text that matches no food stays visible, so it is never lost when Add is pressed.
-            unresolved.forEach { raw ->
-                FoodRow(
-                    name = raw,
-                    quantityLine = "Not in your foods",
-                    calories = "",
-                    modifier = Modifier.padding(top = 4.dp),
-                )
+            // Rows in typed order. Typed text that matches no food stays visible, so it is never lost when Add is pressed.
+            draft.rows.forEach { row ->
+                when (row) {
+                    is DraftRow.Entry -> FoodRow(
+                        name = row.resolution.food.name,
+                        quantityLine = previewQuantityLine(row.resolution.amount, row.resolution.unit, row.resolution.calculation.approximate),
+                        calories = formatKcal(row.resolution.calculation.nutrition.calories),
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                    is DraftRow.Unresolved -> FoodRow(
+                        name = row.text,
+                        quantityLine = "Not in your foods",
+                        calories = "",
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
             }
             if (suggestions.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.Bottom) {

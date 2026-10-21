@@ -144,6 +144,7 @@ import com.iron.breakfast.domain.ReplacementResult
 import com.iron.breakfast.domain.LogPlan
 import com.iron.breakfast.domain.LogPlanner
 import com.iron.breakfast.domain.SegmentResolution
+import com.iron.breakfast.domain.DraftRow
 import com.iron.breakfast.domain.DraftView
 import com.iron.breakfast.domain.SegmentSpan
 import com.iron.breakfast.domain.TypedPart
@@ -657,11 +658,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     internal fun logDraftView(): LogDraftView {
         val planner = engine.planner()
         // One planner draft: rows, the choice group and the add-bar sum all come from the same resolution.
-        val draft = if (ready) planner.draft(input) else DraftView(emptyList(), emptyList(), "", null, emptyList())
+        val draft = if (ready) planner.draft(input) else DraftView.EMPTY
         return LogDraftView(
-            previews = draft.previews,
-            unresolved = draft.unresolved,
-            suggestions = draft.choices,
+            rows = draft.rows,
+            choices = draft.choices,
             preselected = draft.preselected,
             activePhrase = draft.activePhrase,
             logged = draftLogPlan(input, planner).entries,
@@ -1507,12 +1507,10 @@ internal fun logSubmitPlan(ready: Boolean, busy: Boolean, input: String, typedMa
  * An amountless draft opens the Library search instead, so it logs nothing.
  */
 internal data class LogDraftView(
-    /** Finished segments shown as rows. */
-    val previews: List<SegmentResolution>,
-    /** Finished segments that match no food, shown as "Not in your foods". */
-    val unresolved: List<String>,
+    /** The draft's rows in typed order: entries, and parts shown as "Not in your foods". */
+    val rows: List<DraftRow>,
     /** Choices for the segment being typed. */
-    val suggestions: List<RankedFood>,
+    val choices: List<RankedFood>,
     /** True only when the first choice is a full match that Add would log; a partial match is offered unselected. */
     val preselected: Boolean,
     val activePhrase: String,

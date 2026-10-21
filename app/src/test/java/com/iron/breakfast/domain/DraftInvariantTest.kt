@@ -73,3 +73,24 @@ class DraftInvariantTest {
         assertTrue(draft.logged.isEmpty())
     }
 }
+
+class DraftRowOrderTest {
+    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+
+    /** The rows follow the order the parts were typed: each row's text is a later part than the one before. */
+    @Test fun rowsAreInTypedOrderForEveryInput() {
+        val inputs = listOf(
+            "kiselo mleko 200g 1 kg rolled oats", "two eggs and a bananna", "banana 1 egg 2", "oats 60g milk 200ml",
+            "100g buckwheat 1 tsp pb 1 banana", "lunch, 2 eggs, banana", "xyzzy 2 qwerty, 1 banana", "2 egg 1 banana",
+        )
+        val failures = inputs.mapNotNull { input ->
+            val parts = planner.segments(input).map { it.text }.filter { ShorthandLexicon.mealSlotOf(it) == null }
+            val indexes = planner.draft(input).rows.map { row ->
+                val text = if (row is DraftRow.Entry) row.resolution.raw else (row as DraftRow.Unresolved).text
+                parts.indexOf(text)
+            }
+            if (indexes == indexes.sorted() && indexes.none { it < 0 }) null else "[$input] rows $indexes"
+        }
+        assertEquals(emptyList<String>(), failures)
+    }
+}

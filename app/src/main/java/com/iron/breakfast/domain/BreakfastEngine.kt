@@ -38,7 +38,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
         dayKey: String = dayKeyForEpochMs(nowMs)
     ): SavedMeal {
         val plan = planner().plan(input)
-        val entries = plan.entries.map { resolved ->
+        val entries = plan.entries.mapIndexed { index, resolved ->
             MealEntry(
                 id = UUID.randomUUID().toString(),
                 foodId = resolved.food.id,
@@ -49,7 +49,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
                 nutritionSnapshot = resolved.calculation.nutrition,
                 conversionProvenance = resolved.calculation.provenance,
                 approximateConversion = resolved.calculation.approximate,
-                savedAtEpochMs = nowMs,
+                savedAtEpochMs = orderedSavedAt(nowMs, index),
                 sourcePhrase = resolved.raw,
                 mealSlot = mealSlot,
                 dayKey = dayKey,
@@ -315,3 +315,9 @@ fun parseStrictAmountUnit(text: String): ParsedAmountUnit? {
     ) return null
     return ParsedAmountUnit(amount, unit)
 }
+
+/**
+ * The saved time of the [index]th entry of one save. Entries saved together share a moment, so each gets its own
+ * millisecond in typed order: the diary lists them by saved time, and the typed order is then kept.
+ */
+internal fun orderedSavedAt(nowMs: Long, index: Int): Long = nowMs + index
