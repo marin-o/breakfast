@@ -1760,8 +1760,8 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
 @Composable private fun ContributionLine(label: String, value: String, unit: String? = null) {
     val colors = LocalBreakfastColors.current
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
-    val valueModifier = if (unit == null) Modifier else Modifier.width(64.dp * fontScale)
-    val unitModifier = Modifier.width(44.dp * fontScale).padding(start = 8.dp)
+    val valueModifier = if (unit == null) Modifier else Modifier.widthIn(min = 64.dp * fontScale)
+    val unitModifier = Modifier.widthIn(min = 44.dp * fontScale).padding(start = 8.dp)
     // Plain values (name, brand, barcode) are soft; amounts are ink with a soft unit.
     val valueColor = if (unit == null) colors.soft else colors.ink
     val valueStyle = if (unit == null) BreakfastType.Body else BreakfastType.BodyMedium

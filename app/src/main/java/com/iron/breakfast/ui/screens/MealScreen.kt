@@ -139,18 +139,19 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel
     val colors = LocalBreakfastColors.current
     var revealOffset by remember(entry.id) { mutableFloatStateOf(0f) }
     var rowHeight by remember(entry.id) { androidx.compose.runtime.mutableIntStateOf(0) }
-    val deleteWidth = with(LocalDensity.current) { 96.dp.toPx() }
+    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    val deleteWidth = with(LocalDensity.current) { (96.dp * fontScale).toPx() }
     val touchSlop = LocalViewConfiguration.current.touchSlop
     val density = LocalDensity.current
     val quantity = quantityRateDisplay(entry, food, includeRateUnit = false, asciiMultiply = true)
     Box(Modifier.fillMaxWidth().background(colors.bg).onSizeChanged { rowHeight = it.height }) {
         // Swipe reveals the delete panel; the panel is the only place `bad` fills a surface.
         if (revealOffset < 0f) Row(
-            Modifier.align(Alignment.CenterEnd).width(96.dp).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).background(colors.bad).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { vm.delete(entry); revealOffset = 0f },
+            Modifier.align(Alignment.CenterEnd).widthIn(min = 96.dp * fontScale).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).background(colors.bad).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { vm.delete(entry); revealOffset = 0f },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
-            Text("Delete", color = colors.cameraMark, style = BreakfastType.Button)
+            Text("Delete", color = colors.cameraMark, style = BreakfastType.Button, maxLines = 1, softWrap = false)
         }
         FoodRow(
             name = entry.foodName,

@@ -290,9 +290,23 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
         if (food.archived) {
             PrimaryButton("Restore", onClick = { vm.restoreLibraryFood(food) }, Modifier.padding(top = 24.dp))
         } else {
-            Row(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SecondaryButton(targetMeal.label(), { mealMenuOpen = true }, Modifier.widthIn(min = 128.dp), fillWidth = false, trailing = Icons.Outlined.KeyboardArrowDown)
-                PrimaryButton("Log to ${targetMeal.label()}", onClick = { amountSheetOpen = true }, Modifier.weight(1f))
+            // Large font stacks the meal picker over the Log button, both full width.
+            val mealPicker: @Composable (Modifier, Boolean) -> Unit = { modifier, fill ->
+                SecondaryButton(targetMeal.label(), { mealMenuOpen = true }, modifier, fillWidth = fill, trailing = Icons.Outlined.KeyboardArrowDown)
+            }
+            val logButton: @Composable (Modifier) -> Unit = { modifier ->
+                PrimaryButton("Log to ${targetMeal.label()}", onClick = { amountSheetOpen = true }, modifier)
+            }
+            if (isLargeFont(LocalDensity.current.fontScale)) {
+                Column(Modifier.fillMaxWidth().padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    mealPicker(Modifier.fillMaxWidth(), true)
+                    logButton(Modifier.fillMaxWidth())
+                }
+            } else {
+                Row(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    mealPicker(Modifier.widthIn(min = 128.dp), false)
+                    logButton(Modifier.weight(1f))
+                }
             }
             if (mealMenuOpen) MealChoices(selected = targetMeal, onSelect = { targetMeal = it; mealMenuOpen = false }, modifier = Modifier.padding(top = 8.dp))
             if (contributionAvailable(food)) SecondaryButton("Contribute to Open Food Facts", { vm.closeLibraryFood(); vm.openContributionForFood(food) }, Modifier.padding(top = 16.dp))
