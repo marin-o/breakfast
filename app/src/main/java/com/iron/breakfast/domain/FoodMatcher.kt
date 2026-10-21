@@ -22,6 +22,8 @@ class FoodMatcher(
         val nameTokens: Set<String>,
         val canonicalNames: String,
         val canonicalTokens: Set<String>,
+        /** Words of the name and aliases only, the vocabulary a typo is checked against. */
+        val nameWords: Set<String>,
         val normalizedNames: Set<String>,
         val normalizedAliases: Set<String>
     )
@@ -37,6 +39,7 @@ class FoodMatcher(
             nameTokens = tokens(names).toSet(),
             canonicalNames = canonicalNames,
             canonicalTokens = tokens(canonicalNames).toSet(),
+            nameWords = tokens(food.allNames().joinToString(" ")).toSet(),
             normalizedNames = food.allNames().mapTo(mutableSetOf(), ::normalize),
             normalizedAliases = food.aliases.mapTo(mutableSetOf(), ::normalize)
         )
@@ -104,7 +107,26 @@ class FoodMatcher(
         token in indexed.names || token in indexed.category -> EXACT_WEIGHT
         stems(token).any { it in indexed.nameTokens } -> STEM_WEIGHT
         transliterated(token, indexed) -> TRANSLITERATED_WEIGHT
+        typoOf(token, indexed) -> TYPO_WEIGHT
         else -> 0.0
+    }
+
+    /**
+     * A misspelt token: within one edit for five letters, two for six or more, of a word in the name or aliases. Only
+     * reached when no exact, stemmed or transliterated match exists, so a typo never beats a real match.
+     */
+    private fun typoOf(token: String, indexed: IndexedFood): Boolean {
+        val allowance = typoAllowance(token)
+        val canonical = Transliteration.canonical(token)
+        val canonicalAllowance = typoAllowance(canonical)
+        return (allowance > 0 && indexed.nameWords.any { withinEditDistance(token, it, allowance) }) ||
+            (canonicalAllowance > 0 && indexed.nameWords.any { withinEditDistance(canonical, Transliteration.canonical(it), canonicalAllowance) })
+    }
+
+    private fun typoAllowance(token: String): Int = when {
+        token.length < MIN_TYPO_LENGTH || !token.all { it.isLetter() } -> 0
+        token.length >= LONG_TYPO_LENGTH -> 2
+        else -> 1
     }
 
     /** The token in the other script: "pindzur" finds Пинџур and "кисело" finds "kiselo mleko". */
@@ -160,7 +182,27 @@ class FoodMatcher(
         private const val EXACT_WEIGHT = 1.0
         private const val STEM_WEIGHT = 0.95
         private const val TRANSLITERATED_WEIGHT = 0.9
+        private const val TYPO_WEIGHT = 0.6
+        private const val MIN_TYPO_LENGTH = 5
+        private const val LONG_TYPO_LENGTH = 6
         private const val MIN_STEM_LENGTH = 3
+
+        /** True when [a] and [b] are within [max] single-letter edits (insert, delete, substitute). Stops early when it cannot. */
+        private fun withinEditDistance(a: String, b: String, max: Int): Boolean {
+            if (kotlin.math.abs(a.length - b.length) > max) return false
+            var previous = IntArray(b.length + 1) { it }
+            for (i in 1..a.length) {
+                val current = IntArray(b.length + 1)
+                current[0] = i
+                for (j in 1..b.length) {
+                    val cost = if (a[i - 1] == b[j - 1]) 0 else 1
+                    current[j] = minOf(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost)
+                }
+                if (current.min() > max) return false
+                previous = current
+            }
+            return previous[b.length] <= max
+        }
         private const val STEMMED_NAME_SCORE = 50.0
         private val STOP_WORDS = ShorthandLexicon.stopWords
         private val TOKEN_CHARACTER_PATTERN = Regex("[^\\p{L}\\p{N}.%]+")
