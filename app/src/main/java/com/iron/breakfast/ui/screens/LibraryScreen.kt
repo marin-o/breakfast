@@ -164,7 +164,7 @@ private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boole
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             FoodRow(
                 name = food.name,
-                quantityLine = if (archived) "archived" else if (last == null) "${repeatAmount.pretty()} ${repeatUnit.displayLabel()}" else "last ${repeatAmount.pretty()} ${repeatUnit.displayLabel()}",
+                quantityLine = if (archived) "Archived" else if (last == null) "${repeatAmount.pretty()} ${repeatUnit.displayLabel()}" else "last ${repeatAmount.pretty()} ${repeatUnit.displayLabel()}",
                 calories = last?.let { printedFactKcal(it.nutritionSnapshot.calories) } ?: defaultServingCalories(food),
                 modifier = Modifier.weight(1f),
                 onClick = { vm.openLibraryFood(food) },
@@ -259,8 +259,8 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
             trailing = { if (!food.archived) TertiaryButton("Edit", { vm.closeLibraryFood(); vm.openLibraryEdit(food) }) },
         )
         Hairline(Modifier.padding(top = 8.dp))
-        if (food.archived) Text("Archived", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 16.dp))
         Text(foodText(food.name), color = colors.ink, style = BreakfastType.Section, modifier = Modifier.padding(top = 8.dp))
+        if (food.archived) Text("Archived", color = colors.soft, style = BreakfastType.Secondary)
         food.brand?.takeIf { it.isNotBlank() }?.let { Text(it, color = colors.soft, style = BreakfastType.Secondary) }
         Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Secondary)
         food.barcode?.let { Text("Barcode $it", color = colors.soft, style = BreakfastType.Secondary) }
