@@ -33,7 +33,6 @@ import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
-import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -540,7 +539,7 @@ fun Composer(
             modifier = Modifier.weight(1f).clickable(role = Role.Button, onClick = onClick),
         )
         if (onScan != null) IconButton(onClick = onScan, modifier = Modifier.size(IconTarget)) {
-            Icon(Icons.Outlined.QrCodeScanner, contentDescription = "Scan barcode", tint = colors.bg)
+            Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.bg)
         }
     }
 }

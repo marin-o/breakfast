@@ -87,6 +87,7 @@ import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.MealChoices
 import com.iron.breakfast.ui.components.PrimaryButton
+import com.iron.breakfast.ui.components.ScanBarcodeIcon
 import com.iron.breakfast.ui.components.SearchField
 import com.iron.breakfast.ui.components.SecondaryButton
 import com.iron.breakfast.ui.components.Sheet
@@ -228,7 +229,7 @@ internal fun LibraryComposer(vm: BreakfastViewModel) {
                 Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = colors.bg, modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = vm::beginScan, modifier = Modifier.size(IconTarget)) {
-                Icon(Icons.Outlined.QrCodeScanner, contentDescription = "Scan barcode", tint = colors.bg)
+                Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.bg)
             }
         }
         if (!inMeal) BottomNav(selectedToday = false, onToday = { vm.closeMeal(); vm.closeLibrary() }, onLibrary = {})
