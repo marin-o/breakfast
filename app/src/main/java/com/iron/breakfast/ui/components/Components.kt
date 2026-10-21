@@ -181,7 +181,14 @@ fun TertiaryButton(
             .padding(horizontal = 14.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = if (onDark) colors.cameraMark else if (soft) colors.soft else colors.ink, style = BreakfastType.Button, textAlign = TextAlign.Center)
+        Text(
+            text,
+            color = if (onDark) colors.cameraMark else if (soft) colors.soft else colors.ink,
+            style = BreakfastType.Button,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -225,6 +232,8 @@ fun ChoiceOption(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     detail: String? = null,
+    /** Four-up meal row: 14sp, tighter padding, one line that never breaks mid-word (ellipsis as a last resort). */
+    compact: Boolean = false,
 ) {
     val colors = LocalBreakfastColors.current
     Column(
@@ -232,15 +241,22 @@ fun ChoiceOption(
             .heightIn(min = ChoiceMinHeight)
             .border(if (selected) 1.5.dp else 1.dp, if (selected) colors.ink else colors.line, ChoiceShape)
             .clickable(role = Role.RadioButton, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = if (compact) 8.dp else 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
             foodText(label),
             color = if (selected) colors.ink else colors.soft,
-            style = if (selected) BreakfastType.BodyMedium else BreakfastType.Body,
-            maxLines = 2,
+            style = when {
+                compact && selected -> BreakfastType.SecondaryMedium
+                compact -> BreakfastType.Secondary
+                selected -> BreakfastType.BodyMedium
+                else -> BreakfastType.Body
+            },
+            maxLines = if (compact) 1 else 2,
+            softWrap = !compact,
             overflow = TextOverflow.Ellipsis,
+            textAlign = if (compact) TextAlign.Center else TextAlign.Start,
         )
         if (detail != null) Text(detail, color = colors.soft, style = BreakfastType.Secondary)
     }
@@ -705,12 +721,19 @@ fun Hairline(modifier: Modifier = Modifier) {
     Box(modifier.fillMaxWidth().height(1.dp).background(LocalBreakfastColors.current.line))
 }
 
+/**
+ * Whether four compact meal choices fit one row of [availableDp]. Each chip needs about 84dp for "Breakfast" at 14sp
+ * (an estimate, not measured on a device), scaled up with the font; otherwise the caller uses the 2x2 grid.
+ */
+internal fun mealRowFits(availableDp: Float, fontScale: Float): Boolean =
+    (availableDp - 3 * 8f) / 4f >= 84f * fontScale.coerceAtLeast(1f)
+
 /** The meal choices: a 2x2 grid, or one row of four when [singleRow] (Library repeat and amount sheets). */
 @Composable
-fun MealChoices(selected: MealSlot?, onSelect: (MealSlot) -> Unit, modifier: Modifier = Modifier, singleRow: Boolean = false) {
+fun MealChoices(selected: MealSlot?, onSelect: (MealSlot) -> Unit, modifier: Modifier = Modifier, singleRow: Boolean = false, compact: Boolean = false) {
     if (singleRow) {
         Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MealSlot.entries.forEach { meal -> ChoiceOption(meal.label(), selected == meal, { onSelect(meal) }, Modifier.weight(1f)) }
+            MealSlot.entries.forEach { meal -> ChoiceOption(meal.label(), selected == meal, { onSelect(meal) }, Modifier.weight(1f), compact = compact) }
         }
         return
     }
@@ -718,7 +741,7 @@ fun MealChoices(selected: MealSlot?, onSelect: (MealSlot) -> Unit, modifier: Mod
         MealSlot.entries.chunked(2).forEach { pair ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 pair.forEach { meal ->
-                    ChoiceOption(meal.label(), selected == meal, { onSelect(meal) }, Modifier.weight(1f))
+                    ChoiceOption(meal.label(), selected == meal, { onSelect(meal) }, Modifier.weight(1f), compact = compact)
                 }
             }
         }

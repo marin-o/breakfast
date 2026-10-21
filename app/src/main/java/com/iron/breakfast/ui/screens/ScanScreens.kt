@@ -23,12 +23,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -63,6 +65,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -99,6 +102,7 @@ import com.iron.breakfast.ui.components.Field
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.LinearProgress
 import com.iron.breakfast.ui.components.MealChoices
+import com.iron.breakfast.ui.components.mealRowFits
 import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.components.SecondaryButton
 import com.iron.breakfast.ui.components.SectionHeading
@@ -165,25 +169,30 @@ import java.util.concurrent.atomic.AtomicBoolean
                 torchAvailable = camera.cameraInfo.hasFlashUnit()
             }.onFailure { if (!session.disposed.get()) { session.dispose(); vm.scannerUnavailable() } } }, ContextCompat.getMainExecutor(ctx))
         } }, Modifier.fillMaxSize())
-        else Text(
-            if (vm.scannerUnavailableState) "Camera unavailable. Enter a barcode manually."
-            else "Camera permission is required to scan.",
-            Modifier.align(Alignment.TopCenter).padding(top = 150.dp),
-            color = colors.cameraMark,
-            style = BreakfastType.Secondary,
-        )
-        Viewfinder(Modifier.align(Alignment.TopCenter).padding(top = 260.dp).size(width = 260.dp, height = 140.dp), colors.cameraMark)
-        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = vm::endScan, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.cameraMark) }
-            Box(Modifier.weight(1f))
-            if (torchAvailable) IconToggleButton(checked = torchOn, onCheckedChange = { torchOn = it }, Modifier.size(44.dp).semantics { role = Role.Switch; stateDescription = if (torchOn) "On" else "Off" }) {
-                Icon(if (torchOn) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff, contentDescription = "Torch", tint = colors.cameraMark)
+        // Overlay: the viewfinder centres in the space above a bottom block, so it scales with the screen and font.
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = vm::endScan, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.cameraMark) }
+                Box(Modifier.weight(1f))
+                if (torchAvailable) IconToggleButton(checked = torchOn, onCheckedChange = { torchOn = it }, Modifier.size(44.dp).semantics { role = Role.Switch; stateDescription = if (torchOn) "On" else "Off" }) {
+                    Icon(if (torchOn) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff, contentDescription = "Torch", tint = colors.cameraMark)
+                }
             }
-        }
-        if (vm.scannerLookupBusy) LookupProgress(vm.scannerLookupCode, vm::cancelBarcodeLookup, Modifier.align(Alignment.TopCenter).padding(top = 500.dp))
-        else Column(Modifier.align(Alignment.TopCenter).padding(top = 452.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Point the camera at a barcode", color = colors.cameraMark.copy(alpha = 0.7f), style = BreakfastType.Secondary)
-            SecondaryButton("Manual barcode", { manualOpen = true }, Modifier.padding(top = 29.dp).width(220.dp), fillWidth = false, onDark = true)
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Viewfinder(Modifier.size(width = 260.dp, height = 140.dp), colors.cameraMark)
+            }
+            Column(Modifier.fillMaxWidth().padding(start = Gutter, end = Gutter, bottom = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                if (vm.scannerLookupBusy) LookupProgress(vm.scannerLookupCode, vm::cancelBarcodeLookup)
+                else {
+                    Text(
+                        if (hasPermission) "Point the camera at a barcode" else "Camera permission is required to scan.",
+                        color = colors.cameraMark.copy(alpha = 0.7f),
+                        style = BreakfastType.Secondary,
+                        textAlign = TextAlign.Center,
+                    )
+                    SecondaryButton("Manual barcode", { manualOpen = true }, Modifier.padding(top = 24.dp).width(220.dp), fillWidth = false, onDark = true)
+                }
+            }
         }
     }
     if (manualOpen) ManualBarcodeSheet(onDismiss = { manualOpen = false }, onLookup = { code -> manualOpen = false; vm.onBarcode(code) })
@@ -199,7 +208,7 @@ private fun ScannerUnavailableScreen(noCamera: Boolean, onBack: () -> Unit, onMa
             Text(if (noCamera) "This phone has no usable camera." else "Allow the camera in Android settings.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 6.dp))
         }
         Box(Modifier.weight(1f))
-        Column(Modifier.fillMaxWidth().padding(bottom = 36.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (noCamera) PrimaryButton("Manual barcode", onManual, kind = ButtonKind.Neutral)
             else {
                 PrimaryButton("Open settings", onSettings, kind = ButtonKind.Neutral)
@@ -212,7 +221,7 @@ private fun ScannerUnavailableScreen(noCamera: Boolean, onBack: () -> Unit, onMa
 /** Lookup progress drawn in white over the camera ground, with a Cancel under it. */
 @Composable
 private fun LookupProgress(code: String, onCancel: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth().padding(horizontal = Gutter)) {
+    Column(modifier.fillMaxWidth()) {
         LinearProgress("Looking up $code", onDark = true)
         TertiaryButton("Cancel", onCancel, Modifier.fillMaxWidth().padding(top = 14.dp), onDark = true)
     }
@@ -289,6 +298,36 @@ private fun LookupProgress(code: String, onCancel: () -> Unit, modifier: Modifie
     }
 }
 
+/** One nutrient field in the review sheet's editing grid. */
+private data class NutrientInput(val label: String, val value: String, val onValueChange: (String) -> Unit)
+
+/**
+ * Whether four nutrient fields fit one row of [availableDp]: each needs about 76dp (scaled with the font) for its
+ * label and number; otherwise they stack as a 2x2 grid.
+ */
+internal fun nutrientFieldsFitRow(availableDp: Float, fontScale: Float): Boolean =
+    (availableDp - 3 * 8f) / 4f >= 76f * fontScale.coerceAtLeast(1f)
+
+/** The four decimal nutrient fields: one row when they fit, otherwise a 2x2 grid. */
+@Composable private fun NutrientInputs(inputs: List<NutrientInput>) {
+    val decimal = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (nutrientFieldsFitRow(maxWidth.value, LocalDensity.current.fontScale)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                inputs.forEach { Field(it.label, it.value, it.onValueChange, Modifier.weight(1f), keyboardOptions = decimal) }
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                inputs.chunked(2).forEach { pair ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pair.forEach { Field(it.label, it.value, it.onValueChange, Modifier.weight(1f), keyboardOptions = decimal) }
+                    }
+                }
+            }
+        }
+    }
+}
+
 private fun amountFieldText(vm: BreakfastViewModel): String =
     "${vm.productAmount.toDoubleOrNull()?.pretty() ?: vm.productAmount} ${vm.productUnit}".trim()
 
@@ -307,7 +346,6 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
     val fromLibrary = vm.selectedProductOrigin == ProductReviewOrigin.LIBRARY
     var meal by remember(food.id) { mutableStateOf(queueMeal ?: vm.slot ?: MealSlot.LUNCH) }
     var editing by remember(food.id) { mutableStateOf(false) }
-    val decimal = KeyboardOptions(keyboardType = KeyboardType.Decimal)
     val parsed = parseProductAmount(amountText, basis.unit)
     val calculation = if (parsed != null) vm.productCalculation(food) else null
     val approx = productApproxLabel(calculation, parsed?.unit, basis.unit)
@@ -335,12 +373,14 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
                 Field("Name", vm.productName, vm::onProductName)
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(basisLabel(basis.amount, basis.unit), color = colors.soft, style = BreakfastType.Meta)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Field("kcal", vm.productCalories, { vm.onProductCalories(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), keyboardOptions = decimal)
-                        Field("Protein, g", vm.productProtein, { vm.onProductProtein(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), keyboardOptions = decimal)
-                        Field("Carbs, g", vm.productCarbs, { vm.onProductCarbs(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), keyboardOptions = decimal)
-                        Field("Fat, g", vm.productFat, { vm.onProductFat(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), keyboardOptions = decimal)
-                    }
+                    NutrientInputs(
+                        listOf(
+                            NutrientInput("kcal", vm.productCalories) { vm.onProductCalories(it.asciiDigits(allowDecimalPoint = true)) },
+                            NutrientInput("Protein, g", vm.productProtein) { vm.onProductProtein(it.asciiDigits(allowDecimalPoint = true)) },
+                            NutrientInput("Carbs, g", vm.productCarbs) { vm.onProductCarbs(it.asciiDigits(allowDecimalPoint = true)) },
+                            NutrientInput("Fat, g", vm.productFat) { vm.onProductFat(it.asciiDigits(allowDecimalPoint = true)) },
+                        ),
+                    )
                 }
             }
             Field(
@@ -363,7 +403,9 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
                 }
                 else {
                     Text("Meal", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 16.dp))
-                    MealChoices(meal, { meal = it }, Modifier.padding(top = 6.dp), singleRow = true)
+                    BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                        MealChoices(meal, { meal = it }, singleRow = mealRowFits(maxWidth.value, LocalDensity.current.fontScale), compact = true)
+                    }
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 18.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                     Text("Result", color = colors.soft, style = BreakfastType.Meta)
@@ -380,9 +422,9 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
                 PrimaryButton("Save to Library", vm::saveSelectedToLibrary, Modifier.padding(top = 14.dp), enabled = canAdd)
             }
             Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                TertiaryButton(if (editing) "Hide details" else "Edit details", { editing = !editing }, Modifier.semantics { stateDescription = if (editing) "Expanded" else "Collapsed" })
-                TertiaryButton("Find better match", { vm.clearSelectedProduct(); vm.openSearch(fromResolver = vm.resolutionContinuation) })
-                TertiaryButton("Rescan", { vm.clearSelectedProduct(); vm.beginScan() })
+                TertiaryButton(if (editing) "Hide details" else "Edit details", { editing = !editing }, Modifier.weight(1f).semantics { stateDescription = if (editing) "Expanded" else "Collapsed" })
+                TertiaryButton("Find better match", { vm.clearSelectedProduct(); vm.openSearch(fromResolver = vm.resolutionContinuation) }, Modifier.weight(1f))
+                TertiaryButton("Rescan", { vm.clearSelectedProduct(); vm.beginScan() }, Modifier.weight(1f))
             }
         }
     }
