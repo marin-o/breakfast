@@ -16,8 +16,16 @@ data class SegmentSpan(val text: String, val start: Int, val end: Int)
 
 class ShorthandParser {
     private val halfPattern = Regex(
-        "(?i)\\bhalf\\s+a?\\s*(g|grams?|ml|milliliters?|tbsp|tablespoons?|tsp|teaspoons?|pieces?)?\\b"
+        "(?i)(?<![\\p{L}\\p{N}])(?:a\\s+)?(half|quarter|половина)(?![\\p{L}\\p{N}])(?:\\s+a(?![\\p{L}\\p{N}]))?\\s*" +
+            "(g|grams?|ml|milliliters?|tbsp|tablespoons?|tsp|teaspoons?|pieces?)?(?![\\p{L}\\p{N}])"
     )
+    /** Number words other than the half family, longest first so "a couple of" wins over "a". */
+    private val wordPattern = Regex(
+        "(?i)(?<![\\p{L}\\p{N}])(${ShorthandLexicon.wordAlternation()})(?![\\p{L}\\p{N}])\\s*" +
+            "(g|grams?|ml|milliliters?|tbsp|tablespoons?|tsp|teaspoons?|pieces?)?(?![\\p{L}\\p{N}])"
+    )
+    /** "2x egg" and "egg x2". */
+    private val multiplierPattern = Regex("(?i)(?<![\\p{L}\\p{N}])(?:(\\d+)\\s*x|x(\\d+))(?![\\p{L}\\p{N}.,])")
     private val numberPattern = Regex(
         "(?i)\\b(\\d+\\s+\\d+/\\d+|\\d+/\\d+|\\d+(?:[.,]\\d+)?)(?![.,\\d]|\\s*%)\\s*" +
             "(g|grams?|ml|milliliters?|tbsp|tablespoons?|tsp|teaspoons?|pieces?)?\\b"
@@ -125,8 +133,25 @@ class ShorthandParser {
             }
             isQuantityFraction(word, next) -> if (next?.toMeasureUnit() != null) i + 2 else i + 1
             ATTACHED_QUANTITY.matchEntire(word)?.let { it.groupValues[2].toMeasureUnit() != null } == true -> i + 1
-            else -> null
+            MULTIPLIER.matches(word) -> i + 1
+            else -> wordQuantityEnd(texts, i)
         }
+    }
+
+    /** End of a number word at [i] ("two", "half", "a couple of", "a half") with its optional unit, or null. */
+    private fun wordQuantityEnd(texts: List<String>, i: Int): Int? {
+        val lower = texts.getOrNull(i)?.lowercase(Locale.ROOT) ?: return null
+        val next = texts.getOrNull(i + 1)?.lowercase(Locale.ROOT)
+        var end = when {
+            lower in setOf("a", "an") && next != null && (ShorthandLexicon.isFractionWord(next) || next == "couple") -> i + 2
+            ShorthandLexicon.wordAmount(lower) != null -> i + 1
+            else -> return null
+        }
+        if (next == "couple" && texts.getOrNull(end)?.lowercase(Locale.ROOT) == "of") end++
+        // "half a tbsp" takes its article after the word.
+        if (ShorthandLexicon.isFractionWord(lower) && texts.getOrNull(end)?.lowercase(Locale.ROOT) == "a") end++
+        if (texts.getOrNull(end)?.toMeasureUnit() != null) end++
+        return end
     }
 
     private fun isQuantityFraction(word: String, following: String?): Boolean {
@@ -143,42 +168,46 @@ class ShorthandParser {
         return false
     }
 
-    /** A word that can name a food: it has a letter and is not structure (a stop word, a meal word or a unit). */
+    /** A word that can name a food: it has a letter and is not structure (a stop word, meal word, unit or number word). */
     private fun isFoodWord(word: String): Boolean {
         val lower = word.lowercase(Locale.ROOT)
         return word.any { it.isLetter() } && lower !in ShorthandLexicon.stopWords &&
-            ShorthandLexicon.mealSlotOf(word) == null && lower.toMeasureUnit() == null
+            ShorthandLexicon.mealSlotOf(word) == null && lower.toMeasureUnit() == null &&
+            ShorthandLexicon.wordAmount(lower) == null && !MULTIPLIER.matches(word)
     }
 
     fun parse(input: String): ParsedSegment {
         val raw = input.trim()
         if (raw.isEmpty()) return ParsedSegment(raw, "", null, null, null, null)
 
-        val halfMatch = halfPattern.find(raw)
-        val numericMatch = numberPattern.findAll(raw).firstOrNull { candidate ->
-            val amountText = candidate.groupValues[1]
-            val unitText = candidate.groupValues.getOrNull(2).orEmpty()
-            !isCompositionRatio(candidate, raw) || unitText.isNotBlank()
-        }
-        val match = halfMatch ?: numericMatch
-        if (match == null) {
-            return ParsedSegment(raw, raw, null, null, null, null)
-        }
-
-        val amountText = if (halfMatch != null) "half" else match.groupValues[1]
-        val unitText = if (halfMatch != null) {
-            match.groupValues.getOrNull(1).orEmpty()
-        } else {
-            match.groupValues.getOrNull(2).orEmpty()
-        }
-        val amount = parseAmount(amountText)
-        val unit = unitText.toMeasureUnit()
-        val foodPhrase = (raw.removeRange(match.range)).replace(Regex("\\s+"), " ").trim()
+        val quantity = findQuantity(raw) ?: return ParsedSegment(raw, raw, null, null, null, null)
+        val foodPhrase = (raw.removeRange(quantity.range)).replace(Regex("\\s+"), " ").trim()
         val modifiers = Regex("(?i)(?:\\b\\d+(?:[.,]\\d+)?%|\\b(?:small|large|oat|smooth|crunchy|raw|cooked|roasted|boneless|skinless|drained|canned)\\b)")
             .findAll(foodPhrase)
             .map { it.value.lowercase(Locale.ROOT) }
             .toList()
-        return ParsedSegment(raw, foodPhrase, amount, unit, match.range.first, match.range.last + 1, modifiers)
+        return ParsedSegment(raw, foodPhrase, quantity.amount, quantity.unit, quantity.range.first, quantity.range.last + 1, modifiers)
+    }
+
+    private class Quantity(val amount: Double, val unit: MeasureUnit?, val range: IntRange)
+
+    /** The amount a segment states. Priority: half words, then digits, then number words, then "2x" or "x2". */
+    private fun findQuantity(raw: String): Quantity? {
+        halfPattern.find(raw)?.let { match ->
+            return Quantity(ShorthandLexicon.wordAmount(match.groupValues[1]) ?: 0.5, match.groupValues[2].toMeasureUnit(), match.range)
+        }
+        numberPattern.findAll(raw).firstOrNull { candidate ->
+            !isCompositionRatio(candidate, raw) || candidate.groupValues.getOrNull(2).orEmpty().isNotBlank()
+        }?.let { match ->
+            return Quantity(parseAmount(match.groupValues[1]), match.groupValues[2].toMeasureUnit(), match.range)
+        }
+        wordPattern.find(raw)?.let { match ->
+            return Quantity(ShorthandLexicon.wordAmount(match.groupValues[1]) ?: 0.0, match.groupValues[2].toMeasureUnit(), match.range)
+        }
+        return multiplierPattern.find(raw)?.let { match ->
+            val count = match.groupValues[1].ifEmpty { match.groupValues[2] }.toDoubleOrNull() ?: 0.0
+            Quantity(count, null, match.range)
+        }
     }
 
     private fun parseAmount(text: String): Double {
@@ -215,6 +244,7 @@ class ShorthandParser {
         val WORD = Regex("\\S+")
         val NUMBER = Regex("\\d+(?:[.,]\\d+)?")
         val FRACTION = Regex("\\d+/\\d+")
+        val MULTIPLIER = Regex("(?i)\\d+x|x\\d+")
         val ATTACHED_QUANTITY = Regex("(\\d+(?:[.,]\\d+)?)(\\p{L}+)")
         val COMPOSITION_WORDS = setOf("raw", "cooked", "roasted", "grilled", "boneless", "skinless", "lean", "fat")
         val OPEN_TAIL_CHARS = setOf(',', ';', '+', '&', '\n')
