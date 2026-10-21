@@ -34,7 +34,8 @@ sealed interface DraftRow {
 
 /**
  * What the Log page shows for one draft. [rows] are the entries and unresolved parts in typed order. The part being
- * typed may add a choice group ([choices], from [active]); nothing is preselected unless it is a full match.
+ * typed may add a choice group ([choices], from [active]) or suggestions ([suggestions], the foods its word starts).
+ * Neither suggestions nor unpicked choices are in [logged], and nothing is preselected in a suggestion group.
  */
 data class DraftView(
     val rows: List<DraftRow>,
@@ -43,6 +44,8 @@ data class DraftView(
     val logged: List<SegmentResolution>,
     /** The active part's text as the choice label shows it. */
     val activePhrase: String = "",
+    /** Foods the word being typed starts; shown in place of a Not-in-your-foods outcome for the active part. */
+    val suggestions: List<RankedFood> = emptyList(),
 ) {
     val previews: List<SegmentResolution> get() = rows.filterIsInstance<DraftRow.Entry>().map { it.resolution }
     val unresolved: List<String> get() = rows.filterIsInstance<DraftRow.Unresolved>().map { it.text }
@@ -50,15 +53,20 @@ data class DraftView(
     /** The active part when it is a clean match with exactly one candidate: an entry row, never a choice. */
     val activeRow: SegmentResolution? get() = active?.takeIf { it.supported && !it.needsChoice && it.ranked.size == 1 }
 
-    /** The "which one?" choices. A single clean candidate is a row instead; a single weak match is a choice. */
+    /** The group under the rows: the suggestions for a word being typed, else the active part's choices. */
     val choices: List<RankedFood> get() = when {
+        suggestions.isNotEmpty() -> suggestions
         active == null || activeRow != null -> emptyList()
         !active.needsChoice && active.ranked.size == 1 -> emptyList()
         else -> active.ranked
     }
 
+    /** The "which one?" hint shows for real choices, not for suggestions. */
+    val choiceHint: Boolean get() = suggestions.isEmpty()
+
     /** The first choice is preselected only for a clean match among several candidates, which Add logs. */
-    val preselected: Boolean get() = active != null && active.supported && !active.needsChoice && active.ranked.size > 1
+    val preselected: Boolean get() =
+        suggestions.isEmpty() && active != null && active.supported && !active.needsChoice && active.ranked.size > 1
 
     companion object {
         val EMPTY = DraftView(emptyList(), "", null, emptyList())
@@ -146,6 +154,24 @@ class LogPlanner(
         return listOfNotNull(formatAmount(amount), unit.displayLabel().ifBlank { null }, food.name).joinToString(" ")
     }
 
+    /**
+     * The input after the user taps [food] for the part being typed. The chosen text replaces that part; when text
+     * comes before it, a comma keeps the chosen amount from joining the earlier food ("2 eggs, 100 g Buckwheat").
+     */
+    fun withChoice(input: String, food: FoodRecord, typing: Boolean = true): String {
+        if (!typing || endsOpen(input)) return input
+        val span = segments(input).lastOrNull() ?: return input
+        if (ShorthandLexicon.mealSlotOf(span.text) != null) return input
+        return joinBefore(input.substring(0, span.start), chosenText(span.text, food))
+    }
+
+    private fun joinBefore(prefix: String, replacement: String): String {
+        val head = prefix.trimEnd()
+        if (head.isEmpty()) return replacement
+        if (head.last() in ",;+&\n" || SEPARATOR_WORD_AT_END.containsMatchIn(head)) return prefix + replacement
+        return "$head, $replacement"
+    }
+
     private fun formatAmount(amount: Double): String =
         if (amount % 1.0 == 0.0) amount.toLong().toString() else amount.toString()
 
@@ -160,14 +186,16 @@ class LogPlanner(
 
         override fun isWholeFood(text: String): Boolean {
             val resolution = resolve(text) ?: return false
-            return !resolution.needsChoice && resolution.ranked.first().wholeMatch
+            return resolution.supported && !resolution.needsChoice && resolution.ranked.first().wholeMatch
         }
+
+        override fun matchesWholeWord(word: String): Boolean = matcher.matchesWholeWord(word)
     }
 
     /** The parts of [input] the Log page works with, meal words included. Every caller segments through here. */
     fun segments(input: String): List<SegmentSpan> = parser.parts(input, probe)
 
-    /** True when the input ends with a separator, so the last part is finished and nothing is being typed. */
+    /** True when the input ends with a separator (or a space), so the last part is finished and nothing is being typed. */
     fun endsOpen(input: String): Boolean = parser.endsOpen(input)
 
     /**
@@ -186,22 +214,31 @@ class LogPlanner(
     }
 
     /**
-     * The Log page's view of [input]: finished parts and the part being typed, as rows in typed order. A part being
-     * typed that is not logged shows as a row; its choices, if it has any, are the group under the rows.
+     * The Log page's view of [input]. While [typing], the last part is the one being typed, unless the text ends in a
+     * separator. Finished parts are rows in typed order. A part being typed that matches nothing yet shows the foods
+     * its word starts (or nothing); a part that is not being typed and matches nothing is an unresolved row.
      */
-    fun draft(input: String): DraftView {
+    fun draft(input: String, typing: Boolean = true): DraftView {
         if (input.isBlank()) return DraftView.EMPTY
         val parts = segments(input)
-        val open = !endsOpen(input)
+        val open = typing && !endsOpen(input)
         val activeText = if (open) parts.lastOrNull()?.text.orEmpty() else ""
         val finished = (if (open) parts.dropLast(1) else parts).map { it.text }.filter { ShorthandLexicon.mealSlotOf(it) == null }
         val rows = finished.map { rowFor(it) }.toMutableList()
 
         var active: SegmentResolution? = null
+        var suggestions: List<RankedFood> = emptyList()
+        // While the word is typed and only suggested, it is not counted: nothing is counted until a suggestion is tapped.
+        var suggesting = false
         if (activeText.isNotBlank() && ShorthandLexicon.mealSlotOf(activeText) == null) {
             val resolution = resolve(activeText)
             when {
-                resolution == null || !resolution.supported || resolution.needsChoice -> {
+                // Nothing matches the word being typed, or only a prefix of a longer word does: suggest the foods it starts.
+                resolution == null || (isBareWord(activeText) && !resolution.ranked.first().wholeMatch) -> {
+                    suggesting = true
+                    suggestions = matcher.startingWith(activeText, preferences, SUGGESTION_LIMIT)
+                }
+                !resolution.supported || resolution.needsChoice -> {
                     rows += DraftRow.Unresolved(activeText)
                     active = resolution
                 }
@@ -219,7 +256,10 @@ class LogPlanner(
             active = active,
             logged = plan(input).entries,
             activePhrase = if (activeText.isBlank()) "" else stripArticle(phraseOf(activeText)),
-        )
+            suggestions = suggestions,
+        ).let { view ->
+            if (suggesting) view.copy(logged = view.logged.filterNot { it.raw == activeText }) else view
+        }
     }
 
     private fun rowFor(text: String): DraftRow {
@@ -228,11 +268,16 @@ class LogPlanner(
         else DraftRow.Unresolved(text)
     }
 
+    /** One bare word with no quantity: the form a name is typed in, before it is finished. */
+    private fun isBareWord(text: String): Boolean =
+        text.trim().split(Regex("\\s+")).size == 1 && text.any { it.isLetter() } && parser.parse(text).let { it.amount == null && !it.wordQuantity }
+
     /** A leading "a" or "an" is not part of the food the user named: "a bananna" reads "bananna". */
     private fun stripArticle(text: String): String = text.replace(Regex("(?i)^(?:a|an)\\s+"), "")
 
     companion object {
         /** How many matches the Log page offers as choices. The preselected one is always the first. */
         const val SUGGESTION_LIMIT = 4
+        private val SEPARATOR_WORD_AT_END = Regex("(?i)(?:^|\\s)(?:and|и)$")
     }
 }

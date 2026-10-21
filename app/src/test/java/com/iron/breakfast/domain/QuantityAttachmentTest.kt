@@ -33,7 +33,7 @@ class QuantityAttachmentTest {
         // Chosen reading: "1" leads "egg" (a bare number before a food), so "2" stays with egg as its trailing count.
         // "1 egg 2" then matches no food, so it stays visible as a Not in your foods row instead of being guessed.
         assertEquals(listOf("banana", "1 egg 2"), parts("banana 1 egg 2"))
-        val draft = planner.draft("banana 1 egg 2")
+        val draft = planner.draft("banana 1 egg 2", typing = false)
         assertEquals(listOf("1 egg 2"), draft.unresolved)
         assertEquals(listOf("banana"), draft.logged.map { it.raw })
     }

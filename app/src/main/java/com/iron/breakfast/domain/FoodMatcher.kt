@@ -172,6 +172,45 @@ class FoodMatcher(
         return indexedCatalog.any { indexed -> queries.all { hit(it, indexed) != null } }
     }
 
+    /** True when some food names [word] as a whole word, through any tier except a prefix of a longer word. */
+    fun matchesWholeWord(word: String): Boolean {
+        val queries = tokens(expandAbbreviations(word)).map(::QueryToken)
+        if (queries.isEmpty()) return false
+        return indexedCatalog.any { indexed -> queries.all { hit(it, indexed)?.let { h -> !h.prefix } == true } }
+    }
+
+    /**
+     * The foods a word being typed may complete: those with a name or alias word that starts with it, the same way the
+     * matcher folds Cyrillic, Latin and diacritics. Ranked by the saved preference, then by name. Nothing is preselected.
+     */
+    fun startingWith(fragment: String, preferences: Map<String, Preference> = emptyMap(), limit: Int = 4): List<RankedFood> {
+        val word = tokens(expandAbbreviations(fragment)).lastOrNull() ?: return emptyList()
+        val canonical = Transliteration.canonical(word)
+        val now = nowMs()
+        return indexedCatalog.mapNotNull { indexed ->
+            val starts = indexed.nameWords.any { it.startsWith(word) } || indexed.canonicalNameWords.any { it.startsWith(canonical) }
+            if (!starts) return@mapNotNull null
+            // The saved preference ranks first; then a food whose whole name starts with the fragment, before one where
+            // only a later word does.
+            val namesStart = indexed.food.allNames().any { name ->
+                name.lowercase(Locale.ROOT).startsWith(word) || Transliteration.canonical(name).startsWith(canonical)
+            }
+            Triple(
+                RankedFood(
+                    food = indexed.food,
+                    score = (preferences[indexed.food.id]?.score(now) ?: 0.0) * 3.0,
+                    reasons = listOf("starts with $word"),
+                ),
+                namesStart,
+                indexed.food.name,
+            )
+        }.sortedWith(
+            compareByDescending<Triple<RankedFood, Boolean, String>> { it.first.score }
+                .thenByDescending { it.second }
+                .thenBy { it.third }
+        ).take(limit).map { it.first }
+    }
+
     fun expandAbbreviations(phrase: String): String = phrase.lowercase(Locale.ROOT)
         .split(Regex("\\s+"))
         .joinToString(" ") { abbreviations[it] ?: it }

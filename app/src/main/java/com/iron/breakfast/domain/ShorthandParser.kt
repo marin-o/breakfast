@@ -15,6 +15,9 @@ interface FoodProbe {
 
     /** True when [text] is a food on its own: an exact name, or a resolution whose words all match whole. */
     fun isWholeFood(text: String): Boolean
+
+    /** True when some food names [word] as a whole word (not as part of a longer word). */
+    fun matchesWholeWord(word: String): Boolean
 }
 
 /** One part of the typed input: its text and where it sits in the input. */
@@ -61,8 +64,10 @@ class ShorthandParser {
 
     /** True when the input ends with a separator, so nothing is being typed after it yet. */
     fun endsOpen(input: String): Boolean {
-        val trimmed = input.trimEnd()
-        return trimmed.isNotEmpty() && (trimmed.last() in OPEN_TAIL_CHARS || END_SEPARATOR_WORD.containsMatchIn(trimmed))
+        if (input.isEmpty()) return false
+        // Any trailing space, comma, semicolon or newline ends the last part; so do + & and и.
+        if (input.last().isWhitespace() || input.last() in OPEN_TAIL_CHARS) return true
+        return END_SEPARATOR_WORD.containsMatchIn(input)
     }
 
     /**
@@ -91,7 +96,33 @@ class ShorthandParser {
             }
             start = end + 1
         }
-        return spans
+        return if (probe == null) spans else splitTrailingFragments(input, spans, probe)
+    }
+
+    /**
+     * A trailing word that no food names as a whole word ("zzq", "bu", "ban") is split off the part it ends when the
+     * words before it are a food on their own: "2 eggs zzq" is "2 eggs" and "zzq". The word is then a fragment the
+     * user may still be typing, and the head stays a food row.
+     */
+    private fun splitTrailingFragments(input: String, spans: List<SegmentSpan>, probe: FoodProbe): List<SegmentSpan> {
+        val out = mutableListOf<SegmentSpan>()
+        for (span in spans) {
+            val words = WORD.findAll(span.text).toList()
+            val last = words.lastOrNull()
+            if (words.size >= 2 && last != null && ShorthandLexicon.mealSlotOf(span.text) == null) {
+                val word = last.value
+                val head = spanOf(input, span.start, span.start + words[words.size - 2].range.last + 1)
+                // Only a plain word is a fragment: "150ml" and "60g" are quantities, never a word being typed.
+                val plainWord = word.all { it.isLetter() }
+                if (plainWord && isFoodWord(word) && !probe.matchesWholeWord(word) && probe.isWholeFood(head.text)) {
+                    out += head
+                    out += spanOf(input, span.start + last.range.first, span.end)
+                    continue
+                }
+            }
+            out += span
+        }
+        return out
     }
 
     /** True when [text], with or without its amount, is exactly one food's name or alias. */

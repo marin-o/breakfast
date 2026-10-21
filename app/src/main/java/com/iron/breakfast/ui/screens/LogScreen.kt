@@ -76,7 +76,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
     BackHandler(onBack = vm::closeLog)
     // One resolution pass per draft: rows, choices and the add-bar sum all come from the same planner run.
-    val draft = remember(vm.input, vm.foods, vm.ready) { vm.logDraftView() }
+    val draft = remember(vm.input, vm.inputCommitted, vm.foods, vm.ready) { vm.logDraftView() }
     val suggestions = draft.choices
     val target = vm.logTargetMeal()
     // The bar counts what Add will save, including the active segment's preselected match.
@@ -109,7 +109,11 @@ internal fun LogScreen(vm: BreakfastViewModel) {
                 // One logical line: Done submits, so a newline is never typed.
                 onValueChange = { vm.onInput(it.replace("\n", " ")) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { if (canAdd) vm.submit() }),
+                keyboardActions = KeyboardActions(onDone = {
+                    // Done commits the text: the last word is no longer being typed.
+                    vm.commitInput()
+                    if (canAdd) vm.submit()
+                }),
                 textStyle = BreakfastType.LargeInput.copy(color = colors.ink),
                 cursorBrush = SolidColor(colors.ink),
                 modifier = Modifier.fillMaxWidth().padding(top = 18.dp).focusRequester(requester),
@@ -141,8 +145,8 @@ internal fun LogScreen(vm: BreakfastViewModel) {
             }
             if (suggestions.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.Bottom) {
-                    Text(foodText(draft.activePhrase),color = colors.ink, style = BreakfastType.Body, modifier = Modifier.weight(1f))
-                    Text("which one?", color = colors.soft, style = BreakfastType.Meta)
+                    Text(foodText(draft.activePhrase), color = colors.ink, style = BreakfastType.Body, modifier = Modifier.weight(1f))
+                    if (draft.choiceHint) Text("which one?", color = colors.soft, style = BreakfastType.Meta)
                 }
                 Row(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp),

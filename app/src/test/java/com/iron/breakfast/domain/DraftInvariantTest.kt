@@ -38,14 +38,33 @@ class DraftInvariantTest {
         .map { it.text }
         .filter { ShorthandLexicon.mealSlotOf(it) == null }
 
-    @Test fun everyTypedPartIsEntryRowOrChoice() {
-        val failures = messy.mapNotNull { input ->
-            val draft = planner.draft(input)
-            val loggedTexts = draft.logged.map { it.raw }
-            val lost = nonMeal(input).filter { part ->
-                part !in loggedTexts && part !in draft.unresolved && !(part == draft.activeText && draft.choices.isNotEmpty())
+    /**
+     * Every typed part ends up as a logged entry, a Not-in-your-foods row, a choice group, or, only for the part being
+     * typed, a suggestion group or nothing. Rows follow the typed order, and suggestions are never counted.
+     */
+    @Test fun everyTypedPartIsEntryRowChoiceOrActiveSuggestion() {
+        val failures = messy.flatMap { input ->
+            listOf(true, false).mapNotNull { typing ->
+                val draft = planner.draft(input, typing)
+                val loggedTexts = draft.logged.map { it.raw }
+                val parts = nonMeal(input)
+                val activeOwns = { part: String -> part == draft.activeText }
+                val lost = parts.filter { part ->
+                    part !in loggedTexts && part !in draft.unresolved &&
+                        !(activeOwns(part) && (draft.choices.isNotEmpty() || draft.suggestions.isNotEmpty() || typing))
+                }
+                val rowTexts = draft.rows.map { if (it is DraftRow.Entry) it.resolution.raw else (it as DraftRow.Unresolved).text }
+                val orderOk = rowTexts.fold(-1 to true) { (last, ok), text ->
+                    val index = parts.indexOf(text).takeIf { it >= 0 }
+                    if (index == null) (last to ok) else (index to (ok && index > last))
+                }.second
+                when {
+                    lost.isNotEmpty() -> "[$input typing=$typing] lost: $lost"
+                    !orderOk -> "[$input typing=$typing] rows out of typed order: $rowTexts"
+                    draft.preselected && draft.suggestions.isNotEmpty() -> "[$input] a suggestion is preselected"
+                    else -> null
+                }
             }
-            if (lost.isEmpty()) null else "[$input] lost: $lost"
         }
         assertEquals(emptyList<String>(), failures)
     }
@@ -68,29 +87,8 @@ class DraftInvariantTest {
     }
 
     @Test fun anUnmatchedActivePartIsAnUnresolvedRow() {
-        val draft = planner.draft("xyzzy 2 qwerty")
+        val draft = planner.draft("xyzzy 2 qwerty", typing = false)
         assertEquals(listOf("xyzzy 2 qwerty"), draft.unresolved)
         assertTrue(draft.logged.isEmpty())
-    }
-}
-
-class DraftRowOrderTest {
-    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
-
-    /** The rows follow the order the parts were typed: each row's text is a later part than the one before. */
-    @Test fun rowsAreInTypedOrderForEveryInput() {
-        val inputs = listOf(
-            "kiselo mleko 200g 1 kg rolled oats", "two eggs and a bananna", "banana 1 egg 2", "oats 60g milk 200ml",
-            "100g buckwheat 1 tsp pb 1 banana", "lunch, 2 eggs, banana", "xyzzy 2 qwerty, 1 banana", "2 egg 1 banana",
-        )
-        val failures = inputs.mapNotNull { input ->
-            val parts = planner.segments(input).map { it.text }.filter { ShorthandLexicon.mealSlotOf(it) == null }
-            val indexes = planner.draft(input).rows.map { row ->
-                val text = if (row is DraftRow.Entry) row.resolution.raw else (row as DraftRow.Unresolved).text
-                parts.indexOf(text)
-            }
-            if (indexes == indexes.sorted() && indexes.none { it < 0 }) null else "[$input] rows $indexes"
-        }
-        assertEquals(emptyList<String>(), failures)
     }
 }

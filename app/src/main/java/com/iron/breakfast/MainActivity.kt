@@ -237,6 +237,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private val parser = ShorthandParser()
     private val calculator = NutritionCalculator()
     var input by mutableStateOf(""); private set
+    /** True after Done or Add: the text is no longer being typed, so every part follows the finished rules. */
+    var inputCommitted by mutableStateOf(false); private set
     var foods by mutableStateOf<List<FoodRecord>>(emptyList()); private set
     var entries by mutableStateOf<List<MealEntry>>(emptyList()); private set
     var selectedDayKey by mutableStateOf(savedState["selected_day"] ?: dayKeyForEpochMs(System.currentTimeMillis())); private set
@@ -640,15 +642,18 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun draftCalculation(foodId: String, amount: Double, unit: MeasureUnit): Calculation? =
         foods.firstOrNull { it.id == foodId }?.let { calculator.calculate(it, amount, unit) }
     fun closeMeal() { abandonUnknownResolution(clearDraft = true); selectMeal(null); barcodeRequestToken++; cancelEdit() }
+    /** The keyboard's Done: the typed text is committed, so its last word is no longer being typed. */
+    fun commitInput() { inputCommitted = true }
     fun onInput(v: String) {
         input = v
+        inputCommitted = false
         if (libraryOpen && parser.parse(v).amount == null) onLibraryQuery(v)
     }
     /** The meal the Log page writes to, by [logTargetMealOf] precedence. Also drives the picker label. */
     internal fun logTargetMeal(): MealSlot? = logTargetMealOf(logChosen, mealMarkers(input), logPreset)
     /** The part being typed: the last smart part, unless the input ends with a separator. Null when nothing is being typed. */
     private fun activeSpan(planner: LogPlanner): SegmentSpan? {
-        if (!ready || input.isBlank() || planner.endsOpen(input)) return null
+        if (!ready || input.isBlank() || inputCommitted || planner.endsOpen(input)) return null
         return planner.segments(input).lastOrNull()
     }
     /**
@@ -657,24 +662,25 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
      */
     internal fun logDraftView(): LogDraftView {
         val planner = engine.planner()
-        // One planner draft: rows, the choice group and the add-bar sum all come from the same resolution.
-        val draft = if (ready) planner.draft(input) else DraftView.EMPTY
+        // One planner draft: rows, the choice group, suggestions and the add-bar sum all come from the same resolution.
+        val draft = if (ready) planner.draft(input, typing = !inputCommitted) else DraftView.EMPTY
         return LogDraftView(
             rows = draft.rows,
             choices = draft.choices,
+            choiceHint = draft.choiceHint,
             preselected = draft.preselected,
             activePhrase = draft.activePhrase,
-            logged = draftLogPlan(input, planner).entries,
+            // An amountless draft opens library search and logs nothing; otherwise the sum is the draft's own count.
+            logged = if (amountlessDailySearch(input, planner) != null) emptyList() else draft.logged,
         )
     }
     /** kcal of [food] at the amount Add would log for the active part with that food: the same numbers the choice shows. */
     internal fun quickAddSuggestionCalories(food: FoodRecord): Double =
         engine.planner().calculationFor(activeSpan(engine.planner())?.text.orEmpty(), food).nutrition.calories
 
+    /** Tapping a choice or a suggestion: the typed part becomes the amount, unit and name it would log. */
     fun chooseQuickSuggestion(food: FoodRecord) {
-        val planner = engine.planner()
-        val span = activeSpan(planner) ?: return
-        onInput(input.substring(0, span.start) + planner.chosenText(span.text, food))
+        onInput(engine.planner().withChoice(input, food, typing = !inputCommitted))
     }
     fun submitLibraryInput() {
         val raw = input.trim()
@@ -811,6 +817,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }
     }
     fun submit() {
+        inputCommitted = true
         if (!ready || busy) return
         if (entryEditMode != EntryEditMode.NONE) {
             if (input.isBlank()) {
@@ -1509,8 +1516,10 @@ internal fun logSubmitPlan(ready: Boolean, busy: Boolean, input: String, typedMa
 internal data class LogDraftView(
     /** The draft's rows in typed order: entries, and parts shown as "Not in your foods". */
     val rows: List<DraftRow>,
-    /** Choices for the segment being typed. */
+    /** The group under the rows: the word being typed's suggestions, or the part's choices. */
     val choices: List<RankedFood>,
+    /** The "which one?" hint, shown for real choices only. */
+    val choiceHint: Boolean,
     /** True only when the first choice is a full match that Add would log; a partial match is offered unselected. */
     val preselected: Boolean,
     val activePhrase: String,
