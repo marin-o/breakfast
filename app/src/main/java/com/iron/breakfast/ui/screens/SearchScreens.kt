@@ -184,7 +184,7 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
                     SectionHeading("Local matches", Modifier.padding(top = 30.dp, bottom = 4.dp))
                     vm.resolverResults.forEach { ranked ->
                         val match = matchDisplay(ranked.food, raw)
-                        val detail = match.approximateLabel?.let { "≈ $it, ${match.detail}" } ?: match.detail
+                        val detail = match.approximateLabel?.let { "≈$it, ${match.detail}" } ?: match.detail
                         FoodRow(
                             name = ranked.food.name,
                             quantityLine = detail,

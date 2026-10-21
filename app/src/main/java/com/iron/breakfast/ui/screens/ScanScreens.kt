@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -73,12 +72,8 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -257,8 +252,7 @@ private fun LookupProgress(code: String, onCancel: () -> Unit, modifier: Modifie
 @Composable internal fun ScanReviewBackdrop(onBack: () -> Unit) {
     val colors = LocalBreakfastColors.current
     Box(Modifier.fillMaxSize().background(colors.cameraGround)) {
-        Text("camera", Modifier.align(Alignment.Center).offset(y = (-262).dp), color = colors.cameraMark, style = BreakfastType.Meta)
-        Viewfinder(Modifier.align(Alignment.TopCenter).padding(top = 260.dp).size(width = 260.dp, height = 140.dp), colors.cameraMark)
+        Viewfinder(Modifier.align(Alignment.TopCenter).padding(top = 96.dp).size(width = 260.dp, height = 140.dp), colors.cameraMark)
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.cameraMark) }
             Box(Modifier.weight(1f))
@@ -325,39 +319,28 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
         vm.productCarbs.toDoubleOrNull(),
         vm.productFat.toDoubleOrNull(),
     )
-    fun macro(value: Double?) = buildAnnotatedString {
-        if (value == null) append("—") else { withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(value.pretty()) }; append(" g") }
-    }
+    val per100 = "${basisLabel(basis.amount, basis.unit)}: ${receiptKcal(values.calories)} kcal, " +
+        "P ${values.protein?.pretty() ?: "—"}, C ${values.carbohydrates?.pretty() ?: "—"}, F ${values.fat?.pretty() ?: "—"}"
     Sheet(onDismissRequest = vm::clearSelectedProduct, skipPartiallyExpanded = true) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState())) {
-            Text(foodText(vm.productName.ifBlank { food.name }), color = colors.ink, style = BreakfastType.Section)
-            if (!food.brand.isNullOrBlank()) Text(food.brand.orEmpty(), color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 2.dp))
-            Text(sourceLabel(letter), color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 2.dp))
-            if (queueMeal != null) Text(resolveQueuePosition(vm), color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 2.dp))
-            if (!editing) {
-                Hairline(Modifier.padding(top = 16.dp))
-                Text(
-                    buildAnnotatedString {
-                        append("${basisLabel(basis.amount, basis.unit)}: ")
-                        withStyle(SpanStyle(fontWeight = FontWeight.Medium)) { append(receiptKcal(values.calories)) }
-                        append(" kcal, P "); append(macro(values.protein))
-                        append(", C "); append(macro(values.carbohydrates))
-                        append(", F "); append(macro(values.fat))
-                    },
-                    color = colors.ink,
-                    style = BreakfastType.Secondary,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(foodText(vm.productName.ifBlank { food.name }), color = colors.ink, style = BreakfastType.Section, modifier = Modifier.weight(1f))
+                if (queueMeal != null) Text(resolveQueuePosition(vm), color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(start = 12.dp, top = 6.dp))
             }
+            if (!food.brand.isNullOrBlank()) Text(food.brand.orEmpty(), color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 2.dp))
+            Text(sourceLabel(letter), color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 2.dp))
+            if (!editing) Text(per100, color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 10.dp))
+            Hairline(Modifier.padding(top = 16.dp))
             if (editing) Column(Modifier.fillMaxWidth().padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Field("Name", vm.productName, vm::onProductName)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Field("kcal", vm.productCalories, { vm.onProductCalories(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), keyboardOptions = decimal)
-                    Field("Protein, g", vm.productProtein, { vm.onProductProtein(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), keyboardOptions = decimal)
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Field("Carbs, g", vm.productCarbs, { vm.onProductCarbs(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), keyboardOptions = decimal)
-                    Field("Fat, g", vm.productFat, { vm.onProductFat(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), keyboardOptions = decimal)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(basisLabel(basis.amount, basis.unit), color = colors.soft, style = BreakfastType.Meta)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Field("kcal", vm.productCalories, { vm.onProductCalories(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), keyboardOptions = decimal)
+                        Field("Protein, g", vm.productProtein, { vm.onProductProtein(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), keyboardOptions = decimal)
+                        Field("Carbs, g", vm.productCarbs, { vm.onProductCarbs(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), keyboardOptions = decimal)
+                        Field("Fat, g", vm.productFat, { vm.onProductFat(it.asciiDigits(allowDecimalPoint = true)) }, Modifier.weight(1f), keyboardOptions = decimal)
+                    }
                 }
             }
             Field(
@@ -371,35 +354,35 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
                 },
                 modifier = Modifier.padding(top = 16.dp),
                 error = parsed == null && amountText.isNotBlank(),
-                hint = approx?.let { "≈ $it" },
+                hint = approx?.let { "≈$it" },
             )
             if (!fromLibrary) {
-                if (queueMeal != null) Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                if (queueMeal != null) Row(Modifier.fillMaxWidth().padding(top = 18.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Meal", color = colors.soft, style = BreakfastType.Meta)
                     Text(queueMeal.label(), color = colors.ink, style = BreakfastType.BodyMedium)
                 }
-                else MealChoices(meal, { meal = it }, Modifier.padding(top = 16.dp))
-                Hairline(Modifier.padding(top = 16.dp))
-                Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                    Text("Result", color = colors.ink, style = BreakfastType.Section)
+                else {
+                    Text("Meal", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 16.dp))
+                    MealChoices(meal, { meal = it }, Modifier.padding(top = 6.dp), singleRow = true)
+                }
+                Row(Modifier.fillMaxWidth().padding(top = 18.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+                    Text("Result", color = colors.soft, style = BreakfastType.Meta)
                     Row(verticalAlignment = Alignment.Bottom) {
-                        Text(calculation?.takeIf { it.supported }?.let { receiptKcal(it.nutrition.calories) } ?: "—", color = colors.ink, style = BreakfastType.Hero)
+                        Text(calculation?.takeIf { it.supported }?.let { receiptKcal(it.nutrition.calories) } ?: "—", color = colors.ink, style = BreakfastType.MacroValue)
                         Text(" kcal", color = colors.soft, style = BreakfastType.Secondary)
                     }
                 }
-                PrimaryButton("Add to ${(queueMeal ?: meal).label()}", { vm.addSelected(queueMeal ?: meal) }, Modifier.padding(top = 16.dp), enabled = canAdd)
-            } else {
-                PrimaryButton("Save to library", vm::saveSelectedToLibrary, Modifier.padding(top = 16.dp), enabled = canAdd)
-            }
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                TertiaryButton(if (editing) "Hide details" else "Edit details", { editing = !editing }, Modifier.weight(1f).semantics { stateDescription = if (editing) "Expanded" else "Collapsed" })
-                TertiaryButton("Find better match", { vm.clearSelectedProduct(); vm.openSearch(fromResolver = vm.resolutionContinuation) }, Modifier.weight(1f))
-                TertiaryButton("Rescan", { vm.clearSelectedProduct(); vm.beginScan() }, Modifier.weight(1f))
-            }
-            if (queueMeal != null) {
-                vm.unknownQueue.drop(1).firstOrNull()?.let { next ->
-                    Text("Next: $next", color = colors.soft, style = BreakfastType.Secondary, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+                PrimaryButton("Add to ${(queueMeal ?: meal).label()}", { vm.addSelected(queueMeal ?: meal) }, Modifier.padding(top = 14.dp), enabled = canAdd)
+                if (queueMeal != null) vm.unknownQueue.drop(1).firstOrNull()?.let { next ->
+                    Text("Next: $next", color = colors.soft, style = BreakfastType.Secondary, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
                 }
+            } else {
+                PrimaryButton("Save to Library", vm::saveSelectedToLibrary, Modifier.padding(top = 14.dp), enabled = canAdd)
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                TertiaryButton(if (editing) "Hide details" else "Edit details", { editing = !editing }, Modifier.semantics { stateDescription = if (editing) "Expanded" else "Collapsed" })
+                TertiaryButton("Find better match", { vm.clearSelectedProduct(); vm.openSearch(fromResolver = vm.resolutionContinuation) })
+                TertiaryButton("Rescan", { vm.clearSelectedProduct(); vm.beginScan() })
             }
         }
     }
