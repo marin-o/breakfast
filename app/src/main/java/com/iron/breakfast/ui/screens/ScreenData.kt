@@ -41,27 +41,23 @@ private fun isOpenFoodFactsSource(food: FoodRecord): Boolean =
     food.sourceName?.contains("open food facts", ignoreCase = true) == true ||
         food.sourceId?.startsWith("off", ignoreCase = true) == true
 
-internal data class ReceiptQuantityDisplay(
+internal data class QuantityDisplay(
     val line: String,
     val approximateLabel: String? = null,
 )
 
 /** The quantity written plainly for a row: `≈1 tbsp, 16 g` when approximate. */
-internal fun ReceiptQuantityDisplay.plainLine(): String = approximateLabel?.let { "≈$it, $line" } ?: line
+internal fun QuantityDisplay.plainLine(): String = approximateLabel?.let { "≈$it, $line" } ?: line
 
-/** Printed receipt figures use whole kcal consistently across rows and slips. */
-internal fun receiptKcal(value: Double): String = round(value).toInt().toString()
-
-/** Library's printed fact keeps meaningful tenths while dropping floating-point '.0' noise. */
-internal fun printedFactKcal(value: Double): String =
-    String.format(Locale.ROOT, "%.1f", value).removeSuffix(".0")
+/** Whole kcal, used the same way in every row, total and sheet. */
+internal fun formatKcal(value: Double): String = round(value).toInt().toString()
 
 internal fun quantityRateDisplay(
     entry: MealEntry,
     food: FoodRecord?,
     includeRateUnit: Boolean = true,
     asciiMultiply: Boolean = false,
-): ReceiptQuantityDisplay {
+): QuantityDisplay {
     val basisUnit = entry.resolvedBaseUnit.takeUnless { it == MeasureUnit.UNKNOWN }
         ?: provenanceBasisUnit(entry.conversionProvenance)
         ?: entry.enteredUnit
@@ -79,7 +75,7 @@ internal fun quantityRateDisplay(
         converted -> "$base $multiply ${printed.rateText}"
         else -> "${printed.amountText} ${entry.enteredUnit.displayLabel()} $multiply ${printed.rateText}".trim()
     }
-    return ReceiptQuantityDisplay(
+    return QuantityDisplay(
         line = if (includeRateUnit) withRateUnit(line, rateUnit, approximate) else line,
         approximateLabel = entered.takeIf { approximate },
     )
@@ -138,7 +134,7 @@ private data class PrintedQuantity(val amountText: String, val rateText: String)
 private fun choosePrintedQuantity(amount: Double, rate: Double, calories: Double): PrintedQuantity {
     if (!amount.isFinite() || amount <= 0.0 || !rate.isFinite()) return PrintedQuantity("0", "0.00")
     val targetKcal = round(calories)
-    // Keep the normal one-decimal receipt treatment, adding precision only when
+    // Keep the normal one-decimal treatment, adding precision only when
     // the actual snapshot-derived rate would otherwise print the wrong kcal.
     for (amountDigits in 0..4) {
         val amountText = formatAmount(amount, amountDigits)
@@ -207,7 +203,7 @@ internal fun matchDisplay(food: FoodRecord, raw: String, calculator: NutritionCa
     val base = "(${calculation.resolvedBaseAmount.pretty()} ${food.nutrition.unit.label})"
     val approximate = calculation.approximate && converted
     return MatchDisplay(
-        kcal = receiptKcal(calculation.nutrition.calories),
+        kcal = formatKcal(calculation.nutrition.calories),
         approximateLabel = entered.takeIf { approximate },
         detail = when {
             approximate -> base
@@ -250,7 +246,7 @@ internal data class NutritionSlipValues(val label: String, val calories: String?
 
 internal fun nutritionSlipValues(nutrition: ResolvedNutrition): NutritionSlipValues = NutritionSlipValues(
     label = basisLabel(nutrition.basisAmount, nutrition.basisUnit),
-    calories = nutrition.calories?.let(::receiptKcal),
+    calories = nutrition.calories?.let(::formatKcal),
     protein = nutrition.protein?.let { "${it.pretty()} g" },
     carbs = nutrition.carbohydrates?.let { "${it.pretty()} g" },
     fat = nutrition.fat?.let { "${it.pretty()} g" },

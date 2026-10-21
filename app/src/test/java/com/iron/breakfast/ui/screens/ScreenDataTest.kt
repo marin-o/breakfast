@@ -12,7 +12,7 @@ import org.junit.Test
 import java.time.ZoneOffset
 import kotlin.math.round
 
-class ReceiptScreenDataTest {
+class ScreenDataTest {
     private val generic = FoodRecord(
         id = "milk_28", name = "Chicken", aliases = emptyList(), category = "Meat",
         origin = FoodOrigin.GENERIC,
@@ -27,7 +27,7 @@ class ReceiptScreenDataTest {
         approximateConversion = true, savedAtEpochMs = 0L, resolvedBaseUnit = MeasureUnit.GRAM,
     )
 
-    private fun assertPrintedProductRounds(display: ReceiptQuantityDisplay, calories: Double) {
+    private fun assertPrintedProductRounds(display: QuantityDisplay, calories: Double) {
         val parenthetical = Regex("\\(([0-9.]+) [a-z]+\\) .* ([0-9.]+)(?: kcal/[a-z]+)?$").find(display.line)
         val direct = Regex("^([0-9.]+) [a-z]+ .* ([0-9.]+)(?: kcal/[a-z]+)?$").find(display.line)
         val match = parenthetical ?: direct
@@ -215,14 +215,8 @@ class ReceiptScreenDataTest {
 
     @Test
     fun kcalAlwaysWhole() {
-        assertEquals("148", receiptKcal(148.1))
-        assertEquals("389", receiptKcal(388.6))
-    }
-
-    @Test
-    fun printedFactKcalDropsOnlyInsignificantTenths() {
-        assertEquals("105", printedFactKcal(105.0000001))
-        assertEquals("148.1", printedFactKcal(148.1))
+        assertEquals("148", formatKcal(148.1))
+        assertEquals("389", formatKcal(388.6))
     }
 
 }

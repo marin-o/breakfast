@@ -81,7 +81,7 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
                     subtitle = shortDateLabel(vm.selectedDayKey),
                     trailing = {
                         Row(Modifier.padding(end = 12.dp), verticalAlignment = Alignment.Bottom) {
-                            Text(receiptKcal(total.calories), color = colors.ink, style = BreakfastType.Title)
+                            Text(formatKcal(total.calories), color = colors.ink, style = BreakfastType.Title)
                             Text(" kcal", color = colors.soft, style = BreakfastType.Secondary)
                         }
                     },
@@ -155,7 +155,7 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel
         FoodRow(
             name = entry.foodName,
             quantityLine = quantity.plainLine(),
-            calories = receiptKcal(entry.nutritionSnapshot.calories),
+            calories = formatKcal(entry.nutritionSnapshot.calories),
             modifier = Modifier.offset { IntOffset(revealOffset.roundToInt(), 0) }.semantics {
                 onClick(label = "Open details for ${entry.foodName}") { vm.openEntryDetail(entry); true }
                 customActions = listOf(

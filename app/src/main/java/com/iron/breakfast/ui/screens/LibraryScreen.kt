@@ -169,7 +169,7 @@ private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boole
             FoodRow(
                 name = food.name,
                 quantityLine = if (archived) "Archived" else if (last == null) "${repeatAmount.pretty()} ${repeatUnit.displayLabel()}" else "last ${repeatAmount.pretty()} ${repeatUnit.displayLabel()}",
-                calories = last?.let { receiptKcal(it.nutritionSnapshot.calories) } ?: defaultServingCalories(food),
+                calories = last?.let { formatKcal(it.nutritionSnapshot.calories) } ?: defaultServingCalories(food),
                 modifier = Modifier.weight(1f),
                 onClick = { vm.openLibraryFood(food) },
             )
@@ -189,7 +189,7 @@ private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boole
     }
 }
 
-private fun defaultServingCalories(food: FoodRecord): String = receiptKcal(com.iron.breakfast.defaultServingCalculation(food).nutrition.calories)
+private fun defaultServingCalories(food: FoodRecord): String = formatKcal(com.iron.breakfast.defaultServingCalculation(food).nutrition.calories)
 
 /**
  * The Library's bottom bar: the Composer look (ink bar, "Search foods") over the existing text field.
@@ -267,7 +267,7 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
         food.barcode?.let { Text("Barcode $it", color = colors.soft, style = BreakfastType.Secondary) }
         Hairline(Modifier.padding(top = 16.dp))
         SectionHeading(basisLabel(food.nutrition.amount, food.nutrition.unit), Modifier.padding(top = 16.dp))
-        LibraryFactRow("Energy", receiptKcal(food.nutrition.values.calories), "kcal")
+        LibraryFactRow("Energy", formatKcal(food.nutrition.values.calories), "kcal")
         LibraryFactRow("Fat", food.nutrition.values.fat?.pretty() ?: "—", "g")
         LibraryFactRow("Carbohydrate", food.nutrition.values.carbohydrates?.pretty() ?: "—", "g")
         LibraryFactRow("Protein", food.nutrition.values.protein?.pretty() ?: "—", "g")
@@ -449,7 +449,7 @@ private fun LibraryAmountSheet(vm: BreakfastViewModel, food: FoodRecord, target:
             Text("Meal", color = colors.soft, style = BreakfastType.Meta)
             MealChoices(selected = chosenMeal, onSelect = { chosenMeal = it }, singleRow = true)
             Hairline()
-            Text(calc?.let { "${receiptKcal(it.nutrition.calories)} kcal" } ?: "Enter a positive amount", color = colors.ink, style = BreakfastType.Section)
+            Text(calc?.let { "${formatKcal(it.nutrition.calories)} kcal" } ?: "Enter a positive amount", color = colors.ink, style = BreakfastType.Section)
             Text(calc?.let { "P ${it.nutrition.protein?.pretty() ?: "—"}  C ${it.nutrition.carbohydrates?.pretty() ?: "—"}  F ${it.nutrition.fat?.pretty() ?: "—"}" } ?: "", color = colors.soft, style = BreakfastType.Secondary)
             PrimaryButton(
                 "Add to ${chosenMeal.label()}",

@@ -99,7 +99,7 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
                         }
                         Hairline(Modifier.padding(top = 10.dp))
                         vm.offResults.forEach { food ->
-                            FoodRow(food.name, food.brand.orEmpty(), receiptKcal(food.nutrition.values.calories), onClick = { vm.chooseProduct(food) })
+                            FoodRow(food.name, food.brand.orEmpty(), formatKcal(food.nutrition.values.calories), onClick = { vm.chooseProduct(food) })
                         }
                     }
                 }

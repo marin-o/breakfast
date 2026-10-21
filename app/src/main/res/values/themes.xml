@@ -1,5 +1,5 @@
 <resources>
-    <!-- Dark-only Receipt v5: graphite window so launch never flashes white. Bars are redrawn edge-to-edge in code. -->
+    <!-- Dark-only graphite window so launch never flashes white. The bars are drawn edge-to-edge in code. -->
     <style name="Theme.Breakfast" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">monospace</item>
         <item name="android:colorAccent">#3D63D9</item>

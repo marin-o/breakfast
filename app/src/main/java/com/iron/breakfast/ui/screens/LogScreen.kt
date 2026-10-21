@@ -128,7 +128,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
                 FoodRow(
                     name = preview.food.name,
                     quantityLine = "$approximate${preview.amount.pretty()} ${preview.unit.displayLabel()}",
-                    calories = receiptKcal(preview.calculation.nutrition.calories),
+                    calories = formatKcal(preview.calculation.nutrition.calories),
                     modifier = Modifier.padding(top = 4.dp),
                 )
             }
@@ -156,7 +156,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
                             selected = index == 0,
                             onClick = { vm.chooseQuickSuggestion(ranked.food) },
                             modifier = Modifier.widthIn(min = 168.dp),
-                            detail = "${receiptKcal(vm.quickAddSuggestionCalories(ranked.food))} kcal",
+                            detail = "${formatKcal(vm.quickAddSuggestionCalories(ranked.food))} kcal",
                         )
                     }
                 }
@@ -166,7 +166,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
         // At large font the button takes its own full-width row so the sum keeps its width.
         val sum: @Composable (Modifier) -> Unit = { modifier ->
             Column(modifier) {
-                Text("+${receiptKcal(kcal)}", color = colors.ink, style = BreakfastType.Section)
+                Text("+${formatKcal(kcal)}", color = colors.ink, style = BreakfastType.Section)
                 Text("kcal, ${foodCountLabel(logged.size)}", color = colors.soft, style = BreakfastType.Meta)
             }
         }

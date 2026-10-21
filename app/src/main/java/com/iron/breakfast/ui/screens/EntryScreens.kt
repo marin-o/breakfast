@@ -95,7 +95,7 @@ internal fun EntryDetailScreen(vm: BreakfastViewModel, entry: MealEntry) {
                 TopBar("Entry", vm::closeEntryDetail, subtitle = "${entry.mealSlot.label()}, ${shortDateLabel(entry.dayKey)}, ${entry.savedAtEpochMs.formatClock()}")
                 Text(foodText(entry.foodName), color = colors.ink, style = BreakfastType.Section, modifier = Modifier.padding(top = 22.dp))
                 Text(quantity.plainLine(), color = colors.soft, style = BreakfastType.Secondary)
-                Text(receiptKcal(entry.nutritionSnapshot.calories), color = colors.ink, style = BreakfastType.Hero, modifier = Modifier.padding(top = 22.dp))
+                Text(formatKcal(entry.nutritionSnapshot.calories), color = colors.ink, style = BreakfastType.Hero, modifier = Modifier.padding(top = 22.dp))
                 Text("kilocalories", color = colors.soft, style = BreakfastType.Secondary)
                 MacroTable(entry, Modifier.padding(top = 22.dp))
                 Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 22.dp))
@@ -178,11 +178,11 @@ internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
                     val base = "${preview.resolvedBaseAmount.pretty()} ${food?.nutrition?.unit?.displayLabel() ?: unit.displayLabel()}"
                     val shownBase = if (preview.approximate && food != null && unit != food.nutrition.unit) "≈ $base" else base
                     Text(shownBase, color = colors.ink, style = BreakfastType.BodyMedium)
-                    Text("${receiptKcal(preview.nutrition.calories)} kcal", color = colors.ink, style = BreakfastType.BodyMedium)
+                    Text("${formatKcal(preview.nutrition.calories)} kcal", color = colors.ink, style = BreakfastType.BodyMedium)
                 } else {
                     Text("Enter a positive amount", color = colors.soft, style = BreakfastType.Secondary)
                 }
-                if (changed) Text("was ${receiptKcal(entry.nutritionSnapshot.calories)}", color = colors.soft, style = BreakfastType.Secondary)
+                if (changed) Text("was ${formatKcal(entry.nutritionSnapshot.calories)}", color = colors.soft, style = BreakfastType.Secondary)
             }
             PrimaryButton("Save", { vm.onInput("${amount.trim()} ${unit.displayLabel()}"); vm.submit() }, enabled = amount.toDoubleOrNull()?.let { it > 0 } == true)
             if (vm.editInvalid) Text(vm.mealDraftError ?: "Could not save this entry.", color = colors.bad, style = BreakfastType.Meta)
@@ -243,7 +243,7 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
             }
             val shown = preview?.nutrition ?: entry.nutritionSnapshot
             Column(Modifier.fillMaxWidth().padding(horizontal = Gutter, vertical = 24.dp), horizontalAlignment = Alignment.End) {
-                Text("${receiptKcal(shown.calories)} kcal", style = BreakfastType.Section, color = colors.ink)
+                Text("${formatKcal(shown.calories)} kcal", style = BreakfastType.Section, color = colors.ink)
                 Text("P ${shown.protein?.pretty() ?: "—"}   C ${shown.carbohydrates?.pretty() ?: "—"}   F ${shown.fat?.pretty() ?: "—"}", color = colors.soft, style = BreakfastType.Secondary)
             }
             PrimaryButton("Save", { selectedFood?.let { vm.saveFullEdit(it.id, amount, unit, meal, dayKey) } }, Modifier.padding(horizontal = Gutter), enabled = !vm.busy)

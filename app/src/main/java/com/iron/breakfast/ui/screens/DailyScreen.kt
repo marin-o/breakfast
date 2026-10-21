@@ -118,7 +118,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                     nextEnabled = !isToday,
                     onTitleClick = { pickerOpen = true },
                 )
-                DayTotal(receiptKcal(total.calories), dailyMacroStats(total), Modifier.padding(top = 18.dp))
+                DayTotal(formatKcal(total.calories), dailyMacroStats(total), Modifier.padding(top = 18.dp))
             }
             vm.mealDraftError?.let { message -> item { Text(message, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(vertical = 6.dp)) } }
             items(MealSlot.entries) { slot ->
@@ -178,7 +178,7 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
     val total = entries.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
     MealHeader(
         name = slot.label(),
-        total = receiptKcal(total.calories),
+        total = formatKcal(total.calories),
         onAdd = { vm.openLog(slot) },
         addDescription = "Add food to ${slot.label()}",
         time = earliestMealTime(entries),
@@ -190,7 +190,7 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
         FoodRow(
             name = entry.foodName,
             quantityLine = quantity.plainLine(),
-            calories = receiptKcal(entry.nutritionSnapshot.calories),
+            calories = formatKcal(entry.nutritionSnapshot.calories),
             modifier = Modifier.semantics {
                 onClick(label = "Open details for ${entry.foodName}") { vm.openEntryDetail(entry); true }
                 customActions = listOf(

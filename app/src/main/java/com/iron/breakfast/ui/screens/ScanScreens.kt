@@ -358,7 +358,7 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
         vm.productCarbs.toDoubleOrNull(),
         vm.productFat.toDoubleOrNull(),
     )
-    val per100 = "${basisLabel(basis.amount, basis.unit)}: ${receiptKcal(values.calories)} kcal, " +
+    val per100 = "${basisLabel(basis.amount, basis.unit)}: ${formatKcal(values.calories)} kcal, " +
         "P ${values.protein?.pretty() ?: "—"}, C ${values.carbohydrates?.pretty() ?: "—"}, F ${values.fat?.pretty() ?: "—"}"
     Sheet(onDismissRequest = vm::clearSelectedProduct, skipPartiallyExpanded = true) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState())) {
@@ -411,7 +411,7 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
                 Row(Modifier.fillMaxWidth().padding(top = 18.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                     Text("Result", color = colors.soft, style = BreakfastType.Meta)
                     Row(verticalAlignment = Alignment.Bottom) {
-                        Text(calculation?.takeIf { it.supported }?.let { receiptKcal(it.nutrition.calories) } ?: "—", color = colors.ink, style = BreakfastType.MacroValue)
+                        Text(calculation?.takeIf { it.supported }?.let { formatKcal(it.nutrition.calories) } ?: "—", color = colors.ink, style = BreakfastType.MacroValue)
                         Text(" kcal", color = colors.soft, style = BreakfastType.Secondary)
                     }
                 }
