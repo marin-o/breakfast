@@ -43,8 +43,8 @@ class ShorthandParser {
     /**
      * The one segmentation of typed input. Commas, semicolons and newlines always end a part. Inside a part, explicit
      * separators (`+`, `&`, ` and `, ` и `) end one too, and so does a new quantity that follows at least one food word
-     * and is followed by another. With a [probe], a split is kept only when it does not break a food name: the whole
-     * part must not be one food, and at least one piece must resolve.
+     * and is followed by another. With a [probe], neighbouring pieces that join into one food are joined again (a name
+     * such as "Protein 2 bar" stays whole), and the split is kept only when some piece resolves to a food.
      */
     fun parts(input: String, probe: FoodProbe? = null): List<SegmentSpan> {
         val spans = mutableListOf<SegmentSpan>()
