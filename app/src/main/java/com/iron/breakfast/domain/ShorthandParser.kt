@@ -37,6 +37,25 @@ class ShorthandParser {
 
     fun split(input: String, probe: FoodProbe? = null): List<String> = parts(input, probe).map { it.text }
 
+    /**
+     * The [input] with the structural parts that [drop] selects removed. Each kept part keeps its own text and the
+     * separator that followed it in the input, so nothing is re-segmented.
+     */
+    fun removingParts(input: String, drop: (SegmentSpan) -> Boolean): String {
+        val spans = parts(input)
+        val kept = spans.indices.filterNot { drop(spans[it]) }
+        val out = StringBuilder()
+        kept.forEachIndexed { n, index ->
+            out.append(spans[index].text)
+            if (n < kept.lastIndex) out.append(input.substring(spans[index].end, spans[index + 1].start))
+        }
+        return out.toString()
+    }
+
+    /** True when [text] has an explicit word separator ("and", "&", "+", "и") as a whole word. */
+    fun hasWordSeparator(text: String): Boolean =
+        WORD.findAll(text).any { it.value.lowercase(Locale.ROOT) in ShorthandLexicon.explicitSeparators }
+
     /** True when the input ends with a separator, so nothing is being typed after it yet. */
     fun endsOpen(input: String): Boolean {
         val trimmed = input.trimEnd()
@@ -44,10 +63,12 @@ class ShorthandParser {
     }
 
     /**
-     * The one segmentation of typed input. Commas, semicolons and newlines always end a part. Inside a part, explicit
-     * separators (`+`, `&`, ` and `, ` и `) end one too, and so does a new quantity that follows at least one food word
-     * and is followed by another. With a [probe], neighbouring pieces that join into one food are joined again (a name
-     * such as "Protein 2 bar" stays whole), and the split is kept only when some piece resolves to a food.
+     * The one segmentation of typed input. Commas, semicolons and newlines end a part, and only a comma can rejoin
+     * across one, and only when the join is exactly one food's name ("Пинџур, домашен"). Inside a comma part, a new
+     * quantity after a food word and before another starts a part ("2 egg 1 banana"). An explicit word separator
+     * (`+`, `&`, ` and `, ` и `) starts a part only when both sides are a food's exact name or alias on their own, so
+     * "Ben & Jerry's" and "Mac and cheese" stay whole. With a [probe], neighbouring pieces that together are one food
+     * are rejoined, and a quantity split is kept only when some piece resolves to a food.
      */
     fun parts(input: String, probe: FoodProbe? = null): List<SegmentSpan> {
         val spans = mutableListOf<SegmentSpan>()
@@ -56,8 +77,10 @@ class ShorthandParser {
             val segment = partsOfSegment(input, start, end, probe)
             val previous = spans.lastOrNull()
             val first = segment.firstOrNull()
-            // A comma inside a food name ("Пинџур, домашен") joins the parts on both sides of it when the join is exactly that name.
-            if (probe != null && previous != null && first != null && probe.isExactName(input.substring(previous.start, first.end))) {
+            val breakBefore = if (start > 0) input[start - 1] else null
+            if (probe != null && breakBefore == ',' && previous != null && first != null &&
+                isWholeFoodName(input.substring(previous.start, first.end), probe)
+            ) {
                 spans[spans.lastIndex] = spanOf(input, previous.start, first.end)
                 spans += segment.drop(1)
             } else {
@@ -68,27 +91,38 @@ class ShorthandParser {
         return spans
     }
 
+    /** True when [text], with or without its amount, is exactly one food's name or alias. */
+    private fun isWholeFoodName(text: String, probe: FoodProbe): Boolean =
+        probe.isExactName(text) || probe.isExactName(parse(text).foodPhrase)
+
     private fun partsOfSegment(input: String, from: Int, to: Int, probe: FoodProbe?): List<SegmentSpan> {
         val words = WORD.findAll(input.substring(from, to)).map { from + it.range.first..from + it.range.last }.toList()
         if (words.isEmpty()) return emptyList()
         val texts = words.map { input.substring(it.first, it.last + 1) }
         val groups = mutableListOf<List<Int>>()
+        // For each group: whether the break before it is a word separator (true) or a quantity boundary (false).
+        val wordBreaks = mutableListOf<Boolean>()
         var current = mutableListOf<Int>()
-        fun flush() {
-            if (current.isNotEmpty()) groups += current
+        var currentWordBreak = false
+        fun flush(nextWordBreak: Boolean) {
+            if (current.isNotEmpty()) {
+                groups += current
+                wordBreaks += currentWordBreak
+            }
             current = mutableListOf()
+            currentWordBreak = nextWordBreak
         }
         var i = 0
         while (i < texts.size) {
             val word = texts[i]
             if (word.lowercase(Locale.ROOT) in ShorthandLexicon.explicitSeparators) {
-                flush()
+                flush(nextWordBreak = true)
                 i++
                 continue
             }
             val quantityEnd = quantityEnd(texts, i)
             if (quantityEnd != null) {
-                if (current.any { isFoodWord(texts[it]) } && foodWordBeforeSeparator(texts, quantityEnd)) flush()
+                if (current.any { isFoodWord(texts[it]) } && foodWordBeforeSeparator(texts, quantityEnd)) flush(nextWordBreak = false)
                 current += i until quantityEnd
                 i = quantityEnd
                 continue
@@ -96,36 +130,67 @@ class ShorthandParser {
             // A leading meal word before a quantity is its own part: "lunch 1 banana" is two parts.
             if (current.isEmpty() && ShorthandLexicon.mealSlotOf(word) != null && quantityEnd(texts, i + 1) != null) {
                 current += i
-                flush()
+                flush(nextWordBreak = false)
                 i++
                 continue
             }
             current += i
             i++
         }
-        flush()
+        flush(nextWordBreak = false)
 
-        val maximal = groups.map { indices -> spanOf(input, words[indices.first()].first, words[indices.last()].last + 1) }
-        if (maximal.size <= 1 || probe == null) return maximal
-        // Keep a name whole: join neighbouring parts whenever their join is one food, such as "Protein 2 bar".
+        val spans = groups.map { indices -> spanOf(input, words[indices.first()].first, words[indices.last()].last + 1) }
+        if (spans.size <= 1 || probe == null) return spans
+
+        // Rejoin neighbours whose join is one food ("Protein 2 bar", or "Mac and cheese" with a Macaroni food).
+        // A piece that was joined this way is a food by construction, so it counts as one on its own below.
         val joined = mutableListOf<SegmentSpan>()
+        val joinedWordBreaks = mutableListOf<Boolean>()
+        val joinedCovered = mutableListOf<Boolean>()
         var index = 0
-        while (index < maximal.size) {
+        while (index < spans.size) {
             var last = index
-            for (j in maximal.lastIndex downTo index + 1) {
-                if (coversText(spanOf(input, maximal[index].start, maximal[j].end).text, probe)) {
+            for (j in spans.lastIndex downTo index + 1) {
+                if (coversText(spanOf(input, spans[index].start, spans[j].end).text, probe)) {
                     last = j
                     break
                 }
             }
-            joined += spanOf(input, maximal[index].start, maximal[last].end)
+            joined += spanOf(input, spans[index].start, spans[last].end)
+            joinedWordBreaks += wordBreaks[index]
+            joinedCovered += last > index
             index = last + 1
         }
         if (joined.size == 1) return joined
-        // Split only when some food part resolves; otherwise the whole segment stays as one unresolved part.
-        val foodParts = joined.filter { ShorthandLexicon.mealSlotOf(it.text) == null }
-        return if (foodParts.any { probe.resolves(it.text) }) joined else listOf(spanOf(input, words.first().first, words.last().last + 1))
+
+        // A word separator splits only when both sides are a food on their own. Otherwise the sides stay one part.
+        val parts = mutableListOf(joined.first())
+        val partIsFood = mutableListOf(joinedCovered.first())
+        for (k in 1 until joined.size) {
+            val left = parts.last()
+            val right = joined[k]
+            val leftIsFood = partIsFood.last() || isStrictPiece(left.text, probe)
+            val rightIsFood = joinedCovered[k] || isStrictPiece(right.text, probe)
+            val split = !joinedWordBreaks[k] || (leftIsFood && rightIsFood)
+            if (split) {
+                parts += right
+                partIsFood += joinedCovered[k]
+            } else {
+                parts[parts.lastIndex] = spanOf(input, left.start, right.end)
+                partIsFood[partIsFood.lastIndex] = false
+            }
+        }
+        if (parts.size == 1) return parts
+
+        // A quantity split is kept only when some food part resolves; otherwise the whole segment stays one part.
+        val foodParts = parts.filter { ShorthandLexicon.mealSlotOf(it.text) == null }
+        return if (foodParts.any { probe.resolves(it.text) }) parts
+        else listOf(spanOf(input, words.first().first, words.last().last + 1))
     }
+
+    /** A piece that stands alone as a food (its exact name or alias) or as a meal word. */
+    private fun isStrictPiece(text: String, probe: FoodProbe): Boolean =
+        ShorthandLexicon.mealSlotOf(text) != null || isWholeFoodName(text, probe)
 
     private fun coversText(text: String, probe: FoodProbe): Boolean =
         probe.covers(text) || probe.covers(parse(text).foodPhrase)
@@ -199,15 +264,28 @@ class ShorthandParser {
             .findAll(foodPhrase)
             .map { it.value.lowercase(Locale.ROOT) }
             .toList()
-        return ParsedSegment(raw, foodPhrase, quantity.amount, quantity.unit, quantity.range.first, quantity.range.last + 1, modifiers)
+        return ParsedSegment(
+            raw, foodPhrase, quantity.amount, quantity.unit, quantity.range.first, quantity.range.last + 1, modifiers,
+            wordQuantity = quantity.fromWord, articleQuantity = quantity.article,
+        )
     }
 
-    private class Quantity(val amount: Double, val unit: MeasureUnit?, val range: IntRange)
+    /**
+     * A stated quantity. [amount] is null for a bare article ("a milk"): the food's default unit then decides whether
+     * it means one. [fromWord] is true for a number word or an article, which may be part of a food's name.
+     */
+    private class Quantity(
+        val amount: Double?,
+        val unit: MeasureUnit?,
+        val range: IntRange,
+        val fromWord: Boolean = false,
+        val article: Boolean = false,
+    )
 
     /** The amount a segment states. Priority: half words, then digits, then number words, then "2x" or "x2". */
     private fun findQuantity(raw: String): Quantity? {
         halfPattern.find(raw)?.let { match ->
-            return quantityWithUnit(ShorthandLexicon.wordAmount(match.groupValues[1]) ?: 0.5, match.groupValues[2], match.range)
+            return quantityWithUnit(ShorthandLexicon.wordAmount(match.groupValues[1]) ?: 0.5, match.groupValues[2], match.range, fromWord = true)
         }
         numberPattern.findAll(raw).firstOrNull { candidate ->
             !isCompositionRatio(candidate, raw) || candidate.groupValues.getOrNull(2).orEmpty().isNotBlank()
@@ -215,7 +293,11 @@ class ShorthandParser {
             return quantityWithUnit(parseAmount(match.groupValues[1]), match.groupValues[2], match.range)
         }
         wordPattern.find(raw)?.let { match ->
-            return quantityWithUnit(ShorthandLexicon.wordAmount(match.groupValues[1]) ?: 0.0, match.groupValues[2], match.range)
+            val unitText = match.groupValues[2]
+            if (match.groupValues[1].lowercase(Locale.ROOT) in ARTICLES && unitText.isBlank()) {
+                return Quantity(null, null, match.range, fromWord = true, article = true)
+            }
+            return quantityWithUnit(ShorthandLexicon.wordAmount(match.groupValues[1]) ?: 0.0, unitText, match.range, fromWord = true)
         }
         return multiplierPattern.find(raw)?.let { match ->
             val count = match.groupValues[1].ifEmpty { match.groupValues[2] }.toDoubleOrNull() ?: 0.0
@@ -224,9 +306,9 @@ class ShorthandParser {
     }
 
     /** A stated amount in the unit it names, converted to the stored unit: "1.5 kg" is 1500 g. */
-    private fun quantityWithUnit(amount: Double, unitText: String, range: IntRange): Quantity {
-        val spec = ShorthandLexicon.unitSpec(unitText) ?: return Quantity(amount, null, range)
-        return Quantity(amount * spec.factor, spec.unit, range)
+    private fun quantityWithUnit(amount: Double, unitText: String, range: IntRange, fromWord: Boolean = false): Quantity {
+        val spec = ShorthandLexicon.unitSpec(unitText) ?: return Quantity(amount, null, range, fromWord)
+        return Quantity(amount * spec.factor, spec.unit, range, fromWord)
     }
 
     private fun parseAmount(text: String): Double {
@@ -265,6 +347,7 @@ class ShorthandParser {
         val FRACTION = Regex("\\d+/\\d+")
         val MULTIPLIER = Regex("(?i)\\d+x|x\\d+")
         val ATTACHED_QUANTITY = Regex("(\\d+(?:[.,]\\d+)?)(\\p{L}+)")
+        val ARTICLES = setOf("a", "an")
         val COMPOSITION_WORDS = setOf("raw", "cooked", "roasted", "grilled", "boneless", "skinless", "lean", "fat")
         val OPEN_TAIL_CHARS = setOf(',', ';', '+', '&', '\n')
         val END_SEPARATOR_WORD = Regex("(?i)(?:^|\\s)(?:and|и)$")

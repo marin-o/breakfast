@@ -145,6 +145,7 @@ import com.iron.breakfast.domain.LogPlan
 import com.iron.breakfast.domain.LogPlanner
 import com.iron.breakfast.domain.SegmentResolution
 import com.iron.breakfast.domain.SegmentSpan
+import com.iron.breakfast.domain.TypedPart
 import com.iron.breakfast.domain.ShorthandLexicon
 import com.iron.breakfast.domain.ShorthandParser
 import com.iron.breakfast.domain.toMeasureUnit
@@ -663,20 +664,19 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val completed = quickAddCompletedSegments(planner).filter { mealMarkerSlots(it).isEmpty() }
         val resolutions = completed.map { planner.resolve(it) }
         val active = quickAddActiveResolution(planner)
+        // A part is logged only when it resolves and needs no choice; the rows and the sum follow the same rule.
         return LogDraftView(
-            previews = resolutions.filterNotNull().filter { it.supported },
-            unresolved = completed.filterIndexed { index, _ -> resolutions[index]?.supported != true },
+            previews = resolutions.filterNotNull().filter { it.supported && !it.needsChoice },
+            unresolved = completed.filterIndexed { index, _ -> resolutions[index].let { it == null || !it.supported || it.needsChoice } },
             // The first choice is preselected and is the food Add logs.
             suggestions = active?.ranked.orEmpty(),
-            activePhrase = parser.parse(activeSpan(planner)?.text.orEmpty()).foodPhrase,
+            activePhrase = planner.phraseOf(activeSpan(planner)?.text.orEmpty()),
             logged = draftLogPlan(input, planner).entries,
         )
     }
-    /** kcal of [food] at the amount typed for the active part, or its default amount. */
-    internal fun quickAddSuggestionCalories(food: FoodRecord): Double {
-        val parsed = parser.parse(activeSpan(engine.planner())?.text.orEmpty())
-        return calculator.calculate(food, parsed.amount ?: food.defaultAmount, parsed.unit ?: food.defaultUnit).nutrition.calories
-    }
+    /** kcal of [food] at the amount Add would log for the active part with that food: the same numbers the choice shows. */
+    internal fun quickAddSuggestionCalories(food: FoodRecord): Double =
+        engine.planner().calculationFor(activeSpan(engine.planner())?.text.orEmpty(), food).nutrition.calories
 
     /** Finished parts of the input, from the shared segmentation; the part still being typed is excluded. */
     private fun quickAddCompletedSegments(planner: LogPlanner): List<String> {
@@ -685,12 +685,9 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         return if (planner.endsOpen(input)) parts else parts.dropLast(1)
     }
     fun chooseQuickSuggestion(food: FoodRecord) {
-        val span = activeSpan(engine.planner()) ?: return
-        val parsed = parser.parse(span.text)
-        val amount = parsed.amount?.pretty()
-        val unit = parsed.unit?.displayLabel()
-        val replacement = listOfNotNull(amount, unit, food.name).joinToString(" ")
-        onInput(input.substring(0, span.start) + replacement)
+        val planner = engine.planner()
+        val span = activeSpan(planner) ?: return
+        onInput(input.substring(0, span.start) + planner.chosenText(span.text, food))
     }
     fun submitLibraryInput() {
         val raw = input.trim()
@@ -699,8 +696,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (markers.size > 1) { notice = "Choose one meal marker."; return }
         val target = markers.singleOrNull()
         val effectiveTarget = target ?: slot
-        val cleaned = target?.let { removeMealMarker(raw, it) } ?: raw
-        val segments = libraryInputSegments(cleaned, engine.planner())
+        val segments = libraryInputSegments(raw, engine.planner())
         if (segments.isEmpty() || segments.all { it.amount == null }) {
             onLibraryQuery(segments.joinToString(", ") { it.foodPhrase })
             input = ""
@@ -713,7 +709,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 mixedMealPickerOpen = true
                 return
             }
-            submitLibraryMixedInput(cleaned, effectiveTarget)
+            submitLibraryMixedInput(raw, effectiveTarget)
             return
         }
         viewModelScope.launch {
@@ -922,11 +918,14 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             }
             return
         }
-        val cleaned = removeAllMealMarkerTokens(input)
-        if (cleaned.isBlank()) { mealDraftError = "Add at least one food."; return }
+        // Save takes the draft as typed: the planner skips meal words by span, so save and the rows share one segmentation.
+        if (engine.planner().segments(input).none { ShorthandLexicon.mealSlotOf(it.text) == null }) {
+            mealDraftError = "Add at least one food."
+            return
+        }
         busy = true
         viewModelScope.launch {
-            runCatching { engine.save(cleaned, mealSlot = target, dayKey = selectedDayKey) }.onSuccess { saved ->
+            runCatching { engine.save(input, mealSlot = target, dayKey = selectedDayKey) }.onSuccess { saved ->
                 closeLog()
                 refresh(); if (input == captured) input = saved.unresolvedSegments.joinToString(", "); unknownQueue = saved.unresolvedSegments; unknownQueueTotal = saved.unresolvedSegments.size; unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }; resolutionContinuation = saved.unresolvedSegments.isNotEmpty(); resolverOpen = saved.unresolvedSegments.isNotEmpty(); mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
                 feedbackIds = saved.entries.filter { it.approximateConversion }.mapTo(mutableSetOf()) { it.id }; feedbackUntil = if (feedbackIds.isEmpty()) 0L else System.currentTimeMillis() + 30_000L
@@ -936,7 +935,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }
     }
     private fun mealMarkers(value: String): List<MealSlot> = mealMarkerSlots(value)
-    private fun removeMealMarker(value: String, target: MealSlot): String = removeMealMarkerToken(value, target)
     fun delete(entry: MealEntry) { if (!ready || busy) return; busy = true; viewModelScope.launch { runCatching { engine.deleteEntry(entry.id) }.onSuccess { undoEntry = entry; refresh() }.also { busy = false } } }
     fun undo() { val e = undoEntry ?: return; if (!ready || busy) return; busy = true; viewModelScope.launch { runCatching { engine.restoreEntry(e) }.onSuccess { undoEntry = null; refresh() }.also { busy = false } } }
     fun undoLoggedBatch() {
@@ -1449,12 +1447,15 @@ internal data class LibraryInputSegment(
     val unit: MeasureUnit?
 )
 
+/** The library's view of a draft: the parts without meal words, each with the amount and unit it types. */
 internal fun libraryInputSegments(value: String, planner: LogPlanner? = null): List<LibraryInputSegment> {
     val parser = ShorthandParser()
-    return (planner?.segments(value)?.map { it.text } ?: parser.split(value)).map { raw ->
-        val parsed = parser.parse(raw)
-        LibraryInputSegment(raw, parsed.foodPhrase, parsed.amount, parsed.unit)
-    }
+    return (planner?.segments(value)?.map { it.text } ?: parser.split(value))
+        .filter { ShorthandLexicon.mealSlotOf(it) == null }
+        .map { raw ->
+            val typed = planner?.typed(raw) ?: parser.parse(raw).let { TypedPart(it.foodPhrase, it.amount, it.unit) }
+            LibraryInputSegment(raw, typed.foodPhrase, typed.amount, typed.unit)
+        }
 }
 
 internal fun defaultServingCalculation(food: FoodRecord): Calculation =
@@ -1470,22 +1471,21 @@ internal fun amountlessDailySearch(value: String, planner: LogPlanner? = null): 
     val markers = mealMarkerSlots(value)
     if (markers.size > 1) return null
     val meal = markers.singleOrNull()
-    val cleaned = meal?.let { removeMealMarkerToken(value, it) } ?: value
-    val segments = (planner?.segments(cleaned)?.map { it.text } ?: parser.split(cleaned))
+    val parts = (planner?.segments(value)?.map { it.text } ?: parser.split(value))
         .filter { ShorthandLexicon.mealSlotOf(it) == null }
-    if (segments.isEmpty() || segments.any { parser.parse(it).amount != null }) return null
-    val phrase = segments.joinToString(", ") { parser.parse(it).foodPhrase }.trim()
+    // A number word or an article counts as a quantity: "a banana" logs, it does not open search.
+    if (parts.isEmpty() || parts.any { parser.parse(it).let { p -> p.amount != null || p.wordQuantity } }) return null
+    val phrase = parts.joinToString(", ") { planner?.phraseOf(it) ?: parser.parse(it).foodPhrase }.trim()
     return phrase.takeIf { it.isNotBlank() }?.let { AmountlessDailySearch(meal, it) }
 }
 
-internal fun removeMealMarkerToken(value: String, target: MealSlot): String = ShorthandParser().split(value)
-    .filterNot { mealMarkerSlots(it).singleOrNull() == target }
-    .joinToString(", ")
+/** The value with every part that is the [target] meal removed. The other parts keep their own text and separators. */
+internal fun removeMealMarkerToken(value: String, target: MealSlot): String =
+    ShorthandParser().removingParts(value) { ShorthandLexicon.mealSlotOf(it.text) == target }
 
-/** Drops every meal-word segment; the Log page's chosen meal then wins over a typed one. */
-internal fun removeAllMealMarkerTokens(value: String): String = ShorthandParser().split(value)
-    .filter { mealMarkerSlots(it).isEmpty() }
-    .joinToString(", ")
+/** Drops every meal-word part; the Log page's chosen meal then wins over a typed one. */
+internal fun removeAllMealMarkerTokens(value: String): String =
+    ShorthandParser().removingParts(value) { ShorthandLexicon.mealSlotOf(it.text) != null }
 
 /**
  * The Log page's target meal. Precedence: a meal picked from the Log menu, then a single typed meal word

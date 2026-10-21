@@ -23,4 +23,11 @@ object Transliteration {
         }
         return mapped.replace("dj", "gj")
     }
+
+    /**
+     * The coarsest spelling: [canonical] with the digraphs folded to one letter (ch to c, sh to s, zh to z, gj to g,
+     * kj to k). Used only as the lowest-ranked fallback, so ц and ч can collide here and nowhere else.
+     */
+    fun loose(text: String): String = canonical(text)
+        .replace("ch", "c").replace("sh", "s").replace("zh", "z").replace("gj", "g").replace("kj", "k")
 }

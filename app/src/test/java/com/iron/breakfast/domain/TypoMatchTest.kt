@@ -19,9 +19,10 @@ class TypoMatchTest {
         assertEquals("buckwheat", FoodMatcher(listOf(food("buckwheat", "Buckwheat"))).best("buckweat")?.food?.id)
     }
 
-    @Test fun aFiveLetterWordAllowsOneEdit() {
+    @Test fun aSixLetterWordAllowsOneEdit() {
         val kefir = FoodMatcher(listOf(food("kefir", "Kefir")))
-        assertEquals("kefir", kefir.best("kefer")?.food?.id)
+        assertTrue(kefir.suggestions("kefer").isEmpty())
+        assertEquals("yogurt", FoodMatcher(listOf(food("yogurt", "Yogurt"))).best("yogurd")?.food?.id)
         assertTrue(kefir.suggestions("kefre2").isEmpty())
     }
 

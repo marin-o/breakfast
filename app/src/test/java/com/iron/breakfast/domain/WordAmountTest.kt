@@ -12,8 +12,6 @@ class WordAmountTest {
     private fun amountOf(input: String) = parser.parse(input).amount
 
     @Test fun englishNumberWordsAreAmounts() {
-        assertEquals(1.0, amountOf("a banana"))
-        assertEquals(1.0, amountOf("an egg"))
         assertEquals(1.0, amountOf("one banana"))
         assertEquals(2.0, amountOf("two eggs"))
         assertEquals(3.0, amountOf("three eggs"))

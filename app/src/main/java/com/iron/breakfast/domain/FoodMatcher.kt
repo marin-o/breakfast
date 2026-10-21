@@ -15,15 +15,17 @@ class FoodMatcher(
         "g" to "gram"
     )
 
-    private data class IndexedFood(
+    private class IndexedFood(
         val food: FoodRecord,
         val names: String,
         val category: String,
         val nameTokens: Set<String>,
         val canonicalNames: String,
         val canonicalTokens: Set<String>,
-        /** Words of the name and aliases only, the vocabulary a typo is checked against. */
+        /** Words of the name and aliases only: the vocabulary a typo or a loose spelling is checked against. */
         val nameWords: Set<String>,
+        val canonicalNameWords: Set<String>,
+        val looseNameWords: Set<String>,
         val normalizedNames: Set<String>,
         val normalizedAliases: Set<String>
     )
@@ -32,6 +34,7 @@ class FoodMatcher(
         val names = (food.allNames() + listOfNotNull(food.preparation, food.sourceDescription))
             .joinToString(" ").lowercase(Locale.ROOT)
         val canonicalNames = Transliteration.canonical(names)
+        val nameWords = tokens(food.allNames().joinToString(" ")).toSet()
         IndexedFood(
             food = food,
             names = names,
@@ -39,43 +42,55 @@ class FoodMatcher(
             nameTokens = tokens(names).toSet(),
             canonicalNames = canonicalNames,
             canonicalTokens = tokens(canonicalNames).toSet(),
-            nameWords = tokens(food.allNames().joinToString(" ")).toSet(),
+            nameWords = nameWords,
+            canonicalNameWords = nameWords.mapTo(mutableSetOf(), Transliteration::canonical),
+            looseNameWords = nameWords.mapTo(mutableSetOf(), Transliteration::loose),
             normalizedNames = food.allNames().mapTo(mutableSetOf(), ::normalize),
             normalizedAliases = food.aliases.mapTo(mutableSetOf(), ::normalize)
         )
     }
 
+    /** One input token with everything the tiers need, computed once per call rather than once per food. */
+    private class QueryToken(val raw: String) {
+        val canonical = Transliteration.canonical(raw)
+        val loose = Transliteration.loose(raw)
+        val stems = stems(raw)
+        val canonicalStems = stems(canonical)
+        val typoAllowance = typoAllowance(raw)
+        val canonicalTypoAllowance = typoAllowance(canonical)
+        val isModifier = raw in MODIFIERS || raw.endsWith("%") || raw.matches(NUMERIC_TOKEN_PATTERN)
+    }
+
+    /** How one input token matched one food: its weight, and whether a typo's edit is at the first letter. */
+    private class TokenHit(val weight: Double, val firstLetterEdit: Boolean)
+
     fun suggestions(phrase: String, preferences: Map<String, Preference> = emptyMap(), limit: Int = 3): List<RankedFood> {
-        val expanded = expandAbbreviations(phrase)
-        val inputTokens = tokens(expanded)
+        val inputTokens = tokens(expandAbbreviations(phrase))
         if (inputTokens.isEmpty()) return emptyList()
+        val queries = inputTokens.map(::QueryToken)
         val normalizedPhrase = normalize(phrase)
         // A plural phrase that is a food's whole name or alias once singular ("tomatoes" is "tomato").
         // Only when the typed phrase is not already an exact name or alias of some food, so exact forms still win.
-        val stemmedPhrase = inputTokens.joinToString(" ") { token -> stems(token).firstOrNull() ?: token }
+        val stemmedPhrase = queries.joinToString(" ") { query -> query.stems.firstOrNull() ?: query.raw }
         val exactSomewhere = indexedCatalog.any { normalizedPhrase in it.normalizedNames || normalizedPhrase in it.normalizedAliases }
-        val explicitModifiers = inputTokens.filter { token ->
-            token in MODIFIERS || token.endsWith("%") || token.matches(NUMERIC_TOKEN_PATTERN)
-        }
-        val identityTokens = inputTokens.filterNot { token ->
-            token in MODIFIERS || token.endsWith("%") || token.matches(NUMERIC_TOKEN_PATTERN)
-        }
+        val explicitModifiers = queries.filter { it.isModifier }.map { it.raw }
+        val identityQueries = queries.filterNot { it.isModifier }
         val now = nowMs()
 
         return indexedCatalog.mapNotNull { indexed ->
             val food = indexed.food
             if (explicitModifiers.any { it !in indexed.names && it !in indexed.category }) return@mapNotNull null
-            val identityMatches = identityTokens.count { token -> tokenWeight(token, indexed) > 0.0 }
+            val hits = queries.map { hit(it, indexed) }
+            val identityHits = hits.filterIndexed { index, _ -> !queries[index].isModifier }
             val exactName = normalizedPhrase in indexed.normalizedNames
-            if (identityTokens.isNotEmpty() && identityMatches == 0) return@mapNotNull null
-            if (identityTokens.isEmpty() && !exactName) return@mapNotNull null
+            if (identityQueries.isNotEmpty() && identityHits.all { it == null }) return@mapNotNull null
+            if (identityQueries.isEmpty() && !exactName) return@mapNotNull null
 
-            val weights = inputTokens.map { token -> tokenWeight(token, indexed) }
-            val matchingTokens = weights.count { it > 0.0 }
-            if (matchingTokens == 0) return@mapNotNull null
+            val matched = hits.filterNotNull()
+            if (matched.isEmpty()) return@mapNotNull null
             val aliasExact = normalizedPhrase in indexed.normalizedAliases
             val stemmedName = !exactSomewhere && (stemmedPhrase in indexed.normalizedNames || stemmedPhrase in indexed.normalizedAliases)
-            val tokenScore = weights.sum() / inputTokens.size * 10.0
+            val tokenScore = hits.sumOf { it?.weight ?: 0.0 } / inputTokens.size * 10.0
             val preferenceScore = (preferences[food.id]?.score(now) ?: 0.0) * 3.0
             val explicitScore = when {
                 aliasExact -> 100.0
@@ -90,59 +105,39 @@ class FoodMatcher(
                 reasons = buildList {
                     if (aliasExact) add("explicit alias")
                     if (stemmedName) add("plural form of a name")
-                    if (matchingTokens > 0) add("${matchingTokens}/${inputTokens.size} name/category tokens")
+                    add("${matched.size}/${inputTokens.size} name/category tokens")
                     if (preferenceScore > 0) add("explicit preference")
                     if (originScore > 0) add("custom food")
                     if (explicitModifiers.isNotEmpty()) add("modifier constrained")
-                }
+                },
+                // Weak: every matched token is a typo or a loose spelling, so the food is only a choice, not a resolution.
+                weakMatch = matched.all { it.weight <= TYPO_WEIGHT },
+                firstLetterEdit = matched.any { it.firstLetterEdit },
             )
         }.sortedWith(compareByDescending<RankedFood> { it.score }.thenBy { it.food.name }).take(limit)
     }
 
     /**
-     * How well one input token matches a food. An exact form (as a substring of the names) scores 1.0; a singular
-     * form of a plural token that is a whole name word scores [STEM_WEIGHT]. Zero when the token does not match.
+     * How one input token matches a food, by tier: an exact form (a substring of the names), a singular form that is a
+     * whole name word, the other script, a typo, then the loose spelling. Null when no tier matches.
      */
-    private fun tokenWeight(token: String, indexed: IndexedFood): Double = when {
-        token in indexed.names || token in indexed.category -> EXACT_WEIGHT
-        stems(token).any { it in indexed.nameTokens } -> STEM_WEIGHT
-        transliterated(token, indexed) -> TRANSLITERATED_WEIGHT
-        typoOf(token, indexed) -> TYPO_WEIGHT
-        else -> 0.0
-    }
-
-    /**
-     * A misspelt token: within one edit for five letters, two for six or more, of a word in the name or aliases. Only
-     * reached when no exact, stemmed or transliterated match exists, so a typo never beats a real match.
-     */
-    private fun typoOf(token: String, indexed: IndexedFood): Boolean {
-        val allowance = typoAllowance(token)
-        val canonical = Transliteration.canonical(token)
-        val canonicalAllowance = typoAllowance(canonical)
-        return (allowance > 0 && indexed.nameWords.any { withinEditDistance(token, it, allowance) }) ||
-            (canonicalAllowance > 0 && indexed.nameWords.any { withinEditDistance(canonical, Transliteration.canonical(it), canonicalAllowance) })
-    }
-
-    private fun typoAllowance(token: String): Int = when {
-        token.length < MIN_TYPO_LENGTH || !token.all { it.isLetter() } -> 0
-        token.length >= LONG_TYPO_LENGTH -> 2
-        else -> 1
-    }
-
-    /** The token in the other script: "pindzur" finds Пинџур and "кисело" finds "kiselo mleko". */
-    private fun transliterated(token: String, indexed: IndexedFood): Boolean {
-        val canonical = Transliteration.canonical(token)
-        return canonical in indexed.canonicalNames || stems(canonical).any { it in indexed.canonicalTokens }
-    }
-
-    /** Singular forms to try for a token: "eggs" gives "egg", "berries" gives "berry". Never shorter than three letters. */
-    private fun stems(token: String): List<String> {
-        val candidates = buildList {
-            if (token.endsWith("ies")) add(token.dropLast(3) + "y")
-            if (token.endsWith("es")) add(token.dropLast(2))
-            if (token.endsWith("s") && !token.endsWith("ss")) add(token.dropLast(1))
+    private fun hit(query: QueryToken, indexed: IndexedFood): TokenHit? {
+        val raw = query.raw
+        if (raw in indexed.names || raw in indexed.category) return EXACT_HIT
+        if (query.stems.any { it in indexed.nameTokens }) return STEM_HIT
+        if (query.canonical in indexed.canonicalNames || query.canonicalStems.any { it in indexed.canonicalTokens }) {
+            return TRANSLITERATED_HIT
         }
-        return candidates.filter { it.length >= MIN_STEM_LENGTH }.distinct()
+        if (query.typoAllowance > 0) {
+            indexed.nameWords.firstOrNull { withinEditDistance(raw, it, query.typoAllowance) }
+                ?.let { return TokenHit(TYPO_WEIGHT, it.first() != raw.first()) }
+        }
+        if (query.canonicalTypoAllowance > 0) {
+            indexed.canonicalNameWords.firstOrNull { withinEditDistance(query.canonical, it, query.canonicalTypoAllowance) }
+                ?.let { return TokenHit(TYPO_WEIGHT, it.first() != query.canonical.first()) }
+        }
+        if (query.loose.length >= MIN_LOOSE_LENGTH && query.loose in indexed.looseNameWords) return LOOSE_HIT
+        return null
     }
 
     fun best(phrase: String, preferences: Map<String, Preference> = emptyMap()): RankedFood? =
@@ -155,15 +150,12 @@ class FoodMatcher(
             indexedCatalog.any { normalizedPhrase in it.normalizedNames || normalizedPhrase in it.normalizedAliases }
     }
 
-    /** True when [phrase] is one food's name or alias, or one food contains every word of it. Used to keep names whole. */
+    /** True when [phrase] is one food's name or alias, or one food matches every word of it. Used to keep names whole. */
     fun covers(phrase: String): Boolean {
         if (isExactName(phrase)) return true
-        val normalizedPhrase = normalize(phrase)
-        if (normalizedPhrase.isEmpty()) return false
-        val inputTokens = tokens(expandAbbreviations(phrase))
-        return inputTokens.isNotEmpty() && indexedCatalog.any { indexed ->
-            inputTokens.all { token -> tokenWeight(token, indexed) > 0.0 }
-        }
+        val queries = tokens(expandAbbreviations(phrase)).map(::QueryToken)
+        if (queries.isEmpty()) return false
+        return indexedCatalog.any { indexed -> queries.all { hit(it, indexed) != null } }
     }
 
     fun expandAbbreviations(phrase: String): String = phrase.lowercase(Locale.ROOT)
@@ -183,9 +175,40 @@ class FoodMatcher(
         private const val STEM_WEIGHT = 0.95
         private const val TRANSLITERATED_WEIGHT = 0.9
         private const val TYPO_WEIGHT = 0.6
-        private const val MIN_TYPO_LENGTH = 5
-        private const val LONG_TYPO_LENGTH = 6
+        private const val LOOSE_WEIGHT = 0.5
         private const val MIN_STEM_LENGTH = 3
+        private const val MIN_LOOSE_LENGTH = 4
+        private const val STEMMED_NAME_SCORE = 50.0
+        private val EXACT_HIT = TokenHit(EXACT_WEIGHT, false)
+        private val STEM_HIT = TokenHit(STEM_WEIGHT, false)
+        private val TRANSLITERATED_HIT = TokenHit(TRANSLITERATED_WEIGHT, false)
+        private val LOOSE_HIT = TokenHit(LOOSE_WEIGHT, false)
+        private val STOP_WORDS = ShorthandLexicon.stopWords
+        private val TOKEN_CHARACTER_PATTERN = Regex("[^\\p{L}\\p{N}.%]+")
+        private val WHITESPACE_PATTERN = Regex("\\s+")
+        private val NUMERIC_TOKEN_PATTERN = Regex("\\d+(?:[.]\\d+)?")
+        private val MODIFIERS = setOf(
+            "oat", "oats", "small", "large", "smooth", "crunchy", "raw", "cooked", "roasted", "grilled",
+            "boneless", "skinless", "drained", "canned", "yellow", "green", "red", "orange", "white",
+            "roma", "grape", "baby", "mature", "light", "restaurant", "2.8", "3.2", "домашно", "домашен"
+        )
+
+        /** Singular forms to try for a token: "eggs" gives "egg", "berries" gives "berry". Never shorter than three letters. */
+        private fun stems(token: String): List<String> {
+            val candidates = buildList {
+                if (token.endsWith("ies")) add(token.dropLast(3) + "y")
+                if (token.endsWith("es")) add(token.dropLast(2))
+                if (token.endsWith("s") && !token.endsWith("ss")) add(token.dropLast(1))
+            }
+            return candidates.filter { it.length >= MIN_STEM_LENGTH }.distinct()
+        }
+
+        /** Edits allowed for a typo: none under six letters, one for six to eight, two from nine on. Letters only. */
+        private fun typoAllowance(token: String): Int = when {
+            token.length < 6 || !token.all { it.isLetter() } -> 0
+            token.length < 9 -> 1
+            else -> 2
+        }
 
         /** True when [a] and [b] are within [max] single-letter edits (insert, delete, substitute). Stops early when it cannot. */
         private fun withinEditDistance(a: String, b: String, max: Int): Boolean {
@@ -203,15 +226,5 @@ class FoodMatcher(
             }
             return previous[b.length] <= max
         }
-        private const val STEMMED_NAME_SCORE = 50.0
-        private val STOP_WORDS = ShorthandLexicon.stopWords
-        private val TOKEN_CHARACTER_PATTERN = Regex("[^\\p{L}\\p{N}.%]+")
-        private val WHITESPACE_PATTERN = Regex("\\s+")
-        private val NUMERIC_TOKEN_PATTERN = Regex("\\d+(?:[.]\\d+)?")
-        private val MODIFIERS = setOf(
-            "oat", "oats", "small", "large", "smooth", "crunchy", "raw", "cooked", "roasted", "grilled",
-            "boneless", "skinless", "drained", "canned", "yellow", "green", "red", "orange", "white",
-            "roma", "grape", "baby", "mature", "light", "restaurant", "2.8", "3.2", "домашно", "домашен"
-        )
     }
 }

@@ -152,13 +152,21 @@ data class ParsedSegment(
     val unit: MeasureUnit?,
     val quantityStart: Int?,
     val quantityEnd: Int?,
-    val explicitModifiers: List<String> = emptyList()
+    val explicitModifiers: List<String> = emptyList(),
+    /** True when a number word or article was read as the amount, which a food's own name may contain instead. */
+    val wordQuantity: Boolean = false,
+    /** True for a bare "a" or "an" with no unit: one when the food is counted by the piece, else the food's default. */
+    val articleQuantity: Boolean = false,
 )
 
 data class RankedFood(
     val food: FoodRecord,
     val score: Double,
-    val reasons: List<String>
+    val reasons: List<String>,
+    /** Every matched token is a typo or a loose spelling: a choice to offer, not a resolution by itself. */
+    val weakMatch: Boolean = false,
+    /** A typo whose edit is at the first letter, which never resolves on its own. */
+    val firstLetterEdit: Boolean = false,
 )
 
 data class SavedMeal(

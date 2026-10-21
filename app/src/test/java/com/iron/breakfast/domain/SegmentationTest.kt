@@ -113,7 +113,9 @@ class SegmentationTest {
         val named = LogPlanner(FoodMatcher(FoodCatalog.fixtures + pindzur))
         assertEquals(listOf("pindzur"), named.plan("Пинџур, домашен").entries.map { it.food.id })
         assertTrue(named.plan("Пинџур, домашен").unresolved.isEmpty())
-        assertEquals(listOf("pindzur"), named.plan("Пинџур, домашен 100 g").entries.map { it.food.id })
+        // "100 g" cannot be converted for a piece-counted food, so it is not logged: it stays a Not in your foods row.
+        assertEquals(listOf("Пинџур, домашен 100 g"), named.plan("Пинџур, домашен 100 g").unresolved)
+        assertEquals(listOf("pindzur"), named.plan("Пинџур, домашен 1 piece").entries.map { it.food.id })
         assertEquals(listOf("pindzur", "banana"), named.plan("Пинџур, домашен, 1 banana").entries.map { it.food.id })
     }
 
@@ -131,5 +133,30 @@ class SegmentationTest {
             assertEquals("${food.name}: beside a banana", listOf("banana", food.id), planner.plan("1 banana, ${food.name} $amount").entries.map { it.food.id })
             assertEquals("${food.name}: no amount typed", listOf(food.id), planner.plan(food.name).entries.map { it.food.id })
         }
+    }
+}
+
+class SegmentationProbeRejoinTest {
+    private val catalogue = FoodCatalog.fixtures + FoodRecord(
+        id = "mac", name = "Macaroni and cheese", aliases = emptyList(), category = "Pasta", origin = FoodOrigin.CUSTOM,
+        nutrition = NutritionBasis(1.0, MeasureUnit.PIECE, NutritionValues(300.0, 10.0, 40.0, 12.0)),
+        defaultAmount = 1.0, defaultUnit = MeasureUnit.PIECE,
+    )
+
+    @Test fun wordSeparatorInsideAFoodNameIsRejoinedThroughTheProbe() {
+        val matcher = FoodMatcher(catalogue)
+        val planner = LogPlanner(matcher)
+        val probe = object : FoodProbe {
+            override fun resolves(text: String) = planner.resolve(text)?.needsChoice == false
+            override fun covers(phrase: String) = matcher.covers(phrase)
+            override fun isExactName(phrase: String) = matcher.isExactName(phrase)
+        }
+        assertEquals(listOf("Mac and cheese", "egg"), ShorthandParser().split("Mac and cheese and egg", probe))
+        assertEquals(listOf("Mac and cheese"), ShorthandParser().split("Mac and cheese", probe))
+    }
+
+    @Test fun joinedNameIsOneEntryThroughThePlanner() {
+        val planner = LogPlanner(FoodMatcher(catalogue))
+        assertEquals(listOf("mac"), planner.plan("Mac and cheese").entries.map { it.food.id })
     }
 }
