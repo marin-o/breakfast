@@ -83,8 +83,8 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
             SearchCaption(Modifier.padding(top = 6.dp))
             Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SearchField(vm.searchQuery, vm::onSearch, onClear = { vm.onSearch("") }, label = "Search Open Food Facts", modifier = Modifier.weight(1f), onSearch = vm::submitSearch)
-                if (vm.searchBusy) SecondaryButton("Search", vm::submitSearch, Modifier.width(104.dp), enabled = false, fillWidth = false)
-                else PrimaryButton("Search", vm::submitSearch, Modifier.width(104.dp), kind = ButtonKind.Neutral, fillWidth = false)
+                if (vm.searchBusy) SecondaryButton("Search", vm::submitSearch, Modifier.widthIn(min = 104.dp), enabled = false, fillWidth = false)
+                else PrimaryButton("Search", vm::submitSearch, Modifier.widthIn(min = 104.dp), kind = ButtonKind.Neutral, fillWidth = false)
             }
             Column(Modifier.padding(top = 16.dp)) {
                 when {

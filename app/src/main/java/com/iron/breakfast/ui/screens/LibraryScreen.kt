@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -134,7 +135,7 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
                             properties = PopupProperties(focusable = true, dismissOnClickOutside = true, dismissOnBackPress = true),
                         ) {
                             // The one shadow in the app: the overflow menu popover.
-                            Column(Modifier.width(220.dp).shadow(6.dp, SecondaryShape).background(colors.bg).border(1.dp, colors.line, SecondaryShape).padding(vertical = 2.dp)) {
+                            Column(Modifier.widthIn(min = 220.dp).shadow(6.dp, SecondaryShape).background(colors.bg).border(1.dp, colors.line, SecondaryShape).padding(vertical = 2.dp)) {
                                 TertiaryButton("Archived foods", { menuOpen = false; vm.openArchivedLibrary() }, Modifier.fillMaxWidth())
                             }
                         }
@@ -290,7 +291,7 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
             PrimaryButton("Restore", onClick = { vm.restoreLibraryFood(food) }, Modifier.padding(top = 24.dp))
         } else {
             Row(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SecondaryButton(targetMeal.label(), { mealMenuOpen = true }, Modifier.width(128.dp), fillWidth = false, trailing = Icons.Outlined.KeyboardArrowDown)
+                SecondaryButton(targetMeal.label(), { mealMenuOpen = true }, Modifier.widthIn(min = 128.dp), fillWidth = false, trailing = Icons.Outlined.KeyboardArrowDown)
                 PrimaryButton("Log to ${targetMeal.label()}", onClick = { amountSheetOpen = true }, Modifier.weight(1f))
             }
             if (mealMenuOpen) MealChoices(selected = targetMeal, onSelect = { targetMeal = it; mealMenuOpen = false }, modifier = Modifier.padding(top = 8.dp))
@@ -388,7 +389,7 @@ internal fun LibraryFoodEditScreen(vm: BreakfastViewModel) {
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(MeasureUnit.GRAM, MeasureUnit.MILLILITER).forEach { unit ->
-                        ChoiceOption(unit.displayLabel(), draft.servingUnit == unit, { draft.servingUnit = unit }, Modifier.width(72.dp))
+                        ChoiceOption(unit.displayLabel(), draft.servingUnit == unit, { draft.servingUnit = unit }, Modifier.widthIn(min = 72.dp))
                     }
                 }
                 SecondaryButton("Add serving", vm::commitDraftServing)
@@ -440,7 +441,7 @@ private fun LibraryAmountSheet(vm: BreakfastViewModel, food: FoodRecord, target:
             Text(foodText(food.name), color = colors.ink, style = BreakfastType.Section)
             Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Secondary)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Field("Amount", amountText, { amountText = it.asciiDigits(allowDecimalPoint = true) }, Modifier.width(96.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                Field("Amount", amountText, { amountText = it.asciiDigits(allowDecimalPoint = true) }, Modifier.widthIn(min = 96.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                 Row(Modifier.weight(1f).padding(top = 22.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     units.forEach { candidate -> ChoiceOption(candidate.displayLabel(), unit == candidate, { unit = candidate }) }
                 }

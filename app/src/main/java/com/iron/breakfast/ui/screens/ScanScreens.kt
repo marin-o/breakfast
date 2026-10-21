@@ -21,6 +21,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -190,7 +191,7 @@ import java.util.concurrent.atomic.AtomicBoolean
                         style = BreakfastType.Secondary,
                         textAlign = TextAlign.Center,
                     )
-                    SecondaryButton("Manual barcode", { manualOpen = true }, Modifier.padding(top = 24.dp).width(220.dp), fillWidth = false, onDark = true)
+                    SecondaryButton("Manual barcode", { manualOpen = true }, Modifier.padding(top = 24.dp).widthIn(min = 220.dp), fillWidth = false, onDark = true)
                 }
             }
         }

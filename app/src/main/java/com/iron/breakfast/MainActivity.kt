@@ -1682,8 +1682,8 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
                 if (draft.createNewProduct) {
                     Text("Language", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 24.dp))
                     Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ChoiceOption("EN", vm.contributionLanguageCode == "en", { vm.onContributionLanguage("en") }, Modifier.width(64.dp))
-                        ChoiceOption("MK", vm.contributionLanguageCode == "mk", { vm.onContributionLanguage("mk") }, Modifier.width(64.dp))
+                        ChoiceOption("EN", vm.contributionLanguageCode == "en", { vm.onContributionLanguage("en") }, Modifier.widthIn(min = 64.dp))
+                        ChoiceOption("MK", vm.contributionLanguageCode == "mk", { vm.onContributionLanguage("mk") }, Modifier.widthIn(min = 64.dp))
                     }
                     if (draft.basisUnit == MeasureUnit.MILLILITER) Field("Package quantity, ml", vm.contributionPackageQuantityMl, vm::onContributionPackageQuantityMl, Modifier.padding(top = 16.dp))
                     Text("New product: Breakfast creates it.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 12.dp))

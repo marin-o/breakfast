@@ -217,7 +217,7 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
                     Field("Food", selectedFood?.name ?: entry.foodName, {}, Modifier.weight(1f), readOnly = true)
                     SecondaryButton("Replace", vm::openEditFoodPicker, modifier = Modifier.widthIn(min = 96.dp * fontScale), fillWidth = false)
                 }
-                Field("Amount", amount, { amount = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.width(140.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                Field("Amount", amount, { amount = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.widthIn(min = 140.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     units.forEach { candidate -> ChoiceOption(candidate.displayLabel(), unit == candidate, { unit = candidate }) }
                 }

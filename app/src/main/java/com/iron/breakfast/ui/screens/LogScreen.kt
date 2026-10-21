@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -154,7 +155,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
                             label = ranked.food.name,
                             selected = index == 0,
                             onClick = { vm.chooseQuickSuggestion(ranked.food) },
-                            modifier = Modifier.width(168.dp),
+                            modifier = Modifier.widthIn(min = 168.dp),
                             detail = "${receiptKcal(vm.quickAddSuggestionCalories(ranked.food))} kcal",
                         )
                     }
