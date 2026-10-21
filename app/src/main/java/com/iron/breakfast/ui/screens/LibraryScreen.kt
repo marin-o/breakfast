@@ -54,12 +54,19 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.iron.breakfast.BreakfastViewModel
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
@@ -172,7 +179,7 @@ private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boole
         if (expanded) {
             Column(Modifier.padding(bottom = 8.dp)) {
                 Text("Add ${repeatAmount.pretty()} ${repeatUnit.displayLabel()} to", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(bottom = 6.dp))
-                MealChoices(selected = null, onSelect = { meal -> vm.logLibraryFood(food, meal, repeatAmount, repeatUnit); vm.collapseLibraryFoodPicker() })
+                MealChoices(selected = null, onSelect = { meal -> vm.logLibraryFood(food, meal, repeatAmount, repeatUnit); vm.collapseLibraryFoodPicker() }, singleRow = true)
             }
         }
     }
@@ -180,24 +187,49 @@ private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boole
 
 private fun defaultServingCalories(food: FoodRecord): String = printedFactKcal(com.iron.breakfast.defaultServingCalculation(food).nutrition.calories)
 
-/** The Library's bottom bar: a search field that filters the list. It does not open the Log page. */
+/**
+ * The Library's bottom bar: the Composer look (ink bar, "Search foods") over the existing text field.
+ * It filters the list through [BreakfastViewModel.submitLibraryInput] and does not open the Log page.
+ */
 @Composable
 internal fun LibraryComposer(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
     val inMeal = vm.slot != null
     Column(Modifier.fillMaxWidth().background(colors.bg).then(if (inMeal) Modifier else Modifier.navigationBarsPadding()).padding(horizontal = Gutter, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth().then(if (inMeal) Modifier.navigationBarsPadding() else Modifier), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SearchField(
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .then(if (inMeal) Modifier.navigationBarsPadding() else Modifier)
+                .heightIn(min = ComposerHeight)
+                .clip(ComposerShape)
+                .background(colors.ink)
+                .padding(start = 16.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BasicTextField(
                 value = vm.input,
                 onValueChange = vm::onInput,
-                onClear = { vm.onInput("") },
-                label = "Search foods",
-                modifier = Modifier.weight(1f),
-                onSearch = vm::submitLibraryInput,
-                fieldModifier = Modifier.onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { vm.submitLibraryInput(); true } else false },
+                singleLine = true,
+                textStyle = BreakfastType.Body.copy(color = colors.bg),
+                cursorBrush = SolidColor(colors.bg),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { vm.submitLibraryInput() }, onDone = { vm.submitLibraryInput() }),
+                modifier = Modifier
+                    .weight(1f)
+                    .onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { vm.submitLibraryInput(); true } else false }
+                    .semantics { contentDescription = "Search foods" },
+                decorationBox = { inner ->
+                    Box(Modifier.heightIn(min = 22.dp), contentAlignment = Alignment.CenterStart) {
+                        if (vm.input.isEmpty()) Text("Search foods", color = colors.bg.copy(alpha = 0.6f), style = BreakfastType.Body)
+                        inner()
+                    }
+                },
             )
-            IconButton(onClick = vm::beginScan, modifier = Modifier.size(44.dp)) {
-                Icon(Icons.Outlined.QrCodeScanner, contentDescription = "Scan barcode", tint = colors.ink)
+            if (vm.input.isNotEmpty()) IconButton(onClick = { vm.onInput("") }, modifier = Modifier.size(IconTarget)) {
+                Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = colors.bg, modifier = Modifier.size(20.dp))
+            }
+            IconButton(onClick = vm::beginScan, modifier = Modifier.size(IconTarget)) {
+                Icon(Icons.Outlined.QrCodeScanner, contentDescription = "Scan barcode", tint = colors.bg)
             }
         }
         if (!inMeal) BottomNav(selectedToday = false, onToday = { vm.closeMeal(); vm.closeLibrary() }, onLibrary = {})
@@ -401,13 +433,13 @@ private fun LibraryAmountSheet(vm: BreakfastViewModel, food: FoodRecord, target:
             Text(foodText(food.name), color = colors.ink, style = BreakfastType.Section)
             Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Secondary)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Field("Amount", amountText, { amountText = it.asciiDigits(allowDecimalPoint = true) }, Modifier.width(96.dp), labelVisible = false, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Field("Amount", amountText, { amountText = it.asciiDigits(allowDecimalPoint = true) }, Modifier.width(96.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                Row(Modifier.weight(1f).padding(top = 22.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     units.forEach { candidate -> ChoiceOption(candidate.displayLabel(), unit == candidate, { unit = candidate }) }
                 }
             }
             Text("Meal", color = colors.soft, style = BreakfastType.Meta)
-            MealChoices(selected = chosenMeal, onSelect = { chosenMeal = it })
+            MealChoices(selected = chosenMeal, onSelect = { chosenMeal = it }, singleRow = true)
             Hairline()
             Text(calc?.let { "${receiptKcal(it.nutrition.calories)} kcal" } ?: "Enter a positive amount", color = colors.ink, style = BreakfastType.Section)
             Text(calc?.let { "P ${it.nutrition.protein?.pretty() ?: "—"}  C ${it.nutrition.carbohydrates?.pretty() ?: "—"}  F ${it.nutrition.fat?.pretty() ?: "—"}" } ?: "", color = colors.soft, style = BreakfastType.Secondary)
