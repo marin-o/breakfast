@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -458,12 +459,16 @@ fun DayHeader(
 ) {
     val colors = LocalBreakfastColors.current
     Row(modifier.fillMaxWidth().heightIn(min = HeaderHeight), verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            title,
-            color = colors.ink,
-            style = BreakfastType.Title,
-            modifier = Modifier.weight(1f).then(if (onTitleClick != null) Modifier.clickable(role = Role.Button, onClick = onTitleClick) else Modifier),
-        )
+        // The title and its chevron form one click target that opens the date picker.
+        Row(
+            Modifier
+                .weight(1f)
+                .then(if (onTitleClick != null) Modifier.clickable(role = Role.Button, onClick = onTitleClick) else Modifier),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(title, color = colors.ink, style = BreakfastType.Title)
+            if (onTitleClick != null) Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = null, tint = colors.soft, modifier = Modifier.padding(start = 4.dp).size(16.dp))
+        }
         if (showToday) TertiaryButton("Today", onToday)
         IconButton(onClick = onPrevious, modifier = Modifier.size(IconTarget)) {
             Icon(Icons.Outlined.ChevronLeft, contentDescription = "Previous day", tint = colors.ink, modifier = Modifier.size(22.dp))
@@ -513,6 +518,8 @@ fun Composer(
     onClick: () -> Unit,
     onScan: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    /** True when [placeholder] is the typed draft: shown at full strength so it is never hidden. */
+    draft: Boolean = false,
 ) {
     val colors = LocalBreakfastColors.current
     Row(
@@ -525,9 +532,11 @@ fun Composer(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            placeholder,
-            color = colors.bg.copy(alpha = 0.6f),
+            placeholder.replace('\n', ' '),
+            color = if (draft) colors.bg else colors.bg.copy(alpha = 0.6f),
             style = BreakfastType.Body,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).clickable(role = Role.Button, onClick = onClick),
         )
         if (onScan != null) IconButton(onClick = onScan, modifier = Modifier.size(IconTarget)) {

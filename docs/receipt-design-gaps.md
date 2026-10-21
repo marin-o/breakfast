@@ -23,5 +23,6 @@ This ledger tracks the former v5 gaps against the locked Receipt v6.5 light and 
 | Camera ground | `R6-Scan.dc.html`, `R6D-Scan.dc.html` | Done: `#141218` ground and light registration marks are centralized. |
 | Source box contrast | `R6-Daily.dc.html`, `R6D-Daily.dc.html` and matching rows | Done: the v6.5 source box was removed; B/P/O is soft text. |
 | Entry detail contribution action | No R6 reference; contribution remains on Library food detail | Resolved by handoff: intentionally not added; contribution stays on Library food detail. |
+| Log page amountless text | `M-Log` has no amountless case | Behaviour kept from v6.5: Add on text with no amounts opens the focused Library for the Log's target meal (its typed or chosen meal), not the Daily search. |
 
 See [the v6.5 handoff](codex-handoff-receipt-v65.md) and [the v6.5 gap brief](../design/canvas/BRIEF-v65-gaps.md) for the complete state inventory and binding control details.

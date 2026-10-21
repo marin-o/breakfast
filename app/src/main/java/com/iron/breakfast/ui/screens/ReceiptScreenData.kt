@@ -166,12 +166,6 @@ internal fun earliestMealTime(entries: List<MealEntry>, zoneId: ZoneId = ZoneId.
         .withZone(zoneId).format(Instant.ofEpochMilli(savedAt))
 }
 
-internal fun dayTitle(dayKey: String, zoneId: ZoneId = ZoneId.systemDefault()): Pair<String, String> {
-    val date = runCatching { java.time.LocalDate.parse(dayKey) }.getOrNull() ?: return dayKey to dayKey
-    val day = date.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, Locale.ENGLISH)
-    return day to date.format(DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.ENGLISH))
-}
-
 
 /** "Per 100 g", "Per 250 ml": always the food's real nutrition basis. */
 internal fun basisLabel(amount: Double, unit: MeasureUnit): String = "Per ${amount.pretty()} ${unit.label}"
