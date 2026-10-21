@@ -29,10 +29,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
@@ -177,7 +177,7 @@ import java.util.concurrent.atomic.AtomicBoolean
             color = colors.cameraMark,
             style = BreakfastType.Secondary,
         )
-        Viewfinder(Modifier.align(Alignment.Center).offset(y = (-80).dp).size(width = 260.dp, height = 160.dp), colors.cameraMark)
+        Viewfinder(Modifier.align(Alignment.TopCenter).padding(top = 260.dp).size(width = 260.dp, height = 140.dp), colors.cameraMark)
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = vm::endScan, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.cameraMark) }
             Box(Modifier.weight(1f))
@@ -185,11 +185,11 @@ import java.util.concurrent.atomic.AtomicBoolean
                 Icon(if (torchOn) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff, contentDescription = "Torch", tint = colors.cameraMark)
             }
         }
-        if (vm.scannerLookupBusy) LookupSheet(vm.scannerLookupCode, vm::cancelBarcodeLookup, Modifier.align(Alignment.BottomCenter))
-        else SecondaryButton(
-            "Manual barcode", { manualOpen = true }, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(start = Gutter, end = Gutter, bottom = 28.dp),
-            onDark = true,
-        )
+        if (vm.scannerLookupBusy) LookupProgress(vm.scannerLookupCode, vm::cancelBarcodeLookup, Modifier.align(Alignment.TopCenter).padding(top = 500.dp))
+        else Column(Modifier.align(Alignment.TopCenter).padding(top = 452.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Point the camera at a barcode", color = colors.cameraMark.copy(alpha = 0.7f), style = BreakfastType.Secondary)
+            SecondaryButton("Manual barcode", { manualOpen = true }, Modifier.padding(top = 29.dp).width(220.dp), fillWidth = false, onDark = true)
+        }
     }
     if (manualOpen) ManualBarcodeSheet(onDismiss = { manualOpen = false }, onLookup = { code -> manualOpen = false; vm.onBarcode(code) })
 }
@@ -199,44 +199,46 @@ private fun ScannerUnavailableScreen(noCamera: Boolean, onBack: () -> Unit, onMa
     val colors = LocalBreakfastColors.current
     Column(Modifier.fillMaxSize().background(colors.bg).statusBarsPadding().padding(horizontal = Gutter)) {
         TopBar("Scan", onBack, Modifier.padding(top = 8.dp))
-        Column(Modifier.fillMaxWidth().padding(top = 120.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.fillMaxWidth().padding(top = 56.dp)) {
             SectionHeading(if (noCamera) "No camera" else "No camera access")
-            Text(if (noCamera) "This phone has no usable camera." else "Allow the camera in Android settings.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 4.dp))
+            Text(if (noCamera) "This phone has no usable camera." else "Allow the camera in Android settings.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 6.dp))
         }
-        Column(Modifier.fillMaxWidth().padding(top = 32.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            PrimaryButton(if (noCamera) "Manual barcode" else "Open settings", if (noCamera) onManual else onSettings, kind = ButtonKind.Neutral)
-            if (!noCamera) SecondaryButton("Manual barcode", onManual)
+        Box(Modifier.weight(1f))
+        Column(Modifier.fillMaxWidth().padding(bottom = 36.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (noCamera) PrimaryButton("Manual barcode", onManual, kind = ButtonKind.Neutral)
+            else {
+                PrimaryButton("Open settings", onSettings, kind = ButtonKind.Neutral)
+                SecondaryButton("Manual barcode", onManual)
+            }
         }
     }
 }
 
-/** Progress over the camera ground, on a `bg` sheet that hugs the bottom edge. */
+/** Lookup progress drawn in white over the camera ground, with a Cancel under it. */
 @Composable
-private fun LookupSheet(code: String, onCancel: () -> Unit, modifier: Modifier = Modifier) {
-    val colors = LocalBreakfastColors.current
-    Column(
-        modifier
-            .fillMaxWidth()
-            .background(colors.bg, SheetShape)
-            .navigationBarsPadding()
-            .padding(horizontal = Gutter, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        LinearProgress("Looking up $code")
-        TertiaryButton("Cancel", onCancel, Modifier.align(Alignment.CenterHorizontally))
+private fun LookupProgress(code: String, onCancel: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxWidth().padding(horizontal = Gutter)) {
+        LinearProgress("Looking up $code", onDark = true)
+        TertiaryButton("Cancel", onCancel, Modifier.fillMaxWidth().padding(top = 14.dp), onDark = true)
     }
 }
 
-/** Four corner brackets, drawn square-capped so they read as registration marks. */
+/** Four 2dp white corner brackets with 10dp rounded corners and 30dp arms, inside the 260x140 frame. */
 @Composable private fun Viewfinder(modifier: Modifier, color: Color) {
     Canvas(modifier.semantics { contentDescription = "Barcode viewfinder" }) {
-        val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Square)
-        val arm = 27.dp.toPx()
-        val inset = 1.5.dp.toPx()
+        val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Butt)
+        val arm = 30.dp.toPx()
+        val radius = 10.dp.toPx()
+        val inset = 1.dp.toPx()
         val w = size.width - inset
         val h = size.height - inset
         fun corner(x: Float, y: Float, dx: Float, dy: Float) = drawPath(
-            Path().apply { moveTo(x, y + dy * arm); lineTo(x, y); lineTo(x + dx * arm, y) },
+            Path().apply {
+                moveTo(x, y + dy * arm)
+                lineTo(x, y + dy * radius)
+                quadraticBezierTo(x, y, x + dx * radius, y)
+                lineTo(x + dx * arm, y)
+            },
             color = color,
             style = stroke,
         )
@@ -256,7 +258,7 @@ private fun LookupSheet(code: String, onCancel: () -> Unit, modifier: Modifier =
     val colors = LocalBreakfastColors.current
     Box(Modifier.fillMaxSize().background(colors.cameraGround)) {
         Text("camera", Modifier.align(Alignment.Center).offset(y = (-262).dp), color = colors.cameraMark, style = BreakfastType.Meta)
-        Viewfinder(Modifier.align(Alignment.Center).offset(y = (-80).dp).size(width = 260.dp, height = 160.dp), colors.cameraMark)
+        Viewfinder(Modifier.align(Alignment.TopCenter).padding(top = 260.dp).size(width = 260.dp, height = 140.dp), colors.cameraMark)
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.cameraMark) }
             Box(Modifier.weight(1f))

@@ -169,6 +169,8 @@ fun TertiaryButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     soft: Boolean = false,
+    /** Over the camera ground: white label. */
+    onDark: Boolean = false,
 ) {
     val colors = LocalBreakfastColors.current
     Box(
@@ -179,7 +181,7 @@ fun TertiaryButton(
             .padding(horizontal = 14.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = if (soft) colors.soft else colors.ink, style = BreakfastType.Button, textAlign = TextAlign.Center)
+        Text(text, color = if (onDark) colors.cameraMark else if (soft) colors.soft else colors.ink, style = BreakfastType.Button, textAlign = TextAlign.Center)
     }
 }
 
@@ -642,10 +644,13 @@ fun Snackbar(
     }
 }
 
-/** 2dp track with a 2dp ink bar sweeping across it, and a soft caption. No spinners. */
+/** 2dp track with a 2dp ink bar sweeping across it, and a soft caption. No spinners. [onDark] draws it in white over the camera ground. */
 @Composable
-fun LinearProgress(caption: String, modifier: Modifier = Modifier) {
+fun LinearProgress(caption: String, modifier: Modifier = Modifier, onDark: Boolean = false) {
     val colors = LocalBreakfastColors.current
+    val track = if (onDark) colors.cameraMark.copy(alpha = 0.24f) else colors.line
+    val bar = if (onDark) colors.cameraMark else colors.ink
+    val captionColor = if (onDark) colors.cameraMark.copy(alpha = 0.7f) else colors.soft
     val transition = rememberInfiniteTransition(label = "linear-progress")
     val phase by transition.animateFloat(
         initialValue = 0f,
@@ -656,12 +661,12 @@ fun LinearProgress(caption: String, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth().semantics { contentDescription = caption }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Canvas(Modifier.fillMaxWidth().height(2.dp)) {
             val mid = size.height / 2
-            drawLine(colors.line, Offset(0f, mid), Offset(size.width, mid), strokeWidth = size.height)
+            drawLine(track, Offset(0f, mid), Offset(size.width, mid), strokeWidth = size.height)
             val barWidth = size.width * 0.25f
             val start = (size.width + barWidth) * phase - barWidth
-            drawLine(colors.ink, Offset(start, mid), Offset(start + barWidth, mid), strokeWidth = size.height)
+            drawLine(bar, Offset(start, mid), Offset(start + barWidth, mid), strokeWidth = size.height)
         }
-        Text(caption, color = colors.soft, style = BreakfastType.Secondary)
+        Text(caption, color = captionColor, style = BreakfastType.Secondary)
     }
 }
 
