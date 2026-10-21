@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Search
@@ -87,6 +88,7 @@ import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.MealChoices
 import com.iron.breakfast.ui.components.PrimaryButton
+import com.iron.breakfast.ui.components.InkBar
 import com.iron.breakfast.ui.components.ScanBarcodeIcon
 import com.iron.breakfast.ui.components.SearchField
 import com.iron.breakfast.ui.components.SecondaryButton
@@ -117,7 +119,7 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 if (archived || !root) IconButton(onClick = { if (archived) vm.openLibrary() else vm.closeMeal() }, modifier = Modifier.size(44.dp)) {
                     Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.ink)
                 }
-                Column(Modifier.weight(1f), horizontalAlignment = if (root && !archived) Alignment.CenterHorizontally else Alignment.Start) {
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
                     Text(title, color = colors.ink, style = BreakfastType.Section)
                     if (!archived) Text(subtitle, color = colors.soft, style = BreakfastType.Meta)
                 }
@@ -165,7 +167,7 @@ private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boole
             FoodRow(
                 name = food.name,
                 quantityLine = if (archived) "Archived" else if (last == null) "${repeatAmount.pretty()} ${repeatUnit.displayLabel()}" else "last ${repeatAmount.pretty()} ${repeatUnit.displayLabel()}",
-                calories = last?.let { printedFactKcal(it.nutritionSnapshot.calories) } ?: defaultServingCalories(food),
+                calories = last?.let { receiptKcal(it.nutritionSnapshot.calories) } ?: defaultServingCalories(food),
                 modifier = Modifier.weight(1f),
                 onClick = { vm.openLibraryFood(food) },
             )
@@ -185,7 +187,7 @@ private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boole
     }
 }
 
-private fun defaultServingCalories(food: FoodRecord): String = printedFactKcal(com.iron.breakfast.defaultServingCalculation(food).nutrition.calories)
+private fun defaultServingCalories(food: FoodRecord): String = receiptKcal(com.iron.breakfast.defaultServingCalculation(food).nutrition.calories)
 
 /**
  * The Library's bottom bar: the Composer look (ink bar, "Search foods") over the existing text field.
@@ -196,16 +198,7 @@ internal fun LibraryComposer(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
     val inMeal = vm.slot != null
     Column(Modifier.fillMaxWidth().background(colors.bg).then(if (inMeal) Modifier else Modifier.navigationBarsPadding()).padding(horizontal = Gutter, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .then(if (inMeal) Modifier.navigationBarsPadding() else Modifier)
-                .heightIn(min = ComposerHeight)
-                .clip(ComposerShape)
-                .background(colors.ink)
-                .padding(start = 16.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        InkBar(if (inMeal) Modifier.navigationBarsPadding() else Modifier) {
             BasicTextField(
                 value = vm.input,
                 onValueChange = vm::onInput,
@@ -240,7 +233,7 @@ private fun servingDisplayName(conversion: ServingConversion): String = conversi
 
 @Composable private fun ServingValue(conversion: ServingConversion, food: FoodRecord) {
     val value = "${conversion.baseUnitsPerServing.pretty()} ${food.nutrition.unit.label}"
-    Text(if (conversion.approximate) "≈ $value" else value, color = LocalBreakfastColors.current.ink, style = BreakfastType.BodyMedium)
+    Text(if (conversion.approximate) "≈$value" else value, color = LocalBreakfastColors.current.soft, style = BreakfastType.Body)
 }
 
 @Composable
@@ -266,14 +259,19 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
         food.barcode?.let { Text("Barcode $it", color = colors.soft, style = BreakfastType.Secondary) }
         Hairline(Modifier.padding(top = 16.dp))
         SectionHeading(basisLabel(food.nutrition.amount, food.nutrition.unit), Modifier.padding(top = 16.dp))
-        LibraryFactRow("Energy", printedFactKcal(food.nutrition.values.calories), "kcal")
+        LibraryFactRow("Energy", receiptKcal(food.nutrition.values.calories), "kcal")
         LibraryFactRow("Fat", food.nutrition.values.fat?.pretty() ?: "—", "g")
         LibraryFactRow("Carbohydrate", food.nutrition.values.carbohydrates?.pretty() ?: "—", "g")
         LibraryFactRow("Protein", food.nutrition.values.protein?.pretty() ?: "—", "g")
         if (servings.isNotEmpty()) {
             Hairline(Modifier.padding(top = 16.dp))
             SectionHeading("Servings", Modifier.padding(top = 16.dp))
-            servings.forEach { conversion -> Row(Modifier.padding(top = 4.dp)) { Text("1 ${servingDisplayName(conversion)} = ", color = colors.ink, style = BreakfastType.Body); ServingValue(conversion, food) } }
+            servings.forEach { conversion ->
+                Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(servingDisplayName(conversion), color = colors.ink, style = BreakfastType.Body)
+                    ServingValue(conversion, food)
+                }
+            }
         }
         if (food.aliases.isNotEmpty()) {
             Hairline(Modifier.padding(top = 16.dp))
@@ -285,8 +283,8 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
             PrimaryButton("Restore", onClick = { vm.restoreLibraryFood(food) }, Modifier.padding(top = 24.dp))
         } else {
             Row(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SecondaryButton(targetMeal.label(), { mealMenuOpen = true }, Modifier.width(128.dp), fillWidth = false, trailing = Icons.Outlined.KeyboardArrowDown)
                 PrimaryButton("Log to ${targetMeal.label()}", onClick = { amountSheetOpen = true }, Modifier.weight(1f))
-                SecondaryButton("${targetMeal.label()} ▾", { mealMenuOpen = true }, Modifier.width(128.dp), fillWidth = false)
             }
             if (mealMenuOpen) MealChoices(selected = targetMeal, onSelect = { targetMeal = it; mealMenuOpen = false }, modifier = Modifier.padding(top = 8.dp))
             if (contributionAvailable(food)) SecondaryButton("Contribute to Open Food Facts", { vm.closeLibraryFood(); vm.openContributionForFood(food) }, Modifier.padding(top = 16.dp))
@@ -300,21 +298,21 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
 private fun LibraryFactRow(label: String, number: String, unit: String) {
     val colors = LocalBreakfastColors.current
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
-    val numberWidth = 60.dp * fontScale
-    val unitWidth = 50.dp * fontScale
     if (fontScale >= 1.75f) {
         Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
             Text(label, color = colors.ink, style = BreakfastType.Body)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                Text(number, color = colors.ink, style = BreakfastType.BodyMedium, modifier = Modifier.width(numberWidth), textAlign = TextAlign.End)
-                Text(unit, color = colors.soft, style = BreakfastType.Secondary, maxLines = 1, modifier = Modifier.width(unitWidth).padding(start = 10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.Bottom) {
+                Text(number, color = colors.ink, style = BreakfastType.BodyMedium)
+                Text(" $unit", color = colors.soft, style = BreakfastType.Meta, maxLines = 1)
             }
         }
     } else {
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(label, color = colors.ink, style = BreakfastType.Body, modifier = Modifier.weight(1f))
-            Text(number, color = colors.ink, style = BreakfastType.BodyMedium, modifier = Modifier.width(numberWidth), textAlign = TextAlign.End)
-            Text(unit, color = colors.soft, style = BreakfastType.Secondary, maxLines = 1, modifier = Modifier.width(unitWidth).padding(start = 10.dp))
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+            Text(label, color = colors.ink, style = BreakfastType.Body)
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(number, color = colors.ink, style = BreakfastType.BodyMedium)
+                Text(" $unit", color = colors.soft, style = BreakfastType.Meta, maxLines = 1)
+            }
         }
     }
 }

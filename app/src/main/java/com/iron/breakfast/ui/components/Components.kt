@@ -66,6 +66,7 @@ import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.label
@@ -139,8 +140,11 @@ fun SecondaryButton(
     fillWidth: Boolean = true,
     /** Over the camera ground: white outline and label instead of line and ink. */
     onDark: Boolean = false,
+    /** A small icon after the label, such as the chevron on a picker. */
+    trailing: ImageVector? = null,
 ) {
     val colors = LocalBreakfastColors.current
+    val ink = if (onDark) colors.cameraMark else colors.ink
     Box(
         modifier
             .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier)
@@ -151,7 +155,10 @@ fun SecondaryButton(
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = if (onDark) colors.cameraMark else colors.ink, style = BreakfastType.Button, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(text, color = ink, style = BreakfastType.Button, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+            if (trailing != null) Icon(trailing, contentDescription = null, tint = ink, modifier = Modifier.size(16.dp))
+        }
     }
 }
 
@@ -521,15 +528,7 @@ fun Composer(
     draft: Boolean = false,
 ) {
     val colors = LocalBreakfastColors.current
-    Row(
-        modifier
-            .fillMaxWidth()
-            .heightIn(min = ComposerHeight)
-            .clip(ComposerShape)
-            .background(colors.ink)
-            .padding(start = 16.dp, end = if (onScan != null) 4.dp else 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    InkBar(modifier, endPadding = if (onScan != null) 4.dp else 16.dp) {
         Text(
             placeholder.replace('\n', ' '),
             color = if (draft) colors.bg else colors.bg.copy(alpha = 0.6f),
@@ -542,6 +541,25 @@ fun Composer(
             Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.bg)
         }
     }
+}
+
+/**
+ * The ink bar shared by [Composer] and the Library search: an ink fill, radius 16, min height 52.
+ * Its content sits in a row with 16dp start padding and [endPadding] at the end.
+ */
+@Composable
+fun InkBar(modifier: Modifier = Modifier, endPadding: Dp = 4.dp, content: @Composable RowScope.() -> Unit) {
+    val colors = LocalBreakfastColors.current
+    Row(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = ComposerHeight)
+            .clip(ComposerShape)
+            .background(colors.ink)
+            .padding(start = 16.dp, end = endPadding),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
 }
 
 /** Two text tabs, centred with a 40dp gap. The active tab is ink, the other soft. */
