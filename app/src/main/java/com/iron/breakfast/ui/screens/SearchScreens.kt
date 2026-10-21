@@ -3,7 +3,6 @@ package com.iron.breakfast.ui.screens
 import com.iron.breakfast.ui.theme.*
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,10 +10,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -27,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.BreakfastViewModel
 import com.iron.breakfast.label
@@ -54,13 +54,20 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
     BackHandler(onBack = clear)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter)) {
-            TopBar("Library", clear, Modifier.padding(top = 8.dp))
-            SearchField(query, vm::onLibraryQuery, onClear = clear, label = "Search library", modifier = Modifier.padding(top = 8.dp))
-            Column(Modifier.fillMaxWidth().padding(top = 32.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SectionHeading("No local match", Modifier.semantics { heading() })
-                Text(query, color = colors.soft, style = BreakfastType.Secondary)
+            TopBar("Search", clear, Modifier.padding(top = 8.dp))
+            SearchCaption(Modifier.padding(top = 6.dp))
+            SearchField(query, vm::onLibraryQuery, onClear = clear, label = "Search library", modifier = Modifier.padding(top = 6.dp))
+            Column(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("No local match", color = colors.ink, style = BreakfastType.Title, modifier = Modifier.semantics { heading() })
+                Text(
+                    "Nothing in your foods matches \"$query\".",
+                    color = colors.soft,
+                    style = BreakfastType.Secondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 8.dp).widthIn(max = 290.dp),
+                )
             }
-            Column(Modifier.padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.padding(top = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 PrimaryButton("Search Open Food Facts", { vm.openSearch(query.trim()) }, kind = ButtonKind.Neutral)
                 SecondaryButton("Create personal food", { vm.openCustom(query.trim()) })
             }
@@ -75,22 +82,24 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter).verticalScroll(rememberScrollState())) {
             TopBar("Open Food Facts", vm::closeSearch, Modifier.padding(top = 8.dp))
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SearchCaption(Modifier.padding(top = 6.dp))
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SearchField(vm.searchQuery, vm::onSearch, onClear = { vm.onSearch("") }, label = "Search Open Food Facts", modifier = Modifier.weight(1f), onSearch = vm::submitSearch)
                 if (vm.searchBusy) SecondaryButton("Search", vm::submitSearch, Modifier.width(104.dp), enabled = false, fillWidth = false)
                 else PrimaryButton("Search", vm::submitSearch, Modifier.width(104.dp), kind = ButtonKind.Neutral, fillWidth = false)
             }
-            Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(Modifier.padding(top = 16.dp)) {
                 when {
-                    vm.searchBusy -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        LinearProgress("Searching Open Food Facts", Modifier.padding(vertical = 14.dp))
-                        TertiaryButton("Cancel", vm::closeSearch)
+                    vm.searchBusy -> Column(Modifier.padding(top = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        LinearProgress("Searching Open Food Facts")
+                        TertiaryButton("Cancel", vm::closeSearch, soft = true)
                     }
                     vm.offResults.isNotEmpty() -> {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("${vm.offResults.size} results", color = colors.soft, style = BreakfastType.Secondary)
-                            Text("/${vm.offResults.first().nutrition.amount.pretty()} ${vm.offResults.first().nutrition.unit.label}", color = colors.soft, style = BreakfastType.Secondary)
+                            Text("${vm.offResults.size} results from Open Food Facts", color = colors.soft, style = BreakfastType.Secondary)
+                            Text("kcal per ${vm.offResults.first().nutrition.amount.pretty()} ${vm.offResults.first().nutrition.unit.label}", color = colors.soft, style = BreakfastType.Secondary)
                         }
+                        Hairline(Modifier.padding(top = 10.dp))
                         vm.offResults.forEach { food ->
                             FoodRow(food.name, food.brand.orEmpty(), receiptKcal(food.nutrition.values.calories), onClick = { vm.chooseProduct(food) })
                         }
@@ -98,21 +107,47 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
                 }
                 vm.offSearchMessage?.let { message ->
                     if (vm.offSearchUnavailable) {
-                        SectionHeading("No connection", Modifier.semantics { heading() })
-                        Text("Open Food Facts needs internet. Local foods still work.", color = colors.soft, style = BreakfastType.Secondary)
-                        SecondaryButton("Retry", vm::submitSearch)
-                        SecondaryButton("Create personal food", { vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) })
+                        SearchStatus(
+                            title = "No connection",
+                            body = "Open Food Facts needs internet. Local foods still work.",
+                            retry = vm::submitSearch,
+                            createPersonal = { vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) },
+                        )
                     } else if (message.startsWith("No usable result")) {
-                        SectionHeading("No results", Modifier.semantics { heading() })
-                        SecondaryButton("Create personal food", { vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) })
+                        SearchStatus(
+                            title = "No results",
+                            body = null,
+                            retry = null,
+                            createPersonal = { vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) },
+                        )
                     } else {
-                        SectionHeading("Search failed", Modifier.semantics { heading() })
-                        Text("Open Food Facts returned an error.", color = colors.soft, style = BreakfastType.Secondary)
-                        SecondaryButton("Retry", vm::submitSearch)
-                        SecondaryButton("Create personal food", { vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) })
+                        SearchStatus(
+                            title = "Search failed",
+                            body = "Open Food Facts returned an error.",
+                            retry = vm::submitSearch,
+                            createPersonal = { vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) },
+                        )
                     }
                 }
             }
+        }
+    }
+}
+
+/** The soft "Search" label above both search fields. */
+@Composable private fun SearchCaption(modifier: Modifier = Modifier) {
+    Text("Search", color = LocalBreakfastColors.current.soft, style = BreakfastType.Meta, modifier = modifier)
+}
+
+/** A centred status on the Open Food Facts search: title, optional soft body, a Neutral Retry when there is one, and a personal-food secondary. */
+@Composable private fun SearchStatus(title: String, body: String?, retry: (() -> Unit)?, createPersonal: () -> Unit) {
+    val colors = LocalBreakfastColors.current
+    Column(Modifier.fillMaxWidth().padding(top = 70.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(title, color = colors.ink, style = BreakfastType.Title, modifier = Modifier.semantics { heading() })
+        if (body != null) Text(body, color = colors.soft, style = BreakfastType.Secondary, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp).widthIn(max = 290.dp))
+        Column(Modifier.padding(top = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (retry != null) PrimaryButton("Retry", retry, kind = ButtonKind.Neutral)
+            SecondaryButton("Create personal food", createPersonal)
         }
     }
 }
