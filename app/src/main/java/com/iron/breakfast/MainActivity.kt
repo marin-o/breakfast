@@ -144,6 +144,7 @@ import com.iron.breakfast.domain.ReplacementResult
 import com.iron.breakfast.domain.LogPlan
 import com.iron.breakfast.domain.LogPlanner
 import com.iron.breakfast.domain.SegmentResolution
+import com.iron.breakfast.domain.DraftView
 import com.iron.breakfast.domain.SegmentSpan
 import com.iron.breakfast.domain.TypedPart
 import com.iron.breakfast.domain.ShorthandLexicon
@@ -649,28 +650,20 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (!ready || input.isBlank() || planner.endsOpen(input)) return null
         return planner.segments(input).lastOrNull()
     }
-    /** The part being typed, resolved by the shared planner. Null after a separator, for a meal word, or when blank. */
-    private fun quickAddActiveResolution(planner: LogPlanner): SegmentResolution? {
-        val active = activeSpan(planner)?.text.orEmpty()
-        if (active.isBlank() || mealMarkerSlots(active).isNotEmpty()) return null
-        return planner.resolve(active)
-    }
     /**
      * Everything the Log page shows for the current draft, computed in one pass from one planner, so the rows,
      * the choices and the add-bar sum all come from the same resolution.
      */
     internal fun logDraftView(): LogDraftView {
         val planner = engine.planner()
-        val completed = quickAddCompletedSegments(planner).filter { mealMarkerSlots(it).isEmpty() }
-        val resolutions = completed.map { planner.resolve(it) }
-        val active = quickAddActiveResolution(planner)
-        // A part is logged only when it resolves and needs no choice; the rows and the sum follow the same rule.
+        // One planner draft: rows, the choice group and the add-bar sum all come from the same resolution.
+        val draft = if (ready) planner.draft(input) else DraftView(emptyList(), emptyList(), "", null, emptyList())
         return LogDraftView(
-            previews = resolutions.filterNotNull().filter { it.supported && !it.needsChoice },
-            unresolved = completed.filterIndexed { index, _ -> resolutions[index].let { it == null || !it.supported || it.needsChoice } },
-            // The first choice is preselected and is the food Add logs.
-            suggestions = active?.ranked.orEmpty(),
-            activePhrase = planner.phraseOf(activeSpan(planner)?.text.orEmpty()),
+            previews = draft.previews,
+            unresolved = draft.unresolved,
+            suggestions = draft.choices,
+            preselected = draft.preselected,
+            activePhrase = if (draft.activeText.isBlank()) "" else planner.phraseOf(draft.activeText),
             logged = draftLogPlan(input, planner).entries,
         )
     }
@@ -678,12 +671,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     internal fun quickAddSuggestionCalories(food: FoodRecord): Double =
         engine.planner().calculationFor(activeSpan(engine.planner())?.text.orEmpty(), food).nutrition.calories
 
-    /** Finished parts of the input, from the shared segmentation; the part still being typed is excluded. */
-    private fun quickAddCompletedSegments(planner: LogPlanner): List<String> {
-        if (!ready || input.isBlank()) return emptyList()
-        val parts = planner.segments(input).map { it.text }
-        return if (planner.endsOpen(input)) parts else parts.dropLast(1)
-    }
     fun chooseQuickSuggestion(food: FoodRecord) {
         val planner = engine.planner()
         val span = activeSpan(planner) ?: return
@@ -1524,8 +1511,10 @@ internal data class LogDraftView(
     val previews: List<SegmentResolution>,
     /** Finished segments that match no food, shown as "Not in your foods". */
     val unresolved: List<String>,
-    /** Choices for the segment being typed; the first is preselected and logged. */
+    /** Choices for the segment being typed. */
     val suggestions: List<RankedFood>,
+    /** True only when the first choice is a full match that Add would log; a partial match is offered unselected. */
+    val preselected: Boolean,
     val activePhrase: String,
     /** What Add will save; the add bar's sum and count come from this. */
     val logged: List<SegmentResolution>,

@@ -66,7 +66,7 @@ class FoodMatcher(
     }
 
     /** How one input token matched one food: its weight, and whether a typo's edit is at the first letter. */
-    private class TokenHit(val weight: Double, val firstLetterEdit: Boolean)
+    private class TokenHit(val weight: Double, val firstLetterEdit: Boolean, val prefix: Boolean = false)
 
     fun suggestions(phrase: String, preferences: Map<String, Preference> = emptyMap(), limit: Int = 3): List<RankedFood> {
         val inputTokens = tokens(expandAbbreviations(phrase))
@@ -116,6 +116,9 @@ class FoodMatcher(
                 },
                 // Weak: every matched token is a typo or a loose spelling, so the food is only a choice, not a resolution.
                 weakMatch = matched.all { it.weight <= TYPO_WEIGHT },
+                // A segment resolves on its own only when every identity token matches; a partial match is a choice.
+                fullMatch = if (identityQueries.isEmpty()) exactName else identityHits.all { it != null },
+                wholeMatch = if (identityQueries.isEmpty()) exactName else identityHits.all { it != null && !it.prefix },
                 firstLetterEdit = matched.any { it.firstLetterEdit },
             )
         }.sortedWith(compareByDescending<RankedFood> { it.score }.thenBy { it.food.name }).take(limit)
@@ -131,10 +134,13 @@ class FoodMatcher(
         if (query.isShortWord) {
             return if (raw in indexed.nameWords || raw in indexed.categoryWords || query.canonical in indexed.canonicalNameWords) EXACT_HIT else null
         }
-        if (raw in indexed.names || raw in indexed.category) return EXACT_HIT
+        if (raw in indexed.names || raw in indexed.category) {
+            // A whole word of the name is exact; a part of a longer word ("ban" in banana) is a prefix match.
+            return if (raw in indexed.nameWords || raw in indexed.categoryWords) EXACT_HIT else PREFIX_HIT
+        }
         if (query.stems.any { it in indexed.nameTokens }) return STEM_HIT
         if (query.canonical in indexed.canonicalNames || query.canonicalStems.any { it in indexed.canonicalTokens }) {
-            return TRANSLITERATED_HIT
+            return if (query.canonical in indexed.canonicalNameWords) TRANSLITERATED_HIT else TokenHit(TRANSLITERATED_WEIGHT, false, prefix = true)
         }
         if (query.typoAllowance > 0) {
             indexed.nameWords.firstOrNull { withinEditDistance(raw, it, query.typoAllowance) }
@@ -190,6 +196,7 @@ class FoodMatcher(
         private const val MIN_LOOSE_LENGTH = 4
         private const val STEMMED_NAME_SCORE = 50.0
         private val EXACT_HIT = TokenHit(EXACT_WEIGHT, false)
+        private val PREFIX_HIT = TokenHit(EXACT_WEIGHT, false, prefix = true)
         private val STEM_HIT = TokenHit(STEM_WEIGHT, false)
         private val TRANSLITERATED_HIT = TokenHit(TRANSLITERATED_WEIGHT, false)
         private val LOOSE_HIT = TokenHit(LOOSE_WEIGHT, false)

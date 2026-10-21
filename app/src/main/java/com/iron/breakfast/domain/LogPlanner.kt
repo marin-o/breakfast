@@ -55,7 +55,8 @@ class LogPlanner(
         val ranked = matcher.suggestions(reading.phrase, preferences, SUGGESTION_LIMIT)
         val top = ranked.firstOrNull() ?: return null
         val (amount, unit) = quantityFor(reading, top.food)
-        val needsChoice = top.weakMatch && (ranked.size > 1 || top.firstLetterEdit)
+        // A partial match (not every identity token matches) is only a choice, as is a weak typo or spelling match.
+        val needsChoice = !top.fullMatch || (top.weakMatch && (ranked.size > 1 || top.firstLetterEdit))
         return SegmentResolution(raw, ranked, top.food, amount, unit, calculator.calculate(top.food, amount, unit), needsChoice)
     }
 
@@ -114,6 +115,11 @@ class LogPlanner(
 
         override fun covers(phrase: String): Boolean = coverCache.getOrPut(phrase) { matcher.covers(phrase) }
         override fun isExactName(phrase: String): Boolean = matcher.isExactName(phrase)
+
+        override fun isWholeFood(text: String): Boolean {
+            val resolution = resolve(text) ?: return false
+            return !resolution.needsChoice && resolution.ranked.first().wholeMatch
+        }
     }
 
     /** The parts of [input] the Log page works with, meal words included. Every caller segments through here. */
@@ -137,8 +143,49 @@ class LogPlanner(
         return LogPlan(entries, unresolved)
     }
 
+    /** The Log page's view of [input]: finished parts as rows, and the part being typed as the choice group. */
+    fun draft(input: String): DraftView {
+        if (input.isBlank()) return DraftView(emptyList(), emptyList(), "", null, emptyList())
+        val parts = segments(input)
+        val activeSpan = if (endsOpen(input)) null else parts.lastOrNull()
+        val completed = (if (endsOpen(input)) parts else parts.dropLast(1))
+            .map { it.text }
+            .filter { ShorthandLexicon.mealSlotOf(it) == null }
+        val resolutions = completed.map { resolve(it) }
+        val activeText = activeSpan?.text.orEmpty()
+        val active = if (activeText.isBlank() || ShorthandLexicon.mealSlotOf(activeText) != null) null else resolve(activeText)
+        // Text the user typed never vanishes: a finished part that is not logged is a row, and so is the part being
+        // typed when it is not logged (no match, no conversion, or only a choice). Its choices are shown as well.
+        val activeIsRow = activeText.isNotBlank() && ShorthandLexicon.mealSlotOf(activeText) == null &&
+            (active == null || !active.supported || active.needsChoice)
+        return DraftView(
+            previews = resolutions.filterNotNull().filter { it.supported && !it.needsChoice },
+            unresolved = completed.filterIndexed { index, _ -> resolutions[index].let { it == null || !it.supported || it.needsChoice } } +
+                listOfNotNull(activeText.takeIf { activeIsRow }),
+            activeText = activeText,
+            active = active,
+            logged = plan(input).entries,
+        )
+    }
+
+
     companion object {
         /** How many matches the Log page offers as choices. The preselected one is always the first. */
         const val SUGGESTION_LIMIT = 4
     }
+}
+
+/**
+ * What the Log page shows for one draft: the logged rows, the unresolved rows, and the active "which one?" group.
+ * [choices] are the active part's ranked foods; [preselected] says whether the first one is preselected.
+ */
+data class DraftView(
+    val previews: List<SegmentResolution>,
+    val unresolved: List<String>,
+    val activeText: String,
+    val active: SegmentResolution?,
+    val logged: List<SegmentResolution>,
+) {
+    val choices: List<RankedFood> get() = active?.ranked.orEmpty()
+    val preselected: Boolean get() = active != null && active.supported && !active.needsChoice
 }

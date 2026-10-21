@@ -24,6 +24,7 @@ class SegmentationTest {
         override fun resolves(text: String) = p.resolve(text) != null
         override fun covers(phrase: String) = m.covers(phrase)
         override fun isExactName(phrase: String) = m.isExactName(phrase)
+        override fun isWholeFood(text: String) = p.resolve(text)?.let { !it.needsChoice && it.ranked.first().wholeMatch } ?: false
     })
 
     private fun split(input: String) = splitWith(planner, FoodMatcher(FoodCatalog.fixtures), input)
@@ -150,6 +151,7 @@ class SegmentationProbeRejoinTest {
             override fun resolves(text: String) = planner.resolve(text)?.needsChoice == false
             override fun covers(phrase: String) = matcher.covers(phrase)
             override fun isExactName(phrase: String) = matcher.isExactName(phrase)
+            override fun isWholeFood(text: String) = planner.resolve(text)?.let { !it.needsChoice && it.ranked.first().wholeMatch } ?: false
         }
         assertEquals(listOf("Mac and cheese", "egg"), ShorthandParser().split("Mac and cheese and egg", probe))
         assertEquals(listOf("Mac and cheese"), ShorthandParser().split("Mac and cheese", probe))

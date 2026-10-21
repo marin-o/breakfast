@@ -165,6 +165,10 @@ data class RankedFood(
     val reasons: List<String>,
     /** Every matched token is a typo or a loose spelling: a choice to offer, not a resolution by itself. */
     val weakMatch: Boolean = false,
+    /** Every identity token matches the food (exact, stem, transliteration, typo or prefix). */
+    val fullMatch: Boolean = false,
+    /** Every identity token matches a whole word (no prefix): the food stands on its own in a split. */
+    val wholeMatch: Boolean = false,
     /** A typo whose edit is at the first letter, which never resolves on its own. */
     val firstLetterEdit: Boolean = false,
 )

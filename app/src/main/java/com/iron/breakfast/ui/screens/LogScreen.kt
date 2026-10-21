@@ -124,10 +124,9 @@ internal fun LogScreen(vm: BreakfastViewModel) {
             Hairline(Modifier.padding(top = 22.dp))
             vm.mealDraftError?.let { Text(it, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(top = 8.dp)) }
             previews.forEach { preview ->
-                val approximate = if (preview.calculation.approximate) "≈" else ""
                 FoodRow(
                     name = preview.food.name,
-                    quantityLine = "$approximate${preview.amount.pretty()} ${preview.unit.displayLabel()}",
+                    quantityLine = previewQuantityLine(preview.amount, preview.unit, preview.calculation.approximate),
                     calories = formatKcal(preview.calculation.nutrition.calories),
                     modifier = Modifier.padding(top = 4.dp),
                 )
@@ -153,7 +152,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
                     suggestions.forEachIndexed { index, ranked ->
                         ChoiceOption(
                             label = ranked.food.name,
-                            selected = index == 0,
+                            selected = index == 0 && draft.preselected,
                             onClick = { vm.chooseQuickSuggestion(ranked.food) },
                             modifier = Modifier.widthIn(min = 168.dp),
                             detail = "${formatKcal(vm.quickAddSuggestionCalories(ranked.food))} kcal",
@@ -229,3 +228,14 @@ private fun LogMealPicker(label: String, vm: BreakfastViewModel) {
         }
     }
 }
+
+/**
+ * The quantity line of a Log row. Counted pieces read as the user typed them (`2 pieces`, `1 piece`), never with ≈.
+ * Other units show ≈ only when the amount was converted (1 tbsp as grams).
+ */
+internal fun previewQuantityLine(amount: Double, unit: com.iron.breakfast.domain.MeasureUnit, approximate: Boolean): String =
+    if (unit == com.iron.breakfast.domain.MeasureUnit.PIECE) {
+        "${amount.pretty()} ${if (amount == 1.0) "piece" else "pieces"}"
+    } else {
+        "${if (approximate) "≈" else ""}${amount.pretty()} ${unit.displayLabel()}"
+    }

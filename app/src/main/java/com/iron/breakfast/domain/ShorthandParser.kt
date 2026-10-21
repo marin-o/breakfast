@@ -12,6 +12,9 @@ interface FoodProbe {
 
     /** True when [phrase] is exactly one food's name or alias, ignoring case, punctuation and stop words. */
     fun isExactName(phrase: String): Boolean
+
+    /** True when [text] is a food on its own: an exact name, or a resolution whose words all match whole. */
+    fun isWholeFood(text: String): Boolean
 }
 
 /** One part of the typed input: its text and where it sits in the input. */
@@ -104,6 +107,11 @@ class ShorthandParser {
         val wordBreaks = mutableListOf<Boolean>()
         var current = mutableListOf<Int>()
         var currentWordBreak = false
+        // Within a part, a quantity after food words belongs to that food (a trailing count such as "60g" or "200ml").
+        // A quantity that follows the food of a part already carrying a quantity, or a bare number before food, leads
+        // the next food. So "2 egg 1 banana" is two foods, "kiselo mleko 200g 1 kg rolled oats" cuts between 200g and 1 kg.
+        var leadingQuantity = false
+        var trailingQuantity = false
         fun flush(nextWordBreak: Boolean) {
             if (current.isNotEmpty()) {
                 groups += current
@@ -111,6 +119,8 @@ class ShorthandParser {
             }
             current = mutableListOf()
             currentWordBreak = nextWordBreak
+            leadingQuantity = false
+            trailingQuantity = false
         }
         var i = 0
         while (i < texts.size) {
@@ -122,11 +132,22 @@ class ShorthandParser {
             }
             val quantityEnd = quantityEnd(texts, i)
             if (quantityEnd != null) {
-                if (current.any { isFoodWord(texts[it]) } && foodWordBeforeSeparator(texts, quantityEnd)) flush(nextWordBreak = false)
+                val hasFood = current.any { isFoodWord(texts[it]) }
+                val foodFollows = foodWordBeforeSeparator(texts, quantityEnd)
+                if (hasFood && foodFollows && (leadingQuantity || trailingQuantity || !hasUnit(texts, i, quantityEnd))) {
+                    flush(nextWordBreak = false)
+                    leadingQuantity = true
+                } else if (hasFood) {
+                    trailingQuantity = true
+                } else {
+                    leadingQuantity = true
+                }
                 current += i until quantityEnd
                 i = quantityEnd
                 continue
             }
+            // A food word after a trailing quantity starts the next food: "oats 60g milk" is two parts.
+            if (trailingQuantity && isFoodWord(word)) flush(nextWordBreak = false)
             // A leading meal word before a quantity is its own part: "lunch 1 banana" is two parts.
             if (current.isEmpty() && ShorthandLexicon.mealSlotOf(word) != null && quantityEnd(texts, i + 1) != null) {
                 current += i
@@ -190,7 +211,7 @@ class ShorthandParser {
 
     /** A piece that stands alone as a food (its exact name or alias) or as a meal word. */
     private fun isStrictPiece(text: String, probe: FoodProbe): Boolean =
-        ShorthandLexicon.mealSlotOf(text) != null || isWholeFoodName(text, probe)
+        ShorthandLexicon.mealSlotOf(text) != null || isWholeFoodName(text, probe) || probe.isWholeFood(text)
 
     private fun coversText(text: String, probe: FoodProbe): Boolean =
         probe.covers(text) || probe.covers(parse(text).foodPhrase)
@@ -236,6 +257,12 @@ class ShorthandParser {
         if (!FRACTION.matches(word)) return false
         val numerator = word.substringBefore('/').toIntOrNull() ?: return false
         return numerator < 10 && following?.lowercase(Locale.ROOT) !in COMPOSITION_WORDS
+    }
+
+    /** True when the quantity words in [from, to) carry a unit ("60g", "1 kg", "2 tbsp"); a bare number does not. */
+    private fun hasUnit(texts: List<String>, from: Int, to: Int): Boolean = (from until to).any { index ->
+        texts[index].toMeasureUnit() != null ||
+            ATTACHED_QUANTITY.matchEntire(texts[index])?.let { it.groupValues[2].toMeasureUnit() != null } == true
     }
 
     private fun foodWordBeforeSeparator(texts: List<String>, from: Int): Boolean {
