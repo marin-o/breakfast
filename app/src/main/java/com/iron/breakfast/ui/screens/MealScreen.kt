@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.BreakfastViewModel
 import com.iron.breakfast.ContributionAction
+import com.iron.breakfast.EntryEditMode
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
@@ -69,7 +70,7 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
         LazyColumn(
             Modifier.fillMaxSize(),
             // Room for the composer over the fade at the bottom.
-            contentPadding = PaddingValues(start = Gutter, end = Gutter, bottom = 170.dp),
+            contentPadding = PaddingValues(start = Gutter, end = Gutter, bottom = 260.dp),
         ) {
             item {
                 TopBar(
@@ -86,7 +87,13 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 )
                 Hairline(Modifier.padding(top = 14.dp))
             }
-            items(entries) { entry -> EntryRow(entry, foods[entry.foodId], vm) }
+            items(entries) { entry ->
+                Column(Modifier.fillMaxWidth()) {
+                    EntryRow(entry, foods[entry.foodId], vm)
+                    // Same correction block as Daily, for a doubtful match from the Log page.
+                    if (vm.feedbackOpen(entry)) CorrectionStrip(vm, entry)
+                }
+            }
             item {
                 val addFoodModifier = Modifier.widthIn(min = 128.dp * fontScale)
                 val scanModifier = Modifier.widthIn(min = 80.dp * fontScale)
@@ -104,16 +111,24 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 vm.pendingContribution?.let { ContributionAction(vm) }
             }
         }
-        MealComposer(vm, target, Modifier.align(Alignment.BottomCenter))
+        // Hidden during an entry edit, which owns the input and its own sheet.
+        if (vm.entryEditMode == EntryEditMode.NONE) MealComposer(vm, target, Modifier.align(Alignment.BottomCenter))
     }
 }
 
-/** Ink composer that opens the Log page with this meal preset, over the fade. */
+/** Ink composer that opens the Log page with this meal preset, over the fade. Shows the logged-batch and delete snackbars. */
 @Composable
 internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot, modifier: Modifier = Modifier) {
+    val draft = vm.input.isNotBlank()
     ComposerFade(modifier) {
+        vm.loggedBatchMessage?.let { Snackbar(it, "Undo", vm::undoLoggedBatch, Modifier.padding(bottom = 8.dp)) }
         vm.undoEntry?.let { deleted -> Snackbar("${deleted.foodName} deleted", "Undo", vm::undo, Modifier.padding(bottom = 8.dp)) }
-        Composer("Add to ${target.label()}", onClick = { vm.openLog(target) }, onScan = vm::beginScan)
+        Composer(
+            placeholder = if (draft) vm.input else "Add to ${target.label()}",
+            onClick = { vm.openLog(target) },
+            onScan = vm::beginScan,
+            draft = draft,
+        )
     }
 }
 

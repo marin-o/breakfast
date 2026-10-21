@@ -78,10 +78,49 @@ class MainActivityRoutingTest {
         )
         assertEquals(100.0, defaultServingCalculation(food).nutrition.calories, 0.0)
     }
-    @Test fun logMealPickerLabelPrefersChosenThenTypedThenMeal() {
-        assertEquals("Meal", logMealPickerLabel(null, null))
-        assertEquals("Dinner", logMealPickerLabel(null, MealSlot.DINNER))
-        assertEquals("Lunch", logMealPickerLabel(MealSlot.LUNCH, MealSlot.DINNER))
+    @Test fun logMealPickerLabelFollowsTargetOrReadsMeal() {
+        assertEquals("Meal", logMealPickerLabel(null))
+        assertEquals("Dinner", logMealPickerLabel(MealSlot.DINNER))
+    }
+
+    @Test fun logTargetPrecedenceIsChosenThenTypedThenPreset() {
+        // (a) a meal picked from the Log menu wins over a typed word and a preset.
+        assertEquals(MealSlot.LUNCH, logTargetMealOf(MealSlot.LUNCH, listOf(MealSlot.DINNER), MealSlot.SNACKS))
+        // (b) a single typed word wins over a preset.
+        assertEquals(MealSlot.DINNER, logTargetMealOf(null, listOf(MealSlot.DINNER), MealSlot.BREAKFAST))
+        // (c) otherwise the preset.
+        assertEquals(MealSlot.BREAKFAST, logTargetMealOf(null, emptyList(), MealSlot.BREAKFAST))
+        // (d) otherwise none.
+        assertEquals(null, logTargetMealOf(null, emptyList(), null))
+    }
+
+    @Test fun twoDifferentTypedMealWordsGiveNoTargetAndAnError() {
+        val markers = listOf(MealSlot.LUNCH, MealSlot.DINNER)
+        assertEquals(null, logTargetMealOf(null, markers, null))
+        assertEquals(
+            LogSubmitPlan.Error("Choose one meal marker, or remove the extra markers."),
+            logSubmitPlan(ready = true, busy = false, input = "lunch, 2 eggs, dinner", typedMarkers = markers, chosen = null, preset = null),
+        )
+    }
+
+    @Test fun addWithNoMealOpensTheMenuAndChoosingAMealSubmits() {
+        assertEquals(LogSubmitPlan.OpenMenu, logSubmitPlan(true, false, "2 eggs", emptyList(), null, null))
+        // Once a meal is chosen from the menu, the same input saves to it.
+        assertEquals(LogSubmitPlan.Save(MealSlot.DINNER), logSubmitPlan(true, false, "2 eggs", emptyList(), MealSlot.DINNER, null))
+    }
+
+    @Test fun addWithAPresetOrTypedMealSavesWithoutTheMenu() {
+        assertEquals(LogSubmitPlan.Save(MealSlot.SNACKS), logSubmitPlan(true, false, "2 eggs", emptyList(), null, MealSlot.SNACKS))
+        assertEquals(LogSubmitPlan.Save(MealSlot.LUNCH), logSubmitPlan(true, false, "lunch, 2 eggs", listOf(MealSlot.LUNCH), null, MealSlot.SNACKS))
+    }
+
+    @Test fun busyOrNotReadyIgnoresSubmitSoADoubleTapSavesOnce() {
+        assertEquals(LogSubmitPlan.Ignore, logSubmitPlan(true, true, "2 eggs", emptyList(), MealSlot.LUNCH, null))
+        assertEquals(LogSubmitPlan.Ignore, logSubmitPlan(false, false, "2 eggs", emptyList(), MealSlot.LUNCH, null))
+    }
+
+    @Test fun blankInputIsAnErrorNotAMenu() {
+        assertEquals(LogSubmitPlan.Error("Add at least one food."), logSubmitPlan(true, false, "  ", emptyList(), null, null))
     }
 
     @Test fun removeAllMealMarkerTokensDropsMealWordsOnly() {

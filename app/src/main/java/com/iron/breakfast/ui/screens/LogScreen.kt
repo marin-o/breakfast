@@ -28,6 +28,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
@@ -48,7 +51,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.BreakfastViewModel
-import com.iron.breakfast.amountlessDailySearch
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.label
@@ -73,7 +75,9 @@ internal fun LogScreen(vm: BreakfastViewModel) {
     val suggestions = vm.quickAddSuggestions()
     val target = vm.logTargetMeal()
     val kcal = previews.sumOf { it.calculation.nutrition.calories }
-    val canAdd = previews.isNotEmpty() || amountlessDailySearch(vm.input) != null
+    // Any draft can be added: unresolved segments open the resolve-unknown flow, as before.
+    val canAdd = vm.input.isNotBlank() && !vm.busy
+    val unresolved = vm.quickAddUnresolved()
     val placeholder = if (vm.selectedDayKey == dayKeyForToday()) "2 eggs, 1 banana" else "Add to ${shortDateLabel(vm.selectedDayKey)}"
     val requester = remember { FocusRequester() }
     LaunchedEffect(Unit) { requester.requestFocus() }
@@ -89,14 +93,17 @@ internal fun LogScreen(vm: BreakfastViewModel) {
                 Icon(Icons.Outlined.Close, contentDescription = "Close", tint = colors.ink, modifier = Modifier.size(22.dp))
             }
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                LogMealPicker(logMealPickerLabel(vm.logMeal, vm.logTypedMeal()), vm)
+                LogMealPicker(logMealPickerLabel(vm.logTargetMeal()), vm)
             }
             Box(Modifier.size(IconTarget))
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Gutter)) {
             BasicTextField(
                 value = vm.input,
-                onValueChange = vm::onInput,
+                // One logical line: Done submits, so a newline is never typed.
+                onValueChange = { vm.onInput(it.replace("\n", " ")) },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { if (canAdd) vm.submit() }),
                 textStyle = BreakfastType.LargeInput.copy(color = colors.ink),
                 cursorBrush = SolidColor(colors.ink),
                 modifier = Modifier.fillMaxWidth().padding(top = 18.dp).focusRequester(requester),
@@ -118,10 +125,19 @@ internal fun LogScreen(vm: BreakfastViewModel) {
                     modifier = Modifier.padding(top = 4.dp),
                 )
             }
+            // Typed text that matches no food stays visible, so it is never lost when Add is pressed.
+            unresolved.forEach { raw ->
+                FoodRow(
+                    name = raw,
+                    quantityLine = "Not in your foods",
+                    calories = "",
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
             if (suggestions.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.Bottom) {
                     Text(foodText(vm.quickAddActivePhrase()), color = colors.ink, style = BreakfastType.Body, modifier = Modifier.weight(1f))
-                    Text("which one?", color = colors.soft, style = BreakfastType.Secondary)
+                    Text("which one?", color = colors.soft, style = BreakfastType.Meta)
                 }
                 Row(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp),

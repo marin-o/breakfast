@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -44,6 +45,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.BreakfastViewModel
+import com.iron.breakfast.EntryEditMode
 import com.iron.breakfast.ContributionAction
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
@@ -103,7 +105,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 }
             },
             // Room for the composer and nav that float over the end of the list.
-            contentPadding = PaddingValues(start = Gutter, end = Gutter, bottom = 170.dp),
+            contentPadding = PaddingValues(start = Gutter, end = Gutter, bottom = 260.dp),
         ) {
             item {
                 DayHeader(
@@ -126,7 +128,8 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 vm.pendingContribution?.let { ContributionAction(vm) }
             }
         }
-        DailyComposer(vm, Modifier.align(Alignment.BottomCenter))
+        // Hidden during an entry edit, which owns the input and its own sheet.
+        if (vm.entryEditMode == EntryEditMode.NONE) DailyComposer(vm, Modifier.align(Alignment.BottomCenter))
     }
     if (pickerOpen) DayPickerDialog(
         dayKey = vm.selectedDayKey,
@@ -210,14 +213,20 @@ internal fun DailyComposer(vm: BreakfastViewModel, modifier: Modifier = Modifier
     ComposerFade(modifier) {
         vm.loggedBatchMessage?.let { Snackbar(it, "Undo", vm::undoLoggedBatch, Modifier.padding(bottom = 8.dp)) }
         vm.undoEntry?.let { Snackbar("${it.foodName} deleted", "Undo", vm::undo, Modifier.padding(bottom = 8.dp)) }
-        Composer(placeholder = "Log food", onClick = { vm.openLog(null) }, onScan = vm::beginScan)
+        val draft = vm.input.isNotBlank()
+        Composer(
+            placeholder = if (draft) vm.input else "Log food",
+            onClick = { vm.openLog(null) },
+            onScan = vm::beginScan,
+            draft = draft,
+        )
         BottomNav(selectedToday = true, onToday = { vm.closeMeal(); vm.closeLibrary() }, onLibrary = { vm.closeMeal(); vm.openLibrary() })
     }
 }
 
 /**
- * A `bg` fade with 16dp gutters; shared by the Daily and Meal bottom areas. The screen's Scaffold padding
- * already keeps it above the navigation bar, so the bar itself is only the `bg` the window draws behind it.
+ * A `bg` fade with 16dp gutters, above the system navigation bar; shared by the Daily and Meal bottom areas.
+ * The list behind it keeps enough bottom padding that its last row clears the composer and nav.
  */
 @Composable
 internal fun ComposerFade(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
@@ -226,6 +235,7 @@ internal fun ComposerFade(modifier: Modifier = Modifier, content: @Composable Co
         modifier
             .fillMaxWidth()
             .background(Brush.verticalGradient(0f to colors.bg.copy(alpha = 0f), 0.22f to colors.bg))
+            .navigationBarsPadding()
             .padding(start = 16.dp, end = 16.dp, top = 12.dp),
         content = content,
     )

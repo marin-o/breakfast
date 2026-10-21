@@ -279,9 +279,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var contributionPackageQuantityMl by mutableStateOf(""); private set
     var undoEntry by mutableStateOf<MealEntry?>(null); private set
     var mealDraftError by mutableStateOf<String?>(null); private set
-    /** The full-screen Log page. [logMeal] is the preset or the meal chosen in its picker; null means "from the typed word". */
+    /** The full-screen Log page. [logPreset] comes from the `+` or composer that opened it; [logChosen] from the Log's meal menu. */
     var logOpen by mutableStateOf(false); private set
-    var logMeal by mutableStateOf<MealSlot?>(null); private set
+    var logPreset by mutableStateOf<MealSlot?>(null); private set
+    var logChosen by mutableStateOf<MealSlot?>(null); private set
     var logMealMenuOpen by mutableStateOf(false); private set
     /** True when the meal menu was opened by Add with no meal known, so choosing a meal logs straight away. */
     private var logMealSubmitPending = false
@@ -639,10 +640,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         input = v
         if (libraryOpen && parser.parse(v).amount == null) onLibraryQuery(v)
     }
-    /** The meal the Log page writes to: the chosen or preset meal, else the one typed meal word. */
-    internal fun logTargetMeal(): MealSlot? = logMeal ?: logTypedMeal()
-    /** The single meal word typed in the Log input, if any. */
-    internal fun logTypedMeal(): MealSlot? = mealMarkers(input).singleOrNull()
+    /** The meal the Log page writes to, by [logTargetMealOf] precedence. Also drives the picker label. */
+    internal fun logTargetMeal(): MealSlot? = logTargetMealOf(logChosen, mealMarkers(input), logPreset)
     private fun quickAddSegments(): List<String> = input.split(',').map(String::trim).filter(String::isNotBlank)
     private fun quickAddActiveSegment(): String = input.substringAfterLast(',').trim()
     internal fun quickAddSuggestions(): List<RankedFood> {
@@ -660,19 +659,24 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         return calculator.calculate(food, parsed.amount ?: food.defaultAmount, parsed.unit ?: food.defaultUnit).nutrition.calories
     }
 
-    internal fun quickAddPreviews(): List<QuickAddPreview> {
+    /** Finished comma segments of the input; the segment still being typed is excluded. */
+    private fun quickAddCompletedSegments(): List<String> {
         if (!ready || input.isBlank()) return emptyList()
         val segments = quickAddSegments()
-        val completed = if (input.trimEnd().endsWith(',')) segments else segments.dropLast(1)
-        return completed.mapNotNull { raw ->
+        return if (input.trimEnd().endsWith(',')) segments else segments.dropLast(1)
+    }
+    private fun quickAddResolve(raw: String): QuickAddPreview? {
         val parsed = parser.parse(raw)
-        val food = engine.search(parsed.foodPhrase).firstOrNull()?.food ?: return@mapNotNull null
+        val food = engine.search(parsed.foodPhrase).firstOrNull()?.food ?: return null
         val amount = parsed.amount ?: food.defaultAmount
         val unit = parsed.unit ?: food.defaultUnit
         val calculation = calculator.calculate(food, amount, unit)
-        QuickAddPreview(food, amount, unit, calculation).takeIf { calculation.supported }
-        }
+        return QuickAddPreview(food, amount, unit, calculation).takeIf { calculation.supported }
     }
+    internal fun quickAddPreviews(): List<QuickAddPreview> = quickAddCompletedSegments().mapNotNull(::quickAddResolve)
+    /** Finished segments that match no food, shown on the Log page as "Not in your foods". Meal words are not foods. */
+    internal fun quickAddUnresolved(): List<String> = quickAddCompletedSegments()
+        .filter { mealMarkerSlots(it).isEmpty() && quickAddResolve(it) == null }
     fun chooseQuickSuggestion(food: FoodRecord) {
         val active = quickAddActiveSegment()
         val parsed = parser.parse(active)
@@ -828,27 +832,29 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             submitToMeal(target)
             return
         }
-        if (input.isBlank()) { mealDraftError = "Add at least one food."; return }
         amountlessDailySearch(input)?.let { intent ->
             closeLog()
             openFocusedLibrary(logTargetMeal() ?: intent.meal, intent.phrase)
             input = ""
             return
         }
-        val target = logTargetMeal() ?: run {
-            if (mealMarkers(input).size > 1) { mealDraftError = "Choose one meal marker, or remove the extra markers."; return }
-            mealDraftError = null
-            logMealSubmitPending = true
-            logMealMenuOpen = true
-            return
+        when (val plan = logSubmitPlan(ready, busy, input, mealMarkers(input), logChosen, logPreset)) {
+            LogSubmitPlan.Ignore -> Unit
+            is LogSubmitPlan.Error -> mealDraftError = plan.message
+            LogSubmitPlan.OpenMenu -> {
+                mealDraftError = null
+                logMealSubmitPending = true
+                logMealMenuOpen = true
+            }
+            is LogSubmitPlan.Save -> submitToMeal(plan.target)
         }
-        submitToMeal(target)
     }
 
     /** Opens the Log page. [preset] is the meal of the `+` or composer that opened it; null for the Daily composer. */
     fun openLog(preset: MealSlot?) {
         if (entryEditMode != EntryEditMode.NONE) return
-        logMeal = preset
+        logPreset = preset
+        logChosen = null
         logMealMenuOpen = false
         logMealSubmitPending = false
         mealDraftError = null
@@ -865,9 +871,9 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun openLogMealMenu() { logMealMenuOpen = true }
     fun dismissLogMealMenu() { logMealMenuOpen = false; logMealSubmitPending = false }
 
-    /** Choosing a meal sets the target, overriding a typed meal word; it logs at once only if Add asked for it. */
+    /** Choosing a meal from the menu wins over everything else; it logs at once only if Add asked for it. */
     fun chooseLogMeal(target: MealSlot) {
-        logMeal = target
+        logChosen = target
         logMealMenuOpen = false
         if (logMealSubmitPending) {
             logMealSubmitPending = false
@@ -919,7 +925,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 refresh(); if (input == captured) input = saved.unresolvedSegments.joinToString(", "); unknownQueue = saved.unresolvedSegments; unknownQueueTotal = saved.unresolvedSegments.size; unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }; resolutionContinuation = saved.unresolvedSegments.isNotEmpty(); resolverOpen = saved.unresolvedSegments.isNotEmpty(); mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
                 feedbackIds = saved.entries.filter { it.approximateConversion }.mapTo(mutableSetOf()) { it.id }; feedbackUntil = if (feedbackIds.isEmpty()) 0L else System.currentTimeMillis() + 30_000L
                 loggedBatchIds = saved.entries.map { it.id }
-                loggedBatchMessage = "${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} logged to ${target.label()}"
+                loggedBatchMessage = "${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} added to ${target.label()}"
             }.onFailure { mealDraftError = it.message ?: "Could not save this meal." }.also { busy = false }
         }
     }
@@ -1481,8 +1487,33 @@ internal fun removeAllMealMarkerTokens(value: String): String = ShorthandParser(
     .filter { mealMarkerSlots(it).isEmpty() }
     .joinToString(", ")
 
-/** The Log page's meal picker label: the chosen meal, else the typed meal word, else "Meal". */
-internal fun logMealPickerLabel(chosen: MealSlot?, typed: MealSlot?): String = (chosen ?: typed)?.label() ?: "Meal"
+/**
+ * The Log page's target meal. Precedence: a meal picked from the Log menu, then a single typed meal word
+ * (it beats a preset), then the preset. Two different typed words give no target; the plan reports the error.
+ */
+internal fun logTargetMealOf(chosen: MealSlot?, typedMarkers: List<MealSlot>, preset: MealSlot?): MealSlot? =
+    chosen ?: typedMarkers.singleOrNull() ?: preset
+
+/** The picker label: the target meal's name, or "Meal" when nothing is chosen, typed or preset. */
+internal fun logMealPickerLabel(target: MealSlot?): String = target?.label() ?: "Meal"
+
+internal sealed interface LogSubmitPlan {
+    /** Nothing to do: the app is not ready or a save is already running. */
+    data object Ignore : LogSubmitPlan
+    data class Error(val message: String) : LogSubmitPlan
+    /** No meal is known: open the Log's meal menu; choosing a meal submits. */
+    data object OpenMenu : LogSubmitPlan
+    data class Save(val target: MealSlot) : LogSubmitPlan
+}
+
+/** Decides what Add does with the Log input. Pure, so the no-meal path and the busy guard can be unit-tested. */
+internal fun logSubmitPlan(ready: Boolean, busy: Boolean, input: String, typedMarkers: List<MealSlot>, chosen: MealSlot?, preset: MealSlot?): LogSubmitPlan {
+    if (!ready || busy) return LogSubmitPlan.Ignore
+    if (input.isBlank()) return LogSubmitPlan.Error("Add at least one food.")
+    if (typedMarkers.size > 1) return LogSubmitPlan.Error("Choose one meal marker, or remove the extra markers.")
+    val target = logTargetMealOf(chosen, typedMarkers, preset) ?: return LogSubmitPlan.OpenMenu
+    return LogSubmitPlan.Save(target)
+}
 
 internal fun MealSlot.label() = name.lowercase().replaceFirstChar { it.titlecase() }
 internal fun Double.pretty() = if (this % 1 == 0.0) "%.0f".format(Locale.ROOT, this) else "%.1f".format(Locale.ROOT, this)
@@ -1494,7 +1525,6 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); vm.reloadToday() } }
     LaunchedEffect(vm.feedbackUntil, vm.resolverOpen) { while (vm.feedbackUntil > 0L) { kotlinx.coroutines.delay(1000); if (vm.resolverOpen) vm.holdFeedback() else if (System.currentTimeMillis() >= vm.feedbackUntil) { vm.expireFeedback(); break } } }
     if (vm.scannerOpen) { ScannerScreen(vm); return }
-    if (vm.logOpen) { LogScreen(vm); return }
     val scanReviewBackdropVisible = vm.selectedProduct != null && vm.selectedProductFromScan
     if (scanReviewBackdropVisible) ScanReviewBackdrop(vm::clearSelectedProduct)
     else {
@@ -1519,6 +1549,8 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
             else -> MealScreen(vm, Modifier.padding(pad))
         }
     }
+    // Drawn over the screen beneath, which keeps its scroll position. Dialogs and sheets below render above it.
+    if (vm.logOpen) LogScreen(vm)
     }
     when (vm.entryEditMode) {
         EntryEditMode.QUICK -> vm.editingEntry()?.let { EntryQuickEditSheet(vm, it) }
@@ -1530,7 +1562,8 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
         if (vm.slot != null) FocusedFoodAddDialog(vm, vm.selectedLibraryFood!!)
         else LibraryFoodDetailDialog(vm, vm.selectedLibraryFood!!)
     }
-    if (vm.libraryOpen && vm.selectedLibraryFood == null && !vm.customOpen && !vm.searchOpen && !vm.resolverOpen && vm.selectedProduct == null && vm.entryEditMode == EntryEditMode.NONE) {
+    if (vm.logOpen) Unit // LogScreen owns Back while it is open.
+    else if (vm.libraryOpen && vm.selectedLibraryFood == null && !vm.customOpen && !vm.searchOpen && !vm.resolverOpen && vm.selectedProduct == null && vm.entryEditMode == EntryEditMode.NONE) {
         // Archived foods is a child destination of Library. Keep system/predictive
         // Back aligned with the top-bar arrow before leaving the Library flow.
         BackHandler { if (vm.libraryArchivedOnly) vm.openLibrary() else vm.closeLibrary() }
