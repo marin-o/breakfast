@@ -6,13 +6,11 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
@@ -159,31 +157,31 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
     val display = unknownDisplay(raw)
     val (position, total) = resolvePosition(vm.unknownQueueTotal, vm.unknownQueue.size)
     val saved = vm.savedBatchNames()
-    val subtitle = listOfNotNull(
+    val context = listOfNotNull(
         vm.unknownQueueTarget?.label(),
         saved.takeIf { it.isNotEmpty() }?.joinToString(", ")?.let { "$it saved" },
-    ).joinToString(", ").ifBlank { null }
+    ).joinToString(", ")
+    val meta = listOfNotNull(context.ifBlank { null }, "$position of $total").joinToString(". ")
+    val typed = listOfNotNull(display.quantity, display.name).joinToString(" ")
     LaunchedEffect(raw) { vm.onResolverQuery(display.name) }
     BackHandler(onBack = vm::closeResolver)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter).verticalScroll(rememberScrollState())) {
-            TopBar("Resolve", vm::closeResolver, Modifier.padding(top = 8.dp), subtitle = subtitle)
-            Column(Modifier.padding(top = 16.dp).fillMaxWidth().semantics(mergeDescendants = true) { }) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                    if (display.quantity != null) Text(display.quantity, color = colors.ink, style = BreakfastType.BodyMedium) else Spacer(Modifier.size(1.dp))
-                    Text("$position of $total", color = colors.soft, style = BreakfastType.Meta)
-                }
-                Text(foodText(display.name), color = colors.ink, style = BreakfastType.Section, modifier = Modifier.padding(top = 8.dp))
+            TopBar("Resolve", vm::closeResolver, Modifier.padding(top = 8.dp))
+            Column(Modifier.padding(top = 14.dp).fillMaxWidth().semantics(mergeDescendants = true) { }) {
+                Text(meta, color = colors.soft, style = BreakfastType.Meta)
+                Text(foodText(typed), color = colors.ink, style = BreakfastType.LargeInput, modifier = Modifier.padding(top = 4.dp))
             }
-            Hairline(Modifier.padding(top = 16.dp))
+            Hairline(Modifier.padding(top = 30.dp))
             Column(Modifier.padding(top = 16.dp)) {
                 if (vm.resolverSearchOpen) {
-                    SearchField(vm.resolverQuery, vm::onResolverQuery, onClear = { vm.onResolverQuery("") }, label = "Search your foods", modifier = Modifier.padding(bottom = 16.dp))
+                    Text("Search your foods", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(bottom = 6.dp))
+                    SearchField(vm.resolverQuery, vm::onResolverQuery, onClear = { vm.onResolverQuery("") }, label = "Search your foods")
                 } else {
                     TertiaryButton("Search your foods", vm::beginResolverSearch, Modifier.padding(bottom = 8.dp))
                 }
                 if (vm.resolverResults.isNotEmpty()) {
-                    SectionHeading("Local matches", Modifier.padding(bottom = 4.dp))
+                    SectionHeading("Local matches", Modifier.padding(top = 30.dp, bottom = 4.dp))
                     vm.resolverResults.forEach { ranked ->
                         val match = matchDisplay(ranked.food, raw)
                         val detail = match.approximateLabel?.let { "≈ $it, ${match.detail}" } ?: match.detail
@@ -195,10 +193,10 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
                         )
                     }
                 }
-                Column(Modifier.padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SecondaryButton("Search Open Food Facts", { vm.openSearch(vm.currentUnknownName(), fromResolver = true) })
+                Column(Modifier.padding(top = 30.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PrimaryButton("Search Open Food Facts", { vm.openSearch(vm.currentUnknownName(), fromResolver = true) }, kind = ButtonKind.Neutral)
                     SecondaryButton("Create personal food", { vm.openCustom(vm.currentUnknownName(), fromResolver = true) })
-                    TertiaryButton("Skip", vm::skipCurrentUnknown, Modifier.fillMaxWidth())
+                    TertiaryButton("Skip", vm::skipCurrentUnknown, Modifier.fillMaxWidth(), soft = true)
                 }
             }
         }
