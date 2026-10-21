@@ -3,26 +3,26 @@ package com.iron.breakfast.ui.screens
 import com.iron.breakfast.ui.theme.*
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.KeyboardType
@@ -42,9 +43,7 @@ import com.iron.breakfast.domain.validateBarcodeInput
 import com.iron.breakfast.ui.components.ButtonKind
 import com.iron.breakfast.ui.components.ChoiceOption
 import com.iron.breakfast.ui.components.Field
-import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.PrimaryButton
-import com.iron.breakfast.ui.components.TertiaryButton
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 
@@ -52,7 +51,6 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
  * New personal food. The shorthand field is the main input; the summary shows what was understood, and
  * the "Full form" toggle opens the structured fields. Calories are required, so Save waits for them.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun CreateFoodScreen(vm: BreakfastViewModel) {
     val draft = vm.draft
     val barcodeError = validateBarcodeInput(draft.barcode, vm.foods)
@@ -88,7 +86,7 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
                         value = draft.shorthand,
                         onValueChange = { draft.shorthand = it },
                         error = state.showRequired,
-                        errorMessage = if (state.showRequired) "Required: kcal" else null,
+                        errorMessage = if (state.showRequired) "kcal is required" else null,
                         singleLine = false,
                         minLines = 2,
                         placeholder = "per 100g: 450 kcal, 12g protein, 20g carbs, 8g fat",
@@ -96,17 +94,21 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
                 }
                 Column(Modifier.padding(horizontal = Gutter).padding(top = 24.dp).fillMaxWidth().semantics(mergeDescendants = true) { }) {
                     Text(slip.label, color = colors.soft, style = BreakfastType.Meta)
-                    Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                        SlipCell("kcal", slip.calories, Modifier.weight(1f))
-                        SlipCell("protein", slip.protein, Modifier.weight(1f))
-                        SlipCell("carbs", slip.carbs, Modifier.weight(1f))
-                        SlipCell("fat", slip.fat, Modifier.weight(1f))
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            SlipCell("kcal", slip.calories)
+                            SlipCell("carbs", slip.carbs)
+                        }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            SlipCell("protein", slip.protein)
+                            SlipCell("fat", slip.fat)
+                        }
                     }
                 }
-                TertiaryButton(
-                    if (draft.fullFormOpen) "Hide full form" else "Full form",
-                    { draft.fullFormOpen = !draft.fullFormOpen },
-                    Modifier.padding(top = 8.dp).semantics { stateDescription = if (draft.fullFormOpen) "Expanded" else "Collapsed" },
+                FullFormToggle(
+                    open = draft.fullFormOpen,
+                    onClick = { draft.fullFormOpen = !draft.fullFormOpen },
+                    modifier = Modifier.padding(start = Gutter, top = 16.dp),
                 )
                 Column(Modifier.padding(horizontal = Gutter), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     if (draft.fullFormOpen) {
@@ -117,17 +119,18 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
                         val carbs = if (draft.carbsEdited) draft.carbs else state.nutrition.carbohydrates?.let(::editableNumber).orEmpty()
                         val fat = if (draft.fatEdited) draft.fat else state.nutrition.fat?.let(::editableNumber).orEmpty()
                         Text("Shorthand fills these. Edits here win.", color = colors.soft, style = BreakfastType.Secondary)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Bottom) {
-                            Field("Basis", basisAmount, { draft.basisEdited = true; draft.basisAmount = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f), keyboardOptions = decimal)
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("g", "ml").forEach { unit -> ChoiceOption(unit, basisUnit == unit, { draft.basisEdited = true; draft.basisUnit = unit }, Modifier.width(56.dp)) }
+                        Column {
+                            Text("Basis", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(bottom = 4.dp))
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Field("Basis", basisAmount, { draft.basisEdited = true; draft.basisAmount = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1.6f), labelVisible = false, keyboardOptions = decimal)
+                                listOf("g", "ml").forEach { unit -> ChoiceOption(unit, basisUnit == unit, { draft.basisEdited = true; draft.basisUnit = unit }, Modifier.weight(1f)) }
                             }
                         }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Field("kcal", calories, { draft.caloriesEdited = true; draft.calories = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f), keyboardOptions = decimal, error = state.showRequired)
                             Field("Protein, g", protein, { draft.proteinEdited = true; draft.protein = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f), keyboardOptions = decimal)
                         }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Field("Carbs, g", carbs, { draft.carbsEdited = true; draft.carbs = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f), keyboardOptions = decimal)
                             Field("Fat, g", fat, { draft.fatEdited = true; draft.fat = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f), keyboardOptions = decimal)
                         }
@@ -142,11 +145,32 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
     }
 }
 
-@Composable private fun SlipCell(label: String, value: String?, modifier: Modifier) {
+/** "Full form" with a chevron that points down when closed and up when open. */
+@Composable private fun FullFormToggle(open: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = LocalBreakfastColors.current
-    Column(modifier) {
-        Text(label, color = colors.soft, style = BreakfastType.Meta)
-        if (value != null) Text(value, color = colors.ink, style = BreakfastType.BodyMedium)
-        else Text("unknown", color = colors.soft, style = BreakfastType.Secondary)
+    Row(
+        modifier
+            .heightIn(min = TertiaryHeight)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { stateDescription = if (open) "Expanded" else "Collapsed" },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text("Full form", color = colors.ink, style = BreakfastType.Button)
+        Icon(if (open) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown, contentDescription = null, tint = colors.ink, modifier = Modifier.size(20.dp))
+    }
+}
+
+/** One preview cell: a soft label on the left, the value ink on the right; "unknown" in soft when empty. */
+@Composable private fun SlipCell(label: String, value: String?) {
+    val colors = LocalBreakfastColors.current
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+        Text(label, color = colors.soft, style = BreakfastType.Secondary)
+        if (value == null) Text("unknown", color = colors.soft, style = BreakfastType.Secondary)
+        else Row(verticalAlignment = Alignment.Bottom) {
+            val number = value.removeSuffix(" g")
+            Text(number, color = colors.ink, style = BreakfastType.BodyMedium)
+            if (number != value) Text(" g", color = colors.soft, style = BreakfastType.Secondary)
+        }
     }
 }
