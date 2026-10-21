@@ -9,6 +9,9 @@ interface FoodProbe {
 
     /** True when a single food covers every word of [phrase]. An exact name or alias counts. */
     fun covers(phrase: String): Boolean
+
+    /** True when [phrase] is exactly one food's name or alias, ignoring case, punctuation and stop words. */
+    fun isExactName(phrase: String): Boolean
 }
 
 /** One part of the typed input: its text and where it sits in the input. */
@@ -50,7 +53,16 @@ class ShorthandParser {
         val spans = mutableListOf<SegmentSpan>()
         var start = 0
         (HARD_BREAK.findAll(input).map { it.range.first } + input.length).forEach { end ->
-            spans += partsOfSegment(input, start, end, probe)
+            val segment = partsOfSegment(input, start, end, probe)
+            val previous = spans.lastOrNull()
+            val first = segment.firstOrNull()
+            // A comma inside a food name ("Пинџур, домашен") joins the parts on both sides of it when the join is exactly that name.
+            if (probe != null && previous != null && first != null && probe.isExactName(input.substring(previous.start, first.end))) {
+                spans[spans.lastIndex] = spanOf(input, previous.start, first.end)
+                spans += segment.drop(1)
+            } else {
+                spans += segment
+            }
             start = end + 1
         }
         return spans

@@ -23,6 +23,7 @@ class SegmentationTest {
     private fun splitWith(p: LogPlanner, m: FoodMatcher, input: String): List<String> = ShorthandParser().split(input, object : FoodProbe {
         override fun resolves(text: String) = p.resolve(text) != null
         override fun covers(phrase: String) = m.covers(phrase)
+        override fun isExactName(phrase: String) = m.isExactName(phrase)
     })
 
     private fun split(input: String) = splitWith(planner, FoodMatcher(FoodCatalog.fixtures), input)
@@ -105,6 +106,19 @@ class SegmentationTest {
         assertTrue(planner.endsOpen("1 banana + "))
         assertFalse(planner.endsOpen("1 banana"))
         assertFalse(planner.endsOpen("1 banana, 2 eg"))
+    }
+
+    @Test fun aCommaInsideAFoodNameKeepsTheNameWhole() {
+        val pindzur = protein.copy(id = "pindzur", name = "Пинџур, домашен", aliases = emptyList(), category = "Spread")
+        val named = LogPlanner(FoodMatcher(FoodCatalog.fixtures + pindzur))
+        assertEquals(listOf("pindzur"), named.plan("Пинџур, домашен").entries.map { it.food.id })
+        assertTrue(named.plan("Пинџур, домашен").unresolved.isEmpty())
+        assertEquals(listOf("pindzur"), named.plan("Пинџур, домашен 100 g").entries.map { it.food.id })
+        assertEquals(listOf("pindzur", "banana"), named.plan("Пинџур, домашен, 1 banana").entries.map { it.food.id })
+    }
+
+    @Test fun repeatedFoodsSeparatedByACommaStayTwoEntries() {
+        assertEquals(listOf("banana", "banana"), planner.plan("banana, banana").entries.map { it.food.id })
     }
 
     @Test fun everyBundledNameWithADigitStaysOneFood() {

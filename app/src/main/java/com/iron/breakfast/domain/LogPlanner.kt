@@ -43,6 +43,7 @@ class LogPlanner(
     private val probe = object : FoodProbe {
         override fun resolves(text: String): Boolean = resolve(text) != null
         override fun covers(phrase: String): Boolean = matcher.covers(phrase)
+        override fun isExactName(phrase: String): Boolean = matcher.isExactName(phrase)
     }
 
     /** The parts of [input] the Log page works with, meal words included. Every caller segments through here. */
