@@ -25,6 +25,37 @@ object ShorthandLexicon {
     /** Words that read as a half or a quarter. They may take a leading "a" and a trailing "a" ("half a tbsp"). */
     private val fractionWords = setOf("half", "quarter", "половина")
 
+    /** How a unit word reads: the stored unit, and how many of that unit one word stands for ("kg" is 1000 g). */
+    data class UnitSpec(val unit: MeasureUnit, val factor: Double = 1.0)
+
+    private val units: Map<String, UnitSpec> = mapOf(
+        "g" to UnitSpec(MeasureUnit.GRAM), "gr" to UnitSpec(MeasureUnit.GRAM), "gram" to UnitSpec(MeasureUnit.GRAM),
+        "grams" to UnitSpec(MeasureUnit.GRAM), "г" to UnitSpec(MeasureUnit.GRAM), "гр" to UnitSpec(MeasureUnit.GRAM),
+        "грам" to UnitSpec(MeasureUnit.GRAM), "kg" to UnitSpec(MeasureUnit.GRAM, 1000.0), "кг" to UnitSpec(MeasureUnit.GRAM, 1000.0),
+        "ml" to UnitSpec(MeasureUnit.MILLILITER), "milliliter" to UnitSpec(MeasureUnit.MILLILITER),
+        "milliliters" to UnitSpec(MeasureUnit.MILLILITER), "millilitre" to UnitSpec(MeasureUnit.MILLILITER),
+        "millilitres" to UnitSpec(MeasureUnit.MILLILITER), "мл" to UnitSpec(MeasureUnit.MILLILITER),
+        "cl" to UnitSpec(MeasureUnit.MILLILITER, 10.0), "dl" to UnitSpec(MeasureUnit.MILLILITER, 100.0),
+        "l" to UnitSpec(MeasureUnit.MILLILITER, 1000.0), "litre" to UnitSpec(MeasureUnit.MILLILITER, 1000.0),
+        "litres" to UnitSpec(MeasureUnit.MILLILITER, 1000.0), "liter" to UnitSpec(MeasureUnit.MILLILITER, 1000.0),
+        "liters" to UnitSpec(MeasureUnit.MILLILITER, 1000.0), "л" to UnitSpec(MeasureUnit.MILLILITER, 1000.0),
+        "tbsp" to UnitSpec(MeasureUnit.TABLESPOON), "tablespoon" to UnitSpec(MeasureUnit.TABLESPOON),
+        "tablespoons" to UnitSpec(MeasureUnit.TABLESPOON), "лажица" to UnitSpec(MeasureUnit.TABLESPOON),
+        "лажици" to UnitSpec(MeasureUnit.TABLESPOON),
+        "tsp" to UnitSpec(MeasureUnit.TEASPOON), "teaspoon" to UnitSpec(MeasureUnit.TEASPOON),
+        "teaspoons" to UnitSpec(MeasureUnit.TEASPOON), "лажиче" to UnitSpec(MeasureUnit.TEASPOON),
+        "лажичка" to UnitSpec(MeasureUnit.TEASPOON),
+        "piece" to UnitSpec(MeasureUnit.PIECE), "pieces" to UnitSpec(MeasureUnit.PIECE), "pc" to UnitSpec(MeasureUnit.PIECE),
+        "pcs" to UnitSpec(MeasureUnit.PIECE), "slice" to UnitSpec(MeasureUnit.PIECE), "slices" to UnitSpec(MeasureUnit.PIECE),
+        "парче" to UnitSpec(MeasureUnit.PIECE), "парчиња" to UnitSpec(MeasureUnit.PIECE),
+    )
+
+    /** The unit a word reads as, with its factor. Null for anything that is not a unit (cups, for one, stay unsupported). */
+    fun unitSpec(text: String?): UnitSpec? = text?.trim()?.lowercase(Locale.ROOT)?.let { units[it] }
+
+    /** A regex alternation of the unit words, longest first. The parser and the segmenter both read it. */
+    fun unitAlternation(): String = units.keys.sortedByDescending { it.length }.joinToString("|") { Regex.escape(it) }
+
     /** Words that never name a food on their own. "a" is here so it can never be matched as a food token. */
     val stopWords: Set<String> = setOf("a", "the", "with", "and", "of", "my")
 

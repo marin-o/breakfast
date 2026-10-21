@@ -15,20 +15,21 @@ interface FoodProbe {
 data class SegmentSpan(val text: String, val start: Int, val end: Int)
 
 class ShorthandParser {
+    private val unit = ShorthandLexicon.unitAlternation()
     private val halfPattern = Regex(
         "(?i)(?<![\\p{L}\\p{N}])(?:a\\s+)?(half|quarter|половина)(?![\\p{L}\\p{N}])(?:\\s+a(?![\\p{L}\\p{N}]))?\\s*" +
-            "(g|grams?|ml|milliliters?|tbsp|tablespoons?|tsp|teaspoons?|pieces?)?(?![\\p{L}\\p{N}])"
+            "($unit)?(?![\\p{L}\\p{N}])"
     )
     /** Number words other than the half family, longest first so "a couple of" wins over "a". */
     private val wordPattern = Regex(
         "(?i)(?<![\\p{L}\\p{N}])(${ShorthandLexicon.wordAlternation()})(?![\\p{L}\\p{N}])\\s*" +
-            "(g|grams?|ml|milliliters?|tbsp|tablespoons?|tsp|teaspoons?|pieces?)?(?![\\p{L}\\p{N}])"
+            "($unit)?(?![\\p{L}\\p{N}])"
     )
     /** "2x egg" and "egg x2". */
     private val multiplierPattern = Regex("(?i)(?<![\\p{L}\\p{N}])(?:(\\d+)\\s*x|x(\\d+))(?![\\p{L}\\p{N}.,])")
     private val numberPattern = Regex(
         "(?i)\\b(\\d+\\s+\\d+/\\d+|\\d+/\\d+|\\d+(?:[.,]\\d+)?)(?![.,\\d]|\\s*%)\\s*" +
-            "(g|grams?|ml|milliliters?|tbsp|tablespoons?|tsp|teaspoons?|pieces?)?\\b"
+            "($unit)?(?![\\p{L}\\p{N}])"
     )
 
     fun split(input: String, probe: FoodProbe? = null): List<String> = parts(input, probe).map { it.text }
@@ -194,20 +195,26 @@ class ShorthandParser {
     /** The amount a segment states. Priority: half words, then digits, then number words, then "2x" or "x2". */
     private fun findQuantity(raw: String): Quantity? {
         halfPattern.find(raw)?.let { match ->
-            return Quantity(ShorthandLexicon.wordAmount(match.groupValues[1]) ?: 0.5, match.groupValues[2].toMeasureUnit(), match.range)
+            return quantityWithUnit(ShorthandLexicon.wordAmount(match.groupValues[1]) ?: 0.5, match.groupValues[2], match.range)
         }
         numberPattern.findAll(raw).firstOrNull { candidate ->
             !isCompositionRatio(candidate, raw) || candidate.groupValues.getOrNull(2).orEmpty().isNotBlank()
         }?.let { match ->
-            return Quantity(parseAmount(match.groupValues[1]), match.groupValues[2].toMeasureUnit(), match.range)
+            return quantityWithUnit(parseAmount(match.groupValues[1]), match.groupValues[2], match.range)
         }
         wordPattern.find(raw)?.let { match ->
-            return Quantity(ShorthandLexicon.wordAmount(match.groupValues[1]) ?: 0.0, match.groupValues[2].toMeasureUnit(), match.range)
+            return quantityWithUnit(ShorthandLexicon.wordAmount(match.groupValues[1]) ?: 0.0, match.groupValues[2], match.range)
         }
         return multiplierPattern.find(raw)?.let { match ->
             val count = match.groupValues[1].ifEmpty { match.groupValues[2] }.toDoubleOrNull() ?: 0.0
             Quantity(count, null, match.range)
         }
+    }
+
+    /** A stated amount in the unit it names, converted to the stored unit: "1.5 kg" is 1500 g. */
+    private fun quantityWithUnit(amount: Double, unitText: String, range: IntRange): Quantity {
+        val spec = ShorthandLexicon.unitSpec(unitText) ?: return Quantity(amount, null, range)
+        return Quantity(amount * spec.factor, spec.unit, range)
     }
 
     private fun parseAmount(text: String): Double {
@@ -252,14 +259,7 @@ class ShorthandParser {
     }
 }
 
-fun String?.toMeasureUnit(): MeasureUnit? = when (this?.lowercase(Locale.ROOT)) {
-    "g", "gram", "grams" -> MeasureUnit.GRAM
-    "ml", "milliliter", "milliliters" -> MeasureUnit.MILLILITER
-    "tbsp", "tablespoon", "tablespoons" -> MeasureUnit.TABLESPOON
-    "tsp", "teaspoon", "teaspoons" -> MeasureUnit.TEASPOON
-    "piece", "pieces" -> MeasureUnit.PIECE
-    else -> null
-}
+fun String?.toMeasureUnit(): MeasureUnit? = ShorthandLexicon.unitSpec(this)?.unit
 
 fun MeasureUnit.displayLabel(): String = when (this) {
     MeasureUnit.GRAM -> "g"
