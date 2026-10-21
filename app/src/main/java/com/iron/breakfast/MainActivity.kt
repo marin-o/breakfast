@@ -24,6 +24,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
@@ -1658,40 +1659,44 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     BackHandler(onBack = vm::dismissContributionReview)
     val normalized = draft.normalizedNutrition
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter)) {
-            TopBar("Contribute", vm::dismissContributionReview)
-            Text(listOfNotNull(draft.name, draft.brand).joinToString(", "), color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 4.dp))
-            Column(Modifier.fillMaxWidth().padding(top = 24.dp)) {
-                SectionHeading("Will send")
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter)) {
+            TopBar("Contribute", vm::dismissContributionReview, Modifier.padding(top = 8.dp))
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                Text(listOfNotNull(draft.name, draft.brand).joinToString(", "), color = colors.ink, style = BreakfastType.Section, modifier = Modifier.padding(top = 4.dp))
+                Hairline(Modifier.padding(top = 16.dp))
+                Column(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+                    SectionHeading("Will send")
+                    if (draft.createNewProduct) {
+                        ContributionLine("Name", draft.name)
+                        draft.brand?.let { ContributionLine("Brand", it) }
+                    }
+                    ContributionLine("Barcode", draft.barcode)
+                    Text("per 100 ${draft.basisUnit.label}", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 10.dp))
+                    ContributionLine("Energy", normalized.calories.pretty(), "kcal")
+                    ContributionLine("Fat", normalized.fat?.pretty() ?: "0", "g")
+                    ContributionLine("Carbohydrate", normalized.carbohydrates?.pretty() ?: "0", "g")
+                    ContributionLine("Protein", normalized.protein?.pretty() ?: "0", "g")
+                    if (!draft.createNewProduct) Text("Existing product: only nutrition changes.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 16.dp))
+                }
                 if (draft.createNewProduct) {
-                    ContributionLine("Name", draft.name)
-                    draft.brand?.let { ContributionLine("Brand", it) }
+                    Text("Language", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 24.dp))
+                    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ChoiceOption("EN", vm.contributionLanguageCode == "en", { vm.onContributionLanguage("en") }, Modifier.width(64.dp))
+                        ChoiceOption("MK", vm.contributionLanguageCode == "mk", { vm.onContributionLanguage("mk") }, Modifier.width(64.dp))
+                    }
+                    if (draft.basisUnit == MeasureUnit.MILLILITER) Field("Package quantity, ml", vm.contributionPackageQuantityMl, vm::onContributionPackageQuantityMl, Modifier.padding(top = 16.dp))
+                    Text("New product: Breakfast creates it.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 12.dp))
                 }
-                ContributionLine("Barcode", draft.barcode)
-                Text("per 100 ${draft.basisUnit.label}", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 6.dp))
-                ContributionLine("Energy", normalized.calories.pretty(), "kcal")
-                ContributionLine("Fat", normalized.fat?.pretty() ?: "0", "g")
-                ContributionLine("Carbohydrate", normalized.carbohydrates?.pretty() ?: "0", "g")
-                ContributionLine("Protein", normalized.protein?.pretty() ?: "0", "g")
-            }
-            Text(
-                if (draft.createNewProduct) "New product: Breakfast creates it." else "Existing product: only nutrition changes.",
-                color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 16.dp),
-            )
-            if (draft.createNewProduct) {
-                Text("Language", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 24.dp))
-                Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ChoiceOption("EN", vm.contributionLanguageCode == "en", { vm.onContributionLanguage("en") }, Modifier.weight(1f))
-                    ChoiceOption("MK", vm.contributionLanguageCode == "mk", { vm.onContributionLanguage("mk") }, Modifier.weight(1f))
+                Hairline(Modifier.padding(top = 24.dp))
+                Column(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+                    SectionHeading("Not sent")
+                    Text("Amounts, aliases, servings", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 4.dp))
                 }
-                if (draft.basisUnit == MeasureUnit.MILLILITER) Field("Package quantity, ml", vm.contributionPackageQuantityMl, vm::onContributionPackageQuantityMl, Modifier.padding(top = 16.dp))
             }
-            Column(Modifier.fillMaxWidth().padding(top = 24.dp)) {
-                SectionHeading("Not sent")
-                Text("Amounts, aliases, servings", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 4.dp))
+            Column(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                PrimaryButton("Continue to sign in", vm::confirmContribution, kind = ButtonKind.Neutral)
+                TertiaryButton("Decline", vm::dismissContributionReview, Modifier.fillMaxWidth(), soft = true)
             }
-            PrimaryButton("Continue to sign in", vm::confirmContribution, Modifier.padding(top = 24.dp), kind = ButtonKind.Neutral)
-            TertiaryButton("Decline", vm::dismissContributionReview, Modifier.fillMaxWidth())
         }
     }
 }
@@ -1703,8 +1708,8 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     BackHandler(enabled = contributionAuthCanDismiss(vm.contributionBusy), onBack = vm::dismissContributionAuth)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter)) {
-            TopBar("Sign in", vm::dismissContributionAuth, backEnabled = contributionAuthCanDismiss(vm.contributionBusy))
-            Text("Open Food Facts account", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 4.dp))
+            TopBar("Sign in", vm::dismissContributionAuth, Modifier.padding(top = 8.dp), backEnabled = contributionAuthCanDismiss(vm.contributionBusy))
+            Text("Open Food Facts account", color = colors.ink, style = BreakfastType.Section, modifier = Modifier.padding(top = 16.dp))
             Field("Username", vm.contributionUsername, vm::onContributionUsername, Modifier.padding(top = 16.dp))
             Field(
                 "Password", vm.contributionPassword, vm::onContributionPassword, Modifier.padding(top = 16.dp),
@@ -1715,7 +1720,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
             )
             Text("Password is not saved.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 12.dp))
             PrimaryButton(if (vm.contributionBusy) "Submitting" else "Submit", vm::submitContribution, Modifier.padding(top = 24.dp), enabled = !vm.contributionBusy, kind = ButtonKind.Neutral)
-            if (contributionAuthCanDismiss(vm.contributionBusy)) TertiaryButton("Cancel", vm::dismissContributionAuth, Modifier.fillMaxWidth())
+            if (contributionAuthCanDismiss(vm.contributionBusy)) TertiaryButton("Cancel", vm::dismissContributionAuth, Modifier.fillMaxWidth().padding(top = 4.dp), soft = true)
         }
     }
 }
@@ -1725,14 +1730,21 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     BackHandler(onBack = vm::dismissContributionFailure)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter)) {
-            TopBar("Contribute", vm::dismissContributionFailure)
-            Column(Modifier.fillMaxWidth().padding(top = 24.dp)) {
-                SectionHeading("Not sent")
-                Text(message, color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 4.dp))
-                Text("Your food and entries are saved on this phone.", color = colors.ink, style = BreakfastType.Body, modifier = Modifier.padding(top = 8.dp))
+            TopBar("Contribute", vm::dismissContributionFailure, Modifier.padding(top = 8.dp))
+            Column(Modifier.fillMaxWidth().padding(top = 96.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Not sent", color = colors.ink, style = BreakfastType.Title)
+                Text(
+                    "$message Your food and entries are saved on this phone.",
+                    color = colors.soft,
+                    style = BreakfastType.Secondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 8.dp).widthIn(max = 290.dp),
+                )
             }
-            PrimaryButton("Retry", vm::retryContribution, Modifier.padding(top = 24.dp), kind = ButtonKind.Neutral)
-            TertiaryButton("Dismiss", vm::dismissContributionFailure, Modifier.fillMaxWidth())
+            Column(Modifier.fillMaxWidth().padding(top = 36.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                PrimaryButton("Retry", vm::retryContribution, kind = ButtonKind.Neutral)
+                TertiaryButton("Dismiss", vm::dismissContributionFailure, Modifier.fillMaxWidth(), soft = true)
+            }
         }
     }
 }
@@ -1742,18 +1754,21 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     val valueModifier = if (unit == null) Modifier else Modifier.width(64.dp * fontScale)
     val unitModifier = Modifier.width(44.dp * fontScale).padding(start = 8.dp)
+    // Plain values (name, brand, barcode) are soft; amounts are ink with a soft unit.
+    val valueColor = if (unit == null) colors.soft else colors.ink
+    val valueStyle = if (unit == null) BreakfastType.Body else BreakfastType.BodyMedium
     if (unit != null && fontScale >= 1.75f) {
         Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
             Text(label, color = colors.ink, style = BreakfastType.Body)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Text(value, color = colors.ink, style = BreakfastType.BodyMedium, textAlign = TextAlign.End, modifier = valueModifier)
+                Text(value, color = valueColor, style = valueStyle, textAlign = TextAlign.End, modifier = valueModifier)
                 Text(unit, color = colors.soft, style = BreakfastType.Secondary, maxLines = 1, modifier = unitModifier)
             }
         }
     } else {
         Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(label, color = colors.ink, style = BreakfastType.Body, modifier = Modifier.weight(1f))
-            Text(value, color = colors.ink, style = BreakfastType.BodyMedium, textAlign = TextAlign.End, modifier = valueModifier)
+            Text(value, color = valueColor, style = valueStyle, textAlign = TextAlign.End, modifier = valueModifier)
             if (unit != null) Text(unit, color = colors.soft, style = BreakfastType.Secondary, maxLines = 1, modifier = unitModifier)
         }
     }
