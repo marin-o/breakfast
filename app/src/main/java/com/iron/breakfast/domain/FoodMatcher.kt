@@ -20,6 +20,8 @@ class FoodMatcher(
         val names: String,
         val category: String,
         val nameTokens: Set<String>,
+        val canonicalNames: String,
+        val canonicalTokens: Set<String>,
         val normalizedNames: Set<String>,
         val normalizedAliases: Set<String>
     )
@@ -27,11 +29,14 @@ class FoodMatcher(
     private val indexedCatalog = catalog.map { food ->
         val names = (food.allNames() + listOfNotNull(food.preparation, food.sourceDescription))
             .joinToString(" ").lowercase(Locale.ROOT)
+        val canonicalNames = Transliteration.canonical(names)
         IndexedFood(
             food = food,
             names = names,
             category = food.category.lowercase(Locale.ROOT),
             nameTokens = tokens(names).toSet(),
+            canonicalNames = canonicalNames,
+            canonicalTokens = tokens(canonicalNames).toSet(),
             normalizedNames = food.allNames().mapTo(mutableSetOf(), ::normalize),
             normalizedAliases = food.aliases.mapTo(mutableSetOf(), ::normalize)
         )
@@ -98,7 +103,14 @@ class FoodMatcher(
     private fun tokenWeight(token: String, indexed: IndexedFood): Double = when {
         token in indexed.names || token in indexed.category -> EXACT_WEIGHT
         stems(token).any { it in indexed.nameTokens } -> STEM_WEIGHT
+        transliterated(token, indexed) -> TRANSLITERATED_WEIGHT
         else -> 0.0
+    }
+
+    /** The token in the other script: "pindzur" finds Пинџур and "кисело" finds "kiselo mleko". */
+    private fun transliterated(token: String, indexed: IndexedFood): Boolean {
+        val canonical = Transliteration.canonical(token)
+        return canonical in indexed.canonicalNames || stems(canonical).any { it in indexed.canonicalTokens }
     }
 
     /** Singular forms to try for a token: "eggs" gives "egg", "berries" gives "berry". Never shorter than three letters. */
@@ -147,6 +159,7 @@ class FoodMatcher(
     companion object {
         private const val EXACT_WEIGHT = 1.0
         private const val STEM_WEIGHT = 0.95
+        private const val TRANSLITERATED_WEIGHT = 0.9
         private const val MIN_STEM_LENGTH = 3
         private const val STEMMED_NAME_SCORE = 50.0
         private val STOP_WORDS = ShorthandLexicon.stopWords
