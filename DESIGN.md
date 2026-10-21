@@ -81,14 +81,15 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 ## Lists and totals
 
 - **FoodRow**: name 16sp ink, quantity line 14sp soft beneath, kcal right-aligned in soft (ink 500 for totals). 9dp top padding, no separators.
-- **MealHeader**: a 30dp gap, a 1dp hairline, then 16dp, then the heading (20sp/500), the time (13sp soft), the total (17sp/500) and an AddCircle. "Nothing yet" in soft for an empty meal.
+- **MealHeader**: a 30dp gap, a 1dp hairline, then 16dp, then the heading (20sp/500), the time (13sp soft), the total (17sp/500) and an AddCircle. At large font the time drops under the heading. "Nothing yet" in soft for an empty meal.
 - **DayHeader**: date title 17sp/500 on the left, a Today text button when not on today, previous and next arrows on the right.
-- **DayTotal**: 72sp/300 kcal, "kilocalories today" in soft 14sp, then three macro columns: a 2dp `line` track with a 2dp `ink` fill (the macro's share of kcal), the value 20sp/500 with its unit in soft 14sp, and a soft 13sp label.
+- **DayTotal**: 72sp/300 kcal, "kilocalories today" in soft 14sp, then three macro columns: a 2dp `line` track with a 2dp `ink` fill (the macro's share of kcal), the value 20sp/500 with its unit in soft 14sp, and a soft 13sp label. At large font (2.0) the macros stack one per row, with the value, unit and label on one line under each bar.
 
 ## Layout
 
 - Gutters are 24dp. The status bar is 40dp as the system gives it. The header is 52dp.
 - Regions are separated by 30dp of space, a 1dp `line` hairline, and 16dp.
+- Large font: the layouts switch at a font scale of 1.8 (`isLargeFont` in `Components.kt`). 1.3 keeps the standard layout. Fixed-width controls keep a minimum width and grow with their text; nothing shrinks below the type scale.
 
 ## Shared components
 
@@ -96,4 +97,4 @@ The single implementation of each control lives in `ui/components/Components.kt`
 
 ## Source of truth
 
-The locked references are `design/canvas/BRIEF-mono-system.md` (tokens, type and controls) and the `M-*` mocks in `design/canvas/project/` and `design/canvas/shots/`. Where a state cannot be built as drawn, the closest honest version is built and the gap is recorded in the gaps ledger (`docs/receipt-design-gaps.md`, renamed to `docs/design-gaps.md` in the cleanup slice).
+The locked references are `design/canvas/BRIEF-mono-system.md` (tokens, type and controls) and the `M-*` mocks in `design/canvas/project/` and `design/canvas/shots/`. Where a state cannot be built as drawn, the closest honest version is built and the gap is recorded in the gaps ledger (`docs/design-gaps.md`).
