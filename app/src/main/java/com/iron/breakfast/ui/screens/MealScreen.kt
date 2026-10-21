@@ -47,6 +47,7 @@ import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.label
+import com.iron.breakfast.ui.components.isLargeFont
 import com.iron.breakfast.ui.components.Composer
 import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.Hairline
@@ -97,7 +98,7 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
             item {
                 val addFoodModifier = Modifier.widthIn(min = 128.dp * fontScale)
                 val scanModifier = Modifier.widthIn(min = 80.dp * fontScale)
-                if (fontScale >= 1.8f) {
+                if (isLargeFont(fontScale)) {
                     Column(Modifier.fillMaxWidth().padding(top = 30.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         SecondaryButton("Add food", { vm.openFocusedLibrary(target) }, addFoodModifier, fillWidth = false)
                         SecondaryButton("Scan", vm::beginScan, scanModifier, fillWidth = false)

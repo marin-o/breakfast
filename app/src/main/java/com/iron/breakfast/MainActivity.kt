@@ -170,6 +170,7 @@ import com.iron.breakfast.ui.screens.ScanReviewBackdrop
 import com.iron.breakfast.ui.screens.ScannerScreen
 import com.iron.breakfast.ui.components.ButtonKind
 import com.iron.breakfast.ui.components.Field
+import com.iron.breakfast.ui.components.isLargeFont
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.ChoiceOption
 import com.iron.breakfast.ui.components.SectionHeading
@@ -1764,7 +1765,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     // Plain values (name, brand, barcode) are soft; amounts are ink with a soft unit.
     val valueColor = if (unit == null) colors.soft else colors.ink
     val valueStyle = if (unit == null) BreakfastType.Body else BreakfastType.BodyMedium
-    if (unit != null && fontScale >= 1.75f) {
+    if (unit != null && isLargeFont(fontScale)) {
         Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
             Text(label, color = colors.ink, style = BreakfastType.Body)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {

@@ -78,6 +78,7 @@ import com.iron.breakfast.domain.asciiDigits
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.label
 import com.iron.breakfast.pretty
+import com.iron.breakfast.ui.components.isLargeFont
 import com.iron.breakfast.ui.components.foodText
 import com.iron.breakfast.ui.components.AddCircle
 import com.iron.breakfast.ui.components.ButtonKind
@@ -304,7 +305,7 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
 private fun LibraryFactRow(label: String, number: String, unit: String) {
     val colors = LocalBreakfastColors.current
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
-    if (fontScale >= 1.75f) {
+    if (isLargeFont(fontScale)) {
         Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
             Text(label, color = colors.ink, style = BreakfastType.Body)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.Bottom) {

@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.BreakfastViewModel
@@ -58,6 +59,7 @@ import com.iron.breakfast.logMealPickerLabel
 import com.iron.breakfast.pretty
 import com.iron.breakfast.ui.components.ChoiceOption
 import com.iron.breakfast.ui.components.FoodRow
+import com.iron.breakfast.ui.components.isLargeFont
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.components.foodText
@@ -160,24 +162,35 @@ internal fun LogScreen(vm: BreakfastViewModel) {
             }
         }
         // The add bar sits above whichever is taller: the keyboard or the navigation bar.
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
-                .padding(horizontal = Gutter, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Column(Modifier.weight(1f)) {
+        // At large font the button takes its own full-width row so the sum keeps its width.
+        val sum: @Composable (Modifier) -> Unit = { modifier ->
+            Column(modifier) {
                 Text("+${receiptKcal(kcal)}", color = colors.ink, style = BreakfastType.Section)
                 Text("kcal, ${foodCountLabel(logged.size)}", color = colors.soft, style = BreakfastType.Meta)
             }
+        }
+        val addButton: @Composable (Boolean) -> Unit = { fill ->
             PrimaryButton(
                 text = if (target != null) "Add to ${target.label()}" else "Add",
                 onClick = vm::submit,
                 enabled = canAdd,
-                fillWidth = false,
+                fillWidth = fill,
             )
+        }
+        val barModifier = Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
+            .padding(horizontal = Gutter, vertical = 12.dp)
+        if (isLargeFont(LocalDensity.current.fontScale)) {
+            Column(barModifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                sum(Modifier.fillMaxWidth())
+                addButton(true)
+            }
+        } else {
+            Row(barModifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                sum(Modifier.weight(1f))
+                addButton(false)
+            }
         }
     }
 }

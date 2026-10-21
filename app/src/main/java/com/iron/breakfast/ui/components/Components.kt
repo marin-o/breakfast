@@ -54,6 +54,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -454,12 +455,20 @@ fun MealHeader(
     emptyText: String? = null,
 ) {
     val colors = LocalBreakfastColors.current
+    val timeBelow = isLargeFont(LocalDensity.current.fontScale)
     Column(modifier.fillMaxWidth().padding(top = 30.dp)) {
         Hairline()
         Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Row(Modifier.weight(1f), verticalAlignment = Alignment.Bottom) {
-                Text(name, color = colors.ink, style = BreakfastType.Section)
-                if (!time.isNullOrBlank()) Text(time, color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(start = 8.dp))
+            if (timeBelow) {
+                Column(Modifier.weight(1f)) {
+                    Text(name, color = colors.ink, style = BreakfastType.Section)
+                    if (!time.isNullOrBlank()) Text(time, color = colors.soft, style = BreakfastType.Meta)
+                }
+            } else {
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.Bottom) {
+                    Text(name, color = colors.ink, style = BreakfastType.Section)
+                    if (!time.isNullOrBlank()) Text(time, color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(start = 8.dp))
+                }
             }
             Text(total, color = colors.ink, style = BreakfastType.Title, modifier = Modifier.padding(end = 8.dp))
             AddCircle(addDescription, onAdd)
@@ -515,23 +524,47 @@ fun DayTotal(
     caption: String = "kilocalories today",
 ) {
     val colors = LocalBreakfastColors.current
+    val stacked = isLargeFont(LocalDensity.current.fontScale)
     Column(modifier.fillMaxWidth()) {
         Text(kilocalories, color = colors.ink, style = BreakfastType.Hero)
         Text(caption, color = colors.soft, style = BreakfastType.Secondary)
-        Row(Modifier.fillMaxWidth().padding(top = 22.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            macros.forEach { macro ->
-                Column(Modifier.weight(1f)) {
-                    Box(Modifier.fillMaxWidth().height(2.dp).background(colors.line)) {
-                        Box(Modifier.fillMaxWidth(macro.share.coerceIn(0f, 1f)).height(2.dp).background(colors.ink))
+        if (stacked) {
+            // Large font: one macro per row, value, unit and label on one line, each with its own bar above.
+            Column(Modifier.fillMaxWidth().padding(top = 22.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                macros.forEach { macro ->
+                    Column(Modifier.fillMaxWidth()) {
+                        MacroTrack(macro.share)
+                        Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.Bottom) {
+                            Text(macro.value, color = colors.ink, style = BreakfastType.MacroValue)
+                            Text(" ${macro.unit}", color = colors.soft, style = BreakfastType.Secondary)
+                            Text(macro.label, color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.weight(1f).padding(start = 12.dp))
+                        }
                     }
-                    Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.Bottom) {
-                        Text(macro.value, color = colors.ink, style = BreakfastType.MacroValue)
-                        Text(" ${macro.unit}", color = colors.soft, style = BreakfastType.Secondary)
+                }
+            }
+        } else {
+            Row(Modifier.fillMaxWidth().padding(top = 22.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                macros.forEach { macro ->
+                    Column(Modifier.weight(1f)) {
+                        MacroTrack(macro.share)
+                        Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.Bottom) {
+                            Text(macro.value, color = colors.ink, style = BreakfastType.MacroValue)
+                            Text(" ${macro.unit}", color = colors.soft, style = BreakfastType.Secondary)
+                        }
+                        Text(macro.label, color = colors.soft, style = BreakfastType.Meta)
                     }
-                    Text(macro.label, color = colors.soft, style = BreakfastType.Meta)
                 }
             }
         }
+    }
+}
+
+/** 2dp `line` track with the macro's share as a 2dp ink fill. */
+@Composable
+private fun MacroTrack(share: Float) {
+    val colors = LocalBreakfastColors.current
+    Box(Modifier.fillMaxWidth().height(2.dp).background(colors.line)) {
+        Box(Modifier.fillMaxWidth(share.coerceIn(0f, 1f)).height(2.dp).background(colors.ink))
     }
 }
 
@@ -727,6 +760,12 @@ fun Hairline(modifier: Modifier = Modifier) {
  */
 internal fun mealRowFits(availableDp: Float, fontScale: Float): Boolean =
     (availableDp - 3 * 8f) / 4f >= 84f * fontScale.coerceAtLeast(1f)
+
+/** Font scale from which the large-font layouts take over (2.0 is the reference; 1.3 keeps the normal layout). */
+internal const val LargeFontScale = 1.8f
+
+/** True at the large-font layout: stacked macros and meal times under headings, and stacked add bars. */
+internal fun isLargeFont(fontScale: Float): Boolean = fontScale >= LargeFontScale
 
 /** The meal choices: a 2x2 grid, or one row of four when [singleRow] (Library repeat and amount sheets). */
 @Composable
