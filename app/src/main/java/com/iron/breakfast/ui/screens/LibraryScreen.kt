@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -265,7 +264,7 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
         Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Secondary)
         food.barcode?.let { Text("Barcode $it", color = colors.soft, style = BreakfastType.Secondary) }
         Hairline(Modifier.padding(top = 16.dp))
-        Text(basisLabel(food.nutrition.amount, food.nutrition.unit), color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 16.dp))
+        SectionHeading(basisLabel(food.nutrition.amount, food.nutrition.unit), Modifier.padding(top = 16.dp))
         LibraryFactRow("Energy", printedFactKcal(food.nutrition.values.calories), "kcal")
         LibraryFactRow("Fat", food.nutrition.values.fat?.pretty() ?: "—", "g")
         LibraryFactRow("Carbohydrate", food.nutrition.values.carbohydrates?.pretty() ?: "—", "g")
@@ -344,14 +343,13 @@ internal fun LibraryFoodEditScreen(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
     val food = vm.foods.firstOrNull { it.id == vm.editingLibraryFoodId } ?: return
     val draft = vm.draft
-    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     BackHandler { vm.closeCustom() }
     Column(Modifier.fillMaxSize().background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         TopBar("Edit food", vm::closeCustom, Modifier.padding(top = 8.dp))
         Field("Name", draft.name, { draft.name = it })
         Field("Brand", draft.brand, { draft.brand = it })
         FoodBarcodeField(vm)
-        Text("Local edits stay on this device", color = colors.soft, style = BreakfastType.Secondary)
+        Text("Source: ${entrySourceLabel(food)}. Local edits stay on this device.", color = colors.soft, style = BreakfastType.Secondary)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Field("kcal", draft.calories, { draft.calories = it }, Modifier.weight(1f))
             Field("Protein, g", draft.protein, { draft.protein = it }, Modifier.weight(1f))
@@ -370,30 +368,33 @@ internal fun LibraryFoodEditScreen(vm: BreakfastViewModel) {
         if (draft.servingFormOpen) {
             val amountError = draft.servingAmount.toDoubleOrNull()?.let { !it.isFinite() || it <= 0.0 } ?: true
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Field("Name", draft.servingLabel, { draft.servingLabel = it })
+                // "1 [name] = [amount]", then the unit choices, as drawn.
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                    Text("1", color = colors.ink, style = BreakfastType.Body, modifier = Modifier.padding(top = 22.dp))
+                    Field("Name", draft.servingLabel, { draft.servingLabel = it }, Modifier.weight(1f))
+                    Text("=", color = colors.ink, style = BreakfastType.Body, modifier = Modifier.padding(top = 22.dp))
                     Field(
                         "Amount", draft.servingAmount, { draft.servingAmount = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f),
                         error = amountError,
                         errorMessage = if (amountError) "Enter more than 0 ${draft.servingUnit.label}." else null,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     )
-                    Row(Modifier.width(120.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(MeasureUnit.GRAM, MeasureUnit.MILLILITER).forEach { unit ->
-                            ChoiceOption(unit.displayLabel(), draft.servingUnit == unit, { draft.servingUnit = unit }, Modifier.width(56.dp))
-                        }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(MeasureUnit.GRAM, MeasureUnit.MILLILITER).forEach { unit ->
+                        ChoiceOption(unit.displayLabel(), draft.servingUnit == unit, { draft.servingUnit = unit }, Modifier.width(72.dp))
                     }
                 }
-                PrimaryButton("Add serving", vm::commitDraftServing, Modifier.widthIn(min = 150.dp * fontScale), fillWidth = false)
-                TertiaryButton("Cancel", draft::cancelServing)
+                SecondaryButton("Add serving", vm::commitDraftServing)
+                TertiaryButton("Cancel", draft::cancelServing, Modifier.align(Alignment.CenterHorizontally), soft = true)
             }
         } else {
-            SecondaryButton("Add serving", {
+            TertiaryButton("Add serving", {
                 draft.servingUnit = food.nutrition.unit.takeIf { it == MeasureUnit.GRAM || it == MeasureUnit.MILLILITER } ?: MeasureUnit.GRAM
                 draft.servingAmount = "0"
                 draft.servingLabel = ""
                 draft.servingFormOpen = true
-            }, Modifier.widthIn(min = 150.dp * fontScale), fillWidth = false)
+            })
         }
         SectionHeading("Aliases")
         draft.aliases.forEach { alias ->
