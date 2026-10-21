@@ -231,6 +231,12 @@ internal fun LibraryComposer(vm: BreakfastViewModel) {
 
 private fun servingDisplayName(conversion: ServingConversion): String = conversion.label?.takeIf { it.isNotBlank() } ?: conversion.unit.displayLabel()
 
+/** The serving's name with its count: "1 tbsp", "1 bottle". A printed name that already starts with a count is kept as typed. */
+internal fun servingRowName(conversion: ServingConversion): String {
+    val name = servingDisplayName(conversion)
+    return if (name.firstOrNull()?.isDigit() == true) name else "1 $name"
+}
+
 @Composable private fun ServingValue(conversion: ServingConversion, food: FoodRecord) {
     val value = "${conversion.baseUnitsPerServing.pretty()} ${food.nutrition.unit.label}"
     Text(if (conversion.approximate) "≈$value" else value, color = LocalBreakfastColors.current.soft, style = BreakfastType.Body)
@@ -268,7 +274,7 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
             SectionHeading("Servings", Modifier.padding(top = 16.dp))
             servings.forEach { conversion ->
                 Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text(servingDisplayName(conversion), color = colors.ink, style = BreakfastType.Body)
+                    Text(servingRowName(conversion), color = colors.ink, style = BreakfastType.Body)
                     ServingValue(conversion, food)
                 }
             }
@@ -360,7 +366,7 @@ internal fun LibraryFoodEditScreen(vm: BreakfastViewModel) {
         SectionHeading("Servings")
         draft.servings.forEach { conversion ->
             Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("1 ${servingDisplayName(conversion)} = ${conversion.baseUnitsPerServing.pretty()} ${food.nutrition.unit.label}", Modifier.weight(1f), color = colors.ink, style = BreakfastType.Body)
+                Text("${servingRowName(conversion)} = ${conversion.baseUnitsPerServing.pretty()} ${food.nutrition.unit.label}", Modifier.weight(1f), color = colors.ink, style = BreakfastType.Body)
                 AddCircle("Remove serving", { draft.servings = draft.servings - conversion }, icon = Icons.Outlined.Close)
             }
         }

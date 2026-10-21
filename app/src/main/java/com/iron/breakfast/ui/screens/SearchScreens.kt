@@ -104,32 +104,36 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
                     }
                 }
                 vm.offSearchMessage?.let { message ->
-                    if (vm.offSearchUnavailable) {
-                        SearchStatus(
+                    val createPersonal = { vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) }
+                    when (offSearchStatus(vm.offSearchUnavailable, message)) {
+                        OffSearchStatus.Offline -> SearchStatus(
                             title = "No connection",
                             body = "Open Food Facts needs internet. Local foods still work.",
                             retry = vm::submitSearch,
-                            createPersonal = { vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) },
+                            createPersonal = createPersonal,
                         )
-                    } else if (message.startsWith("No usable result")) {
-                        SearchStatus(
-                            title = "No results",
-                            body = null,
-                            retry = null,
-                            createPersonal = { vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) },
-                        )
-                    } else {
-                        SearchStatus(
+                        OffSearchStatus.NoResults -> SearchStatus(title = "No results", body = null, retry = null, createPersonal = createPersonal)
+                        OffSearchStatus.Failed -> SearchStatus(
                             title = "Search failed",
                             body = "Open Food Facts returned an error.",
                             retry = vm::submitSearch,
-                            createPersonal = { vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) },
+                            createPersonal = createPersonal,
                         )
                     }
                 }
             }
         }
     }
+}
+
+/** Which status block the Open Food Facts search shows after a query. */
+internal enum class OffSearchStatus { Offline, NoResults, Failed }
+
+/** Offline wins; a "No usable result" message is an empty result; anything else is a failed search. */
+internal fun offSearchStatus(unavailable: Boolean, message: String): OffSearchStatus = when {
+    unavailable -> OffSearchStatus.Offline
+    message.startsWith("No usable result") -> OffSearchStatus.NoResults
+    else -> OffSearchStatus.Failed
 }
 
 /** The soft "Search" label above both search fields. */

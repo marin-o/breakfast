@@ -1734,11 +1734,18 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
             Column(Modifier.fillMaxWidth().padding(top = 96.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Not sent", color = colors.ink, style = BreakfastType.Title)
                 Text(
-                    "$message Your food and entries are saved on this phone.",
+                    message,
                     color = colors.soft,
                     style = BreakfastType.Secondary,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(top = 8.dp).widthIn(max = 290.dp),
+                )
+                Text(
+                    "Your food and entries are saved on this phone.",
+                    color = colors.soft,
+                    style = BreakfastType.Secondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 4.dp).widthIn(max = 290.dp),
                 )
             }
             Column(Modifier.fillMaxWidth().padding(top = 36.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
