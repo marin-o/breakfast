@@ -71,15 +71,17 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
 internal fun LogScreen(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
     BackHandler(onBack = vm::closeLog)
-    val previews = vm.quickAddPreviews()
-    val suggestions = vm.quickAddSuggestions()
+    // One resolution pass per draft: rows, choices and the add-bar sum all come from the same planner run.
+    val draft = remember(vm.input, vm.foods, vm.ready) { vm.logDraftView() }
+    val previews = draft.previews
+    val suggestions = draft.suggestions
     val target = vm.logTargetMeal()
     // The bar counts what Add will save, including the active segment's preselected match.
-    val logged = vm.quickAddLoggedPreviews()
+    val logged = draft.logged
     val kcal = logged.sumOf { it.calculation.nutrition.calories }
     // Any draft can be added: unresolved segments open the resolve-unknown flow, as before.
     val canAdd = vm.input.isNotBlank() && !vm.busy
-    val unresolved = vm.quickAddUnresolved()
+    val unresolved = draft.unresolved
     val placeholder = if (vm.selectedDayKey == dayKeyForToday()) "2 eggs, 1 banana" else "Add to ${shortDateLabel(vm.selectedDayKey)}"
     val requester = remember { FocusRequester() }
     LaunchedEffect(Unit) { requester.requestFocus() }
@@ -138,7 +140,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
             }
             if (suggestions.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.Bottom) {
-                    Text(foodText(vm.quickAddActivePhrase()), color = colors.ink, style = BreakfastType.Body, modifier = Modifier.weight(1f))
+                    Text(foodText(draft.activePhrase),color = colors.ink, style = BreakfastType.Body, modifier = Modifier.weight(1f))
                     Text("which one?", color = colors.soft, style = BreakfastType.Meta)
                 }
                 Row(

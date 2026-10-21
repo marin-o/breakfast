@@ -22,11 +22,6 @@ class BreakfastEngine(private val store: BreakfastStore) {
 
     fun parse(input: String): ParsedSegment = parser.parse(input)
 
-    fun suggestions(input: String): List<RankedFood> {
-        val parsed = parser.parse(input)
-        return matcher().suggestions(parsed.foodPhrase, store.preferenceMap())
-    }
-
     fun search(query: String): List<RankedFood> = matcher().suggestions(query, store.preferenceMap(), 20)
 
     fun alternativesFor(entry: MealEntry): List<RankedFood> {
@@ -42,45 +37,35 @@ class BreakfastEngine(private val store: BreakfastStore) {
         mealSlot: MealSlot = MealSlot.BREAKFAST,
         dayKey: String = dayKeyForEpochMs(nowMs)
     ): SavedMeal {
-        val unresolved = mutableListOf<String>()
-        val entries = parser.split(input).mapNotNull { raw ->
-            val parsed = parser.parse(raw)
-            val match = matcher().best(parsed.foodPhrase, store.preferenceMap())
-            if (match == null) {
-                unresolved += raw
-                return@mapNotNull null
-            }
-            val amount = parsed.amount ?: match.food.defaultAmount
-            val unit = parsed.unit ?: match.food.defaultUnit
-            val calculation = calculator.calculate(match.food, amount, unit)
-            if (!calculation.supported) {
-                unresolved += raw
-                return@mapNotNull null
-            }
+        val plan = planner().plan(input)
+        val entries = plan.entries.map { resolved ->
             MealEntry(
                 id = UUID.randomUUID().toString(),
-                foodId = match.food.id,
-                foodName = match.food.name,
-                enteredAmount = amount,
-                enteredUnit = unit,
-                resolvedBaseAmount = calculation.resolvedBaseAmount,
-                nutritionSnapshot = calculation.nutrition,
-                conversionProvenance = calculation.provenance,
-                approximateConversion = calculation.approximate,
+                foodId = resolved.food.id,
+                foodName = resolved.food.name,
+                enteredAmount = resolved.amount,
+                enteredUnit = resolved.unit,
+                resolvedBaseAmount = resolved.calculation.resolvedBaseAmount,
+                nutritionSnapshot = resolved.calculation.nutrition,
+                conversionProvenance = resolved.calculation.provenance,
+                approximateConversion = resolved.calculation.approximate,
                 savedAtEpochMs = nowMs,
-                sourcePhrase = raw,
+                sourcePhrase = resolved.raw,
                 mealSlot = mealSlot,
                 dayKey = dayKey,
-                resolvedBaseUnit = match.food.nutrition.unit
+                resolvedBaseUnit = resolved.food.nutrition.unit
             )
         }
         if (entries.isNotEmpty()) store.saveEntries(entries)
         return SavedMeal(
             entries = entries,
             totals = entries.fold(NutritionValues.ZERO) { total, entry -> total + entry.nutritionSnapshot },
-            unresolvedSegments = unresolved
+            unresolvedSegments = plan.unresolved
         )
     }
+
+    /** The planner for the current foods and preferences. [save] and the Log page both resolve through it. */
+    fun planner(): LogPlanner = LogPlanner(matcher(), store.preferenceMap(), calculator, parser)
 
     suspend fun replaceEntry(entryId: String, foodId: String): ReplacementResult {
         val old = store.entries().firstOrNull { it.id == entryId }

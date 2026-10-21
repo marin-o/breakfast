@@ -140,7 +140,9 @@ import com.iron.breakfast.domain.normalizeBarcode
 import com.iron.breakfast.domain.resolveNutrition
 import com.iron.breakfast.domain.validateBarcodeInput
 import com.iron.breakfast.domain.ReplacementResult
-import com.iron.breakfast.domain.ParsedSegment
+import com.iron.breakfast.domain.LogPlan
+import com.iron.breakfast.domain.LogPlanner
+import com.iron.breakfast.domain.SegmentResolution
 import com.iron.breakfast.domain.ShorthandParser
 import com.iron.breakfast.domain.toMeasureUnit
 import com.iron.breakfast.domain.dayKeyForEpochMs
@@ -219,12 +221,6 @@ internal fun productReviewOrigin(slot: MealSlot?, resolving: Boolean, queueNotEm
 
 enum class ScannerUnavailableReason { PERMISSION_DENIED, NO_USABLE_CAMERA }
 
-internal data class QuickAddPreview(
-    val food: FoodRecord,
-    val amount: Double,
-    val unit: MeasureUnit,
-    val calculation: Calculation,
-)
 
 private enum class EntryGesturePhase { UP, HORIZONTAL, VERTICAL, CONSUMED }
 
@@ -645,15 +641,31 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     internal fun logTargetMeal(): MealSlot? = logTargetMealOf(logChosen, mealMarkers(input), logPreset)
     private fun quickAddSegments(): List<String> = input.split(',').map(String::trim).filter(String::isNotBlank)
     private fun quickAddActiveSegment(): String = input.substringAfterLast(',').trim()
-    internal fun quickAddSuggestions(): List<RankedFood> {
-        if (!ready || input.isBlank()) return emptyList()
+    /** The segment being typed, resolved by the shared planner. Null after a trailing comma, for a meal word, or when blank. */
+    private fun quickAddActiveResolution(planner: LogPlanner): SegmentResolution? {
+        if (!ready || input.isBlank()) return null
         val active = quickAddActiveSegment()
-        if (active.isBlank() || mealMarkers(active).isNotEmpty()) return emptyList()
-        val parsed = parser.parse(active)
-        return engine.suggestions(parsed.foodPhrase).take(4)
+        if (active.isBlank() || mealMarkers(active).isNotEmpty()) return null
+        return planner.resolve(active)
     }
-    /** The typed food phrase of the segment being typed: the name of the ambiguous group. */
-    internal fun quickAddActivePhrase(): String = parser.parse(quickAddActiveSegment()).foodPhrase
+    /**
+     * Everything the Log page shows for the current draft, computed in one pass from one planner, so the rows,
+     * the choices and the add-bar sum all come from the same resolution.
+     */
+    internal fun logDraftView(): LogDraftView {
+        val planner = engine.planner()
+        val completed = quickAddCompletedSegments()
+        val resolved = completed.associateWith { planner.resolve(it) }
+        val active = quickAddActiveResolution(planner)
+        return LogDraftView(
+            previews = completed.mapNotNull { resolved[it]?.takeIf { r -> r.supported } },
+            unresolved = completed.filter { mealMarkerSlots(it).isEmpty() && resolved[it]?.supported != true },
+            // The first choice is preselected and is the food Add logs.
+            suggestions = active?.ranked.orEmpty(),
+            activePhrase = parser.parse(quickAddActiveSegment()).foodPhrase,
+            logged = draftLogPlan(input, planner).entries,
+        )
+    }
     /** kcal of [food] at the amount typed for the active segment, or its default amount. */
     internal fun quickAddSuggestionCalories(food: FoodRecord): Double {
         val parsed = parser.parse(quickAddActiveSegment())
@@ -666,23 +678,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val segments = quickAddSegments()
         return if (input.trimEnd().endsWith(',')) segments else segments.dropLast(1)
     }
-    private fun quickAddResolve(raw: String): QuickAddPreview? {
-        val parsed = parser.parse(raw)
-        val food = engine.search(parsed.foodPhrase).firstOrNull()?.food ?: return null
-        return resolveLogSegment(food, parsed, calculator)
-    }
-    internal fun quickAddPreviews(): List<QuickAddPreview> = quickAddCompletedSegments().mapNotNull(::quickAddResolve)
-    /**
-     * The rows Add will save, as save() resolves them: the finished segments and the active one when it matches
-     * a food. The active segment uses the preselected suggestion, which is the food save() picks for it.
-     */
-    internal fun quickAddLoggedPreviews(): List<QuickAddPreview> {
-        val active = quickAddSuggestions().firstOrNull()?.let { resolveLogSegment(it.food, parser.parse(quickAddActiveSegment()), calculator) }
-        return logDraftPreviews(amountlessSearch = amountlessDailySearch(input) != null, finished = quickAddPreviews(), active = active)
-    }
-    /** Finished segments that match no food, shown on the Log page as "Not in your foods". Meal words are not foods. */
-    internal fun quickAddUnresolved(): List<String> = quickAddCompletedSegments()
-        .filter { mealMarkerSlots(it).isEmpty() && quickAddResolve(it) == null }
     fun chooseQuickSuggestion(food: FoodRecord) {
         val active = quickAddActiveSegment()
         val parsed = parser.parse(active)
@@ -1521,17 +1516,24 @@ internal fun logSubmitPlan(ready: Boolean, busy: Boolean, input: String, typedMa
     return LogSubmitPlan.Save(target)
 }
 
-/** The Log draft rows Add would save. Empty when Add opens the Library search instead of logging. */
-internal fun logDraftPreviews(amountlessSearch: Boolean, finished: List<QuickAddPreview>, active: QuickAddPreview?): List<QuickAddPreview> =
-    if (amountlessSearch) emptyList() else finished + listOfNotNull(active)
+/**
+ * What Add logs for a Log draft: the input with meal words removed, as submit() sends it to save().
+ * An amountless draft opens the Library search instead, so it logs nothing.
+ */
+internal data class LogDraftView(
+    /** Finished segments shown as rows. */
+    val previews: List<SegmentResolution>,
+    /** Finished segments that match no food, shown as "Not in your foods". */
+    val unresolved: List<String>,
+    /** Choices for the segment being typed; the first is preselected and logged. */
+    val suggestions: List<RankedFood>,
+    val activePhrase: String,
+    /** What Add will save; the add bar's sum and count come from this. */
+    val logged: List<SegmentResolution>,
+)
 
-/** One segment resolved the way save() does: the typed amount and unit, or the food's defaults. Null when unsupported. */
-internal fun resolveLogSegment(food: FoodRecord, parsed: ParsedSegment, calculator: NutritionCalculator): QuickAddPreview? {
-    val amount = parsed.amount ?: food.defaultAmount
-    val unit = parsed.unit ?: food.defaultUnit
-    val calculation = calculator.calculate(food, amount, unit)
-    return QuickAddPreview(food, amount, unit, calculation).takeIf { calculation.supported }
-}
+internal fun draftLogPlan(input: String, planner: LogPlanner): LogPlan =
+    if (amountlessDailySearch(input) != null) LogPlan(emptyList(), emptyList()) else planner.plan(removeAllMealMarkerTokens(input))
 
 internal fun MealSlot.label() = name.lowercase().replaceFirstChar { it.titlecase() }
 internal fun Double.pretty() = if (this % 1 == 0.0) "%.0f".format(Locale.ROOT, this) else "%.1f".format(Locale.ROOT, this)
