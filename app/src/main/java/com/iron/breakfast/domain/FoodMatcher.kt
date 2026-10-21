@@ -26,6 +26,7 @@ class FoodMatcher(
         val nameWords: Set<String>,
         val canonicalNameWords: Set<String>,
         val looseNameWords: Set<String>,
+        val categoryWords: Set<String>,
         val normalizedNames: Set<String>,
         val normalizedAliases: Set<String>
     )
@@ -35,6 +36,7 @@ class FoodMatcher(
             .joinToString(" ").lowercase(Locale.ROOT)
         val canonicalNames = Transliteration.canonical(names)
         val nameWords = tokens(food.allNames().joinToString(" ")).toSet()
+        val categoryWords = tokens(food.category).toSet()
         IndexedFood(
             food = food,
             names = names,
@@ -43,6 +45,7 @@ class FoodMatcher(
             canonicalNames = canonicalNames,
             canonicalTokens = tokens(canonicalNames).toSet(),
             nameWords = nameWords,
+            categoryWords = categoryWords,
             canonicalNameWords = nameWords.mapTo(mutableSetOf(), Transliteration::canonical),
             looseNameWords = nameWords.mapTo(mutableSetOf(), Transliteration::loose),
             normalizedNames = food.allNames().mapTo(mutableSetOf(), ::normalize),
@@ -58,6 +61,7 @@ class FoodMatcher(
         val canonicalStems = stems(canonical)
         val typoAllowance = typoAllowance(raw)
         val canonicalTypoAllowance = typoAllowance(canonical)
+        val isShortWord = raw.length < 3 && raw.all { it.isLetter() }
         val isModifier = raw in MODIFIERS || raw.endsWith("%") || raw.matches(NUMERIC_TOKEN_PATTERN)
     }
 
@@ -123,6 +127,10 @@ class FoodMatcher(
      */
     private fun hit(query: QueryToken, indexed: IndexedFood): TokenHit? {
         val raw = query.raw
+        // A short word (under three letters) names a food only as a whole word: "m" must not find "Grandma's".
+        if (query.isShortWord) {
+            return if (raw in indexed.nameWords || raw in indexed.categoryWords || query.canonical in indexed.canonicalNameWords) EXACT_HIT else null
+        }
         if (raw in indexed.names || raw in indexed.category) return EXACT_HIT
         if (query.stems.any { it in indexed.nameTokens }) return STEM_HIT
         if (query.canonical in indexed.canonicalNames || query.canonicalStems.any { it in indexed.canonicalTokens }) {
@@ -164,6 +172,8 @@ class FoodMatcher(
 
     private fun tokens(value: String): List<String> = value
         .lowercase(Locale.ROOT)
+        // An apostrophe joins its word ("Jerry's" is one word), so its "s" is never a word of its own.
+        .replace("'", "").replace("’", "")
         .replace(TOKEN_CHARACTER_PATTERN, " ")
         .split(WHITESPACE_PATTERN)
         .filter { it.isNotBlank() && it !in STOP_WORDS }

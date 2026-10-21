@@ -208,3 +208,36 @@ class FixPassTest {
         assertFalse(planner.plan(input).entries.isEmpty())
     }
 }
+
+class FixPassWordTest {
+    private val fixtures = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+
+    @Test fun shortAndApostropheWordsNeverFindAFoodBySubstring() {
+        // "M", "s" and "Jerry's" used to match "Grandma's ajvar"; now a short word must be a whole word.
+        assertEquals(listOf("M&M"), fixtures.plan("M&M").unresolved)
+        assertEquals(listOf("Ben & Jerry's"), fixtures.plan("Ben & Jerry's").unresolved)
+        assertEquals(listOf("Jerry's"), fixtures.plan("Jerry's").unresolved)
+        assertTrue(fixtures.plan("M&M").entries.isEmpty())
+    }
+
+    @Test fun aPartialNumberWordNameResolvesToTheFoodWithItsDefault() {
+        val grain = LogPlanner(FoodMatcher(FoodCatalog.fixtures + FoodRecord(
+            id = "tenbread", name = "Ten grain bread", aliases = emptyList(), category = "Bread", origin = FoodOrigin.CUSTOM,
+            nutrition = NutritionBasis(1.0, MeasureUnit.PIECE, NutritionValues(100.0, 5.0, 10.0, 2.0)),
+            defaultAmount = 1.0, defaultUnit = MeasureUnit.PIECE,
+        )))
+        // "ten" used to read as 10 pieces; the food's own name carries it, so it is one piece.
+        assertEquals(1.0, requireNotNull(grain.resolve("ten grain")).amount, 0.0)
+    }
+
+    @Test fun aWarmMilkIsTheDefaultMilkNotOneMillilitre() {
+        val milk = FoodRecord(
+            id = "milk", name = "Milk", aliases = emptyList(), category = "Dairy", origin = FoodOrigin.GENERIC,
+            nutrition = NutritionBasis(100.0, MeasureUnit.MILLILITER, NutritionValues(60.0, 3.0, 5.0, 3.0)),
+            defaultAmount = 100.0, defaultUnit = MeasureUnit.MILLILITER,
+        )
+        val planner = LogPlanner(FoodMatcher(listOf(milk)))
+        assertEquals(100.0, requireNotNull(planner.resolve("a warm milk")).amount, 0.0)
+        assertEquals(MeasureUnit.MILLILITER, requireNotNull(planner.resolve("a warm milk")).unit)
+    }
+}
