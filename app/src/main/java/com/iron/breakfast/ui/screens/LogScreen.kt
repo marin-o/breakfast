@@ -74,7 +74,9 @@ internal fun LogScreen(vm: BreakfastViewModel) {
     val previews = vm.quickAddPreviews()
     val suggestions = vm.quickAddSuggestions()
     val target = vm.logTargetMeal()
-    val kcal = previews.sumOf { it.calculation.nutrition.calories }
+    // The bar counts what Add will save, including the active segment's preselected match.
+    val logged = vm.quickAddLoggedPreviews()
+    val kcal = logged.sumOf { it.calculation.nutrition.calories }
     // Any draft can be added: unresolved segments open the resolve-unknown flow, as before.
     val canAdd = vm.input.isNotBlank() && !vm.busy
     val unresolved = vm.quickAddUnresolved()
@@ -166,7 +168,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
         ) {
             Column(Modifier.weight(1f)) {
                 Text("+${receiptKcal(kcal)}", color = colors.ink, style = BreakfastType.Section)
-                Text("kcal, ${foodCountLabel(previews.size)}", color = colors.soft, style = BreakfastType.Meta)
+                Text("kcal, ${foodCountLabel(logged.size)}", color = colors.soft, style = BreakfastType.Meta)
             }
             PrimaryButton(
                 text = if (target != null) "Add to ${target.label()}" else "Add",
