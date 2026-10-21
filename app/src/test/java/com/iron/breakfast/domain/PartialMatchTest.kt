@@ -33,10 +33,16 @@ class PartialMatchTest {
 
     @Test fun aFullMatchStillResolvesAndIsPreselected() {
         assertTrue(requireNotNull(planner.draft("1 ban").active).ranked.first().fullMatch)
-        assertTrue(planner.draft("1 ban").preselected)
-        assertTrue(planner.draft("1 tsp pb").preselected)
-        assertTrue(planner.draft("oats").preselected)
-        assertTrue(planner.draft("100g buckwheat").preselected)
+        // A clean single candidate is an entry row, not a preselected chip.
+        listOf("1 ban", "oats", "100g buckwheat").forEach { input ->
+            val draft = planner.draft(input)
+            assertTrue(input, draft.activeRow != null)
+            assertTrue(input, draft.choices.isEmpty())
+        }
+        // "pb" matches both peanut butters, so it is a real choice with the clean top preselected.
+        val pb = planner.draft("1 tsp pb")
+        assertTrue(pb.choices.size > 1)
+        assertTrue(pb.preselected)
     }
 
     @Test fun theOwnersTypicalInputsStillResolveWithoutAChoice() {

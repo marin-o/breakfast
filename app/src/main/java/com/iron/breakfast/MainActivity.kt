@@ -663,7 +663,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             unresolved = draft.unresolved,
             suggestions = draft.choices,
             preselected = draft.preselected,
-            activePhrase = if (draft.activeText.isBlank()) "" else planner.phraseOf(draft.activeText),
+            activePhrase = draft.activePhrase,
             logged = draftLogPlan(input, planner).entries,
         )
     }

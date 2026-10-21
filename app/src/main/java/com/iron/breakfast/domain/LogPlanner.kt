@@ -158,16 +158,21 @@ class LogPlanner(
         // typed when it is not logged (no match, no conversion, or only a choice). Its choices are shown as well.
         val activeIsRow = activeText.isNotBlank() && ShorthandLexicon.mealSlotOf(activeText) == null &&
             (active == null || !active.supported || active.needsChoice)
-        return DraftView(
+        val view = DraftView(
             previews = resolutions.filterNotNull().filter { it.supported && !it.needsChoice },
             unresolved = completed.filterIndexed { index, _ -> resolutions[index].let { it == null || !it.supported || it.needsChoice } } +
                 listOfNotNull(activeText.takeIf { activeIsRow }),
             activeText = activeText,
             active = active,
             logged = plan(input).entries,
+            activePhrase = if (activeText.isBlank()) "" else stripArticle(phraseOf(activeText)),
         )
+        // A clean single-candidate active part is an entry row, like any finished part.
+        return view.copy(previews = view.previews + listOfNotNull(view.activeRow))
     }
 
+    /** A leading "a" or "an" is not part of the food the user named: "a bananna" reads "bananna". */
+    private fun stripArticle(text: String): String = text.replace(Regex("(?i)^(?:a|an)\\s+"), "")
 
     companion object {
         /** How many matches the Log page offers as choices. The preselected one is always the first. */
@@ -185,7 +190,22 @@ data class DraftView(
     val activeText: String,
     val active: SegmentResolution?,
     val logged: List<SegmentResolution>,
+    /** The active part's text as the choice label shows it. */
+    val activePhrase: String = "",
 ) {
-    val choices: List<RankedFood> get() = active?.ranked.orEmpty()
-    val preselected: Boolean get() = active != null && active.supported && !active.needsChoice
+    /** The active part when it is a clean match with exactly one candidate: an entry row, never a choice. */
+    val activeRow: SegmentResolution? get() = active?.takeIf { it.supported && !it.needsChoice && it.ranked.size == 1 }
+
+    /**
+     * The "which one?" choices. Only a part with several candidates, or a single weak (partial or typo) match, offers
+     * choices. A single clean candidate is a row instead, and an unsupported single one is an unresolved row.
+     */
+    val choices: List<RankedFood> get() = when {
+        active == null || activeRow != null -> emptyList()
+        !active.needsChoice && active.ranked.size == 1 -> emptyList()
+        else -> active.ranked
+    }
+
+    /** The first choice is preselected only for a clean match among several candidates, which Add logs. */
+    val preselected: Boolean get() = active != null && active.supported && !active.needsChoice && active.ranked.size > 1
 }

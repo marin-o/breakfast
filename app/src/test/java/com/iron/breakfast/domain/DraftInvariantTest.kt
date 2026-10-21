@@ -50,6 +50,15 @@ class DraftInvariantTest {
         assertEquals(emptyList<String>(), failures)
     }
 
+    /** A choice group with one candidate is never preselected: a single clean match is an entry row instead. */
+    @Test fun noSingleCandidateChoiceIsPreselectedForAnyInput() {
+        val bad = (messy + listOf("milk", "egg", "bananna", "a bananna", "an egg", "oats", "1 ban")).filter { input ->
+            val draft = planner.draft(input)
+            draft.choices.size == 1 && draft.preselected
+        }
+        assertEquals(emptyList<String>(), bad)
+    }
+
     @Test fun twoEggsAndABannanaShowsEggsAndBananaNotNothing() {
         val draft = planner.draft("two eggs and a bananna")
         assertEquals(listOf("egg", "banana"), draft.logged.map { it.food.id })
