@@ -54,14 +54,14 @@ class LogDraftTotalsTest {
         assertEquals(31.0, kcal("1 tsp pb"), 1e-9)
     }
 
-    @Test fun twoNumbersInOneSegmentAreUnresolvedForSaveAndTheBarAlike() {
-        // "2 egg 1 banana" is one segment with a second quantity, which matches no food. Add saves nothing,
-        // and the bar must sum nothing too, because both use the same plan.
+    @Test fun twoQuantitiesInOneSegmentSplitIntoTwoFoodsForSaveAndTheBarAlike() {
+        // "2 egg 1 banana" has no comma, but a new quantity after a food word starts a new part. Add saves both
+        // foods, and the bar sums both, because both use the same plan.
         assertNull(planner.resolve("2 egg 1 banana"))
         val plan = draft("2 egg 1 banana")
-        assertTrue(plan.entries.isEmpty())
-        assertEquals(listOf("2 egg 1 banana"), plan.unresolved)
-        assertEquals(0.0, kcal("2 egg 1 banana"), 1e-9)
+        assertEquals(listOf("egg", "banana"), plan.entries.map { it.food.id })
+        assertTrue(plan.unresolved.isEmpty())
+        assertEquals(240.0, kcal("2 egg 1 banana"), 1e-9)
     }
 
     @Test fun trailingCommaAddsNoPhantomSegment() {

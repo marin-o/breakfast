@@ -31,18 +31,32 @@ class LogPlanner(
     /** Resolves one segment. Null when no food matches. An unsupported unit still resolves; check [SegmentResolution.supported]. */
     fun resolve(raw: String): SegmentResolution? {
         val parsed = parser.parse(raw)
-        val ranked = matcher.suggestions(parsed.foodPhrase, preferences, SUGGESTION_LIMIT)
+        // A part that is exactly a food's name carries no amount: "Protein 2 bar" is one bar, not two.
+        val wholeName = matcher.isExactName(raw)
+        val ranked = matcher.suggestions(if (wholeName) raw else parsed.foodPhrase, preferences, SUGGESTION_LIMIT)
         val food = ranked.firstOrNull()?.food ?: return null
-        val amount = parsed.amount ?: food.defaultAmount
-        val unit = parsed.unit ?: food.defaultUnit
+        val amount = if (wholeName) food.defaultAmount else parsed.amount ?: food.defaultAmount
+        val unit = if (wholeName) food.defaultUnit else parsed.unit ?: food.defaultUnit
         return SegmentResolution(raw, ranked, food, amount, unit, calculator.calculate(food, amount, unit))
     }
 
-    /** Every comma segment of [input], resolved; segments that match nothing or have no conversion are unresolved. */
+    private val probe = object : FoodProbe {
+        override fun resolves(text: String): Boolean = resolve(text) != null
+        override fun covers(phrase: String): Boolean = matcher.covers(phrase)
+    }
+
+    /** The parts of [input] the Log page works with, meal words included. Every caller segments through here. */
+    fun segments(input: String): List<SegmentSpan> = parser.parts(input, probe)
+
+    /** True when the input ends with a separator, so the last part is finished and nothing is being typed. */
+    fun endsOpen(input: String): Boolean = parser.endsOpen(input)
+
+    /** Every part of [input], resolved; parts that match nothing or have no conversion are unresolved. Meal words are not foods. */
     fun plan(input: String): LogPlan {
         val entries = mutableListOf<SegmentResolution>()
         val unresolved = mutableListOf<String>()
-        parser.split(input).forEach { raw ->
+        parser.split(input, probe).forEach { raw ->
+            if (ShorthandLexicon.mealSlotOf(raw) != null) return@forEach
             val resolution = resolve(raw)
             if (resolution != null && resolution.supported) entries += resolution else unresolved += raw
         }

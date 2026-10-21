@@ -80,6 +80,24 @@ class FoodMatcher(
     fun best(phrase: String, preferences: Map<String, Preference> = emptyMap()): RankedFood? =
         suggestions(phrase, preferences, 1).firstOrNull()
 
+    /** True when [phrase] is exactly one food's name or alias, ignoring case and stop words. */
+    fun isExactName(phrase: String): Boolean {
+        val normalizedPhrase = normalize(phrase)
+        return normalizedPhrase.isNotEmpty() &&
+            indexedCatalog.any { normalizedPhrase in it.normalizedNames || normalizedPhrase in it.normalizedAliases }
+    }
+
+    /** True when [phrase] is one food's name or alias, or one food contains every word of it. Used to keep names whole. */
+    fun covers(phrase: String): Boolean {
+        if (isExactName(phrase)) return true
+        val normalizedPhrase = normalize(phrase)
+        if (normalizedPhrase.isEmpty()) return false
+        val inputTokens = tokens(expandAbbreviations(phrase))
+        return inputTokens.isNotEmpty() && indexedCatalog.any { indexed ->
+            inputTokens.all { token -> token in indexed.names || token in indexed.category }
+        }
+    }
+
     fun expandAbbreviations(phrase: String): String = phrase.lowercase(Locale.ROOT)
         .split(Regex("\\s+"))
         .joinToString(" ") { abbreviations[it] ?: it }
@@ -93,7 +111,7 @@ class FoodMatcher(
     private fun normalize(value: String): String = tokens(expandAbbreviations(value)).joinToString(" ")
 
     companion object {
-        private val STOP_WORDS = setOf("a", "the", "with", "and", "of", "my")
+        private val STOP_WORDS = ShorthandLexicon.stopWords
         private val TOKEN_CHARACTER_PATTERN = Regex("[^\\p{L}\\p{N}.%]+")
         private val WHITESPACE_PATTERN = Regex("\\s+")
         private val NUMERIC_TOKEN_PATTERN = Regex("\\d+(?:[.]\\d+)?")
