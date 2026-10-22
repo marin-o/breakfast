@@ -180,29 +180,38 @@ class FoodMatcher(
     }
 
     /**
-     * The foods a word being typed may complete: those with a name or alias word that starts with it, the same way the
-     * matcher folds Cyrillic, Latin and diacritics. Ranked by the saved preference, then by name. Nothing is preselected.
+     * The foods a word being typed may complete. The fragment matches the names and aliases in the script it was typed
+     * in (diacritics folded within that script). Only a food with no name or alias in that script falls back to the
+     * transliterated spelling, so "cev" finds Чевап but "bu" does not find a Cyrillic "бут". Ranked by the saved
+     * preference, then a name that starts with the fragment before one where only a later word does, then name.
      */
     fun startingWith(fragment: String, preferences: Map<String, Preference> = emptyMap(), limit: Int = 4): List<RankedFood> {
         val word = tokens(expandAbbreviations(fragment)).lastOrNull() ?: return emptyList()
-        val canonical = Transliteration.canonical(word)
+        val cyrillic = isCyrillic(word)
+        val folded = foldDiacritics(word)
+        val loose = Transliteration.loose(word)
         val now = nowMs()
-        return indexedCatalog.mapNotNull { indexed ->
-            val starts = indexed.nameWords.any { it.startsWith(word) } || indexed.canonicalNameWords.any { it.startsWith(canonical) }
-            if (!starts) return@mapNotNull null
-            // The saved preference ranks first; then a food whose whole name starts with the fragment, before one where
-            // only a later word does.
-            val namesStart = indexed.food.allNames().any { name ->
-                name.lowercase(Locale.ROOT).startsWith(word) || Transliteration.canonical(name).startsWith(canonical)
+        return catalog.mapNotNull { food ->
+            val names = food.allNames()
+            val inScript = names.filter { isCyrillic(it) == cyrillic }
+            val starts: Boolean
+            val namesStart: Boolean
+            if (inScript.isNotEmpty()) {
+                starts = inScript.any { name -> tokens(name).any { foldDiacritics(it).startsWith(folded) } }
+                namesStart = inScript.any { foldDiacritics(it).startsWith(folded) }
+            } else {
+                starts = names.any { name -> tokens(name).any { Transliteration.loose(it).startsWith(loose) } }
+                namesStart = names.any { Transliteration.loose(it).startsWith(loose) }
             }
+            if (!starts) return@mapNotNull null
             Triple(
                 RankedFood(
-                    food = indexed.food,
-                    score = (preferences[indexed.food.id]?.score(now) ?: 0.0) * 3.0,
+                    food = food,
+                    score = (preferences[food.id]?.score(now) ?: 0.0) * 3.0,
                     reasons = listOf("starts with $word"),
                 ),
                 namesStart,
-                indexed.food.name,
+                food.name,
             )
         }.sortedWith(
             compareByDescending<Triple<RankedFood, Boolean, String>> { it.first.score }
@@ -210,6 +219,12 @@ class FoodMatcher(
                 .thenBy { it.third }
         ).take(limit).map { it.first }
     }
+
+    private fun isCyrillic(text: String): Boolean = text.any { it in '\u0400'..'\u04FF' }
+
+    /** Lowercase with the Latin diacritics folded (č and ć to c, š to s, ž to z, đ to d). */
+    private fun foldDiacritics(text: String): String = text.lowercase(Locale.ROOT)
+        .replace('č', 'c').replace('ć', 'c').replace('š', 's').replace('ž', 'z').replace('đ', 'd')
 
     fun expandAbbreviations(phrase: String): String = phrase.lowercase(Locale.ROOT)
         .split(Regex("\\s+"))
