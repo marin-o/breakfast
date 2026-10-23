@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.room.withTransaction
 import com.iron.breakfast.domain.FoodRecord
+import com.iron.breakfast.domain.BuiltInCatalogSync
 import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.MealEntry
@@ -91,6 +92,7 @@ class BreakfastStore(context: Context) {
             withContext(Dispatchers.IO) {
                 database.withTransaction {
                     seedMissingFixtures()
+                    syncBuiltInFoods()
                 }
                 model = readSnapshot()
                 initialized = true
@@ -238,6 +240,18 @@ class BreakfastStore(context: Context) {
                 }
                 model = readSnapshot()
             }
+        }
+    }
+
+    /** Rewrites the stored built-in foods whose catalogue content changed; see [BuiltInCatalogSync]. */
+    private suspend fun syncBuiltInFoods() {
+        val changed = BuiltInCatalogSync.changedRows(readSnapshot().foods, FoodCatalog.fixtures)
+        changed.forEach { food ->
+            database.foodDao().upsert(food.toEntity())
+            database.foodAliasDao().deleteForFood(food.id)
+            database.servingConversionDao().deleteForFood(food.id)
+            database.foodAliasDao().insertAll(food.toAliasEntities())
+            database.servingConversionDao().insertAll(food.toConversionEntities())
         }
     }
 

@@ -1,0 +1,30 @@
+package com.iron.breakfast.domain
+
+/**
+ * Brings each stored copy of a built-in catalogue food up to the current catalogue, matched by id. Catalogue edits
+ * reach an existing install this way; a fresh install already has them.
+ *
+ * Kept as the user has it: a food the user edited (`personalOverride`), its archive state, its source identity and
+ * barcode, custom foods (not in the catalogue), and logged entries (which keep their own nutrition snapshot). Running
+ * it again changes nothing once the rows match, so it runs at every start.
+ */
+object BuiltInCatalogSync {
+    /** The stored foods whose catalogue content differs from [catalogue]: the rows to rewrite. */
+    fun changedRows(stored: List<FoodRecord>, catalogue: List<FoodRecord>): List<FoodRecord> {
+        val byId = catalogue.associateBy { it.id }
+        return stored.mapNotNull { row ->
+            val built = byId[row.id] ?: return@mapNotNull null
+            if (row.personalOverride) return@mapNotNull null
+            val synced = row.copy(
+                name = built.name,
+                category = built.category,
+                aliases = built.aliases,
+                nutrition = built.nutrition,
+                defaultAmount = built.defaultAmount,
+                defaultUnit = built.defaultUnit,
+                conversions = built.conversions,
+            )
+            synced.takeIf { it != row }
+        }
+    }
+}
