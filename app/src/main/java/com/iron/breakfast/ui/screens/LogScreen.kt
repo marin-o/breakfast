@@ -152,6 +152,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
                         quantityLine = "Not in your foods",
                         calories = "",
                         modifier = Modifier.padding(top = 4.dp),
+                        onClick = { vm.resolveNotInFoods(row) },
                     )
                 }
             }

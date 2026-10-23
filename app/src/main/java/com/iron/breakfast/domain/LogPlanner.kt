@@ -28,8 +28,8 @@ sealed interface DraftRow {
     /** A part that logs: shown with its food name, amount and kcal. */
     data class Entry(val resolution: SegmentResolution) : DraftRow
 
-    /** A typed part that does not log: shown as "Not in your foods". */
-    data class Unresolved(val text: String) : DraftRow
+    /** A typed part that does not log: shown as "Not in your foods". [start] and [end] are its span in the input. */
+    data class Unresolved(val text: String, val start: Int = -1, val end: Int = -1) : DraftRow
 }
 
 /**
@@ -83,6 +83,8 @@ class LogPlanner(
     private val preferences: Map<String, Preference> = emptyMap(),
     private val calculator: NutritionCalculator = NutritionCalculator(),
     private val parser: ShorthandParser = ShorthandParser(),
+    /** Parts the user picked in the library, by the part text they now read as. Each one resolves to its food. */
+    private val pins: Map<String, FoodRecord> = emptyMap(),
 ) {
     /** How one part reads: what the food is matched on, and whether the amount came from the food's own name. */
     private class Reading(val parsed: ParsedSegment, val wholeName: Boolean) {
@@ -99,6 +101,11 @@ class LogPlanner(
     }
 
     private fun computeResolution(raw: String): SegmentResolution? {
+        pins[raw]?.let { picked ->
+            val (amount, unit) = quantityFor(reading(raw), picked)
+            val ranked = RankedFood(picked, score = 1.0, reasons = listOf("picked"), fullMatch = true, wholeMatch = true)
+            return SegmentResolution(raw, listOf(ranked), picked, amount, unit, calculator.calculate(picked, amount, unit))
+        }
         val reading = reading(raw)
         // A word separator left inside one part ("Ben & Jerry's") names one food only when one food covers all of it.
         if (parser.hasWordSeparator(raw) && !matcher.covers(reading.phrase)) return null
@@ -152,6 +159,19 @@ class LogPlanner(
     fun chosenText(raw: String, food: FoodRecord): String {
         val (amount, unit) = quantityFor(reading(raw), food)
         return listOfNotNull(formatAmount(amount), unit.displayLabel().ifBlank { null }, food.name).joinToString(" ")
+    }
+
+    /** The query the library opens with for [raw]: the food text, without its amount ("kiselo mleko 200g" is "kiselo mleko"). */
+    fun libraryQueryFor(raw: String): String = typed(raw).foodPhrase
+
+    /**
+     * The part text that replaces [raw] once the library returns [food]: the food's name, then the amount text the user
+     * typed for the part ("kiselo mleko 200g" with Kiselo mleko reads "Kiselo mleko 200g"). Without a typed amount, the name.
+     */
+    fun pickedText(raw: String, food: FoodRecord): String {
+        val query = libraryQueryFor(raw)
+        val amountText = if (query.isBlank()) "" else raw.replaceFirst(query, "", ignoreCase = true).trim()
+        return listOf(food.name, amountText).filter { it.isNotBlank() }.joinToString(" ")
     }
 
     /**
@@ -223,7 +243,7 @@ class LogPlanner(
         val parts = segments(input)
         val open = typing && !endsOpen(input)
         val activeText = if (open) parts.lastOrNull()?.text.orEmpty() else ""
-        val finished = (if (open) parts.dropLast(1) else parts).map { it.text }.filter { ShorthandLexicon.mealSlotOf(it) == null }
+        val finished = (if (open) parts.dropLast(1) else parts).filter { ShorthandLexicon.mealSlotOf(it.text) == null }
         val rows = finished.map { rowFor(it) }.toMutableList()
 
         var active: SegmentResolution? = null
@@ -244,7 +264,7 @@ class LogPlanner(
                 // A partial or weak match is a choice group only; the group is the part's rendering, not a second row.
                 resolution.needsChoice -> active = resolution
                 // A part with no usable conversion is a Not-in-your-foods row.
-                !resolution.supported -> rows += DraftRow.Unresolved(activeText)
+                !resolution.supported -> parts.last().let { rows += DraftRow.Unresolved(activeText, it.start, it.end) }
                 // A clean single candidate is an entry row, never a choice.
                 resolution.ranked.size == 1 -> {
                     rows += DraftRow.Entry(resolution)
@@ -265,10 +285,10 @@ class LogPlanner(
         }
     }
 
-    private fun rowFor(text: String): DraftRow {
-        val resolution = resolve(text)
+    private fun rowFor(span: SegmentSpan): DraftRow {
+        val resolution = resolve(span.text)
         return if (resolution != null && resolution.supported && !resolution.needsChoice) DraftRow.Entry(resolution)
-        else DraftRow.Unresolved(text)
+        else DraftRow.Unresolved(span.text, span.start, span.end)
     }
 
     /** One bare word with no quantity: the form a name is typed in, before it is finished. */
@@ -284,3 +304,7 @@ class LogPlanner(
         private val SEPARATOR_WORD_AT_END = Regex("(?i)(?:^|\\s)(?:and|и)$")
     }
 }
+
+/** [input] with the part at [start] until [end] replaced by [text]; every other part keeps its text and place. */
+fun replaceDraftPart(input: String, start: Int, end: Int, text: String): String =
+    input.substring(0, start) + text + input.substring(end)

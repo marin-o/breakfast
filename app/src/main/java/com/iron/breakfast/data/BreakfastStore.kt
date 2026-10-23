@@ -223,24 +223,40 @@ class BreakfastStore(context: Context) {
         }
     }
 
+    /** Stores [food] without an entry. An archived food stays as it is. */
+    suspend fun addFood(food: FoodRecord) {
+        requireReady()
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                database.withTransaction {
+                    if (database.foodDao().all().firstOrNull { it.id == food.id }?.archived != true) insertFoodRows(food)
+                }
+                model = readSnapshot()
+            }
+        }
+    }
+
     suspend fun addFoodAndEntry(food: FoodRecord, entry: MealEntry) {
         requireReady()
         writeMutex.withLock {
             withContext(Dispatchers.IO) {
                 database.withTransaction {
                     val current = database.foodDao().all().firstOrNull { it.id == food.id }
-                    if (current?.archived != true) {
-                        database.foodDao().upsert(food.toEntity())
-                        database.foodAliasDao().deleteForFood(food.id)
-                        database.servingConversionDao().deleteForFood(food.id)
-                        database.foodAliasDao().insertAll(food.toAliasEntities())
-                        database.servingConversionDao().insertAll(food.toConversionEntities())
-                    }
+                    if (current?.archived != true) insertFoodRows(food)
                     database.mealEntryDao().replace(entry.toEntity())
                 }
                 model = readSnapshot()
             }
         }
+    }
+
+    /** Writes the food row with its aliases and conversions, replacing any stored ones. Runs inside a transaction. */
+    private suspend fun insertFoodRows(food: FoodRecord) {
+        database.foodDao().upsert(food.toEntity())
+        database.foodAliasDao().deleteForFood(food.id)
+        database.servingConversionDao().deleteForFood(food.id)
+        database.foodAliasDao().insertAll(food.toAliasEntities())
+        database.servingConversionDao().insertAll(food.toConversionEntities())
     }
 
     /** Rewrites the stored built-in foods whose catalogue content changed; see [BuiltInCatalogSync]. */

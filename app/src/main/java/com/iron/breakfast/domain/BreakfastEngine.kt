@@ -35,9 +35,10 @@ class BreakfastEngine(private val store: BreakfastStore) {
         input: String,
         nowMs: Long = System.currentTimeMillis(),
         mealSlot: MealSlot = MealSlot.BREAKFAST,
-        dayKey: String = dayKeyForEpochMs(nowMs)
+        dayKey: String = dayKeyForEpochMs(nowMs),
+        pins: Map<String, FoodRecord> = emptyMap(),
     ): SavedMeal {
-        val plan = planner().plan(input)
+        val plan = planner(pins).plan(input)
         val entries = plan.entries.mapIndexed { index, resolved ->
             MealEntry(
                 id = UUID.randomUUID().toString(),
@@ -65,7 +66,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
     }
 
     /** The planner for the current foods and preferences. [save] and the Log page both resolve through it. */
-    fun planner(): LogPlanner = LogPlanner(matcher(), store.preferenceMap(), calculator, parser)
+    fun planner(pins: Map<String, FoodRecord> = emptyMap()): LogPlanner = LogPlanner(matcher(), store.preferenceMap(), calculator, parser, pins)
 
     suspend fun replaceEntry(entryId: String, foodId: String): ReplacementResult {
         val old = store.entries().firstOrNull { it.id == entryId }
@@ -266,6 +267,14 @@ class BreakfastEngine(private val store: BreakfastStore) {
         store.upsertFood(food)
         matcherCatalog = null
         return food
+    }
+
+    /** Stores a food for later logs without logging it: the food a Log part was picked as. Returns the food as it is stored. */
+    suspend fun cacheFood(food: FoodRecord): FoodRecord {
+        val effectiveFood = cachedFoodForLogging(food, store.foodById(food.id), food.barcode?.let { store.foodByBarcode(it) })
+        store.addFood(effectiveFood)
+        matcherCatalog = null
+        return effectiveFood
     }
 
     suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, mealSlot: MealSlot, dayKey: String = dayKeyForEpochMs(System.currentTimeMillis())): MealEntry {
