@@ -58,6 +58,12 @@ internal fun quantityRateDisplay(
     includeRateUnit: Boolean = true,
     asciiMultiply: Boolean = false,
 ): QuantityDisplay {
+    // A counted piece is the amount the user chose ("1 piece"). Its gram conversion and kcal-per-gram rate are not a
+    // quantity to read, so they are not shown; the kcal sits in the row's own column.
+    if (entry.enteredUnit == MeasureUnit.PIECE) {
+        val count = entry.enteredAmount.pretty()
+        return QuantityDisplay(line = "$count ${if (entry.enteredAmount == 1.0) "piece" else "pieces"}")
+    }
     val basisUnit = entry.resolvedBaseUnit.takeUnless { it == MeasureUnit.UNKNOWN }
         ?: provenanceBasisUnit(entry.conversionProvenance)
         ?: entry.enteredUnit
