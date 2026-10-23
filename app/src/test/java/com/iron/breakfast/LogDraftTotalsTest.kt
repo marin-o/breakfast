@@ -82,18 +82,16 @@ class LogDraftTotalsTest {
     }
 
     @Test fun amountlessMixedDraftLogsBothSegments() {
-        // "pb" has no amount but "1 banana" does, so the draft is saved, not sent to library search.
-        assertNull(amountlessDailySearch("pb, 1 banana"))
+        // "pb" has no amount but "1 banana" does; both are logged, and nothing routes to library search.
         val logged = draft("pb, 1 banana").entries
         assertEquals(2, logged.size)
         assertEquals(720.0, kcal("pb, 1 banana"), 1e-9)
     }
 
-    @Test fun amountlessDraftOpensSearchAndLogsNothing() {
-        // The real amountlessDailySearch decides; the draft must then log nothing.
-        assertNotNull(amountlessDailySearch("pb"))
-        assertTrue(draft("pb").entries.isEmpty())
-        assertEquals(0.0, kcal("pb"), 1e-9)
+    @Test fun aBareWordLogsItsDefaultServingAndCountsInTheTotal() {
+        // Done and Add never open library search: "pb" logs its default serving and the total counts it.
+        assertEquals(1, draft("pb").entries.size)
+        assertEquals(620.0, kcal("pb"), 1e-9)
     }
 
     @Test fun duplicateFoodsAreEachLogged() {

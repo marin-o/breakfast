@@ -670,8 +670,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             choiceHint = draft.choiceHint,
             preselected = draft.preselected,
             activePhrase = draft.activePhrase,
-            // An amountless draft opens library search and logs nothing; otherwise the sum is the draft's own count.
-            logged = if (amountlessDailySearch(input, planner) != null) emptyList() else draft.logged,
+            // The sum is the draft's own count: what Add would save.
+            logged = draft.logged,
         )
     }
     /** kcal of [food] at the amount Add would log for the active part with that food: the same numbers the choice shows. */
@@ -828,12 +828,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             submitToMeal(target)
             return
         }
-        amountlessDailySearch(input, engine.planner())?.let { intent ->
-            closeLog()
-            openFocusedLibrary(logTargetMeal() ?: intent.meal, intent.phrase)
-            input = ""
-            return
-        }
         when (val plan = logSubmitPlan(ready, busy, input, mealMarkers(input), logChosen, logPreset)) {
             LogSubmitPlan.Ignore -> Unit
             is LogSubmitPlan.Error -> mealDraftError = plan.message
@@ -920,6 +914,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         busy = true
         viewModelScope.launch {
             runCatching { engine.save(input, mealSlot = target, dayKey = selectedDayKey) }.onSuccess { saved ->
+                // Nothing resolved: nothing was saved, so the Log stays open with the typed text and says what to fix.
+                if (saved.entries.isEmpty() && saved.unresolvedSegments.isNotEmpty()) {
+                    mealDraftError = "Some foods need a match."
+                    return@onSuccess
+                }
                 closeLog()
                 refresh(); if (input == captured) input = saved.unresolvedSegments.joinToString(", "); unknownQueue = saved.unresolvedSegments; unknownQueueTotal = saved.unresolvedSegments.size; unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }; resolutionContinuation = saved.unresolvedSegments.isNotEmpty(); resolverOpen = saved.unresolvedSegments.isNotEmpty(); mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
                 feedbackIds = saved.entries.filter { it.approximateConversion }.mapTo(mutableSetOf()) { it.id }; feedbackUntil = if (feedbackIds.isEmpty()) 0L else System.currentTimeMillis() + 30_000L
@@ -1457,23 +1456,6 @@ internal fun defaultServingCalculation(food: FoodRecord): Calculation =
 
 internal fun mealMarkerSlots(value: String): List<MealSlot> = ShorthandParser().split(value).mapNotNull(ShorthandLexicon::mealSlotOf)
 
-internal data class AmountlessDailySearch(val meal: MealSlot?, val phrase: String)
-
-/** An amountless draft (no part has a quantity) opens library search. [planner] segments the draft the way the Log does. */
-internal fun amountlessDailySearch(value: String, planner: LogPlanner? = null): AmountlessDailySearch? {
-    val parser = ShorthandParser()
-    val markers = mealMarkerSlots(value)
-    if (markers.size > 1) return null
-    val meal = markers.singleOrNull()
-    val parts = (planner?.segments(value)?.map { it.text } ?: parser.split(value))
-        .filter { ShorthandLexicon.mealSlotOf(it) == null }
-    // A number word or an article counts as a quantity: "a banana" logs, it does not open search.
-    if (parts.isEmpty() || parts.any { parser.parse(it).let { p -> p.amount != null || p.wordQuantity } }) return null
-    val phrase = parts.joinToString(", ") { planner?.phraseOf(it) ?: parser.parse(it).foodPhrase }.trim()
-    return phrase.takeIf { it.isNotBlank() }?.let { AmountlessDailySearch(meal, it) }
-}
-
-/** The value with every part that is the [target] meal removed. The other parts keep their own text and separators. */
 internal fun removeMealMarkerToken(value: String, target: MealSlot): String =
     ShorthandParser().removingParts(value) { ShorthandLexicon.mealSlotOf(it.text) == target }
 
@@ -1527,8 +1509,8 @@ internal data class LogDraftView(
     val logged: List<SegmentResolution>,
 )
 
-internal fun draftLogPlan(input: String, planner: LogPlanner): LogPlan =
-    if (amountlessDailySearch(input, planner) != null) LogPlan(emptyList(), emptyList()) else planner.plan(input)
+/** What Add saves for the Log's [input]: the same plan the draft's sum uses. Done and Add never open library search. */
+internal fun draftLogPlan(input: String, planner: LogPlanner): LogPlan = planner.plan(input)
 
 internal fun MealSlot.label() = name.lowercase().replaceFirstChar { it.titlecase() }
 internal fun Double.pretty() = if (this % 1 == 0.0) "%.0f".format(Locale.ROOT, this) else "%.1f".format(Locale.ROOT, this)

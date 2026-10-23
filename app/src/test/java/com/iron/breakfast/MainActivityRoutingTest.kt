@@ -1,5 +1,8 @@
 package com.iron.breakfast
 
+import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.FoodMatcher
+import com.iron.breakfast.domain.LogPlanner
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
@@ -8,6 +11,7 @@ import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.ServingConversion
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MainActivityRoutingTest {
@@ -36,16 +40,20 @@ class MainActivityRoutingTest {
         assertEquals("100g oats", removeMealMarkerToken("breakfast, 100g oats", MealSlot.BREAKFAST))
     }
 
-    @Test fun amountlessDailyFoodOpensLocalSearchWithOptionalMealContext() {
-        assertEquals(AmountlessDailySearch(null, "banana"), amountlessDailySearch("banana"))
-        assertEquals(AmountlessDailySearch(MealSlot.LUNCH, "banana"), amountlessDailySearch("lunch, banana"))
-        assertEquals(AmountlessDailySearch(MealSlot.LUNCH, "banana"), amountlessDailySearch("banana, lunch"))
+    @Test fun aBareWordIsAFoodNotASearch() {
+        // Done and Add never route to library search: a bare word is planned like any other part.
+        assertEquals(listOf("banana"), draftLogPlan("banana", LogPlanner(FoodMatcher(FoodCatalog.fixtures))).entries.map { it.food.id })
+        assertEquals(listOf("banana"), draftLogPlan("lunch, banana", LogPlanner(FoodMatcher(FoodCatalog.fixtures))).entries.map { it.food.id })
     }
 
-    @Test fun quantifiedDailyInputContinuesToLogAndMealWordsInsideNamesStayFoodText() {
-        assertEquals(null, amountlessDailySearch("1 banana"))
-        assertEquals(null, amountlessDailySearch("lunch, 1 banana"))
-        assertEquals(AmountlessDailySearch(null, "breakfast cereal"), amountlessDailySearch("breakfast cereal"))
+    @Test fun aBareAmbiguousWordCommitsItsTopMatchOnAdd() {
+        // "milk" names several foods: committed (Done or Add) it logs the top match, like any finished part.
+        val entries = draftLogPlan("milk", LogPlanner(FoodMatcher(FoodCatalog.fixtures))).entries
+        assertEquals(1, entries.size)
+        assertTrue(entries.single().food.id in listOf("milk_28", "milk_32"))
+    }
+
+    @Test fun mealWordsInsideNamesStayFoodText() {
         assertEquals(emptyList<MealSlot>(), mealMarkerSlots("breakfast cereal"))
     }
 

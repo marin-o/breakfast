@@ -1,6 +1,5 @@
 package com.iron.breakfast.domain
 
-import com.iron.breakfast.amountlessDailySearch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -70,9 +69,7 @@ class WordAmountTest {
         assertEquals(listOf("peanut butter half a tbsp"), planner.segments("peanut butter half a tbsp").map { it.text })
     }
 
-    @Test fun aArticleMakesADraftQuantifiedNotAnAmountlessSearch() {
-        // "a banana" now states one banana, so it logs; it no longer opens library search.
-        assertNull(amountlessDailySearch("a banana"))
+    @Test fun anArticleBananaLogsOneBanana() {
         assertEquals(listOf("banana"), planner.plan("a banana").entries.map { it.food.id })
     }
 }
