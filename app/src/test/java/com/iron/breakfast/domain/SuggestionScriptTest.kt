@@ -27,8 +27,14 @@ class SuggestionScriptTest {
         assertTrue(ids.toString(), "buckwheat" in ids)
     }
 
-    @Test fun cevSuggestsChevapThroughTheFallback() {
-        assertTrue(suggested("cev").toString(), "chevap" in suggested("cev"))
+    @Test fun aLatinFragmentNeverSuggestsACyrillicOnlyFood() {
+        // Чевап has no Latin name, so "cev" does not suggest it: suggestions never cross scripts.
+        assertFalse(suggested("cev").toString(), "chevap" in suggested("cev"))
+        assertTrue(suggested("cev").toString(), suggested("cev").isEmpty())
+    }
+
+    @Test fun aCyrillicFragmentSuggestsTheCyrillicFood() {
+        assertTrue(suggested("чев").toString(), "chevap" in suggested("чев"))
     }
 
     @Test fun domSuggestsHomemadeMilkInCyrillic() {

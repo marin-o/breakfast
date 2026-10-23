@@ -180,30 +180,22 @@ class FoodMatcher(
     }
 
     /**
-     * The foods a word being typed may complete. The fragment matches the names and aliases in the script it was typed
-     * in (diacritics folded within that script). Only a food with no name or alias in that script falls back to the
-     * transliterated spelling, so "cev" finds Чевап but "bu" does not find a Cyrillic "бут". Ranked by the saved
-     * preference, then a name that starts with the fragment before one where only a later word does, then name.
+     * The foods a word being typed may complete. Suggestions never cross scripts: the fragment matches only the names
+     * and aliases in the script it was typed (diacritics folded within that script), so "cev" does not find Чевап and
+     * "bu" does not find a Cyrillic "бут". Ranked by the saved preference, then a name that starts with the fragment
+     * before one where only a later word does, then name.
      */
     fun startingWith(fragment: String, preferences: Map<String, Preference> = emptyMap(), limit: Int = 4): List<RankedFood> {
         val word = tokens(expandAbbreviations(fragment)).lastOrNull() ?: return emptyList()
         val cyrillic = isCyrillic(word)
         val folded = foldDiacritics(word)
-        val loose = Transliteration.loose(word)
         val now = nowMs()
         return catalog.mapNotNull { food ->
-            val names = food.allNames()
-            val inScript = names.filter { isCyrillic(it) == cyrillic }
-            val starts: Boolean
-            val namesStart: Boolean
-            if (inScript.isNotEmpty()) {
-                starts = inScript.any { name -> tokens(name).any { foldDiacritics(it).startsWith(folded) } }
-                namesStart = inScript.any { foldDiacritics(it).startsWith(folded) }
-            } else {
-                starts = names.any { name -> tokens(name).any { Transliteration.loose(it).startsWith(loose) } }
-                namesStart = names.any { Transliteration.loose(it).startsWith(loose) }
-            }
-            if (!starts) return@mapNotNull null
+            // Scripts never cross: only names and aliases in the typed script can match, so a food with no name in
+            // that script is not suggested at all.
+            val inScript = food.allNames().filter { isCyrillic(it) == cyrillic }
+            if (inScript.none { name -> tokens(name).any { foldDiacritics(it).startsWith(folded) } }) return@mapNotNull null
+            val namesStart = inScript.any { foldDiacritics(it).startsWith(folded) }
             Triple(
                 RankedFood(
                     food = food,
