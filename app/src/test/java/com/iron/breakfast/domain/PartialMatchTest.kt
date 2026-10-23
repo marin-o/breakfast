@@ -14,20 +14,26 @@ class PartialMatchTest {
     )
     private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures + buckwheat))
 
-    @Test fun kiseloMlekoIsOnlyAPartialMatchToHomeMilk() {
-        val resolution = requireNotNull(planner.resolve("kiselo mleko"))
+    /** "kiselo" is not a word of any food, and "mleko" is Latin: nothing Cyrillic matches it, so no home milk. */
+    @Test fun kiseloMlekoDoesNotOfferHomeMilk() {
+        assertFalse(planner.resolve("kiselo mleko")?.ranked.orEmpty().any { it.food.id == "custom_home_milk" })
+        assertTrue(planner.plan("kiselo mleko").entries.isEmpty())
+        // While typing, a part that matches nothing shows nothing; once committed it is a Not-in-your-foods row.
+        assertTrue(planner.draft("kiselo mleko").choices.isEmpty())
+        val committed = planner.draft("kiselo mleko", typing = false)
+        assertTrue(committed.choices.isEmpty())
+        assertEquals(listOf("kiselo mleko"), committed.unresolved)
+    }
+
+    @Test fun aPartialCyrillicMatchIsOfferedWithNothingPreselected() {
+        val resolution = requireNotNull(planner.resolve("кисело млеко"))
         assertTrue(resolution.needsChoice)
         assertTrue(resolution.ranked.any { it.food.id == "custom_home_milk" })
         assertFalse(resolution.ranked.first().fullMatch)
-        assertTrue(planner.plan("kiselo mleko").entries.isEmpty())
-        assertEquals(listOf("kiselo mleko"), planner.plan("kiselo mleko").unresolved)
-    }
-
-    @Test fun thePartialMatchIsOfferedWithNothingPreselected() {
-        val draft = planner.draft("kiselo mleko")
+        val draft = planner.draft("кисело млеко")
         assertTrue(draft.choices.isNotEmpty())
         assertFalse(draft.preselected)
-        assertEquals(listOf("kiselo mleko"), draft.unresolved)
+        assertEquals(listOf("кисело млеко"), draft.unresolved)
         assertTrue(draft.logged.isEmpty())
     }
 

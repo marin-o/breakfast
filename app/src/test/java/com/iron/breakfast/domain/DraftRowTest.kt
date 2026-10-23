@@ -32,10 +32,10 @@ class DraftRowTest {
 
     @Test fun aSingleCandidatePartialMatchIsAChoiceNotPreselectedAndNotCounted() {
         val only = LogPlanner(FoodMatcher(listOf(homeMilk)))
-        val draft = only.draft("kiselo mleko")
+        val draft = only.draft("кисело млеко")
         assertEquals(1, draft.choices.size)
         assertFalse(draft.preselected)
-        assertEquals(listOf("kiselo mleko"), draft.unresolved)
+        assertEquals(listOf("кисело млеко"), draft.unresolved)
         assertTrue(draft.logged.isEmpty())
     }
 

@@ -59,6 +59,6 @@ class UnitSynonymTest {
         assertEquals("oat_milk", milk.food.id)
         assertEquals(500.0, milk.amount, 0.0)
         assertEquals(true, milk.supported)
-        assertEquals("peanut_butter_smooth", requireNotNull(planner.resolve("2 лажици путер од кикирики")).food.id)
+        assertEquals(null, planner.resolve("2 лажици путер од кикирики")?.food?.id) // Cyrillic alias removed: no match
     }
 }

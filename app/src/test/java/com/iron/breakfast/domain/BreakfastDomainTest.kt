@@ -117,7 +117,8 @@ class BreakfastDomainTest {
         assertEquals("Red bell pepper raw", matcher.best("red pepper")?.food?.name)
         assertEquals("Chicken breast raw", matcher.best("skinless chicken")?.food?.name)
         assertEquals("Tuna canned drained", matcher.best("light tuna")?.food?.name)
-        assertEquals("Ketchup", matcher.best("restaurant ketchup")?.food?.name)
+        assertEquals(null, matcher.best("restaurant ketchup")?.food?.name) // "restaurant" is a category word, not a name: no match
+        assertEquals("Ketchup", matcher.best("ketchup")?.food?.name)
         assertEquals(null, matcher.best("boneless salmon"))
         assertEquals(null, matcher.best("cooked chicken"))
 

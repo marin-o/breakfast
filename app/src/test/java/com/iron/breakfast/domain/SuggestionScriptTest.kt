@@ -5,7 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Suggestions match the fragment in the script it was typed in; transliteration is only a fallback. */
+/** Suggestions match the fragment in the script it was typed in; scripts never cross. */
 class SuggestionScriptTest {
     private fun food(id: String, name: String, aliases: List<String> = emptyList(), category: String = "Test") = FoodRecord(
         id = id, name = name, aliases = aliases, category = category, origin = FoodOrigin.CUSTOM,
@@ -21,7 +21,7 @@ class SuggestionScriptTest {
     private fun suggested(fragment: String) = planner.draft(fragment).suggestions.map { it.food.id }
 
     @Test fun twoEggsBuDoesNotSuggestChickenThighThroughItsCyrillicButAlias() {
-        // "пилешки бут" transliterates to "pileshki but": the Latin fragment "bu" must not match that Cyrillic word.
+        // "пилешки бут" is Cyrillic: the Latin fragment "bu" must not match it.
         val ids = planner.draft("2 eggs bu").suggestions.map { it.food.id }
         assertFalse(ids.toString(), chicken.id in ids)
         assertTrue(ids.toString(), "buckwheat" in ids)

@@ -15,39 +15,25 @@ class FoodMatcher(
         "g" to "gram"
     )
 
+    /** Only a food's name and aliases are matched; its category, preparation and source text are not. */
     private class IndexedFood(
         val food: FoodRecord,
         val names: String,
-        val category: String,
         val nameTokens: Set<String>,
-        val canonicalNames: String,
-        val canonicalTokens: Set<String>,
-        /** Words of the name and aliases only: the vocabulary a typo or a loose spelling is checked against. */
+        /** Words of the name and aliases: the vocabulary a typo is checked against and a whole word matches. */
         val nameWords: Set<String>,
-        val canonicalNameWords: Set<String>,
-        val looseNameWords: Set<String>,
-        val categoryWords: Set<String>,
         val normalizedNames: Set<String>,
         val normalizedAliases: Set<String>
     )
 
     private val indexedCatalog = catalog.map { food ->
-        val names = (food.allNames() + listOfNotNull(food.preparation, food.sourceDescription))
-            .joinToString(" ").lowercase(Locale.ROOT)
-        val canonicalNames = Transliteration.canonical(names)
-        val nameWords = tokens(food.allNames().joinToString(" ")).toSet()
-        val categoryWords = tokens(food.category).toSet()
+        val names = food.allNames().joinToString(" ").lowercase(Locale.ROOT)
+        val nameWords = tokens(names).toSet()
         IndexedFood(
             food = food,
             names = names,
-            category = food.category.lowercase(Locale.ROOT),
-            nameTokens = tokens(names).toSet(),
-            canonicalNames = canonicalNames,
-            canonicalTokens = tokens(canonicalNames).toSet(),
+            nameTokens = nameWords,
             nameWords = nameWords,
-            categoryWords = categoryWords,
-            canonicalNameWords = nameWords.mapTo(mutableSetOf(), Transliteration::canonical),
-            looseNameWords = nameWords.mapTo(mutableSetOf(), Transliteration::loose),
             normalizedNames = food.allNames().mapTo(mutableSetOf(), ::normalize),
             normalizedAliases = food.aliases.mapTo(mutableSetOf(), ::normalize)
         )
@@ -55,12 +41,8 @@ class FoodMatcher(
 
     /** One input token with everything the tiers need, computed once per call rather than once per food. */
     private class QueryToken(val raw: String) {
-        val canonical = Transliteration.canonical(raw)
-        val loose = Transliteration.loose(raw)
         val stems = stems(raw)
-        val canonicalStems = stems(canonical)
         val typoAllowance = typoAllowance(raw)
-        val canonicalTypoAllowance = typoAllowance(canonical)
         val isShortWord = raw.length < 3 && raw.all { it.isLetter() }
         val isModifier = raw in MODIFIERS || raw.endsWith("%") || raw.matches(NUMERIC_TOKEN_PATTERN)
     }
@@ -83,7 +65,7 @@ class FoodMatcher(
 
         return indexedCatalog.mapNotNull { indexed ->
             val food = indexed.food
-            if (explicitModifiers.any { it !in indexed.names && it !in indexed.category }) return@mapNotNull null
+            if (explicitModifiers.any { it !in indexed.names }) return@mapNotNull null
             val hits = queries.map { hit(it, indexed) }
             val identityHits = hits.filterIndexed { index, _ -> !queries[index].isModifier }
             val exactName = normalizedPhrase in indexed.normalizedNames
@@ -101,20 +83,19 @@ class FoodMatcher(
                 stemmedName -> STEMMED_NAME_SCORE
                 else -> 0.0
             }
-            val categoryScore = if (inputTokens.any { it in indexed.category }) 0.8 else 0.0
             val originScore = if (food.origin == FoodOrigin.CUSTOM) 2.0 else 0.0
             RankedFood(
                 food = food,
-                score = explicitScore + tokenScore + categoryScore + originScore + preferenceScore,
+                score = explicitScore + tokenScore + originScore + preferenceScore,
                 reasons = buildList {
                     if (aliasExact) add("explicit alias")
                     if (stemmedName) add("plural form of a name")
-                    add("${matched.size}/${inputTokens.size} name/category tokens")
+                    add("${matched.size}/${inputTokens.size} name tokens")
                     if (preferenceScore > 0) add("explicit preference")
                     if (originScore > 0) add("custom food")
                     if (explicitModifiers.isNotEmpty()) add("modifier constrained")
                 },
-                // Weak: every matched token is a typo or a loose spelling, so the food is only a choice, not a resolution.
+                // Weak: every matched token is a typo, so the food is only a choice, not a resolution.
                 weakMatch = matched.all { it.weight <= TYPO_WEIGHT },
                 // A segment resolves on its own only when every identity token matches; a partial match is a choice.
                 fullMatch = if (identityQueries.isEmpty()) exactName else identityHits.all { it != null },
@@ -125,32 +106,24 @@ class FoodMatcher(
     }
 
     /**
-     * How one input token matches a food, by tier: an exact form (a substring of the names), a singular form that is a
-     * whole name word, the other script, a typo, then the loose spelling. Null when no tier matches.
+     * How one input token matches a food, within its own script: an exact form (a substring of the names, whole or a
+     * prefix), a singular form that is a whole name word, or a typo of a name word. Null when no tier matches.
      */
     private fun hit(query: QueryToken, indexed: IndexedFood): TokenHit? {
         val raw = query.raw
         // A short word (under three letters) names a food only as a whole word: "m" must not find "Grandma's".
         if (query.isShortWord) {
-            return if (raw in indexed.nameWords || raw in indexed.categoryWords || query.canonical in indexed.canonicalNameWords) EXACT_HIT else null
+            return if (raw in indexed.nameWords) EXACT_HIT else null
         }
-        if (raw in indexed.names || raw in indexed.category) {
+        if (raw in indexed.names) {
             // A whole word of the name is exact; a part of a longer word ("ban" in banana) is a prefix match.
-            return if (raw in indexed.nameWords || raw in indexed.categoryWords) EXACT_HIT else PREFIX_HIT
+            return if (raw in indexed.nameWords) EXACT_HIT else PREFIX_HIT
         }
         if (query.stems.any { it in indexed.nameTokens }) return STEM_HIT
-        if (query.canonical in indexed.canonicalNames || query.canonicalStems.any { it in indexed.canonicalTokens }) {
-            return if (query.canonical in indexed.canonicalNameWords) TRANSLITERATED_HIT else TokenHit(TRANSLITERATED_WEIGHT, false, prefix = true)
-        }
         if (query.typoAllowance > 0) {
             indexed.nameWords.firstOrNull { withinEditDistance(raw, it, query.typoAllowance) }
                 ?.let { return TokenHit(TYPO_WEIGHT, it.first() != raw.first()) }
         }
-        if (query.canonicalTypoAllowance > 0) {
-            indexed.canonicalNameWords.firstOrNull { withinEditDistance(query.canonical, it, query.canonicalTypoAllowance) }
-                ?.let { return TokenHit(TYPO_WEIGHT, it.first() != query.canonical.first()) }
-        }
-        if (query.loose.length >= MIN_LOOSE_LENGTH && query.loose in indexed.looseNameWords) return LOOSE_HIT
         return null
     }
 
@@ -226,6 +199,7 @@ class FoodMatcher(
         .lowercase(Locale.ROOT)
         // An apostrophe joins its word ("Jerry's" is one word), so its "s" is never a word of its own.
         .replace("'", "").replace("’", "")
+        .let { foldDiacritics(it) }
         .replace(TOKEN_CHARACTER_PATTERN, " ")
         .split(WHITESPACE_PATTERN)
         .filter { it.isNotBlank() && it !in STOP_WORDS }
@@ -235,17 +209,12 @@ class FoodMatcher(
     companion object {
         private const val EXACT_WEIGHT = 1.0
         private const val STEM_WEIGHT = 0.95
-        private const val TRANSLITERATED_WEIGHT = 0.9
         private const val TYPO_WEIGHT = 0.6
-        private const val LOOSE_WEIGHT = 0.5
         private const val MIN_STEM_LENGTH = 3
-        private const val MIN_LOOSE_LENGTH = 4
         private const val STEMMED_NAME_SCORE = 50.0
         private val EXACT_HIT = TokenHit(EXACT_WEIGHT, false)
         private val PREFIX_HIT = TokenHit(EXACT_WEIGHT, false, prefix = true)
         private val STEM_HIT = TokenHit(STEM_WEIGHT, false)
-        private val TRANSLITERATED_HIT = TokenHit(TRANSLITERATED_WEIGHT, false)
-        private val LOOSE_HIT = TokenHit(LOOSE_WEIGHT, false)
         private val STOP_WORDS = ShorthandLexicon.stopWords
         private val TOKEN_CHARACTER_PATTERN = Regex("[^\\p{L}\\p{N}.%]+")
         private val WHITESPACE_PATTERN = Regex("\\s+")

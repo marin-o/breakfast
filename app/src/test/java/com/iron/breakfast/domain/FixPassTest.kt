@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import com.iron.breakfast.removeAllMealMarkerTokens
 import org.junit.Test
 
-/** Review fixes: word separators, bare articles, number words inside names, quick-add numbers, typos, loose spellings. */
+/** Review fixes: word separators, bare articles, number words inside names, quick-add numbers, typos, script rules. */
 class FixPassTest {
     private fun food(
         id: String, name: String, aliases: List<String> = emptyList(), category: String = "Test",
@@ -148,7 +148,7 @@ class FixPassTest {
         val buckwheat = LogPlanner(FoodMatcher(FoodCatalog.fixtures + food("buckwheat", "Buckwheat", category = "Grain")))
         assertEquals("buckwheat", buckwheat.resolve("buckweat")?.food?.id)
         assertEquals("banana", fixtures.resolve("bananna")?.food?.id)
-        assertEquals("banana", fixtures.resolve("бананна")?.food?.id)
+        assertEquals(null, fixtures.resolve("бананна")?.food?.id) // Cyrillic typo of a Latin-named food: scripts never cross
     }
 
     @Test fun aTypoWithAnEditAtTheFirstLetterIsOnlyAChoice() {
@@ -166,22 +166,30 @@ class FixPassTest {
         assertTrue(planner.plan("bananna").entries.isEmpty())
     }
 
-    // Item 7: diacritic-less Latin and the loose fallback.
+    // Scripts never cross: a Latin word never finds a Cyrillic name, and a Cyrillic word never finds a Latin one.
 
-    @Test fun looseSpellingsFindMacedonianNames() {
+    @Test fun latinSpellingsDoNotFindCyrillicNames() {
         val chevap = food("chevap", "Чевап", category = "Meat")
         val shopska = food("shopska", "Шопска", category = "Salad")
         val zelka = food("zelka", "Зелка", category = "Vegetable")
         val pindzur = food("pindzur", "Пинџур", category = "Spread")
         val planner = LogPlanner(FoodMatcher(listOf(chevap, shopska, zelka, pindzur)))
-        assertEquals("chevap", planner.resolve("cevap")?.food?.id)
-        assertEquals("shopska", planner.resolve("sopska")?.food?.id)
-        assertEquals("zelka", planner.resolve("zelka")?.food?.id)
-        assertEquals("pindzur", planner.resolve("pindzur")?.food?.id)
-        assertEquals("chevap", planner.resolve("chevap")?.food?.id)
+        assertEquals(null, planner.resolve("cevap")?.food?.id)
+        assertEquals(null, planner.resolve("sopska")?.food?.id)
+        assertEquals(null, planner.resolve("zelka")?.food?.id)
+        assertEquals(null, planner.resolve("pindzur")?.food?.id)
+        assertEquals(null, planner.resolve("chevap")?.food?.id)
     }
 
-    @Test fun exactRomanisationRanksAboveTheLooseFallback() {
+    @Test fun cyrillicNamesMatchTheirOwnSpelling() {
+        val chevap = food("chevap", "Чевап", category = "Meat")
+        val shopska = food("shopska", "Шопска", category = "Salad")
+        val planner = LogPlanner(FoodMatcher(listOf(chevap, shopska)))
+        assertEquals("chevap", planner.resolve("чевап")?.food?.id)
+        assertEquals("shopska", planner.resolve("шопска")?.food?.id)
+    }
+
+    @Test fun exactLatinNameRanksAboveACyrillicOneOfTheSameSound() {
         val matcher = FoodMatcher(listOf(food("latin", "Cevap"), food("cyrillic", "Чевап")))
         assertEquals("latin", matcher.best("cevap")?.food?.id)
         assertEquals("cyrillic", matcher.best("чевап")?.food?.id)
