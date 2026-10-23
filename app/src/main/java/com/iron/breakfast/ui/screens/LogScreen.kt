@@ -31,7 +31,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
@@ -104,10 +109,17 @@ internal fun LogScreen(vm: BreakfastViewModel) {
             Box(Modifier.size(IconTarget))
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Gutter)) {
+            // The field keeps its own caret. A change made from outside (a tapped choice) moves the caret to the end.
+            var field by remember { mutableStateOf(TextFieldValue(vm.input)) }
+            LaunchedEffect(vm.input) { field = syncedInputField(field, vm.input) }
             BasicTextField(
-                value = vm.input,
+                value = field,
                 // One logical line: Done submits, so a newline is never typed.
-                onValueChange = { vm.onInput(it.replace("\n", " ")) },
+                onValueChange = { next ->
+                    val text = next.text.replace("\n", " ")
+                    field = next.copy(text = text)
+                    vm.onInput(text)
+                },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = {
                     // Done commits the text: the last word is no longer being typed.
@@ -231,6 +243,13 @@ private fun LogMealPicker(label: String, vm: BreakfastViewModel) {
         }
     }
 }
+
+/**
+ * The field after the text changed from outside the field (a tapped suggestion or choice): the caret goes to the end
+ * of the new text. When the text is what the field already shows (the user typed it), the field keeps its caret.
+ */
+internal fun syncedInputField(field: TextFieldValue, text: String): TextFieldValue =
+    if (field.text == text) field else TextFieldValue(text, TextRange(text.length))
 
 /**
  * The quantity line of a Log row. Counted pieces read as the user typed them (`2 pieces`, `1 piece`), never with ≈.
