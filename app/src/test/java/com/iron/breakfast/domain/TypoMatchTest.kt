@@ -15,7 +15,7 @@ class TypoMatchTest {
 
     @Test fun aTypoInALongWordStillFindsTheFood() {
         assertEquals("Banana", matcher.best("bananna")?.food?.name)
-        assertEquals(null, matcher.best("бананна")?.food?.name) // Latin-named food: no Cyrillic match
+        assertEquals("Banana", matcher.best("бананна")?.food?.name) // Cyrillic typo of the Cyrillic alias банана
         assertEquals("buckwheat", FoodMatcher(listOf(food("buckwheat", "Buckwheat"))).best("buckweat")?.food?.id)
     }
 

@@ -43,8 +43,8 @@ class LogRegressionTest {
         "dinner, 1 banana" to listOf(s("banana", 1.0, piece)),
         "breakfast, 1 egg, 1 tsp pb" to listOf(s("egg", 1.0, piece), s("peanut_butter_smooth", 1.0, tsp)),
         "snack, 2 eggs" to listOf(s("egg", 2.0, piece)),
-        "2 банана" to emptyList(), // Cyrillic name of a Latin-named food: no longer matches (scripts never cross).
-        "2 јајца" to emptyList(), // Cyrillic name of a Latin-named food: no longer matches (scripts never cross).
+        "2 банана" to listOf(s("banana", 2.0, piece)),
+        "2 јајца" to listOf(s("egg", 2.0, piece)),
         "домашно млеко 200 ml" to listOf(s("custom_home_milk", 200.0, ml)),
         "ajvar" to listOf(s("custom_grandmas_ajvar", 1.0, tbsp)),
         "1 tbsp ketchup" to listOf(s("usda_747693_ketchup", 1.0, tbsp)),

@@ -13,11 +13,28 @@ class ScriptAndCategoryTest {
 
     private fun isCyrillic(text: String) = text.any { it in '\u0400'..'\u04FF' }
 
-    @Test fun everyAliasIsInTheScriptOfItsName() {
-        val offenders = FoodCatalog.fixtures.flatMap { food ->
-            food.aliases.filter { isCyrillic(it) != isCyrillic(food.name) }.map { "${food.name} / $it" }
+    /** A food may have aliases in either script, but a Cyrillic-named food never gets a Latin alias (Домашно млеко). */
+    @Test fun noLatinAliasOnACyrillicNamedFood() {
+        val offenders = FoodCatalog.fixtures.filter { isCyrillic(it.name) }.flatMap { food ->
+            food.aliases.filterNot { isCyrillic(it) }.map { "${food.name} / $it" }
         }
         assertEquals(emptyList<String>(), offenders)
+    }
+
+    @Test fun cyrillicInputFindsItsCyrillicAliasAndLatinNameStillFindsLatin() {
+        assertEquals("banana", matcher.best("банана")?.food?.id)
+        assertEquals("egg", matcher.best("јајца")?.food?.id)
+        assertEquals("banana", matcher.best("banana")?.food?.id)
+    }
+
+    @Test fun cyrillicButFindsChickenThigh() {
+        assertEquals("usda_2646171_chicken_thigh_raw", planner.resolve("пилешки бут")?.food?.id)
+        assertTrue(matcher.startingWith("бут").any { it.food.id == "usda_2646171_chicken_thigh_raw" })
+    }
+
+    @Test fun latinBuDoesNotFindChickenThigh() {
+        assertFalse(matcher.suggestions("bu").any { it.food.id == "usda_2646171_chicken_thigh_raw" })
+        assertFalse(planner.draft("2 eggs bu").suggestions.any { it.food.id == "usda_2646171_chicken_thigh_raw" })
     }
 
     @Test fun milkDoesNotOfferHomeMilk() {

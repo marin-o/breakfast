@@ -148,7 +148,7 @@ class FixPassTest {
         val buckwheat = LogPlanner(FoodMatcher(FoodCatalog.fixtures + food("buckwheat", "Buckwheat", category = "Grain")))
         assertEquals("buckwheat", buckwheat.resolve("buckweat")?.food?.id)
         assertEquals("banana", fixtures.resolve("bananna")?.food?.id)
-        assertEquals(null, fixtures.resolve("бананна")?.food?.id) // Cyrillic typo of a Latin-named food: scripts never cross
+        assertEquals("banana", fixtures.resolve("бананна")?.food?.id) // a Cyrillic typo matches the Cyrillic alias
     }
 
     @Test fun aTypoWithAnEditAtTheFirstLetterIsOnlyAChoice() {
