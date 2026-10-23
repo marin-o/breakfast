@@ -69,6 +69,28 @@ class DraftInvariantTest {
         assertEquals(emptyList<String>(), failures)
     }
 
+    /** Each typed part renders exactly once: as an entry row, a Not-in-your-foods row, or a choice or suggestion group. */
+    @Test fun eachTypedPartRendersExactlyOnce() {
+        val inputs = messy + listOf("milk", "кисело млеко", "milk, 1 banana", "oats", "banana")
+        val failures = inputs.flatMap { input ->
+            listOf(true, false).mapNotNull { typing ->
+                val draft = planner.draft(input, typing)
+                val parts = nonMeal(input)
+                val rendered = draft.rows.map { if (it is DraftRow.Entry) it.resolution.raw else (it as DraftRow.Unresolved).text } +
+                    listOfNotNull(draft.activeText.takeIf { draft.choices.isNotEmpty() || draft.suggestions.isNotEmpty() })
+                val problems = parts.distinct().mapNotNull { part ->
+                    val typed = parts.count { it == part }
+                    val shown = rendered.count { it == part }
+                    // The part being typed may show nothing at all (no food starts with it); nothing else may.
+                    val mayBeEmpty = part == draft.activeText && shown == 0 && typed == 1
+                    if (shown == typed || mayBeEmpty) null else "\"$part\" shown $shown, typed $typed"
+                }
+                if (problems.isEmpty()) null else "[$input typing=$typing] $problems"
+            }
+        }
+        assertEquals(emptyList<String>(), failures)
+    }
+
     /** A choice group with one candidate is never preselected: a single clean match is an entry row instead. */
     @Test fun noSingleCandidateChoiceIsPreselectedForAnyInput() {
         val bad = (messy + listOf("milk", "egg", "bananna", "a bananna", "an egg", "oats", "1 ban")).filter { input ->

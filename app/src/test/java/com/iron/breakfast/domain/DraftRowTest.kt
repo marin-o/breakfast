@@ -33,9 +33,10 @@ class DraftRowTest {
     @Test fun aSingleCandidatePartialMatchIsAChoiceNotPreselectedAndNotCounted() {
         val only = LogPlanner(FoodMatcher(listOf(homeMilk)))
         val draft = only.draft("кисело млеко")
+        // A partial match is the choice group alone: no separate Not-in-your-foods row for the same text.
         assertEquals(1, draft.choices.size)
         assertFalse(draft.preselected)
-        assertEquals(listOf("кисело млеко"), draft.unresolved)
+        assertTrue(draft.unresolved.isEmpty())
         assertTrue(draft.logged.isEmpty())
     }
 
@@ -46,9 +47,12 @@ class DraftRowTest {
     }
 
     @Test fun aMultiCandidateChoiceStaysAChoiceWithItsTopPreselected() {
-        val draft = planner.draft("milk")
+        // With a quantity the typed part is logged, so several candidates are a choice with the top preselected and counted.
+        // A bare "milk" is different: it is not logged until chosen, so it is a suggestion (see DraftRenderOnceTest).
+        val draft = planner.draft("100 ml milk")
         assertTrue(draft.choices.size > 1)
         assertTrue(draft.preselected)
         assertTrue(draft.previews.isEmpty())
+        assertTrue(draft.logged.isNotEmpty())
     }
 }

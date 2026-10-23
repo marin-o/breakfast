@@ -232,16 +232,19 @@ class LogPlanner(
         var suggesting = false
         if (activeText.isNotBlank() && ShorthandLexicon.mealSlotOf(activeText) == null) {
             val resolution = resolve(activeText)
+            // Each outcome renders the part exactly once: a suggestion group, a choice group, an entry row, or a
+            // Not-in-your-foods row.
             when {
-                // Nothing matches the word being typed, or only a prefix of a longer word does: suggest the foods it starts.
-                resolution == null || (isBareWord(activeText) && !resolution.ranked.first().wholeMatch) -> {
+                // Nothing matches the word being typed, only a prefix of a longer word does, or a bare word names
+                // several foods (it is not logged until one is chosen): suggest the foods it starts.
+                resolution == null || (isBareWord(activeText) && (!resolution.ranked.first().wholeMatch || resolution.ranked.size > 1)) -> {
                     suggesting = true
                     suggestions = matcher.startingWith(activeText, preferences, SUGGESTION_LIMIT)
                 }
-                !resolution.supported || resolution.needsChoice -> {
-                    rows += DraftRow.Unresolved(activeText)
-                    active = resolution
-                }
+                // A partial or weak match is a choice group only; the group is the part's rendering, not a second row.
+                resolution.needsChoice -> active = resolution
+                // A part with no usable conversion is a Not-in-your-foods row.
+                !resolution.supported -> rows += DraftRow.Unresolved(activeText)
                 // A clean single candidate is an entry row, never a choice.
                 resolution.ranked.size == 1 -> {
                     rows += DraftRow.Entry(resolution)

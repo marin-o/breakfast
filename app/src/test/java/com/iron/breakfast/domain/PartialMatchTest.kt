@@ -33,7 +33,8 @@ class PartialMatchTest {
         val draft = planner.draft("кисело млеко")
         assertTrue(draft.choices.isNotEmpty())
         assertFalse(draft.preselected)
-        assertEquals(listOf("кисело млеко"), draft.unresolved)
+        // The choice group is the part's only rendering: no Not-in-your-foods row for the same text.
+        assertTrue(draft.unresolved.isEmpty())
         assertTrue(draft.logged.isEmpty())
     }
 
