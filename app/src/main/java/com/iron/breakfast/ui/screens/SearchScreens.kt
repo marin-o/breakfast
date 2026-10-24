@@ -49,10 +49,12 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
     val query = vm.libraryQuery
     // Leaving a no-match result must keep the Daily quick-add draft intact.
     val clear = { vm.onLibraryQuery("") }
-    BackHandler(onBack = clear)
+    // Back and the top-left arrow leave the search: a resolve goes back to the Log, else the list shows again.
+    val leave = { if (vm.logResolve != null) vm.closeLibrary() else clear() }
+    BackHandler(onBack = leave)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter)) {
-            TopBar("Search", clear, Modifier.padding(top = 8.dp))
+            TopBar("Search", leave, Modifier.padding(top = 8.dp))
             SearchCaption(Modifier.padding(top = 6.dp))
             SearchField(query, vm::onLibraryQuery, onClear = clear, label = "Search library", modifier = Modifier.padding(top = 6.dp))
             Column(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {

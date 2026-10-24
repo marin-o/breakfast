@@ -236,6 +236,10 @@ private enum class EntryGesturePhase { UP, HORIZONTAL, VERTICAL, CONSUMED }
  * A "Not in your foods" part sent to the library. [draftText] is the draft as it was, [start] and [end] the part's span
  * in it, [part] its text; [preset], [chosen] and [slot] are where the Log was, so it comes back there.
  */
+/** The library list's query for what the bar shows: a typed amount is not part of the food name the list filters by. */
+internal fun librarySearchText(text: String, parser: ShorthandParser): String =
+    parser.parse(text).let { if (it.amount == null) text else it.foodPhrase }
+
 data class LogResolveRequest(
     val draftText: String,
     val start: Int,
@@ -410,7 +414,12 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         libraryDraftCaptured = false
     }
     fun cancelLibraryMealPicker() { libraryMealPickerFood = null; libraryPendingAmount = null; libraryPendingUnit = null }
-    fun onLibraryQuery(value: String) { libraryQuery = value; refreshLibrary() }
+    /** The library's search: the bar shows it and the list filters by it, so both always read the same text. */
+    fun onLibraryQuery(value: String) {
+        if (libraryOpen) input = value
+        libraryQuery = value
+        refreshLibrary()
+    }
     fun refreshLibrary() {
         if (!ready) return
         libraryRefreshJob?.cancel()
@@ -631,6 +640,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }
         selectMeal(meal)
         libraryOpen = true
+        // The bar shows the input, so it starts as the query the list is filtered by.
+        input = query
         libraryQuery = query
         libraryArchivedOnly = false
         refreshLibrary()
@@ -647,7 +658,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         logOpen = false
         mealDraftError = null
         openFocusedLibrary(logTargetMeal() ?: MealSlot.BREAKFAST, query)
-        input = query
     }
 
     /** Puts the picked [food] in place of the resolving part, pins it so it resolves to that food, and returns to the Log. */
@@ -734,7 +744,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun onInput(v: String) {
         input = v
         inputCommitted = false
-        if (libraryOpen && (logResolve != null || parser.parse(v).amount == null)) onLibraryQuery(v)
+        if (libraryOpen) {
+            libraryQuery = librarySearchText(v, parser)
+            refreshLibrary()
+        }
     }
     /** The meal the Log page writes to, by [logTargetMealOf] precedence. Also drives the picker label. */
     internal fun logTargetMeal(): MealSlot? = logTargetMealOf(logChosen, mealMarkers(input), logPreset)

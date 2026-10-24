@@ -110,7 +110,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Gutter)) {
             // The field keeps its own caret. A change made from outside (a tapped choice) moves the caret to the end.
-            var field by remember { mutableStateOf(TextFieldValue(vm.input)) }
+            var field by remember { mutableStateOf(inputFieldFor(vm.input)) }
             LaunchedEffect(vm.input) { field = syncedInputField(field, vm.input) }
             BasicTextField(
                 value = field,
@@ -250,7 +250,10 @@ private fun LogMealPicker(label: String, vm: BreakfastViewModel) {
  * of the new text. When the text is what the field already shows (the user typed it), the field keeps its caret.
  */
 internal fun syncedInputField(field: TextFieldValue, text: String): TextFieldValue =
-    if (field.text == text) field else TextFieldValue(text, TextRange(text.length))
+    if (field.text == text) field else inputFieldFor(text)
+
+/** The Log field for [text] with the caret at the end: a page that opens again starts there, not at the start. */
+internal fun inputFieldFor(text: String): TextFieldValue = TextFieldValue(text, TextRange(text.length))
 
 /**
  * The quantity line of a Log row. Counted pieces read as the user typed them (`2 pieces`, `1 piece`), never with ≈.

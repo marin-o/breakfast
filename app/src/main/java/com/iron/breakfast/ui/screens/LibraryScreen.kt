@@ -108,7 +108,8 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
     var menuOpen by remember { mutableStateOf(false) }
     val archived = vm.libraryArchivedOnly
     val root = vm.slot == null
-    val title = if (archived) "Archived" else if (root) "Library" else "Add to ${vm.slot!!.label()}"
+    // A part being resolved is searched for, not added to a meal the user did not choose here.
+    val title = if (archived) "Archived" else if (vm.logResolve != null) "Search" else if (root) "Library" else "Add to ${vm.slot!!.label()}"
     val subtitle = when {
         archived -> ""
         root -> "${vm.libraryFoods.size} foods, by last logged"

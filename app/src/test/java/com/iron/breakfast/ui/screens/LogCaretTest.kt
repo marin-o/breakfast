@@ -17,4 +17,8 @@ class LogCaretTest {
         val typed = TextFieldValue("2 eggs bu", TextRange(3))
         assertEquals(TextRange(3), syncedInputField(typed, "2 eggs bu").selection)
     }
+
+    @Test fun aFieldThatOpensAgainStartsWithTheCaretAtTheEnd() {
+        assertEquals(TextRange("2 eggs, Branded pesto 200ml".length), inputFieldFor("2 eggs, Branded pesto 200ml").selection)
+    }
 }
