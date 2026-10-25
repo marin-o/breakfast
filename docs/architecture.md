@@ -80,6 +80,8 @@ Permissions: `INTERNET` and `CAMERA` only; the camera is declared optional. No a
 
 Every build, including `perf`, is signed with the machine's Android debug key, `%USERPROFILE%\.android\debug.keystore` (SHA-256 `98:93:7B:8D:95:25:A4:58:E1:71:55:F7:67:DB:0F:6A:26:09:3D:4A:23:74:7C:11:6E:D6:E4:5D:4B:AE:4B:1D`). **Back this file up.** A build signed with a different key cannot be installed over the current one: Android forces an uninstall first, and the uninstall deletes the diary.
 
+Decided 2026-10-26 (P10): this key stays the permanent signing key, and the owner keeps a copy off this machine. There is no separate debug `applicationId`, so debug and perf share `com.iron.breakfast` and `breakfast.db`. The recovery path for the diary is Export diary: if the key is ever lost or replaced, export the diary first (or use the latest exported file), uninstall, install the new build, then Import diary and Replace diary.
+
 ## Backup
 
 `android:allowBackup="true"` with explicit rules (MOB-012, decided 2026-10-26: the diary stays out of Google's cloud):
