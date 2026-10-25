@@ -56,6 +56,7 @@ import androidx.compose.ui.focus.FocusState
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
@@ -613,20 +614,44 @@ fun Composer(
     modifier: Modifier = Modifier,
     /** True when [placeholder] is the typed draft: shown at full strength so it is never hidden. */
     draft: Boolean = false,
+    /** How a draft too long for one line is cut. */
+    longDraft: LongDraft = LongDraft.START,
 ) {
     val colors = LocalBreakfastColors.current
     InkBar(modifier, endPadding = if (onScan != null) 4.dp else 16.dp) {
-        Text(
-            placeholder.replace('\n', ' '),
-            color = if (draft) colors.bg else colors.bg.copy(alpha = 0.6f),
-            style = BreakfastType.Body,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f).clickable(role = Role.Button, onClick = onClick),
-        )
+        val text = placeholder.replace('\n', ' ')
+        val color = if (draft) colors.bg else colors.bg.copy(alpha = 0.6f)
+        val textModifier = Modifier.weight(1f).clickable(role = Role.Button, onClick = onClick)
+        if (draft && longDraft == LongDraft.END) {
+            EndOfText(text, color, textModifier)
+        } else {
+            Text(
+                text,
+                color = color,
+                style = BreakfastType.Body,
+                maxLines = if (draft && longDraft == LongDraft.TWO_LINES) 2 else 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = textModifier,
+            )
+        }
         if (onScan != null) IconButton(onClick = onScan, modifier = Modifier.size(IconTarget)) {
             Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.bg)
         }
+    }
+}
+
+/** One line of [text] that keeps its end: cut at the start with "…" when it is wider than the space. */
+@Composable
+private fun EndOfText(text: String, color: Color, modifier: Modifier) {
+    val measurer = rememberTextMeasurer()
+    val style = BreakfastType.Body
+    BoxWithConstraints(modifier) {
+        val width = constraints.maxWidth
+        val fitted = remember(text, width, measurer) {
+            if (!constraints.hasBoundedWidth) text
+            else startEllipsized(text) { candidate -> measurer.measure(candidate, style, maxLines = 1, softWrap = false).size.width <= width }
+        }
+        Text(fitted, color = color, style = style, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
     }
 }
 

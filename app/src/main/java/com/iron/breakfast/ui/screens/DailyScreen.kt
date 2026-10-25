@@ -242,6 +242,7 @@ internal fun DailyComposer(vm: BreakfastViewModel, modifier: Modifier = Modifier
             onClick = { vm.openLog(null) },
             onScan = vm::beginScan,
             draft = draft,
+            longDraft = vm.longDraft,
         )
         BottomNav(selectedToday = true, onToday = { vm.closeMeal(); vm.closeLibrary() }, onLibrary = { vm.closeMeal(); vm.openLibrary() })
     }

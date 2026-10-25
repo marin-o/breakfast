@@ -14,7 +14,7 @@ A single-module Android app (`app/`, package `com.iron.breakfast`): Kotlin, Jetp
 | `FoodDraft.kt` | New food / edit food form state, its typed values (`FoodDraftFields`) and the dirty check. |
 | `AppDecisions.kt` | Pure routing decisions the VM makes (`topOverlay`, `exitLibraryTarget`, submit and review plans, the Undo window, `resolveSelectedDay`), unit-tested. |
 | `SavedDrafts.kt` | Save and restore of the log draft, an open food form and the selected day in `SavedStateHandle`. |
-| `AppSettings.kt` | User settings in plain `SharedPreferences` (`settings`): the day start hour, and its pure helpers. |
+| `AppSettings.kt` | User settings in plain `SharedPreferences` (`settings`): the day start hour and the composer's "Long draft" mode, with their pure helpers. |
 | `ui/screens/` | One file per surface: Daily (the Today tab), Log, Meal, Library, Entry, Search, Scan, CreateFood, Settings, plus `ScreenData.kt` (pure UI mapping, unit-tested). |
 | `ui/components/`, `ui/theme/` | Shared Compose components; Monochrome tokens (`Color.kt` mirrors DESIGN.md), type, shape, dimens. |
 
@@ -25,13 +25,13 @@ All state lives in `BreakfastViewModel`, so it survives rotation; very little su
 | State | Owner | Survives process death |
 | --- | --- | --- |
 | Selected day | VM `selectedDayKey` and `followingToday` + `SavedStateHandle` (`following_today`; `selected_day` only for a picked past day) | Yes; a user following today reopens on the new today |
-| Settings (day start) | `AppSettings` (`SharedPreferences`), read once into the VM, written on each change | Yes |
+| Settings (day start, long draft) | `AppSettings` (`SharedPreferences`), read once into the VM, written on each change | Yes |
 | Open meal, selected entry | VM + `SavedStateHandle` (`meal_slot`, `entry_id`) | Yes |
 | Route and overlay flags (Library, Log, scanner, sheets) | VM | No; the app reopens on the diary, with an open food form over it |
 | Log draft text and committed flag | VM `logDraft`, one draft for Daily and Meal, separate from `input` (the Library bar and edit amount); only Add or clearing it removes it | Yes (`log_draft`, `log_draft_committed`; removed once the draft is empty) |
 | Log pins, resolve queue | VM | No |
 | New / edit food form (`FoodDraft`) | VM + `SavedStateHandle` (`food_form`, one JSON string) | Yes, the form reopens; not while resolving a part or a queue |
-| Entry edit typed values | Composition `remember` | Not even rotation (MOB-026) |
+| Entry edit typed values | Composition `remember`; a save error (`mealDraftError`) stays until one of them changes | Not even rotation (MOB-026) |
 | Pending Undo (`UndoOffer`) | VM; expires 15 s after the log or delete, or at the next log, edit or delete | No |
 | OFF search query and results, scan review fields | VM | No |
 | OFF username and password | VM memory only | No, by design |

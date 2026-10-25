@@ -150,6 +150,8 @@ internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
     val units = food?.let(vm::editUnits).orEmpty().ifEmpty { listOf(entry.enteredUnit) }
     val preview = amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { vm.draftCalculation(entry.foodId, it, unit) }
     val changed = entryDraftNutritionChanged(entry, amount, unit, entry.foodId)
+    // A save error stays until the amount or unit changes.
+    LaunchedEffect(amount, unit) { vm.editInputChanged() }
     val requester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(Unit) { requester.requestFocus() }
@@ -183,7 +185,7 @@ internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
                 if (changed) Text("was ${formatKcal(entry.nutritionSnapshot.calories)}", color = colors.soft, style = BreakfastType.Secondary)
             }
             PrimaryButton("Save", { vm.onInput("${amount.trim()} ${unit.displayLabel()}"); vm.submit() }, enabled = amount.toDoubleOrNull()?.let { it > 0 } == true)
-            if (vm.editInvalid) Text(vm.mealDraftError ?: "Could not save this entry.", color = colors.bad, style = BreakfastType.Meta)
+            vm.mealDraftError?.let { Text(it, color = colors.bad, style = BreakfastType.Meta) }
         }
     }
 }
@@ -207,6 +209,8 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
     val units = selectedFood?.let(vm::editUnits).orEmpty().ifEmpty { listOf(entry.enteredUnit) }
     val preview = selectedFood?.let { food -> amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { vm.draftCalculation(food.id, it, unit) } }
     LaunchedEffect(selectedFood?.id) { if (unit !in units) unit = units.first() }
+    // A save error stays until something being edited changes.
+    LaunchedEffect(selectedFood?.id, amount, unit, meal, dayKey) { vm.editInputChanged() }
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)).verticalScroll(rememberScrollState()).navigationBarsPadding()) {
             TopBar("Edit entry", vm::cancelEdit, Modifier.padding(horizontal = Gutter, vertical = 8.dp))
@@ -245,7 +249,7 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
                 Text("P ${shown.protein?.pretty() ?: "—"}   C ${shown.carbohydrates?.pretty() ?: "—"}   F ${shown.fat?.pretty() ?: "—"}", color = colors.soft, style = BreakfastType.Secondary)
             }
             PrimaryButton("Save", { selectedFood?.let { vm.saveFullEdit(it.id, amount, unit, meal, dayKey) } }, Modifier.padding(horizontal = Gutter), enabled = !vm.busy)
-            if (vm.editInvalid) Text(vm.mealDraftError ?: "Could not save this entry.", Modifier.padding(Gutter), color = colors.bad, style = BreakfastType.Meta)
+            vm.mealDraftError?.let { Text(it, Modifier.padding(Gutter), color = colors.bad, style = BreakfastType.Meta) }
         }
     }
 }

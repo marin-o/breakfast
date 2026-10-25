@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import com.iron.breakfast.BreakfastViewModel
 import com.iron.breakfast.dayStartLabel
 import com.iron.breakfast.ui.components.AddCircle
+import com.iron.breakfast.ui.components.ChoiceOption
+import com.iron.breakfast.ui.components.LongDraft
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.theme.BreakfastType
@@ -49,5 +51,14 @@ internal fun SettingsScreen(vm: BreakfastViewModel) {
             }
         }
         Hairline()
+        Column(Modifier.fillMaxWidth().padding(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Long draft", color = colors.ink, style = BreakfastType.Body)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LONG_DRAFT_CHOICES.forEach { (mode, label) -> ChoiceOption(label, vm.longDraft == mode, { vm.chooseLongDraft(mode) }) }
+            }
+        }
+        Hairline()
     }
 }
+
+private val LONG_DRAFT_CHOICES = listOf(LongDraft.END to "End", LongDraft.START to "Start", LongDraft.TWO_LINES to "Two lines")

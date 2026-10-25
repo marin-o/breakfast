@@ -179,6 +179,7 @@ import com.iron.breakfast.ui.screens.ResolveUnknownScreen
 import com.iron.breakfast.ui.screens.ScanReviewBackdrop
 import com.iron.breakfast.ui.screens.ScannerScreen
 import com.iron.breakfast.ui.components.ButtonKind
+import com.iron.breakfast.ui.components.LongDraft
 import com.iron.breakfast.ui.components.Field
 import com.iron.breakfast.ui.components.isLargeFont
 import com.iron.breakfast.ui.components.Hairline
@@ -269,6 +270,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     /** Today's day by the clock and [dayStartHour]. The 60-second loop and every return keep it current. */
     var todayKey by mutableStateOf(dayKeyFor(clock(), zone, dayStartHour)); private set
     var settingsOpen by mutableStateOf(false); private set
+    /** How the composer shows a long draft, from Settings. */
+    var longDraft by mutableStateOf(settings.longDraft); private set
     private val engine = BreakfastEngine(BreakfastStore(application))
     private val off = OpenFoodFactsClient()
     private val parser = ShorthandParser()
@@ -384,8 +387,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var editingFoodName by mutableStateOf<String?>(null); private set
     var editingFoodId by mutableStateOf<String?>(null); private set
     var editingFoodPickerOpen by mutableStateOf(false); private set
-    var editInvalid by mutableStateOf(false); private set
-    var editInvalidSignal by mutableStateOf(0); private set
     var quickEditHintVisible by mutableStateOf(false); private set
     private var editSession = 0L
     private var editReturnToDaily = false
@@ -478,6 +479,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     /** Settings, over the Library; its arrow and Back return there. */
     fun openSettings() { settingsOpen = true }
     fun closeSettings() { settingsOpen = false }
+    fun chooseLongDraft(mode: LongDraft) {
+        longDraft = mode
+        settings.longDraft = mode
+    }
     /** The "Day starts at" stepper. Today follows the new start at once; a user on today stays on today. */
     fun shiftDayStart(delta: Int) {
         val hour = shiftDayStartHour(dayStartHour, delta)
@@ -970,7 +975,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         entryEditMode = EntryEditMode.QUICK
         input = "${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}"
         mealDraftError = null
-        editInvalid = false
         quickEditHintVisible = true
         val hintSession = ++quickHintSession
         viewModelScope.launch {
@@ -991,7 +995,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         entryEditMode = EntryEditMode.FULL
         input = "${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()} ${entry.foodName}"
         mealDraftError = null
-        editInvalid = false
         quickHintSession += 1
         quickEditHintVisible = false
     }
@@ -1007,22 +1010,19 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         editingFoodId = null
         editingFoodPickerOpen = false
         input = ""
-        editInvalid = false
         quickHintSession += 1
         quickEditHintVisible = false
         if (editReturnToDaily) selectMeal(null)
         editReturnToDaily = false
         mealDraftError = null
     }
+    /** An entry edit could not be saved: the message stays until the edit changes ([editInputChanged]). */
     private fun markEditInvalid(message: String) {
         mealDraftError = message
-        editInvalid = true
-        val signal = editInvalidSignal + 1
-        editInvalidSignal = signal
-        viewModelScope.launch {
-            delay(1_400)
-            if (editInvalidSignal == signal) editInvalid = false
-        }
+    }
+    /** The amount, unit, food, meal or date being edited changed, so an earlier save error no longer applies. */
+    fun editInputChanged() {
+        if (entryEditMode != EntryEditMode.NONE) mealDraftError = null
     }
     /** Add on the Log page, or Save in quick edit, which reads [input] and never the draft. */
     fun submit() {

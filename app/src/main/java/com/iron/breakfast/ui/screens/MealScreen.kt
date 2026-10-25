@@ -129,6 +129,7 @@ internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot, modifier: Mo
             onClick = { vm.openLog(target) },
             onScan = vm::beginScan,
             draft = draft,
+            longDraft = vm.longDraft,
         )
     }
 }
