@@ -265,6 +265,9 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var customOpen by mutableStateOf(false); private set
     var editingLibraryFoodId by mutableStateOf<String?>(null); private set
     val draft = FoodDraft()
+    /** The food form as it opened; Back asks before discarding only when [draft] differs from it. */
+    private var draftBaseline = FoodDraftFields()
+    var discardFoodOpen by mutableStateOf(false); private set
     var searchOpen by mutableStateOf(false); private set
     var searchQuery by mutableStateOf(""); private set
     var offResults by mutableStateOf<List<FoodRecord>>(emptyList()); private set
@@ -1064,12 +1067,17 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         draft.barcode = normalizeBarcode(barcode).orEmpty()
         draft.barcodeFromScan = draft.barcode.isNotEmpty()
         draft.fromOff = fromOff
+        draftBaseline = draft.fields()
         customOpen = true
         searchOpen = false
         resolverOpen = false
     }
+    /** Back or the arrow on New food or Edit food: a changed form asks before it is discarded. */
+    fun leaveCustom() { if (draft.isDirty(draftBaseline)) discardFoodOpen = true else closeCustom() }
+    fun keepEditingFood() { discardFoodOpen = false }
+    fun discardFood() { discardFoodOpen = false; closeCustom() }
     fun closeCustom() {
-        customOpen = false; editingLibraryFoodId = null; rescanningBarcode = false; draft.reset()
+        customOpen = false; editingLibraryFoodId = null; rescanningBarcode = false; discardFoodOpen = false; draft.reset()
         if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false
     }
     fun commitDraftServing() { draft.commitServing() }
@@ -1078,6 +1086,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         rescanningBarcode = false
         editingLibraryFoodId = food.id
         draft.load(food)
+        draftBaseline = draft.fields()
         customOpen = true; selectedLibraryFood = null
     }
     fun closeResolver() { abandonUnknownResolution(); resolverSearchOpen = false }
@@ -1664,6 +1673,11 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     if (vm.customOpen) {
         if (vm.editingLibraryFoodId != null) LibraryFoodEditScreen(vm) else CreateFoodScreen(vm)
     }
+    if (vm.discardFoodOpen) AlertDialog(
+        onDismissRequest = vm::keepEditingFood,
+        confirmButton = { TextButton(vm::discardFood) { Text("Discard") } },
+        dismissButton = { TextButton(vm::keepEditingFood) { Text("Keep editing") } },
+    )
     if (vm.libraryNoMatch()) LibraryNoMatchScreen(vm)
     if (vm.searchOpen) OffSearchScreen(vm)
     if (vm.resolverOpen && !scanReviewBackdropVisible) ResolveUnknownScreen(vm)

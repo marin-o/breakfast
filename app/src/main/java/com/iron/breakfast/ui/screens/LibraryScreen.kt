@@ -377,9 +377,9 @@ internal fun LibraryFoodEditScreen(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
     val food = vm.foods.firstOrNull { it.id == vm.editingLibraryFoodId } ?: return
     val draft = vm.draft
-    BackHandler { vm.closeCustom() }
+    BackHandler { vm.leaveCustom() }
     Column(Modifier.fillMaxSize().background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        TopBar("Edit food", vm::closeCustom, Modifier.padding(top = 8.dp))
+        TopBar("Edit food", vm::leaveCustom, Modifier.padding(top = 8.dp))
         Field("Name", draft.name, { draft.name = it }, required = true)
         Field("Brand", draft.brand, { draft.brand = it })
         FoodBarcodeField(vm)

@@ -58,11 +58,11 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
     val barcodeError = validateBarcodeInput(draft.barcode, vm.foods)
     val state = createFoodState(draft.nutritionInput(), draft.name, barcodeError)
     val colors = LocalBreakfastColors.current
-    BackHandler(onBack = vm::closeCustom)
+    BackHandler(onBack = vm::leaveCustom)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).imePadding().padding(bottom = 12.dp)) {
-                TopBar("New food", vm::closeCustom, Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+                TopBar("New food", vm::leaveCustom, Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
                 Column(Modifier.padding(horizontal = Gutter).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Field("Name", draft.name, { draft.name = it }, required = true)
                     Field("Brand", draft.brand, { draft.brand = it })

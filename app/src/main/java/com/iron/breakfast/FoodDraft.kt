@@ -79,7 +79,36 @@ class FoodDraft {
     fun cancelServing() {
         servingFormOpen = false; servingAmount = ""; servingLabel = ""
     }
+
+    /** The values typed into the form, as they are now. */
+    fun fields() = FoodDraftFields(
+        name, brand, barcode, shorthand, calories, protein, carbs, fat, basisAmount, basisUnit,
+        aliases, aliasInput, servings, servingUnit, servingAmount, servingLabel,
+    )
+
+    /** True when any typed value differs from [baseline], the form as it opened. Opening a field changes nothing. */
+    fun isDirty(baseline: FoodDraftFields): Boolean = fields() != baseline
 }
+
+/** The food form's typed values. Opening the alias or serving field and the "from scan" tag are not part of them. */
+data class FoodDraftFields(
+    val name: String = "",
+    val brand: String = "",
+    val barcode: String = "",
+    val shorthand: String = "",
+    val calories: String = "",
+    val protein: String = "",
+    val carbs: String = "",
+    val fat: String = "",
+    val basisAmount: String = "100",
+    val basisUnit: String = "g",
+    val aliases: List<String> = emptyList(),
+    val aliasInput: String = "",
+    val servings: List<ServingConversion> = emptyList(),
+    val servingUnit: MeasureUnit = MeasureUnit.PIECE,
+    val servingAmount: String = "",
+    val servingLabel: String = "",
+)
 
 /** A stored number as the form shows it: as written, never in exponent form ("5.0E-4" would edit into 5.04). */
 private fun Double.fieldText(): String = toString().let { if ('E' in it) java.math.BigDecimal.valueOf(this).stripTrailingZeros().toPlainString() else it }
