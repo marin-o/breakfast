@@ -22,12 +22,15 @@ private data class StoreSnapshot(
     val preferences: List<Preference> = emptyList()
 )
 
-class BreakfastStore(context: Context) {
-    private val database = Room.databaseBuilder(
-        context.applicationContext,
-        BreakfastDatabase::class.java,
-        "breakfast.db"
-    ).addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6).build()
+/** The only writer. [database] is `breakfast.db` in the app; tests pass an in-memory one. */
+class BreakfastStore internal constructor(private val database: BreakfastDatabase) {
+    constructor(context: Context) : this(
+        Room.databaseBuilder(
+            context.applicationContext,
+            BreakfastDatabase::class.java,
+            "breakfast.db"
+        ).addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6).build()
+    )
     private val writeMutex = Mutex()
 
     @Volatile
@@ -186,6 +189,26 @@ class BreakfastStore(context: Context) {
         }
     }
 
+    /**
+     * Deletes [expected] in one transaction, skipping every entry whose stored row is no longer exactly its snapshot
+     * (edited or already gone). Returns the ids deleted.
+     */
+    suspend fun deleteEntries(expected: List<MealEntry>): List<String> {
+        requireReady()
+        if (expected.isEmpty()) return emptyList()
+        return writeMutex.withLock {
+            withContext(NonCancellable + Dispatchers.IO) {
+                val deleted = database.withTransaction {
+                    val ids = unchangedEntryIds(expected, database.mealEntryDao().byIds(expected.map { it.id }))
+                    if (ids.isNotEmpty()) database.mealEntryDao().deleteByIds(ids)
+                    ids
+                }
+                model = readSnapshot()
+                deleted
+            }
+        }
+    }
+
     /** Stores [food] without an entry. An archived food stays as it is. */
     suspend fun addFood(food: FoodRecord) {
         requireReady()
@@ -270,4 +293,10 @@ class BreakfastStore(context: Context) {
     private fun requireReady() {
         check(initialized) { "BreakfastStore.initialize() must complete before reading or writing" }
     }
+}
+
+/** The ids of [expected] whose [stored] row is still exactly the snapshot; an edited or missing entry is left out. */
+internal fun unchangedEntryIds(expected: List<MealEntry>, stored: List<MealEntryEntity>): List<String> {
+    val byId = stored.associateBy { it.id }
+    return expected.filter { byId[it.id] == it.toEntity() }.map { it.id }
 }

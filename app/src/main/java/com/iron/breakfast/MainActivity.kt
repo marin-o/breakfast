@@ -238,6 +238,14 @@ private enum class EntryGesturePhase { UP, HORIZONTAL, VERTICAL, CONSUMED }
 internal fun librarySearchText(text: String, parser: ShorthandParser): String =
     parser.parse(text).let { if (it.amount == null) text else it.foodPhrase }
 
+/** A one-time Undo, shown as a snackbar until [UNDO_WINDOW_MS] after [offeredAtMs] or the next log, edit or delete. */
+internal sealed interface UndoOffer {
+    val offeredAtMs: Long
+    data class Deleted(val entry: MealEntry, override val offeredAtMs: Long) : UndoOffer
+    /** A logged batch; [entries] are the rows as saved, so Undo can leave any entry edited since. */
+    data class Logged(val message: String, val entries: List<MealEntry>, override val offeredAtMs: Long) : UndoOffer
+}
+
 data class LogResolveRequest(
     val draftText: String,
     val start: Int,
@@ -249,6 +257,7 @@ data class LogResolveRequest(
 )
 
 class BreakfastViewModel(application: Application, private val savedState: SavedStateHandle) : AndroidViewModel(application) {
+    private val clock: () -> Long = System::currentTimeMillis
     private val engine = BreakfastEngine(BreakfastStore(application))
     private val off = OpenFoodFactsClient()
     private val parser = ShorthandParser()
@@ -306,7 +315,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private var contributionPreflightToken = 0L
     var contributionLanguageCode by mutableStateOf("en"); private set
     var contributionPackageQuantityMl by mutableStateOf(""); private set
-    var undoEntry by mutableStateOf<MealEntry?>(null); private set
+    internal var undoOffer by mutableStateOf<UndoOffer?>(null); private set
+    private var undoExpiryJob: Job? = null
+    val undoEntry: MealEntry? get() = (undoOffer as? UndoOffer.Deleted)?.entry
+    val loggedBatchMessage: String? get() = (undoOffer as? UndoOffer.Logged)?.message
     var mealDraftError by mutableStateOf<String?>(null); private set
     /** The full-screen Log page. [logPreset] comes from the `+` or composer that opened it; [logChosen] from the Log's meal menu. */
     var logOpen by mutableStateOf(false); private set
@@ -373,7 +385,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var resolverResults by mutableStateOf<List<RankedFood>>(emptyList()); private set
     var feedbackUntil by mutableStateOf(0L); private set
     var feedbackIds by mutableStateOf<Set<String>>(emptySet()); private set
-    var loggedBatchMessage by mutableStateOf<String?>(null); private set
+    /** The entries the last batch saved, for the resolve header. Not the Undo, which expires. */
     private var loggedBatchIds: List<String> = emptyList()
 
     init {
@@ -530,7 +542,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         busy = true
         viewModelScope.launch {
             runCatching { drafts.forEach { draft -> engine.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, capturedDayKey) } }
-                .onSuccess { refresh(); refreshLibrary(); notice = "Added ${drafts.size} food${if (drafts.size == 1) "" else "s"} to ${target.label()} on $capturedDayKey" }
+                .onSuccess { offerUndo(null); refresh(); refreshLibrary(); notice = "Added ${drafts.size} food${if (drafts.size == 1) "" else "s"} to ${target.label()} on $capturedDayKey" }
                 .onFailure { notice = it.message ?: "Could not log this food." }
                 .also { busy = false }
         }
@@ -602,6 +614,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 try {
                     when (val result = engine.replaceEntryDraft(id, foodId, parsedAmount, unit, meal, dayKey)) {
                         is ReplacementResult.Success -> if (editSession == session && editingEntryId == id) {
+                            offerUndo(null)
                             refresh()
                             fullSaveJob = null
                             cancelEdit()
@@ -886,7 +899,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                     feedbackIds = saved.entries.filter { it.approximateConversion }.mapTo(mutableSetOf()) { it.id }
                     feedbackUntil = if (feedbackIds.isEmpty()) 0L else System.currentTimeMillis() + 30_000L
                     loggedBatchIds = saved.entries.map { it.id }
-                    loggedBatchMessage = "${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} logged to ${target.label()}"
+                    offerLoggedUndo("${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} logged to ${target.label()}", saved.entries)
                 }
                 .onFailure { notice = it.message ?: "Could not save this batch." }
                 .also { busy = false }
@@ -1038,7 +1051,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 }.onSuccess { result ->
                     if (entryEditMode != mode || editingEntryId != editing || editSession != session) return@onSuccess
                     when (result) {
-                        is ReplacementResult.Success -> { refresh(); cancelEdit() }
+                        is ReplacementResult.Success -> { offerUndo(null); refresh(); cancelEdit() }
                         is ReplacementResult.Failure -> markEditInvalid(result.reason)
                     }
                 }.onFailure {
@@ -1069,20 +1082,66 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 refresh(); if (logDraft == captured) logDraft = saved.unresolvedSegments.joinToString(", "); unknownQueue = saved.unresolvedSegments; unknownQueueTotal = saved.unresolvedSegments.size; unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }; resolutionContinuation = saved.unresolvedSegments.isNotEmpty(); resolverOpen = saved.unresolvedSegments.isNotEmpty(); mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
                 feedbackIds = saved.entries.filter { it.approximateConversion }.mapTo(mutableSetOf()) { it.id }; feedbackUntil = if (feedbackIds.isEmpty()) 0L else System.currentTimeMillis() + 30_000L
                 loggedBatchIds = saved.entries.map { it.id }
-                loggedBatchMessage = "${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} added to ${target.label()}"
+                offerLoggedUndo("${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} added to ${target.label()}", saved.entries)
             }.onFailure { mealDraftError = it.message ?: "Could not save this meal." }.also { busy = false }
         }
     }
     private fun mealMarkers(value: String): List<MealSlot> = mealMarkerSlots(value)
-    fun delete(entry: MealEntry) { if (!ready || busy) return; busy = true; viewModelScope.launch { runCatching { engine.deleteEntry(entry.id) }.onSuccess { undoEntry = entry; refresh() }.also { busy = false } } }
-    fun undo() { val e = undoEntry ?: return; if (!ready || busy) return; busy = true; viewModelScope.launch { runCatching { engine.restoreEntry(e) }.onSuccess { undoEntry = null; refresh() }.also { busy = false } } }
-    fun undoLoggedBatch() {
-        if (!ready || busy || loggedBatchIds.isEmpty()) return
-        val ids = loggedBatchIds.toList()
+    /** Replaces the Undo offer; null clears it. An offer clears itself when its window ends. */
+    private fun offerUndo(offer: UndoOffer?) {
+        undoExpiryJob?.cancel()
+        undoExpiryJob = null
+        undoOffer = offer
+        if (offer == null) return
+        undoExpiryJob = viewModelScope.launch {
+            while (true) {
+                val left = undoRemainingMs(offer.offeredAtMs, clock())
+                if (left <= 0L) break
+                delay(left)
+            }
+            if (undoOffer === offer) undoOffer = null
+        }
+    }
+    private fun offerLoggedUndo(message: String, entries: List<MealEntry>) =
+        offerUndo(if (entries.isEmpty()) null else UndoOffer.Logged(message, entries, clock()))
+    /** The offer, while its window is open; an expired one is cleared. */
+    private fun liveUndoOffer(): UndoOffer? {
+        val offer = undoOffer ?: return null
+        if (undoOpen(offer.offeredAtMs, clock())) return offer
+        offerUndo(null)
+        return null
+    }
+    fun delete(entry: MealEntry) {
+        if (!ready || busy) return
         busy = true
         viewModelScope.launch {
-            runCatching { ids.forEach { engine.deleteEntry(it) } }
-                .onSuccess { loggedBatchIds = emptyList(); loggedBatchMessage = null; refresh() }
+            runCatching { engine.deleteEntry(entry.id) }
+                .onSuccess { offerUndo(UndoOffer.Deleted(entry, clock())); refresh() }
+                .onFailure { notice = "Could not edit this entry." }
+                .also { busy = false }
+        }
+    }
+    /** Puts the deleted entry back with its own id and snapshot. */
+    fun undo() {
+        val offer = liveUndoOffer() as? UndoOffer.Deleted ?: return
+        if (!ready || busy) return
+        busy = true
+        viewModelScope.launch {
+            runCatching { engine.restoreEntry(offer.entry) }
+                .onSuccess { offerUndo(null); refresh() }
+                .onFailure { notice = UNDO_FAILED }
+                .also { busy = false }
+        }
+    }
+    /** Deletes the logged batch in one transaction; an entry edited since it was logged stays. */
+    fun undoLoggedBatch() {
+        val offer = liveUndoOffer() as? UndoOffer.Logged ?: return
+        if (!ready || busy) return
+        busy = true
+        viewModelScope.launch {
+            runCatching { engine.deleteEntries(offer.entries) }
+                .onSuccess { loggedBatchIds = emptyList(); offerUndo(null); refresh() }
+                .onFailure { notice = UNDO_FAILED }
                 .also { busy = false }
         }
     }
@@ -1258,7 +1317,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         busy = true
         viewModelScope.launch {
             runCatching { engine.cacheFoodAndLog(food, amount, unit, target, capturedDayKey) }
-                .onSuccess { advanceUnknownQueue(); refresh() }
+                .onSuccess { offerUndo(null); advanceUnknownQueue(); refresh() }
                 .onFailure { notice = it.message ?: "Could not resolve this food." }
                 .also { busy = false }
         }
@@ -1342,6 +1401,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         viewModelScope.launch {
             runCatching { engine.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, capturedDayKey) }
                 .onSuccess {
+                    offerUndo(null)
                     selectedProduct = null
                     pendingContribution = contributionDraftAfterLocalSave(draft.food, fromScan)
                     selectedProductFromScan = false
@@ -1495,6 +1555,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 } else engine.saveCustomFood(name, brand, barcode, aliasText, nutrition, basisAmount, basisUnit, sourceName = offSource, sourceDescription = "Saved from an incomplete Open Food Facts barcode result")
             }
         }.onSuccess { saved ->
+            if (editingId == null && saveTarget != null) offerUndo(null)
             refresh()
             customOpen = false
             discardFoodOpen = false
@@ -1512,6 +1573,9 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }.onFailure { notice = it.message ?: "Could not save this food." }.also { busy = false } }
     }
 }
+
+/** The notice when an Undo could not be applied. */
+private const val UNDO_FAILED = "Could not undo."
 
 internal data class ProductPrefill(val amount: Double, val unit: MeasureUnit)
 

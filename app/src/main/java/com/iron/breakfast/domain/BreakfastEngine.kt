@@ -206,6 +206,9 @@ class BreakfastEngine(private val store: BreakfastStore) {
 
     suspend fun restoreEntry(entry: MealEntry) = store.saveEntries(listOf(entry))
 
+    /** Undoes a logged batch in one transaction; an entry changed since [entries] were saved stays. Returns the ids deleted. */
+    suspend fun deleteEntries(entries: List<MealEntry>): List<String> = store.deleteEntries(entries)
+
     suspend fun archiveFood(foodId: String) = store.archiveFood(foodId)
 
     suspend fun restoreFood(foodId: String) = store.restoreFood(foodId)

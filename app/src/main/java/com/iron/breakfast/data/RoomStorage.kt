@@ -160,6 +160,12 @@ interface MealEntryDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun replace(entry: MealEntryEntity)
+
+    @Query("SELECT * FROM meal_entries WHERE id IN (:ids)")
+    suspend fun byIds(ids: List<String>): List<MealEntryEntity>
+
+    @Query("DELETE FROM meal_entries WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<String>)
 }
 
 @Database(

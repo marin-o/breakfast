@@ -153,3 +153,14 @@ internal fun foodFormBack(saving: Boolean, dirty: Boolean): FoodFormBack = when 
     dirty -> FoodFormBack.ASK
     else -> FoodFormBack.CLOSE
 }
+
+/** How long an Undo offer stays: from the log or delete it undoes. */
+internal const val UNDO_WINDOW_MS = 15_000L
+
+/** True while an Undo offered at [offeredAtMs] can still be used. A clock set back before the offer closes it. */
+internal fun undoOpen(offeredAtMs: Long, nowMs: Long, windowMs: Long = UNDO_WINDOW_MS): Boolean =
+    nowMs >= offeredAtMs && nowMs - offeredAtMs < windowMs
+
+/** What is left of an Undo offer's window at [nowMs]; 0 once it has closed. */
+internal fun undoRemainingMs(offeredAtMs: Long, nowMs: Long, windowMs: Long = UNDO_WINDOW_MS): Long =
+    if (undoOpen(offeredAtMs, nowMs, windowMs)) offeredAtMs + windowMs - nowMs else 0L
