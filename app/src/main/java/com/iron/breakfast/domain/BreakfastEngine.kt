@@ -17,6 +17,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
     private var plannerPins: Map<String, FoodRecord>? = null
 
     /** Rebuilt only when the stored foods change: indexing the catalog is the costly part of matching. */
+    @Synchronized
     private fun matcher(): FoodMatcher {
         val foods = store.foods()
         if (cachedMatcher == null || foods !== matcherCatalog) {
@@ -72,6 +73,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
     }
 
     /** The planner for the current foods and preferences. [save] and the Log page both resolve through it. */
+    @Synchronized
     fun planner(pins: Map<String, FoodRecord> = emptyMap()): LogPlanner {
         val matcher = matcher()
         val preferences = store.preferenceMap()

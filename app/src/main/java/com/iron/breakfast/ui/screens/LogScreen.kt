@@ -37,6 +37,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
@@ -81,7 +83,14 @@ internal fun LogScreen(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
     BackHandler(onBack = vm::closeLog)
     // One resolution pass per draft: rows, choices and the add-bar sum all come from the same planner run.
-    val draft = remember(vm.input, vm.inputCommitted, vm.foods, vm.ready) { vm.logDraftView() }
+    // It runs off the main thread so typing never waits on matching; the last draft shows until the next is ready.
+    var draft by remember { mutableStateOf(vm.logDraftView()) }
+    LaunchedEffect(vm.input, vm.inputCommitted, vm.foods, vm.ready) {
+        val input = vm.input
+        val committed = vm.inputCommitted
+        val pins = vm.logPinsSnapshot()
+        draft = withContext(Dispatchers.Default) { vm.logDraftView(input, committed, pins) }
+    }
     val suggestions = draft.choices
     val target = vm.logTargetMeal()
     // The bar counts what Add will save, including the active segment's preselected match.

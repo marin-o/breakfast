@@ -108,6 +108,7 @@ class BreakfastStore(context: Context) {
     private var cachedPreferenceMap: Map<String, Preference> = emptyMap()
 
     /** Built once per snapshot: the Log page asks for it on every keystroke. */
+    @Synchronized
     fun preferenceMap(): Map<String, Preference> {
         val current = model
         if (current !== preferenceMapModel) {

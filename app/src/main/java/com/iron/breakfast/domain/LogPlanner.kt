@@ -91,8 +91,9 @@ class LogPlanner(
         val phrase: String get() = if (wholeName) parsed.raw else parsed.foodPhrase
     }
 
-    private val resolved = HashMap<String, SegmentResolution?>()
-    private val coverCache = HashMap<String, Boolean>()
+    // The Log page resolves on a background thread while taps resolve on the main one.
+    private val resolved: MutableMap<String, SegmentResolution?> = java.util.Collections.synchronizedMap(HashMap())
+    private val coverCache: MutableMap<String, Boolean> = java.util.Collections.synchronizedMap(HashMap())
 
     /** Resolves one segment. Null when no food matches. An unsupported unit still resolves; check [SegmentResolution.supported]. */
     fun resolve(raw: String): SegmentResolution? {

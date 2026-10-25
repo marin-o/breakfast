@@ -312,6 +312,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var logResolve by mutableStateOf<LogResolveRequest?>(null); private set
     /** Foods picked from the library this session, by the part text they now read as; the planner resolves those parts to them. */
     private val logPins = mutableMapOf<String, FoodRecord>()
+    /** The pins as they are now, for a draft computed off the main thread. */
+    internal fun logPinsSnapshot(): Map<String, FoodRecord> = logPins.toMap()
     var logMealMenuOpen by mutableStateOf(false); private set
     /** True when the meal menu was opened by Add with no meal known, so choosing a meal logs straight away. */
     private var logMealSubmitPending = false
@@ -764,10 +766,14 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
      * Everything the Log page shows for the current draft, computed in one pass from one planner, so the rows,
      * the choices and the add-bar sum all come from the same resolution.
      */
-    internal fun logDraftView(): LogDraftView {
-        val planner = engine.planner(logPins.toMap())
+    internal fun logDraftView(
+        input: String = this.input,
+        committed: Boolean = inputCommitted,
+        pins: Map<String, FoodRecord> = logPins.toMap(),
+    ): LogDraftView {
+        val planner = engine.planner(pins)
         // One planner draft: rows, the choice group, suggestions and the add-bar sum all come from the same resolution.
-        val draft = if (ready) planner.draft(input, typing = !inputCommitted) else DraftView.EMPTY
+        val draft = if (ready) planner.draft(input, typing = !committed) else DraftView.EMPTY
         return LogDraftView(
             rows = draft.rows,
             choices = draft.choices,
