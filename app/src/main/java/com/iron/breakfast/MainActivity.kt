@@ -7,6 +7,7 @@ import android.app.Application
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -129,6 +130,10 @@ import com.iron.breakfast.data.decodeDiary
 import com.iron.breakfast.data.diaryFileOf
 import com.iron.breakfast.data.encodeDiary
 import com.iron.breakfast.data.readDiaryText
+import com.iron.breakfast.data.SAFETY_COPY_NAME
+import com.iron.breakfast.data.diaryFileName
+import com.iron.breakfast.data.writeDiaryChecked
+import com.iron.breakfast.data.writeSafetyCopy
 import com.iron.breakfast.data.OffContributionDraft
 import com.iron.breakfast.data.OffContributionResult
 import com.iron.breakfast.data.OffPreflightResult
@@ -211,6 +216,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import java.util.Locale
@@ -242,6 +248,9 @@ enum class EntryEditMode { NONE, QUICK, FULL }
 enum class ProductReviewOrigin { MEAL, LIBRARY, QUEUE }
 
 enum class ScannerUnavailableReason { PERMISSION_DENIED, NO_USABLE_CAMERA }
+
+/** The system document picker Settings asks for: save a new diary file, or open one to import. */
+enum class DiaryPicker { EXPORT, IMPORT }
 
 
 private enum class EntryGesturePhase { UP, HORIZONTAL, VERTICAL, CONSUMED }
@@ -520,37 +529,56 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         settings.dayStartHour = hour
         checkDay(returning = true)
     }
-    /** Export diary: writes every stored row and the settings to [uri], a new file from the system save picker. */
+    /** The picker Settings asked for; IronApp, always composed, launches it so a result after recreation still lands. */
+    var diaryPickerRequest by mutableStateOf<DiaryPicker?>(null); private set
+    fun requestDiaryPicker(picker: DiaryPicker) { if (ready && !busy) diaryPickerRequest = picker }
+    fun diaryPickerLaunched() { diaryPickerRequest = null }
+    /** Waits until storage is open and no write is running; a picker result can arrive before either (after recreation). */
+    private suspend fun awaitIdleStore() {
+        while (!ready || busy) snapshotFlow { ready && !busy }.first { it }
+    }
+    /**
+     * Export diary: writes every stored row and the settings to [uri], the new file the save picker just created. It
+     * says "Diary exported." only after the copy was read back and imports; on any failure the file is deleted, so
+     * no empty or partial file looks like a backup.
+     */
     fun exportDiary(uri: Uri) {
-        if (!ready || busy) return
-        busy = true
-        val current = DiarySettings(dayStartHour, longDraft)
         val resolver = getApplication<Application>().contentResolver
         viewModelScope.launch {
-            val written = try {
-                val rows = engine.exportRows()
-                withContext(Dispatchers.IO) {
-                    val bytes = encodeDiary(diaryFileOf(rows, current, clock())).toByteArray(Charsets.UTF_8)
-                    (resolver.openOutputStream(uri) ?: error("no output stream")).use { it.write(bytes) }
+            awaitIdleStore()
+            busy = true
+            val written = withContext(NonCancellable) {
+                val problem = try {
+                    val file = diaryFileOf(engine.exportRows(), DiarySettings(dayStartHour, longDraft), clock())
+                    withContext(Dispatchers.IO) {
+                        writeDiaryChecked(
+                            file,
+                            write = { bytes ->
+                                val out = runCatching { resolver.openOutputStream(uri, "wt") }.getOrNull() ?: resolver.openOutputStream(uri)
+                                (out ?: error("no output stream")).use { it.write(bytes) }
+                            },
+                            readBack = { resolver.openInputStream(uri)?.use { readDiaryText(it) } },
+                        )
+                    }
+                } catch (e: Exception) {
+                    "write failed: $e"
                 }
-                true
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e(LOG_TAG, "Diary export failed", e)
-                false
-            } finally {
-                busy = false
+                if (problem != null) {
+                    Log.e(LOG_TAG, "Diary export failed: $problem")
+                    withContext(Dispatchers.IO) { runCatching { DocumentsContract.deleteDocument(resolver, uri) } }
+                }
+                problem == null
             }
+            busy = false
             notice = if (written) DIARY_EXPORTED else DIARY_EXPORT_FAILED
         }
     }
     /** Import diary: reads and checks the whole file at [uri]; only a file that passes everything asks to replace. */
     fun importDiary(uri: Uri) {
-        if (!ready || busy) return
-        busy = true
         val resolver = getApplication<Application>().contentResolver
         viewModelScope.launch {
+            awaitIdleStore()
+            busy = true
             val result = try {
                 withContext(Dispatchers.IO) {
                     val text = (resolver.openInputStream(uri) ?: error("no input stream")).use { readDiaryText(it) }
@@ -559,7 +587,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                DiaryImport.Invalid("unreadable: ${e.message}")
+                DiaryImport.Invalid("unreadable: $e")
             } finally {
                 busy = false
             }
@@ -570,24 +598,37 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }
     }
     fun cancelImport() { pendingImport = null }
-    /** Replace diary: every table becomes the file's rows in one transaction. The phone's settings stay as they are. */
+    /**
+     * Replace diary: the current diary is first saved to [SAFETY_COPY_NAME] in `no_backup` (no copy, no replace), then
+     * every table becomes the file's rows in one transaction. The phone's settings stay as they are.
+     */
     fun confirmImport() {
         val pending = pendingImport ?: return
         if (!ready || busy) return
         pendingImport = null
         busy = true
+        val safetyDir = getApplication<Application>().noBackupFilesDir
         viewModelScope.launch {
             try {
-                engine.replaceDiary(pending.rows)
+                val replaced = withContext(NonCancellable) {
+                    try {
+                        val current = diaryFileOf(engine.exportRows(), DiarySettings(dayStartHour, longDraft), clock())
+                        withContext(Dispatchers.IO) { writeSafetyCopy(safetyDir, current) }
+                        engine.replaceDiary(pending.rows)
+                        true
+                    } catch (e: Exception) {
+                        Log.e(LOG_TAG, "Diary import failed; the stored diary is unchanged", e)
+                        false
+                    }
+                }
+                if (!replaced) {
+                    notice = DIARY_IMPORT_REFUSED
+                    return@launch
+                }
                 // Nothing from the old diary may be undone, pinned or confirmed into the new one.
                 offerUndo(null); loggedBatchIds = emptyList(); logPins.clear(); feedbackIds = emptySet()
                 refresh()
                 refreshLibrary()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e(LOG_TAG, "Diary import failed; the stored diary is unchanged", e)
-                notice = DIARY_IMPORT_REFUSED
             } finally {
                 busy = false
             }
@@ -1758,6 +1799,8 @@ private const val CONTRIBUTION_UNCERTAIN = "Check Open Food Facts before sending
 /** The notice when an Undo could not be applied. */
 private const val UNDO_FAILED = "Could not undo."
 private const val LOG_TAG = "Breakfast"
+/** Any file may be offered: a diary arrives as JSON, as a plain binary from a file manager, or as text from a messenger or email. Import checks it in full anyway. */
+private val DIARY_FILE_TYPES = arrayOf("application/json", "application/octet-stream", "text/plain")
 private const val DIARY_EXPORTED = "Diary exported."
 private const val DIARY_EXPORT_FAILED = "Could not export the diary."
 private const val DIARY_IMPORT_REFUSED = "That file can't be imported."
@@ -1911,6 +1954,20 @@ internal fun Double.pretty() = if (this % 1 == 0.0) "%.0f".format(Locale.ROOT, t
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IronApp(vm: BreakfastViewModel = viewModel()) {
+    // Registered first and always, so a picker result delivered after the activity was recreated still reaches the VM.
+    val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri -> uri?.let(vm::exportDiary) }
+    val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::importDiary) }
+    LaunchedEffect(vm.diaryPickerRequest) {
+        val picker = vm.diaryPickerRequest ?: return@LaunchedEffect
+        vm.diaryPickerLaunched()
+        // No document app at all: nothing was created, so there is nothing to clean up.
+        runCatching {
+            when (picker) {
+                DiaryPicker.EXPORT -> exportPicker.launch(diaryFileName(LocalDate.now()))
+                DiaryPicker.IMPORT -> importPicker.launch(DIARY_FILE_TYPES)
+            }
+        }.onFailure { Log.e(LOG_TAG, "No document picker", it) }
+    }
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); vm.reloadToday() } }
     // Back from the background: a user following today opens on the new today.
     val activity = LocalContext.current as? android.app.Activity

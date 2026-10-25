@@ -1,8 +1,6 @@
 package com.iron.breakfast.ui.screens
 
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -28,7 +26,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.BreakfastViewModel
-import com.iron.breakfast.data.diaryFileName
+import com.iron.breakfast.DiaryPicker
 import com.iron.breakfast.dayStartLabel
 import com.iron.breakfast.ui.components.AddCircle
 import com.iron.breakfast.ui.components.ChoiceOption
@@ -38,7 +36,6 @@ import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.theme.BreakfastType
 import com.iron.breakfast.ui.theme.Gutter
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
-import java.time.LocalDate
 
 /** General settings, opened from the Library menu: a plain list of rows. The arrow and Back return to the Library. */
 @Composable
@@ -64,11 +61,9 @@ internal fun SettingsScreen(vm: BreakfastViewModel) {
             }
         }
         Hairline()
-        val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri -> uri?.let(vm::exportDiary) }
-        val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::importDiary) }
-        SettingsAction("Export diary", enabled = vm.ready && !vm.busy) { exportPicker.launch(diaryFileName(LocalDate.now())) }
+        SettingsAction("Export diary", enabled = vm.ready && !vm.busy) { vm.requestDiaryPicker(DiaryPicker.EXPORT) }
         Hairline()
-        SettingsAction("Import diary", enabled = vm.ready && !vm.busy) { importPicker.launch(DIARY_FILE_TYPES) }
+        SettingsAction("Import diary", enabled = vm.ready && !vm.busy) { vm.requestDiaryPicker(DiaryPicker.IMPORT) }
         Hairline()
     }
 }
@@ -85,7 +80,5 @@ private fun SettingsAction(label: String, enabled: Boolean, onClick: () -> Unit)
     }
 }
 
-/** A diary file is JSON; some file managers report a copied .json file as a plain binary. */
-private val DIARY_FILE_TYPES = arrayOf("application/json", "application/octet-stream")
 
 private val LONG_DRAFT_CHOICES = listOf(LongDraft.END to "End", LongDraft.START to "Start", LongDraft.TWO_LINES to "Two lines")

@@ -9,6 +9,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.nio.file.Files
 import java.time.LocalDate
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -196,6 +197,48 @@ class DiaryExportTest {
         assertNull(readDiaryText(ByteArrayInputStream(ByteArray(2_000)), maxBytes = 1_000))
         assertEquals("{\"a\":1}", readDiaryText(ByteArrayInputStream("\uFEFF{\"a\":1}".toByteArray()), maxBytes = 1_000))
         assertEquals("бурек", readDiaryText(ByteArrayInputStream("бурек".toByteArray())))
+    }
+
+    @Test fun anExportCountsOnlyWhenItsCopyReadsBackWhole() {
+        var written: ByteArray? = null
+        assertNull(writeDiaryChecked(file(), { written = it }, { written?.toString(Charsets.UTF_8) }))
+        // A provider that kept only part of the file, or nothing, or gives nothing back.
+        assertTrue(writeDiaryChecked(file(), { written = it.copyOf(it.size / 2) }, { written?.toString(Charsets.UTF_8) }) != null)
+        assertTrue(writeDiaryChecked(file(), { written = ByteArray(0) }, { written?.toString(Charsets.UTF_8) }) != null)
+        assertTrue(writeDiaryChecked(file(), { written = it }, { null }) != null)
+    }
+
+    @Test fun anInvalidDiaryIsNeverWritten() {
+        val bad = file().let { f -> f.copy(foods = f.foods + f.foods.first()) }
+        var writes = 0
+        assertTrue(writeDiaryChecked(bad, { writes++ }, { "" }) != null)
+        assertEquals(0, writes)
+    }
+
+    @Test fun theSafetyCopyReplacesThePreviousOneAndLeavesNoTempFile() {
+        val dir = Files.createTempDirectory("safety").toFile()
+        try {
+            writeSafetyCopy(dir, diaryFileOf(rows(), settings, 1L))
+            val second = writeSafetyCopy(dir, file())
+            assertEquals(listOf(SAFETY_COPY_NAME), dir.list()!!.toList())
+            assertEquals(encodeDiary(file()), second.readText())
+            assertIs<DiaryImport.Valid>(decodeDiary(second.readText()))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test fun aFailedSafetyCopyKeepsThePreviousOne() {
+        val dir = Files.createTempDirectory("safety").toFile()
+        try {
+            val first = writeSafetyCopy(dir, file())
+            val bad = file().let { f -> f.copy(foods = f.foods + f.foods.first()) }
+            assertTrue(runCatching { writeSafetyCopy(dir, bad) }.isFailure)
+            assertEquals(listOf(SAFETY_COPY_NAME), dir.list()!!.toList())
+            assertEquals(encodeDiary(file()), first.readText())
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 
     @Test fun theSuggestedNameCarriesTheDate() {

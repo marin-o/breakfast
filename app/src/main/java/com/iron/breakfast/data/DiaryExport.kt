@@ -7,7 +7,11 @@ import com.iron.breakfast.ui.components.LongDraft
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.time.LocalDate
 
 /*
@@ -291,6 +295,44 @@ internal fun readDiaryText(input: InputStream, maxBytes: Long = DIARY_MAX_BYTES)
         out.write(buffer, 0, n)
     }
     return out.toString(Charsets.UTF_8.name()).removePrefix("\uFEFF")
+}
+
+/**
+ * Checks [file], writes it with [write], then reads the copy back with [readBack]. Null only when the copy is
+ * byte-for-byte what was meant and imports; otherwise why not (an invalid [file] is never written). A failing [write]
+ * or [readBack] throws.
+ */
+internal fun writeDiaryChecked(file: DiaryFile, write: (ByteArray) -> Unit, readBack: () -> String?): String? {
+    diaryProblem(file)?.let { return "invalid diary: $it" }
+    val text = encodeDiary(file)
+    write(text.toByteArray(Charsets.UTF_8))
+    val copy = readBack() ?: return "copy unreadable"
+    if (copy != text) return "copy differs (${copy.length} of ${text.length} characters)"
+    return (decodeDiary(copy) as? DiaryImport.Invalid)?.reason
+}
+
+/** The diary as it was just before the last Replace diary, in app storage that is never backed up. */
+internal const val SAFETY_COPY_NAME = "diary-before-import.json"
+
+/**
+ * Writes [file] to [dir]/[SAFETY_COPY_NAME], replacing the previous copy only once the new one is complete and checked
+ * (a temp file, then an atomic rename). Throws when that fails; the previous copy then stays.
+ */
+internal fun writeSafetyCopy(dir: File, file: DiaryFile): File {
+    val target = File(dir, SAFETY_COPY_NAME)
+    val temp = File(dir, "$SAFETY_COPY_NAME.tmp")
+    try {
+        val problem = writeDiaryChecked(
+            file,
+            write = { bytes -> FileOutputStream(temp).use { it.write(bytes); it.fd.sync() } },
+            readBack = { temp.inputStream().use { readDiaryText(it) } },
+        )
+        check(problem == null) { "safety copy: $problem" }
+        Files.move(temp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+    } finally {
+        temp.delete()
+    }
+    return target
 }
 
 /** "breakfast-2026-10-26.json": the name the save picker suggests. */
