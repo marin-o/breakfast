@@ -224,12 +224,6 @@ enum class EntryEditMode { NONE, QUICK, FULL }
 
 enum class ProductReviewOrigin { MEAL, LIBRARY, QUEUE }
 
-internal fun productReviewOrigin(slot: MealSlot?, resolving: Boolean, queueNotEmpty: Boolean): ProductReviewOrigin = when {
-    resolving && queueNotEmpty -> ProductReviewOrigin.QUEUE
-    slot != null -> ProductReviewOrigin.MEAL
-    else -> ProductReviewOrigin.LIBRARY
-}
-
 enum class ScannerUnavailableReason { PERMISSION_DENIED, NO_USABLE_CAMERA }
 
 
@@ -455,10 +449,16 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (logResolve != null) { logLibraryFood(food); return }
         selectedLibraryFood = food
     }
+    /** What is drawn over Daily, Meal or Library right now, by [topOverlay]. */
+    internal fun topOverlay(): Overlay? = topOverlay(
+        scanner = scannerOpen, entryDetail = selectedEntry != null, productReview = selectedProduct != null,
+        resolver = resolverOpen, offSearch = searchOpen, foodForm = customOpen,
+        libraryFood = selectedLibraryFood != null, entryEdit = entryEditMode != EntryEditMode.NONE,
+    )
     /** A library search that finished with nothing and has no other screen over it: the "No local match" screen. */
     fun libraryNoMatch(): Boolean = isLibraryNoMatch(
         ready, libraryOpen, libraryQuery, libraryResultsQuery, libraryFoods.isEmpty(),
-        otherScreenOpen = selectedLibraryFood != null || customOpen || searchOpen || resolverOpen || selectedProduct != null || scannerOpen || selectedEntry != null || entryEditMode != EntryEditMode.NONE,
+        otherScreenOpen = topOverlay() != null,
     )
     fun closeLibraryFood() { selectedLibraryFood = null }
     fun lastLoggedEntry(food: FoodRecord): MealEntry? = entries.asSequence()
@@ -1584,34 +1584,6 @@ internal fun removeAllMealMarkerTokens(value: String): String =
     ShorthandParser().removingParts(value) { ShorthandLexicon.mealSlotOf(it.text) != null }
 
 /**
- * The Log page's target meal. Precedence: a meal picked from the Log menu, then a single typed meal word
- * (it beats a preset), then the preset. Two different typed words give no target; the plan reports the error.
- */
-internal fun logTargetMealOf(chosen: MealSlot?, typedMarkers: List<MealSlot>, preset: MealSlot?): MealSlot? =
-    chosen ?: typedMarkers.singleOrNull() ?: preset
-
-/** The picker label: the target meal's name, or "Meal" when nothing is chosen, typed or preset. */
-internal fun logMealPickerLabel(target: MealSlot?): String = target?.label() ?: "Meal"
-
-internal sealed interface LogSubmitPlan {
-    /** Nothing to do: the app is not ready or a save is already running. */
-    data object Ignore : LogSubmitPlan
-    data class Error(val message: String) : LogSubmitPlan
-    /** No meal is known: open the Log's meal menu; choosing a meal submits. */
-    data object OpenMenu : LogSubmitPlan
-    data class Save(val target: MealSlot) : LogSubmitPlan
-}
-
-/** Decides what Add does with the Log input. Pure, so the no-meal path and the busy guard can be unit-tested. */
-internal fun logSubmitPlan(ready: Boolean, busy: Boolean, input: String, typedMarkers: List<MealSlot>, chosen: MealSlot?, preset: MealSlot?): LogSubmitPlan {
-    if (!ready || busy) return LogSubmitPlan.Ignore
-    if (input.isBlank()) return LogSubmitPlan.Error("Add at least one food.")
-    if (typedMarkers.size > 1) return LogSubmitPlan.Error("Choose one meal marker, or remove the extra markers.")
-    val target = logTargetMealOf(chosen, typedMarkers, preset) ?: return LogSubmitPlan.OpenMenu
-    return LogSubmitPlan.Save(target)
-}
-
-/**
  * What Add logs for a Log draft: the input with meal words removed, as submit() sends it to save().
  * An amountless draft opens the Library search instead, so it logs nothing.
  */
@@ -1679,13 +1651,15 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
         if (vm.slot != null) FocusedFoodAddDialog(vm, vm.selectedLibraryFood!!)
         else LibraryFoodDetailDialog(vm, vm.selectedLibraryFood!!)
     }
-    if (vm.logOpen) Unit // LogScreen owns Back while it is open.
-    else if (vm.libraryOpen && vm.selectedLibraryFood == null && !vm.customOpen && !vm.searchOpen && !vm.resolverOpen && vm.selectedProduct == null && vm.entryEditMode == EntryEditMode.NONE) {
-        // Archived foods is a child destination of Library. Keep system/predictive
-        // Back aligned with the top-bar arrow before leaving the Library flow.
-        BackHandler { if (vm.libraryArchivedOnly) vm.openLibrary() else vm.closeLibrary() }
-    } else if (vm.slot != null && vm.entryEditMode == EntryEditMode.NONE && !vm.customOpen && !vm.searchOpen && !vm.resolverOpen && vm.selectedProduct == null && vm.selectedEntry == null) {
-        BackHandler { vm.closeMeal() }
+    // LogScreen and every overlay own Back while they are open.
+    if (!vm.logOpen && vm.topOverlay() == null) {
+        if (vm.libraryOpen) {
+            // Archived foods is a child destination of Library. Keep system/predictive
+            // Back aligned with the top-bar arrow before leaving the Library flow.
+            BackHandler { if (vm.libraryArchivedOnly) vm.openLibrary() else vm.closeLibrary() }
+        } else if (vm.slot != null) {
+            BackHandler { vm.closeMeal() }
+        }
     }
     if (vm.mixedMealPickerOpen) MixedMealPickerDialog(vm)
     if (vm.libraryMealPickerFood != null) LibraryMealPickerDialog(vm, vm.libraryMealPickerFood!!)
@@ -1875,68 +1849,4 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
             if (unit != null) Text(unit, color = colors.soft, style = BreakfastType.Secondary, maxLines = 1, modifier = unitModifier)
         }
     }
-}
-
-/** Where a reviewed product is logged. While a resolve queue is active the meal is the queue's own and Add always advances it. */
-internal data class ReviewLogPlan(val meal: MealSlot, val advancesQueue: Boolean)
-
-internal fun contributionAuthCanDismiss(busy: Boolean): Boolean = !busy
-
-internal fun reviewLogPlan(resolutionContinuation: Boolean, queueNotEmpty: Boolean, queueTarget: MealSlot?, chosen: MealSlot): ReviewLogPlan =
-    if (resolutionContinuation && queueNotEmpty && queueTarget != null) ReviewLogPlan(queueTarget, true) else ReviewLogPlan(chosen, false)
-
-/** The queue owns the meal while resolving, even when the Daily screen has no selected meal. */
-internal fun resolverLogPlan(
-    resolutionContinuation: Boolean,
-    queueNotEmpty: Boolean,
-    queueTarget: MealSlot?,
-    currentMeal: MealSlot?,
-): ReviewLogPlan? = when {
-    resolutionContinuation && queueNotEmpty -> queueTarget?.let { ReviewLogPlan(it, true) }
-    else -> currentMeal?.let { ReviewLogPlan(it, false) }
-}
-
-internal fun activeResolutionTarget(
-    resolutionContinuation: Boolean,
-    queue: List<String>,
-    queueTarget: MealSlot?,
-): MealSlot? = resolverLogPlan(resolutionContinuation, queue.isNotEmpty(), queueTarget, null)?.meal
-
-internal fun canSaveProductToLibrary(slot: MealSlot?, resolutionContinuation: Boolean, queueNotEmpty: Boolean): Boolean =
-    slot == null && !(resolutionContinuation && queueNotEmpty)
-
-internal data class ScannerFailureTransition(
-    val scannerOpen: Boolean,
-    val unavailable: Boolean,
-)
-
-internal fun scannerUnavailableTransition(): ScannerFailureTransition =
-    ScannerFailureTransition(scannerOpen = true, unavailable = true)
-
-internal fun shouldApplyOffSearchResult(
-    responseGeneration: Long,
-    currentGeneration: Long,
-    responseQuery: String,
-    currentQuery: String,
-    searchOpen: Boolean,
-): Boolean = searchOpen && responseGeneration == currentGeneration && responseQuery == currentQuery
-
-internal fun shouldApplyLibraryRefresh(
-    responseGeneration: Long,
-    currentGeneration: Long,
-    responseQuery: String,
-    currentQuery: String,
-    responseArchivedOnly: Boolean,
-    currentArchivedOnly: Boolean,
-    libraryOpen: Boolean,
-): Boolean = libraryOpen && responseGeneration == currentGeneration && responseQuery == currentQuery && responseArchivedOnly == currentArchivedOnly
-
-/** The "No local match" screen shows only once a finished library search for the current query is empty and nothing sits over it. */
-internal fun isLibraryNoMatch(ready: Boolean, libraryOpen: Boolean, query: String, resultsQuery: String?, noResults: Boolean, otherScreenOpen: Boolean): Boolean =
-    ready && libraryOpen && query.isNotBlank() && resultsQuery == query && noResults && !otherScreenOpen
-
-/** "n of m" for the resolve sticker; the total never reads lower than what is left. */
-internal fun resolvePosition(total: Int, remaining: Int): Pair<Int, Int> {
-    val shown = maxOf(total, remaining)
-    return (shown - remaining + 1).coerceIn(1, maxOf(shown, 1)) to shown
 }
