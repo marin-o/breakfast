@@ -128,6 +128,7 @@ import com.iron.breakfast.data.OffPreflightResult
 import com.iron.breakfast.data.OffResult
 import com.iron.breakfast.data.OffSearchResult
 import com.iron.breakfast.data.OpenFoodFactsClient
+import com.iron.breakfast.data.plausibleNutrition
 import com.iron.breakfast.domain.BreakfastEngine
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
@@ -326,6 +327,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var contributionReviewOpen by mutableStateOf(false); private set
     var contributionAuthOpen by mutableStateOf(false); private set
     var contributionFailure by mutableStateOf<String?>(null); private set
+    /** The failure shown is "may have been sent": the answer to a sent contribution was lost. */
+    var contributionUncertain by mutableStateOf(false); private set
     var contributionUsername by mutableStateOf(""); private set
     var contributionPassword by mutableStateOf(""); private set
     var contributionBusy by mutableStateOf(false); private set
@@ -1280,8 +1283,16 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         contributionAuthOpen = false
         contributionPassword = ""
     }
-    fun dismissContributionFailure() { contributionFailure = null; pendingContribution = null }
-    fun retryContribution() { contributionFailure = null; contributionAuthOpen = true }
+    fun dismissContributionFailure() { contributionFailure = null; contributionUncertain = false; pendingContribution = null }
+    fun retryContribution() {
+        val uncertain = contributionUncertain
+        contributionFailure = null
+        contributionUncertain = false
+        val draft = pendingContribution
+        // After a lost answer the product is read again first, so a retry starts from what Open Food Facts now holds.
+        if (uncertain && draft != null) { contributionPreflightComplete = false; startContributionPreflight(draft) }
+        else contributionAuthOpen = true
+    }
     fun onContributionUsername(v: String) { contributionUsername = v }
     fun onContributionPassword(v: String) { contributionPassword = v }
     fun onContributionLanguage(v: String) {
@@ -1297,6 +1308,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (contributionBusy) return
         if (contributionUsername.isBlank() || contributionPassword.isBlank()) {
             contributionFailure = "Enter your Open Food Facts username and password to submit."
+            contributionUncertain = false
             contributionAuthOpen = false
             return
         }
@@ -1319,8 +1331,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                     is OffContributionResult.Rejected -> { contributionAuthOpen = false; contributionFailure = result.message }
                     is OffContributionResult.PreflightChanged -> { contributionAuthOpen = false; contributionFailure = result.message }
                     OffContributionResult.Unavailable -> { contributionAuthOpen = false; contributionFailure = "Open Food Facts was unavailable. Retry when you have a connection." }
+                    OffContributionResult.Uncertain -> { contributionAuthOpen = false; contributionFailure = CONTRIBUTION_UNCERTAIN }
                     is OffContributionResult.Error -> { contributionAuthOpen = false; contributionFailure = result.message }
                 }
+                contributionUncertain = result == OffContributionResult.Uncertain
                 contributionBusy = false
             }
         }
@@ -1596,7 +1610,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 barcode = it, name = name.trim(), brand = brand.trim().ifBlank { null },
                 basisAmount = basisAmount, basisUnit = basisUnit, nutrition = nutrition
             )
-        } else null
+        }?.takeIf { plausibleNutrition(it.normalizedNutrition) } else null
         val offSource = fromOff.takeIf { it }?.let { "Open Food Facts" }
         val aliasText = aliasList.joinToString(", ")
         val capturedDayKey = selectedDayKey
@@ -1631,6 +1645,9 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }.onFailure { notice = it.message ?: "Could not save this food." }.also { busy = false } }
     }
 }
+
+/** The body of the contribution failure screen when the answer to a sent contribution was lost. */
+private const val CONTRIBUTION_UNCERTAIN = "Check Open Food Facts before sending again."
 
 /** The notice when an Undo could not be applied. */
 private const val UNDO_FAILED = "Could not undo."
@@ -1982,7 +1999,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter)) {
             TopBar("Contribute", vm::dismissContributionFailure, Modifier.padding(top = 8.dp))
             Column(Modifier.fillMaxWidth().padding(top = 96.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Not sent", color = colors.ink, style = BreakfastType.Title)
+                Text(if (vm.contributionUncertain) "May have been sent" else "Not sent", color = colors.ink, style = BreakfastType.Title)
                 Text(
                     message,
                     color = colors.soft,

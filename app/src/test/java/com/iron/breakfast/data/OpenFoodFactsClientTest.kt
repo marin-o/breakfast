@@ -535,6 +535,62 @@ class OpenFoodFactsClientTest {
         assertEquals(OffPreflightResult.Existing, preflight("\"quantity\":\"33 cl\"", MeasureUnit.MILLILITER))
     }
 
+    private fun contributionClient(write: (URL) -> FakeConnection): OpenFoodFactsClient = OpenFoodFactsClient { url ->
+        when {
+            url.path.contains("/api/v3/product/") -> FakeConnection(url, 200, "{\"product\":{\"nutrition_data_per\":\"100g\",\"product_quantity_unit\":\"g\"}}", null)
+            url.path.endsWith("session.pl") -> FakeConnection(url, 200, "logged in", "session=x")
+            else -> write(url)
+        }
+    }
+
+    private val correction = OffContributionDraft("3017620422003", "Spread", null, 100.0, MeasureUnit.GRAM, NutritionValues(500.0, 6.0, 57.0, 30.0))
+
+    @Test fun aLostAnswerAfterTheBodyWasWrittenIsUncertainNotUnavailable() {
+        var write: FakeConnection? = null
+        val client = contributionClient { url -> FakeConnection(url, 200, "", null, failOnResponse = true).also { write = it } }
+        assertEquals(OffContributionResult.Uncertain, client.contribute(correction, "user", "password"))
+        assertTrue(requireNotNull(write).written.toString(Charsets.UTF_8).contains("code=3017620422003"))
+    }
+
+    @Test fun aWriteThatFailsBeforeTheBodyIsSentIsUnavailable() {
+        val client = contributionClient { url -> FakeConnection(url, 200, "", null, failOnOutput = true) }
+        assertEquals(OffContributionResult.Unavailable, client.contribute(correction, "user", "password"))
+    }
+
+    @Test fun aLostLoginAnswerIsStillUnavailable() {
+        val client = OpenFoodFactsClient { url ->
+            if (url.path.endsWith("session.pl")) FakeConnection(url, 200, "", "session=x", failOnResponse = true)
+            else FakeConnection(url, 200, "{\"product\":{\"nutrition_data_per\":\"100g\",\"product_quantity_unit\":\"g\"}}", null)
+        }
+        assertEquals(OffContributionResult.Unavailable, client.contribute(correction, "user", "password"))
+    }
+
+    @Test fun outboundNutritionPassesTheInboundBounds() {
+        val food = FoodRecord(
+            id = "custom", name = "Bar", aliases = emptyList(), category = "Personal food", origin = FoodOrigin.CUSTOM,
+            nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(400.0, 20.0, 50.0, 10.0)), barcode = "3017620422003"
+        )
+        fun with(amount: Double, values: NutritionValues) = OffContributionDraft.fromFood(food.copy(nutrition = NutritionBasis(amount, MeasureUnit.GRAM, values)))
+        assertNull(with(100.0, NutritionValues(400.0, 500.0, null, null)))
+        assertNull(with(100.0, NutritionValues(1001.0, null, null, null)))
+        assertNull(with(100.0, NutritionValues(400.0, null, null, -1.0)))
+        assertNull(with(100.0, NutritionValues(Double.NaN, null, null, null)))
+        // 60 g protein in a 50 g basis is 120 g per 100 g.
+        assertNull(with(50.0, NutritionValues(200.0, 60.0, null, null)))
+        assertEquals("3017620422003", with(100.0, NutritionValues(1000.0, 100.0, 0.0, null))?.barcode)
+        assertEquals("3017620422003", with(30.0, NutritionValues(120.0, 30.0, 0.0, 0.0))?.barcode)
+    }
+
+    @Test fun plausibleNutritionIsOneRuleForBothDirections() {
+        assertTrue(plausibleNutrition(NutritionValues(0.0, null, null, null)))
+        assertTrue(plausibleNutrition(NutritionValues(1000.0, 100.0, 100.0, 100.0)))
+        assertTrue(!plausibleNutrition(NutritionValues(1000.1, null, null, null)))
+        assertTrue(!plausibleNutrition(NutritionValues(100.0, 100.1, null, null)))
+        assertTrue(!plausibleNutrition(NutritionValues(100.0, null, Double.POSITIVE_INFINITY, null)))
+        assertTrue(!plausibleNutrition(NutritionValues(100.0, null, null, Double.NaN)))
+        assertNull(OpenFoodFactsClient().parseProductForTesting("""{"product_name":"Heavy","product_quantity_unit":"g","nutriments":{"energy-kcal_100g":42,"proteins_100g":101}}"""))
+    }
+
     @Test fun rejectsAmbiguousBasisAndPresentInvalidNutrients() {
         val client = OpenFoodFactsClient()
         assertNull(client.parseProductForTesting("""{"product_name":"Unknown package","nutrition_data_per":"100g","nutriments":{"energy-kcal_100g":42}}"""))

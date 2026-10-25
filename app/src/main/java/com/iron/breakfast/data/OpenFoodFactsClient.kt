@@ -106,11 +106,21 @@ data class OffContributionDraft(
             val basis = food.nutrition
             if (food.name.isBlank() || !basis.amount.isFinite() || basis.amount <= 0.0) return null
             if (basis.unit != MeasureUnit.GRAM && basis.unit != MeasureUnit.MILLILITER) return null
-            fun valid(value: Double?) = value == null || (value.isFinite() && value >= 0.0)
-            if (!valid(basis.values.calories) || !valid(basis.values.protein) || !valid(basis.values.carbohydrates) || !valid(basis.values.fat)) return null
+            // What is published passes the same bounds as what is read from Open Food Facts.
             return OffContributionDraft(barcode, food.name.trim(), food.brand, basis.amount, basis.unit, basis.values)
+                .takeIf { plausibleNutrition(it.normalizedNutrition) }
         }
     }
+}
+
+/**
+ * The one plausibility rule for Open Food Facts nutrition, read or sent: per 100 g or ml, kcal from 0 to 1000 and
+ * each macro from 0 to 100 g, all finite. A missing macro is unknown, not wrong.
+ */
+internal fun plausibleNutrition(per100: NutritionValues): Boolean {
+    fun macro(value: Double?) = value == null || (value.isFinite() && value in 0.0..100.0)
+    return per100.calories.isFinite() && per100.calories in 0.0..1000.0 &&
+        macro(per100.protein) && macro(per100.carbohydrates) && macro(per100.fat)
 }
 
 sealed interface OffContributionResult {
@@ -119,9 +129,15 @@ sealed interface OffContributionResult {
     data class Ineligible(val message: String) : OffContributionResult
     data class Rejected(val message: String) : OffContributionResult
     data class PreflightChanged(val message: String) : OffContributionResult
+    /** Not sent: the connection failed before the request body went out. */
     data object Unavailable : OffContributionResult
+    /** The body went out and the answer was lost, so Open Food Facts may have saved it. */
+    data object Uncertain : OffContributionResult
     data class Error(val message: String) : OffContributionResult
 }
+
+/** The request body was written, then reading the answer failed: the server may have acted on it. */
+private class ResponseLost(cause: java.io.IOException) : java.io.IOException(cause)
 
 private sealed interface OffLoginResult {
     data class Success(val cookie: String) : OffLoginResult
@@ -270,6 +286,8 @@ class OpenFoodFactsClient(
             connection.setRequestProperty("Cookie", session)
             val response = postForm(connection, remoteDraft.asFormFields())
             classifyContributionResponse(response.first, response.second)
+        } catch (_: ResponseLost) {
+            OffContributionResult.Uncertain
         } catch (_: java.io.IOException) {
             OffContributionResult.Unavailable
         } catch (_: Exception) {
@@ -374,13 +392,24 @@ class OpenFoodFactsClient(
         } finally { connection.disconnect() }
     }
 
+    /**
+     * Writes [fields] as the form body, then reads the answer. A failure while writing means nothing was sent (a plain
+     * [java.io.IOException]); a failure after the whole body was written is [ResponseLost].
+     */
     private fun postForm(connection: HttpURLConnection, fields: Map<String, String>): Pair<Int, String> {
         val body = fields.entries.joinToString("&") { (key, value) ->
             URLEncoder.encode(key, StandardCharsets.UTF_8.name()) + "=" + URLEncoder.encode(value, StandardCharsets.UTF_8.name())
+        }.toByteArray(StandardCharsets.UTF_8)
+        // Streamed, not buffered until the answer is asked for, so "written" means handed to the connection.
+        connection.setFixedLengthStreamingMode(body.size)
+        connection.outputStream.use { it.write(body) }
+        return try {
+            val status = connection.responseCode
+            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+            status to (stream?.bufferedReader()?.readText().orEmpty())
+        } catch (lost: java.io.IOException) {
+            throw ResponseLost(lost)
         }
-        connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
-        val stream = if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream
-        return connection.responseCode to (stream?.bufferedReader()?.readText().orEmpty())
     }
 
     internal fun classifyContributionResponseForTesting(status: Int, raw: String): OffContributionResult =
@@ -417,23 +446,17 @@ class OpenFoodFactsClient(
             n.containsKey("energy-kj_100g") -> n.number("energy-kj_100g")?.div(4.184) ?: return null
             else -> return null
         }
-        if (!calories.isFinite() || calories < 0 || calories > 1000) return null
-        fun macro(key: String): Double? {
-            if (!n.containsKey(key)) return null
-            val value = n.number(key) ?: return Double.NaN
-            return value.takeIf { it.isFinite() && it >= 0.0 && it <= 100.0 } ?: Double.NaN
-        }
-        val protein = macro("proteins_100g")
-        val carbs = macro("carbohydrates_100g")
-        val fat = macro("fat_100g")
-        if (listOf(protein, carbs, fat).any { it?.isNaN() == true }) return null
+        // A macro that is present but not a number is wrong, not unknown: NaN fails the bounds.
+        fun macro(key: String): Double? = if (!n.containsKey(key)) null else n.number(key) ?: Double.NaN
+        val values = NutritionValues(calories, macro("proteins_100g"), macro("carbohydrates_100g"), macro("fat_100g"))
+        if (!plausibleNutrition(values)) return null
         // A blank code is no code: it must not become the shared id "off-" or a stored empty barcode.
         val barcode = p.string("code")?.trim()?.ifBlank { null } ?: fallbackBarcode?.trim()?.ifBlank { null }
         return FoodRecord(
             id = "off-" + (barcode ?: name.lowercase().replace(" ", "-")), name = name,
             aliases = emptyList(), category = "Open Food Facts",
             origin = FoodOrigin.GENERIC,
-            nutrition = NutritionBasis(100.0, basisUnit, NutritionValues(calories, protein, carbs, fat)),
+            nutrition = NutritionBasis(100.0, basisUnit, values),
             conversions = listOf(com.iron.breakfast.domain.ServingConversion(basisUnit, 1.0, "Open Food Facts per 100 ${basisUnit.label}")),
             defaultAmount = 100.0, defaultUnit = basisUnit,
             sourceId = barcode, sourceName = "Open Food Facts", sourceRelease = "v3",
