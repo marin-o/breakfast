@@ -20,7 +20,7 @@ A single-module Android app (`app/`, package `com.iron.breakfast`): Kotlin, Jetp
 
 ## State owners
 
-All state lives in `BreakfastViewModel`, so it survives rotation; very little survives process death.
+All state lives in `BreakfastViewModel`, so it survives configuration changes (the app is portrait only; dark mode and font size still recreate the activity); very little survives process death.
 
 | State | Owner | Survives process death |
 | --- | --- | --- |
@@ -31,7 +31,7 @@ All state lives in `BreakfastViewModel`, so it survives rotation; very little su
 | Log draft text and committed flag | VM `logDraft`, one draft for Daily and Meal, separate from `input` (the Library bar and edit amount); only Add or clearing it removes it | Yes (`log_draft`, `log_draft_committed`; removed once the draft is empty) |
 | Log pins, resolve queue | VM | No |
 | New / edit food form (`FoodDraft`) | VM + `SavedStateHandle` (`food_form`, one JSON string) | Yes, the form reopens; not while resolving a part or a queue |
-| Entry edit typed values | Composition `remember`; a save error (`mealDraftError`) stays until one of them changes | Not even rotation (MOB-026) |
+| Edit-sheet typed values (entry quick and full edit, Library amount sheet, manual barcode, scan review) and the scanner's "camera permission asked" flag | Composition `rememberSaveable`, so a configuration change (dark mode, font size) keeps them; a save error (`mealDraftError`) stays until one of them changes | No; these sheets do not reopen after process death |
 | Pending Undo (`UndoOffer`) | VM; expires 15 s after the log or delete, or at the next log, edit or delete | No |
 | OFF search query and results, scan review fields | VM | No |
 | OFF username and password | VM memory only | No, by design |

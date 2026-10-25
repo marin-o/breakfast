@@ -43,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -261,9 +262,10 @@ internal fun servingRowName(conversion: ServingConversion): String {
 @Composable
 internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
     val colors = LocalBreakfastColors.current
-    var amountSheetOpen by remember(food.id) { mutableStateOf(false) }
-    var mealMenuOpen by remember(food.id) { mutableStateOf(false) }
-    var targetMeal by remember(food.id) { mutableStateOf(vm.slot ?: MealSlot.LUNCH) }
+    // Saveable, with the amount sheet's own values, so a configuration change keeps the open sheet as it was.
+    var amountSheetOpen by rememberSaveable(food.id) { mutableStateOf(false) }
+    var mealMenuOpen by rememberSaveable(food.id) { mutableStateOf(false) }
+    var targetMeal by rememberSaveable(food.id) { mutableStateOf(vm.slot ?: MealSlot.LUNCH) }
     val servings = food.householdServings()
     BackHandler { vm.closeLibraryFood() }
     Column(Modifier.fillMaxSize().background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter, vertical = 4.dp)) {
@@ -455,9 +457,9 @@ internal fun LibraryFoodEditScreen(vm: BreakfastViewModel) {
 @Composable
 private fun LibraryAmountSheet(vm: BreakfastViewModel, food: FoodRecord, target: MealSlot, onDismiss: () -> Unit) {
     val colors = LocalBreakfastColors.current
-    var amountText by remember(food.id, target) { mutableStateOf((vm.lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount).pretty()) }
-    var unit by remember(food.id, target) { mutableStateOf(vm.lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit) }
-    var chosenMeal by remember(food.id, target) { mutableStateOf(target) }
+    var amountText by rememberSaveable(food.id, target) { mutableStateOf((vm.lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount).pretty()) }
+    var unit by rememberSaveable(food.id, target) { mutableStateOf(vm.lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit) }
+    var chosenMeal by rememberSaveable(food.id, target) { mutableStateOf(target) }
     val units = (listOf(food.defaultUnit, food.nutrition.unit) + food.conversions.map { it.unit }).filter { it != MeasureUnit.UNKNOWN }.distinct()
     val calc = amountText.toDoubleOrNull()?.takeIf { it > 0 }?.let { NutritionCalculator().calculate(food, it, unit) }
     Sheet(onDismissRequest = onDismiss, skipPartiallyExpanded = true) {

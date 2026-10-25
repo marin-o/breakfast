@@ -39,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -144,8 +145,9 @@ private fun MacroTable(entry: MealEntry, modifier: Modifier = Modifier) {
 internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
     val colors = LocalBreakfastColors.current
     BackHandler { vm.cancelEdit() }
-    var amount by remember(entry.id) { mutableStateOf(editAmountText(entry.enteredAmount)) }
-    var unit by remember(entry.id) { mutableStateOf(entry.enteredUnit) }
+    // Saveable: a dark-mode or font-size change recreates the activity and must not reset what was typed.
+    var amount by rememberSaveable(entry.id) { mutableStateOf(editAmountText(entry.enteredAmount)) }
+    var unit by rememberSaveable(entry.id) { mutableStateOf(entry.enteredUnit) }
     val food = vm.foods.firstOrNull { it.id == entry.foodId }
     val units = food?.let(vm::editUnits).orEmpty().ifEmpty { listOf(entry.enteredUnit) }
     val preview = amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { vm.draftCalculation(entry.foodId, it, unit) }
@@ -200,10 +202,10 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
     BackHandler { vm.cancelEdit() }
     val selectedFood = vm.editingFood() ?: vm.foods.firstOrNull { it.id == entry.foodId }
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
-    var amount by remember(entry.id) { mutableStateOf(editAmountText(entry.enteredAmount)) }
-    var unit by remember(entry.id) { mutableStateOf(entry.enteredUnit) }
-    var meal by remember(entry.id) { mutableStateOf(entry.mealSlot) }
-    var dayKey by remember(entry.id) { mutableStateOf(entry.dayKey) }
+    var amount by rememberSaveable(entry.id) { mutableStateOf(editAmountText(entry.enteredAmount)) }
+    var unit by rememberSaveable(entry.id) { mutableStateOf(entry.enteredUnit) }
+    var meal by rememberSaveable(entry.id) { mutableStateOf(entry.mealSlot) }
+    var dayKey by rememberSaveable(entry.id) { mutableStateOf(entry.dayKey) }
     val context = LocalContext.current
     val date = runCatching { LocalDate.parse(dayKey) }.getOrElse { LocalDate.now() }
     val units = selectedFood?.let(vm::editUnits).orEmpty().ifEmpty { listOf(entry.enteredUnit) }

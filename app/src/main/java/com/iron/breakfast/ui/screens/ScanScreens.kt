@@ -71,6 +71,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -141,7 +142,9 @@ import java.util.concurrent.atomic.AtomicBoolean
     val lifecycleOwner = LocalLifecycleOwner.current
     var torchAvailable by remember { mutableStateOf(false) }
     var torchOn by remember { mutableStateOf(false) }
-    var manualOpen by remember { mutableStateOf(false) }
+    var manualOpen by rememberSaveable { mutableStateOf(false) }
+    // Asked once per scan session: a configuration change after a denial must not bring the system dialog back.
+    var permissionAsked by rememberSaveable { mutableStateOf(false) }
     val hasCameraHardware = remember { context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasPermission = granted; if (!granted) vm.scannerPermissionDenied() }
     val feather = with(LocalDensity.current) { ScanFeather.toPx() }
@@ -156,7 +159,9 @@ import java.util.concurrent.atomic.AtomicBoolean
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(Unit) { if (hasCameraHardware && !hasPermission) launcher.launch(Manifest.permission.CAMERA) }
+    LaunchedEffect(Unit) {
+        if (hasCameraHardware && !hasPermission && !permissionAsked) { permissionAsked = true; launcher.launch(Manifest.permission.CAMERA) }
+    }
     LaunchedEffect(hasCameraHardware) { if (!hasCameraHardware) vm.scannerUnavailable() }
     LaunchedEffect(torchOn, torchAvailable) { if (torchAvailable) session.camera?.cameraControl?.enableTorch(torchOn) }
     BackHandler { vm.endScan() }
@@ -342,7 +347,7 @@ private fun LookupProgress(code: String, onCancel: () -> Unit, modifier: Modifie
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable private fun ManualBarcodeSheet(onDismiss: () -> Unit, onLookup: (String) -> Unit) {
     val colors = LocalBreakfastColors.current
-    var text by remember { mutableStateOf("") }
+    var text by rememberSaveable { mutableStateOf("") }
     val barcode = normalizeBarcode(text)
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
@@ -406,12 +411,12 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
     val colors = LocalBreakfastColors.current
     val letter = sourceLetter(food)
     val basis = food.nutrition
-    var amountText by remember(food.id) { mutableStateOf(amountFieldText(vm)) }
+    var amountText by rememberSaveable(food.id) { mutableStateOf(amountFieldText(vm)) }
     // While a resolve queue is active the meal is the queue's own: shown as a plain line, not a choice.
     val queueMeal = vm.unknownQueueTarget.takeIf { vm.selectedProductOrigin == ProductReviewOrigin.QUEUE && vm.unknownQueue.isNotEmpty() }
     val fromLibrary = vm.selectedProductOrigin == ProductReviewOrigin.LIBRARY
-    var meal by remember(food.id) { mutableStateOf(queueMeal ?: vm.slot ?: MealSlot.LUNCH) }
-    var editing by remember(food.id) { mutableStateOf(false) }
+    var meal by rememberSaveable(food.id) { mutableStateOf(queueMeal ?: vm.slot ?: MealSlot.LUNCH) }
+    var editing by rememberSaveable(food.id) { mutableStateOf(false) }
     val parsed = parseProductAmount(amountText, basis.unit)
     val calculation = if (parsed != null) vm.productCalculation(food) else null
     val approx = productApproxLabel(calculation, parsed?.unit, basis.unit)
