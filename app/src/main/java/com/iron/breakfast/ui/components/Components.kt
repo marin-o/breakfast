@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -66,6 +67,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.intl.LocaleList
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
@@ -780,8 +782,18 @@ internal fun isLargeFont(fontScale: Float): Boolean = fontScale >= LargeFontScal
 @Composable
 fun MealChoices(selected: MealSlot?, onSelect: (MealSlot) -> Unit, modifier: Modifier = Modifier, singleRow: Boolean = false, compact: Boolean = false) {
     if (singleRow) {
-        Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MealSlot.entries.forEach { meal -> ChoiceOption(meal.label(), selected == meal, { onSelect(meal) }, Modifier.weight(1f), compact = compact) }
+        // One row only when the longest meal name fits on one line in a quarter; otherwise two by two, never a broken word.
+        BoxWithConstraints(modifier.fillMaxWidth()) {
+            val measurer = rememberTextMeasurer()
+            val style = if (compact) BreakfastType.SecondaryMedium else BreakfastType.BodyMedium
+            val widest = MealSlot.entries.maxOf { measurer.measure(it.label(), style).size.width }
+            val padding = with(LocalDensity.current) { (if (compact) 16.dp else 24.dp).roundToPx() + 2.dp.roundToPx() }
+            val quarter = with(LocalDensity.current) { ((maxWidth - 24.dp) / 4).roundToPx() }
+            if (widest + padding <= quarter) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MealSlot.entries.forEach { meal -> ChoiceOption(meal.label(), selected == meal, { onSelect(meal) }, Modifier.weight(1f), compact = compact) }
+                }
+            } else MealChoices(selected, onSelect, Modifier.fillMaxWidth(), singleRow = false, compact = compact)
         }
         return
     }

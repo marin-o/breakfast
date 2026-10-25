@@ -131,6 +131,7 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
                     if (!archived) Text(subtitle, color = colors.soft, style = BreakfastType.Meta)
                 }
                 if (root && !archived) {
+                    TertiaryButton("New food", { vm.openCustom() })
                     Box {
                         IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(44.dp)) { Icon(Icons.Outlined.MoreVert, "Library menu", tint = colors.ink) }
                         if (menuOpen) Popup(
