@@ -27,6 +27,11 @@ class BreakfastEngine(private val store: BreakfastStore) {
         return cachedMatcher!!
     }
 
+    /** Called after every write to the foods, so the next [matcher] call indexes the stored foods again. */
+    private fun invalidateMatcher() {
+        matcherCatalog = null
+    }
+
     fun parse(input: String): ParsedSegment = parser.parse(input)
 
     fun search(query: String): List<RankedFood> = matcher().suggestions(query, store.preferenceMap(), 20)
@@ -207,7 +212,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
 
     suspend fun updateFood(food: FoodRecord) {
         store.upsertFood(food.copy(personalOverride = true))
-        matcherCatalog = null
+        invalidateMatcher()
     }
 
     suspend fun foodById(foodId: String): FoodRecord? = store.foodById(foodId)
@@ -259,7 +264,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
             calculation.resolvedBaseAmount, calculation.nutrition, calculation.provenance,
             calculation.approximate, nowMs, name.trim(), mealSlot, dayKey, basisUnit)
         store.addFoodAndEntry(food, entry)
-        matcherCatalog = null
+        invalidateMatcher()
         return entry
     }
 
@@ -277,7 +282,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
             personalOverride = true,
             brand = brand?.trim()?.ifBlank { null }, barcode = barcode?.trim()?.ifBlank { null })
         store.upsertFood(food)
-        matcherCatalog = null
+        invalidateMatcher()
         return food
     }
 
@@ -285,7 +290,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
     suspend fun cacheFood(food: FoodRecord): FoodRecord {
         val effectiveFood = cachedFoodForLogging(food, store.foodById(food.id), food.barcode?.let { store.foodByBarcode(it) })
         store.addFood(effectiveFood)
-        matcherCatalog = null
+        invalidateMatcher()
         return effectiveFood
     }
 
@@ -303,7 +308,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
             calculation.resolvedBaseAmount, calculation.nutrition, calculation.provenance,
             calculation.approximate, now, effectiveFood.name, mealSlot, dayKey, effectiveFood.nutrition.unit)
         store.addFoodAndEntry(effectiveFood, entry)
-        matcherCatalog = null
+        invalidateMatcher()
         return entry
     }
 

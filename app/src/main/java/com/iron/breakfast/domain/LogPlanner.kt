@@ -189,7 +189,8 @@ class LogPlanner(
     private fun joinBefore(prefix: String, replacement: String): String {
         val head = prefix.trimEnd()
         if (head.isEmpty()) return replacement
-        if (head.last() in ",;+&\n" || SEPARATOR_WORD_AT_END.containsMatchIn(head)) return joinDraft(prefix, replacement)
+        // The text before already ends in a separator (the parser's rule): the chosen text joins it as typed.
+        if (endsOpen(head)) return joinDraft(prefix, replacement)
         return "$head, $replacement"
     }
 
@@ -304,7 +305,6 @@ class LogPlanner(
         const val SUGGESTION_LIMIT = 4
         private val WHITESPACE = Regex("\\s+")
         private val LEADING_ARTICLE = Regex("(?iu)^(?:a|an)\\s+")
-        private val SEPARATOR_WORD_AT_END = Regex("(?iu)(?:^|\\s)(?:and|и)$")
     }
 }
 

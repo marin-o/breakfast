@@ -4,7 +4,6 @@ import com.iron.breakfast.ui.theme.*
 
 import android.app.DatePickerDialog
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -71,6 +69,7 @@ import com.iron.breakfast.ui.components.DestructiveButton
 import com.iron.breakfast.ui.components.Field
 import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.Hairline
+import com.iron.breakfast.ui.components.MacroTrack
 import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.components.SecondaryButton
 import com.iron.breakfast.ui.components.SectionHeading
@@ -128,9 +127,7 @@ private fun MacroTable(entry: MealEntry, modifier: Modifier = Modifier) {
                 Triple("Fat", nutrition.fat, share(nutrition.fat?.times(9.0))),
             ).forEach { (label, grams, fraction) ->
                 Column(Modifier.weight(1f)) {
-                    Box(Modifier.fillMaxWidth().height(2.dp).background(colors.line)) {
-                        Box(Modifier.fillMaxWidth(fraction.coerceIn(0f, 1f)).height(2.dp).background(colors.ink))
-                    }
+                    MacroTrack(fraction)
                     Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.Bottom) {
                         Text(grams?.pretty() ?: "0", color = colors.ink, style = BreakfastType.MacroValue)
                         Text(" g", color = colors.soft, style = BreakfastType.Secondary)

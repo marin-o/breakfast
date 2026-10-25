@@ -110,6 +110,14 @@ class SegmentationTest {
         assertFalse(planner.endsOpen("1 banana, 2 eg"))
     }
 
+    @Test fun everySeparatorEndsTheLastPart() {
+        listOf(",", ";", "\n", "+", "&", " and", " AND", " и", " И").forEach { tail ->
+            assertTrue("'$tail'", parser.endsOpen("1 banana$tail"))
+        }
+        assertTrue(parser.endsOpen("and"))
+        listOf("1 band", "1 banana sandи", "сир ис", "mleko 2,8").forEach { assertFalse(it, parser.endsOpen(it)) }
+    }
+
     @Test fun aCommaInsideAFoodNameKeepsTheNameWhole() {
         val pindzur = protein.copy(id = "pindzur", name = "Пинџур, домашен", aliases = emptyList(), category = "Spread")
         val named = LogPlanner(FoodMatcher(FoodCatalog.fixtures + pindzur))

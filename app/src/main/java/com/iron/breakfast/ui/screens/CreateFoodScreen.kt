@@ -38,11 +38,11 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.BreakfastViewModel
 import com.iron.breakfast.domain.asciiDigits
-import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.domain.parseNutritionShorthand
 import com.iron.breakfast.domain.validateBarcodeInput
 import com.iron.breakfast.ui.components.ButtonKind
 import com.iron.breakfast.ui.components.ChoiceOption
+import com.iron.breakfast.ui.components.DecimalField
 import com.iron.breakfast.ui.components.Field
 import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.components.ScanBarcodeIcon
@@ -58,7 +58,6 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
     val barcodeError = validateBarcodeInput(draft.barcode, vm.foods)
     val state = createFoodState(draft.nutritionInput(), draft.name, barcodeError)
     val colors = LocalBreakfastColors.current
-    val decimal = KeyboardOptions(keyboardType = KeyboardType.Decimal)
     BackHandler(onBack = vm::closeCustom)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
@@ -102,21 +101,20 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
                     Column {
                         Text("Basis", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(bottom = 4.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Field("Basis", basisAmount, { draft.basisEdited = true; draft.basisAmount = it.decimalInput() }, Modifier.weight(1.6f), labelVisible = false, keyboardOptions = decimal)
+                            DecimalField("Basis", basisAmount, { draft.basisEdited = true; draft.basisAmount = it }, Modifier.weight(1.6f), labelVisible = false)
                             listOf("g", "ml").forEach { unit -> ChoiceOption(unit, basisUnit == unit, { draft.basisEdited = true; draft.basisUnit = unit }, Modifier.weight(1f)) }
                         }
                     }
-                    Field(
-                        "kcal", calories, { draft.caloriesEdited = true; draft.calories = it.decimalInput() },
-                        keyboardOptions = decimal,
+                    DecimalField(
+                        "kcal", calories, { draft.caloriesEdited = true; draft.calories = it },
                         error = state.showRequired,
                         errorMessage = if (state.showRequired) "kcal is required" else null,
                         required = true,
                     )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Field("Protein, g", protein, { draft.proteinEdited = true; draft.protein = it.decimalInput() }, Modifier.weight(1f), keyboardOptions = decimal)
-                        Field("Carbs, g", carbs, { draft.carbsEdited = true; draft.carbs = it.decimalInput() }, Modifier.weight(1f), keyboardOptions = decimal)
-                        Field("Fat, g", fat, { draft.fatEdited = true; draft.fat = it.decimalInput() }, Modifier.weight(1f), keyboardOptions = decimal)
+                        DecimalField("Protein, g", protein, { draft.proteinEdited = true; draft.protein = it }, Modifier.weight(1f))
+                        DecimalField("Carbs, g", carbs, { draft.carbsEdited = true; draft.carbs = it }, Modifier.weight(1f))
+                        DecimalField("Fat, g", fat, { draft.fatEdited = true; draft.fat = it }, Modifier.weight(1f))
                     }
                     Field("Alias", draft.aliasInput, { draft.aliasInput = it })
                 }

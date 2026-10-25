@@ -399,8 +399,10 @@ class ShorthandParser {
                 "($unit)?(?![\\p{L}\\p{N}])"
         )
         val COMPOSITION_TAIL = Regex("(?iu)^(?:raw|cooked|roasted|grilled|boneless|skinless|lean|fat)\\b.*")
+        /** Characters that always end a part. A comma does too, unless it sits between two digits ([ItemComma]). */
+        const val BREAK_CHARS = ";\n"
         /** A comma between two digits is a decimal separator ("1,5 kg"), never a break; "oats,1 banana" still breaks. */
-        val HARD_BREAK = Regex("${ItemComma.pattern}|[;\n]")
+        val HARD_BREAK = Regex("${ItemComma.pattern}|[$BREAK_CHARS]")
         val WORD = Regex("\\S+")
         val WHITESPACE = Regex("\\s+")
         val NUMBER = Regex("\\d+(?:[.,]\\d+)?")
@@ -409,18 +411,15 @@ class ShorthandParser {
         val ATTACHED_QUANTITY = Regex("(\\d+(?:[.,]\\d+)?)(\\p{L}+)")
         val ARTICLES = setOf("a", "an")
         val COMPOSITION_WORDS = setOf("raw", "cooked", "roasted", "grilled", "boneless", "skinless", "lean", "fat")
-        val OPEN_TAIL_CHARS = setOf(',', ';', '+', '&', '\n')
-        val END_SEPARATOR_WORD = Regex("(?iu)(?:^|\\s)(?:and|и)$")
+        // The tail rules come from the break characters and the lexicon's separators, so the sets cannot drift apart.
+        private val SEPARATOR_SYMBOLS = ShorthandLexicon.explicitSeparators.filterNot { word -> word.any(Char::isLetter) }
+        private val SEPARATOR_WORDS = ShorthandLexicon.explicitSeparators - SEPARATOR_SYMBOLS.toSet()
+        val OPEN_TAIL_CHARS = setOf(',') + BREAK_CHARS.toSet() + SEPARATOR_SYMBOLS.map { it.single() }
+        val END_SEPARATOR_WORD = Regex("(?iu)(?:^|\\s)(?:${SEPARATOR_WORDS.joinToString("|") { Regex.escape(it) }})$")
     }
 }
 
 fun String?.toMeasureUnit(): MeasureUnit? = ShorthandLexicon.unitSpec(this)?.unit
 
-fun MeasureUnit.displayLabel(): String = when (this) {
-    MeasureUnit.GRAM -> "g"
-    MeasureUnit.MILLILITER -> "ml"
-    MeasureUnit.TABLESPOON -> "tbsp"
-    MeasureUnit.TEASPOON -> "tsp"
-    MeasureUnit.PIECE -> "piece"
-    MeasureUnit.UNKNOWN -> ""
-}
+/** The short name a unit is shown with ("g", "tbsp"). [MeasureUnit.label] is the one definition. */
+fun MeasureUnit.displayLabel(): String = label

@@ -88,6 +88,7 @@ import com.iron.breakfast.ui.components.foodText
 import com.iron.breakfast.ui.components.AddCircle
 import com.iron.breakfast.ui.components.ButtonKind
 import com.iron.breakfast.ui.components.ChoiceOption
+import com.iron.breakfast.ui.components.DecimalField
 import com.iron.breakfast.ui.components.DestructiveButton
 import com.iron.breakfast.ui.components.Field
 import com.iron.breakfast.ui.components.FoodRow
@@ -376,7 +377,6 @@ internal fun LibraryFoodEditScreen(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
     val food = vm.foods.firstOrNull { it.id == vm.editingLibraryFoodId } ?: return
     val draft = vm.draft
-    val decimal = KeyboardOptions(keyboardType = KeyboardType.Decimal)
     BackHandler { vm.closeCustom() }
     Column(Modifier.fillMaxSize().background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         TopBar("Edit food", vm::closeCustom, Modifier.padding(top = 8.dp))
@@ -385,12 +385,12 @@ internal fun LibraryFoodEditScreen(vm: BreakfastViewModel) {
         FoodBarcodeField(vm)
         Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Secondary)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Field("kcal", draft.calories, { draft.calories = it.decimalInput() }, Modifier.weight(1f), required = true, keyboardOptions = decimal)
-            Field("Protein, g", draft.protein, { draft.protein = it.decimalInput() }, Modifier.weight(1f), keyboardOptions = decimal)
+            DecimalField("kcal", draft.calories, { draft.calories = it }, Modifier.weight(1f), required = true)
+            DecimalField("Protein, g", draft.protein, { draft.protein = it }, Modifier.weight(1f))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Field("Carbs, g", draft.carbs, { draft.carbs = it.decimalInput() }, Modifier.weight(1f), keyboardOptions = decimal)
-            Field("Fat, g", draft.fat, { draft.fat = it.decimalInput() }, Modifier.weight(1f), keyboardOptions = decimal)
+            DecimalField("Carbs, g", draft.carbs, { draft.carbs = it }, Modifier.weight(1f))
+            DecimalField("Fat, g", draft.fat, { draft.fat = it }, Modifier.weight(1f))
         }
         SectionHeading("Servings")
         draft.servings.forEach { conversion ->
@@ -407,11 +407,10 @@ internal fun LibraryFoodEditScreen(vm: BreakfastViewModel) {
                     Text("1", color = colors.ink, style = BreakfastType.Body, modifier = Modifier.padding(top = 22.dp))
                     Field("Name", draft.servingLabel, { draft.servingLabel = it }, Modifier.weight(1f))
                     Text("=", color = colors.ink, style = BreakfastType.Body, modifier = Modifier.padding(top = 22.dp))
-                    Field(
-                        "Amount", draft.servingAmount, { draft.servingAmount = it.decimalInput() }, Modifier.weight(1f),
+                    DecimalField(
+                        "Amount", draft.servingAmount, { draft.servingAmount = it }, Modifier.weight(1f),
                         error = amountError,
                         errorMessage = if (amountError) "Enter more than 0 ${draft.servingUnit.label}." else null,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     )
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

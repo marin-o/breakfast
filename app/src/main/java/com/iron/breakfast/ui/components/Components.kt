@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
@@ -74,6 +75,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.domain.MealSlot
+import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.label
 import com.iron.breakfast.ui.theme.AddCircleSize
 import com.iron.breakfast.ui.theme.BreakfastType
@@ -355,6 +357,26 @@ fun Field(
     }
 }
 
+/**
+ * A [Field] for a number in the food forms: the decimal keyboard, and the [decimalInput] filter, so "12,5" types the
+ * same in New food and Edit food. [onValueChange] receives the filtered text.
+ */
+@Composable
+fun DecimalField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    labelVisible: Boolean = true,
+    error: Boolean = false,
+    errorMessage: String? = null,
+    required: Boolean = false,
+) = Field(
+    label, value, { onValueChange(it.decimalInput()) }, modifier,
+    labelVisible = labelVisible, error = error, errorMessage = errorMessage, required = required,
+    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+)
+
 /** Field with a leading magnifier and a trailing clear button. */
 @Composable
 fun SearchField(
@@ -572,7 +594,7 @@ fun DayTotal(
 
 /** 2dp `line` track with the macro's share as a 2dp ink fill. */
 @Composable
-private fun MacroTrack(share: Float) {
+internal fun MacroTrack(share: Float) {
     val colors = LocalBreakfastColors.current
     Box(Modifier.fillMaxWidth().height(2.dp).background(colors.line)) {
         Box(Modifier.fillMaxWidth(share.coerceIn(0f, 1f)).height(2.dp).background(colors.ink))
