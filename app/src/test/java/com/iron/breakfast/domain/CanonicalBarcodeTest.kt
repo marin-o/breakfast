@@ -51,4 +51,44 @@ class CanonicalBarcodeTest {
         assertEquals("0042100005264", canonicalBarcode(scanned))
         assertTrue(sameBarcode(scanned, "0042100005264"))
     }
+
+    @Test fun anOldEightDigitUpcEIsTheSameCodeAsItsExpansion() {
+        assertEquals("01234565", compressUpcE("012345000065"))
+        assertTrue(sameBarcode("01234565", "012345000065"))
+        assertTrue(sameBarcode("0012345000065", "01234565"))
+        assertTrue(barcodeForms("012345000065").contains("01234565"))
+        assertTrue(barcodeForms("01234565").containsAll(listOf("012345000065", "0012345000065")))
+        assertEquals("That barcode already belongs to Cola.", validateBarcodeInput("012345000065", listOf(stored.copy(barcode = "01234565"))))
+        assertEquals("That barcode already belongs to Cola.", validateBarcodeInput("01234565", listOf(stored.copy(barcode = "0012345000065"))))
+    }
+
+    @Test fun anEan8ThatIsNotAValidUpcEIsNotConflated() {
+        // 96385074: number system 9; 01234560: a UPC-E check digit that does not match.
+        assertFalse(sameBarcode("96385074", "096385000074"))
+        assertFalse(sameBarcode("01234560", "012345000065"))
+        assertEquals(listOf("96385074"), barcodeForms("96385074"))
+        assertEquals(listOf("01234560"), barcodeForms("01234560"))
+        assertNull(compressUpcE("036000291452"))
+        assertNull(compressUpcE("212345000065"))
+    }
+
+    @Test fun compressAndExpandAreInversesOverManyCodes() {
+        var compressed = 0
+        for (system in listOf('0', '1')) {
+            for (body in 0 until 1_000_000 step 37) {
+                val upcA = requireNotNull(expandUpcE(system + body.toString().padStart(6, '0')))
+                val upcE = requireNotNull(compressUpcE(upcA)) { upcA }
+                assertEquals(upcA, expandUpcE(upcE))
+                compressed++
+            }
+        }
+        val random = java.util.Random(7)
+        repeat(20_000) {
+            val eleven = (if (random.nextBoolean()) "0" else "1") + (1..10).joinToString("") { random.nextInt(10).toString() }
+            val sum = eleven.mapIndexed { i, c -> (c - '0') * if (i % 2 == 0) 3 else 1 }.sum()
+            val upcA = eleven + ((10 - sum % 10) % 10)
+            compressUpcE(upcA)?.let { assertEquals(upcA, expandUpcE(it)) }
+        }
+        assertTrue(compressed > 50_000)
+    }
 }

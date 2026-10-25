@@ -57,24 +57,61 @@ fun canonicalBarcode(raw: String): String? {
     }
 }
 
-/** True when [a] and [b] are the same product code in any of their forms; false when either is not a barcode. */
+/**
+ * True when [a] and [b] are the same product code in any of their forms; false when either is not a barcode.
+ * An 8-digit code that is a valid UPC-E (number system 0 or 1, matching check digit) is also its UPC-A, because
+ * scans before UPC-E expansion stored the raw 8 digits; an EAN-8 that is not a valid UPC-E is only itself.
+ */
 fun sameBarcode(a: String?, b: String?): Boolean {
-    val left = a?.let(::canonicalBarcode) ?: return false
-    return left == b?.let(::canonicalBarcode)
+    val left = a?.let(::canonicalForms).orEmpty()
+    return left.isNotEmpty() && b?.let(::canonicalForms).orEmpty().any { it in left }
 }
 
 /**
- * Every spelling a stored row may hold for the code [raw]: for "036000291452", that, "0036000291452" and
- * "00036000291452". [raw]'s own form comes first. Empty when [raw] is not a product barcode.
+ * Every spelling a stored row may hold for the code [raw]: for "036000291452", that, "0036000291452",
+ * "00036000291452" and, when the UPC-A compresses, its 8-digit UPC-E. For a valid 8-digit UPC-E, its UPC-A
+ * spellings too. [raw]'s own form comes first. Empty when [raw] is not a product barcode.
  */
 fun barcodeForms(raw: String): List<String> {
     val own = normalizeBarcode(raw) ?: return emptyList()
-    val canonical = canonicalBarcode(own) ?: return emptyList()
-    val forms = when (canonical.length) {
-        13 -> listOfNotNull(canonical, canonical.substring(1).takeIf { canonical[0] == '0' }, "0$canonical")
-        else -> listOf(canonical)
+    return (listOf(own) + canonicalForms(own).flatMap(::spellings)).distinct()
+}
+
+/** The canonical codes [raw] stands for: its own, and for a valid 8-digit UPC-E also its UPC-A's. */
+private fun canonicalForms(raw: String): List<String> {
+    val own = canonicalBarcode(raw) ?: return emptyList()
+    val upcA = own.takeIf { it.length == 8 }?.let(::expandUpcE)?.let(::canonicalBarcode)
+    return listOfNotNull(own, upcA).distinct()
+}
+
+/** The stored spellings of one canonical code. */
+private fun spellings(canonical: String): List<String> = when (canonical.length) {
+    13 -> {
+        val upcA = canonical.substring(1).takeIf { canonical[0] == '0' }
+        listOfNotNull(canonical, upcA, "0$canonical", upcA?.let(::compressUpcE))
     }
-    return (listOf(own) + forms).distinct()
+    else -> listOf(canonical)
+}
+
+/**
+ * The 8-digit UPC-E (number system, 6 digits, check digit) for a 12-digit UPC-A, by the GS1 zero-suppression rules
+ * in their order; null when [upcA] is not number system 0 or 1 or does not compress. [expandUpcE] is its inverse.
+ */
+fun compressUpcE(upcA: String): String? {
+    if (upcA.length != 12 || !upcA.all { it in '0'..'9' }) return null
+    val system = upcA[0]
+    if (system != '0' && system != '1') return null
+    val m = upcA.substring(1, 6)
+    val p = upcA.substring(6, 11)
+    val body = when {
+        m[2] in '0'..'2' && m.endsWith("00") && p.startsWith("00") -> "${m[0]}${m[1]}${p[2]}${p[3]}${p[4]}${m[2]}"
+        m.endsWith("00") && p.startsWith("000") -> "${m[0]}${m[1]}${m[2]}${p[3]}${p[4]}3"
+        m.endsWith("0") && p.startsWith("0000") -> "${m[0]}${m[1]}${m[2]}${m[3]}${p[4]}4"
+        p.startsWith("0000") && p[4] in '5'..'9' -> "$m${p[4]}"
+        else -> return null
+    }
+    val code = "$system$body${upcA[11]}"
+    return code.takeIf { expandUpcE(it) == upcA }
 }
 
 /**

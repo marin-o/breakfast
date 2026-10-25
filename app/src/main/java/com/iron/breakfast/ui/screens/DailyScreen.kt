@@ -273,8 +273,9 @@ internal fun CorrectionStrip(vm: BreakfastViewModel, entry: MealEntry) {
         Text("${entry.foodName} matched. Not right?", color = colors.soft, style = BreakfastType.Meta)
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ChoiceOption(entry.foodName, true, { vm.confirm(entry) })
-            vm.alternatives(entry).forEach { alternative -> ChoiceOption(alternative.food.name, false, { vm.chooseAlternative(entry, alternative.food) }) }
-            ChoiceOption("Search", false, { vm.openSearch(entry.foodName) })
+            // The match shows as selected; the alternatives and Search are actions.
+            vm.alternatives(entry).forEach { alternative -> ChoiceOption(alternative.food.name, false, { vm.chooseAlternative(entry, alternative.food) }, selectable = false) }
+            ChoiceOption("Search", false, { vm.openSearch(entry.foodName) }, selectable = false)
         }
     }
 }

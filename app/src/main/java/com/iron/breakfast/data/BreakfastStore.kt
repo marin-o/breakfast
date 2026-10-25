@@ -11,6 +11,8 @@ import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.Preference
 import com.iron.breakfast.domain.barcodeForms
+import com.iron.breakfast.domain.canonicalBarcode
+import com.iron.breakfast.domain.sameBarcode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
@@ -151,7 +153,7 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
         return model.foods.filter { food ->
             (includeArchived || !food.archived) &&
                 (normalized.isBlank() || food.allNames().any { it.lowercase().contains(normalized) } ||
-                    food.brand?.lowercase()?.contains(normalized) == true || food.barcode?.contains(normalized) == true)
+                    food.brand?.lowercase()?.contains(normalized) == true || barcodeMatchesQuery(food.barcode, normalized))
         }
     }
 
@@ -304,6 +306,18 @@ internal fun unchangedEntryIds(expected: List<MealEntry>, stored: List<MealEntry
     return expected.filter { byId[it.id] == it.toEntity() }.map { it.id }
 }
 
-/** Of the rows holding [barcode] in any of its forms, the live one, its exact spelling first; null when only archived rows match. */
-internal fun pickBarcodeMatch(rows: List<FoodEntity>, barcode: String): FoodEntity? =
-    rows.filterNot { it.archived }.sortedBy { if (it.barcode?.trim() == barcode.trim()) 0 else 1 }.firstOrNull()
+/**
+ * Of the rows holding [barcode] in any of its forms, a live one: the exact spelling first, then the canonical
+ * spelling, then the lowest id, so the pick is the same every time. Null when only archived rows match.
+ */
+internal fun pickBarcodeMatch(rows: List<FoodEntity>, barcode: String): FoodEntity? {
+    val exact = barcode.trim()
+    val canonical = canonicalBarcode(barcode)
+    return rows.filterNot { it.archived }.sortedWith(
+        compareBy<FoodEntity>({ if (it.barcode?.trim() == exact) 0 else 1 }, { if (it.barcode?.trim() == canonical) 0 else 1 }, { it.id })
+    ).firstOrNull()
+}
+
+/** Library search on a barcode: part of the stored digits, or the whole code in any equivalent spelling. */
+internal fun barcodeMatchesQuery(barcode: String?, query: String): Boolean =
+    barcode?.contains(query) == true || sameBarcode(barcode, query)

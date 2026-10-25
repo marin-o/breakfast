@@ -247,13 +247,18 @@ fun ChoiceOption(
     detail: String? = null,
     /** Four-up meal row: 14sp, tighter padding, one line that never breaks mid-word (ellipsis as a last resort). */
     compact: Boolean = false,
+    /** False for an action chip (Search, an alternative): a plain button to TalkBack, not a radio button. */
+    selectable: Boolean = true,
 ) {
     val colors = LocalBreakfastColors.current
     Column(
         modifier
             .heightIn(min = ChoiceMinHeight)
             .border(if (selected) 1.5.dp else 1.dp, if (selected) colors.ink else colors.line, ChoiceShape)
-            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .then(
+                if (selectable) Modifier.selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+                else Modifier.clickable(role = Role.Button, onClick = onClick)
+            )
             .padding(horizontal = if (compact) 8.dp else 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.Center,
     ) {

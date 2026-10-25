@@ -118,10 +118,14 @@ data class OffContributionDraft(
  * each macro from 0 to 100 g, all finite. A missing macro is unknown, not wrong.
  */
 internal fun plausibleNutrition(per100: NutritionValues): Boolean {
-    fun macro(value: Double?) = value == null || (value.isFinite() && value in 0.0..100.0)
-    return per100.calories.isFinite() && per100.calories in 0.0..1000.0 &&
+    // Scaling to 100 (11 g fat in an 11 g basis is 100.00000000000001) must not fall past a bound it sits on.
+    fun macro(value: Double?) = value == null || (value.isFinite() && value in 0.0..100.0 + PlausibleTolerance)
+    return per100.calories.isFinite() && per100.calories in 0.0..1000.0 + PlausibleTolerance &&
         macro(per100.protein) && macro(per100.carbohydrates) && macro(per100.fat)
 }
+
+/** Far below the 0.01 that is sent, far above the rounding of scaling a basis to 100. */
+private const val PlausibleTolerance = 1e-9
 
 sealed interface OffContributionResult {
     data object Success : OffContributionResult
@@ -393,8 +397,10 @@ class OpenFoodFactsClient(
     }
 
     /**
-     * Writes [fields] as the form body, then reads the answer. A failure while writing means nothing was sent (a plain
-     * [java.io.IOException]); a failure after the whole body was written is [ResponseLost].
+     * Writes [fields] as the form body, then reads the answer. A failure while opening or writing the stream is a plain
+     * [java.io.IOException]: nothing reached the server. A failure from the answer on is [ResponseLost]. With fixed-length
+     * streaming the body may still go out only inside getResponseCode() (Android's HttpURLConnection can defer it), so
+     * [ResponseLost] can also cover a request the server never got: "may have been sent" errs on the safe side.
      */
     private fun postForm(connection: HttpURLConnection, fields: Map<String, String>): Pair<Int, String> {
         val body = fields.entries.joinToString("&") { (key, value) ->

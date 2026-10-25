@@ -591,6 +591,19 @@ class OpenFoodFactsClientTest {
         assertNull(OpenFoodFactsClient().parseProductForTesting("""{"product_name":"Heavy","product_quantity_unit":"g","nutriments":{"energy-kcal_100g":42,"proteins_100g":101}}"""))
     }
 
+    @Test fun aValueOnTheBoundStaysPlausibleAfterScalingTo100() {
+        val base = FoodRecord(
+            id = "custom", name = "Butter", aliases = emptyList(), category = "Personal food", origin = FoodOrigin.CUSTOM,
+            nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(0.0, null, null, null)), barcode = "3017620422003"
+        )
+        for (tenths in 1..2000) {
+            val basis = tenths / 10.0
+            val food = base.copy(nutrition = NutritionBasis(basis, MeasureUnit.GRAM, NutritionValues(basis * 10.0, null, null, basis)))
+            assertTrue("basis $basis", OffContributionDraft.fromFood(food) != null)
+        }
+        assertNull(OffContributionDraft.fromFood(base.copy(nutrition = NutritionBasis(11.0, MeasureUnit.GRAM, NutritionValues(10.0, null, null, 11.01)))))
+    }
+
     @Test fun rejectsAmbiguousBasisAndPresentInvalidNutrients() {
         val client = OpenFoodFactsClient()
         assertNull(client.parseProductForTesting("""{"product_name":"Unknown package","nutrition_data_per":"100g","nutriments":{"energy-kcal_100g":42}}"""))
