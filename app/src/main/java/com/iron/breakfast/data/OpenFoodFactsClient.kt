@@ -150,14 +150,15 @@ class OpenFoodFactsClient(
     fun search(query: String): OffSearchResult {
         val legacyUrl = URL("https://world.openfoodfacts.org/cgi/search.pl?search_terms=" + URLEncoder.encode(query, "UTF-8") + "&search_simple=1&action=process&json=1&page_size=20&fields=code,product_name,brands,nutriments,nutrition_data_per,product_quantity,product_quantity_unit,quantity,serving_size,serving_quantity_unit")
         return when (val legacy = requestSearch(legacyUrl, ::parseSearchResponse)) {
-            OffSearchResult.Unavailable -> searchAlicious(query)
+            OffSearchResult.Unavailable -> searchFallback(query)
             else -> legacy
         }
     }
 
-    private fun searchAlicious(query: String): OffSearchResult {
+    /** The newer search service (search.openfoodfacts.org, results under "hits"), asked only when search.pl is unavailable. */
+    private fun searchFallback(query: String): OffSearchResult {
         val url = URL("https://search.openfoodfacts.org/search?q=" + URLEncoder.encode(query, "UTF-8") + "&page=1&page_size=20&fields=" + URLEncoder.encode("code,product_name,brands,nutriments,quantity,serving_size,serving_quantity_unit", "UTF-8"))
-        return requestSearch(url, ::parseSearchAliciousResponse)
+        return requestSearch(url, ::parseFallbackSearchResponse)
     }
 
     private fun requestSearch(url: URL, parser: (String) -> OffSearchResult): OffSearchResult {
@@ -281,7 +282,7 @@ class OpenFoodFactsClient(
         OffSearchResult.Error("Open Food Facts returned unreadable data; try again or add manually.")
     }
 
-    private fun parseSearchAliciousResponse(raw: String): OffSearchResult = try {
+    private fun parseFallbackSearchResponse(raw: String): OffSearchResult = try {
         val root = json.parseToJsonElement(raw).jsonObject
         parseSearchArray(root, "hits", "Open Food Facts search returned no hit list; try again or add manually.")
     } catch (_: Exception) {
@@ -295,7 +296,7 @@ class OpenFoodFactsClient(
     }
 
     internal fun parseSearchResponseForTesting(raw: String): OffSearchResult = parseSearchResponse(raw)
-    internal fun parseSearchAliciousResponseForTesting(raw: String): OffSearchResult = parseSearchAliciousResponse(raw)
+    internal fun parseFallbackSearchResponseForTesting(raw: String): OffSearchResult = parseFallbackSearchResponse(raw)
 
     private fun open(url: URL): HttpURLConnection? = try {
         connectionFactory(url)?.apply {

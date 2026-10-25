@@ -289,7 +289,7 @@ class OpenFoodFactsClientTest {
         assertTrue(urls.single().contains("serving_quantity_unit"))
     }
 
-    @Test fun searchAliciousRequestsServingBasisFieldsAndParsesServingOnlyProducts() {
+    @Test fun searchFallbackRequestsServingBasisFieldsAndParsesServingOnlyProducts() {
         val urls = mutableListOf<String>()
         val client = OpenFoodFactsClient { url ->
             urls += url.toExternalForm()
@@ -297,7 +297,7 @@ class OpenFoodFactsClientTest {
             FakeConnection(
                 url,
                 if (legacy) 503 else 200,
-                if (legacy) "" else """{"hits":[{"code":"alicious-1","product_name":"Serving yogurt","nutrition_data_per":"100g","serving_size":"1 portion (100 g)","nutriments":{"energy-kcal_100g":42}}]}""",
+                if (legacy) "" else """{"hits":[{"code":"fallback-1","product_name":"Serving yogurt","nutrition_data_per":"100g","serving_size":"1 portion (100 g)","nutriments":{"energy-kcal_100g":42}}]}""",
                 null
             )
         }
@@ -320,7 +320,7 @@ class OpenFoodFactsClientTest {
         assertEquals(listOf("Pesto"), result.foods.map { it.name })
     }
 
-    @Test fun searchAliciousHitsUseExplicitGramQuantityAndSkipAmbiguousUnits() {
+    @Test fun searchFallbackHitsUseExplicitGramQuantityAndSkipAmbiguousUnits() {
         val raw = """
             {"hits":[
               {"code":"1","product_name":"Pesto","brands":["Brand"],"quantity":"200g","nutriments":{"energy-kcal_100g":400}},
@@ -328,21 +328,21 @@ class OpenFoodFactsClientTest {
               {"code":"3","product_name":"Pesto drink","quantity":"250ml","nutriments":{"energy-kcal_100g":80}}
             ]}
         """.trimIndent()
-        val result = OpenFoodFactsClient().parseSearchAliciousResponseForTesting(raw) as OffSearchResult.Success
+        val result = OpenFoodFactsClient().parseFallbackSearchResponseForTesting(raw) as OffSearchResult.Success
         assertEquals(listOf("Pesto", "Pesto drink"), result.foods.map { it.name })
         assertEquals(MeasureUnit.GRAM, result.foods[0].nutrition.unit)
         assertEquals(MeasureUnit.MILLILITER, result.foods[1].nutrition.unit)
         assertEquals("Brand", result.foods[0].brand)
     }
 
-    @Test fun searchAliciousQuantityRejectsMixedUnitsButAllowsRepeatedSameUnit() {
+    @Test fun searchFallbackQuantityRejectsMixedUnitsButAllowsRepeatedSameUnit() {
         val raw = """
             {"hits":[
               {"code":"1","product_name":"Mixed unit","quantity":"250 ml / 300 g","nutriments":{"energy-kcal_100g":100}},
               {"code":"2","product_name":"Repeated grams","quantity":"100g + 200 g","nutriments":{"energy-kcal_100g":200}}
             ]}
         """.trimIndent()
-        val result = OpenFoodFactsClient().parseSearchAliciousResponseForTesting(raw) as OffSearchResult.Success
+        val result = OpenFoodFactsClient().parseFallbackSearchResponseForTesting(raw) as OffSearchResult.Success
         assertEquals(listOf("Repeated grams"), result.foods.map { it.name })
         assertEquals(MeasureUnit.GRAM, result.foods.single().nutrition.unit)
     }
