@@ -61,7 +61,7 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 - Source (Bundled, Personal, Open Food Facts) appears only as a soft line on entry, food and search detail. It never appears in lists.
 - Approximate amounts are written plainly in the quantity line: `≈1 tbsp, 16 g`.
 - Icons: stroke 1.8, round caps and joins, 20 to 22dp, ink or soft.
-- Touch targets are at least 44dp. No spinners: progress is a 2dp `line` track with a 2dp `ink` sweep and a soft caption.
+- Controls are drawn at 44dp or more; every tappable control has a 48dp touch area. The touch area is Compose's minimum touch target (hit testing and the TalkBack bounds both reach 48dp around a smaller control), so it adds no layout space and no pixels; `minimumInteractiveComponentSize()` is not used because it would grow the layout. No spinners: progress is a 2dp `line` track with a 2dp `ink` sweep and a soft caption.
 
 ## Controls
 
@@ -70,7 +70,7 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 - **TertiaryButton**: ink text, 44dp, no underline. `soft` for low emphasis.
 - **DestructiveButton**: `bad` text. Inside sheets and confirmations, a full-width 1dp `bad` outline, radius 16, 52dp.
 - **ChoiceOption**: unselected 1dp `line` outline with soft text; selected 1.5dp `ink` outline with ink 500. Radius 12, min 44dp. Optional soft second line (kcal).
-- **AddCircle**: 32dp circle, 1.5dp ink outline and a `+` (or another icon), in a 44dp target.
+- **AddCircle**: 32dp circle, 1.5dp ink outline and a `+` (or another icon), in a 44dp box with a 48dp touch area.
 - **Field**: label 13sp soft above; 1dp `line` box, radius 12, min 52dp, 16sp text. Focus 1.5dp `ink`. Error 1.5dp `bad` and 13sp `bad` text below. Optional soft trailing hint.
 - **SearchField**: a Field with a leading magnifier and a trailing clear.
 - **Composer**: `ink` bar, radius 16, 52dp, placeholder in `bg` at 60%, scan icon on the right. Fixed at the bottom over a `bg` fade.

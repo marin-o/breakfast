@@ -277,7 +277,7 @@ fun ChoiceOption(
     }
 }
 
-/** 32dp circle with a `+` at the start of a section; the touch target is 44dp. */
+/** 32dp circle with a `+` at the start of a section, in a 44dp box; the touch area is 48dp (see [IconTarget]). */
 @Composable
 fun AddCircle(
     contentDescription: String,

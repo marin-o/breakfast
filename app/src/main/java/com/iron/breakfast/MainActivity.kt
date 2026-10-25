@@ -65,7 +65,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -187,6 +186,7 @@ import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.ChoiceOption
 import com.iron.breakfast.ui.components.SectionHeading
 import com.iron.breakfast.ui.components.PrimaryButton
+import com.iron.breakfast.ui.components.SecondaryButton
 import com.iron.breakfast.ui.components.TertiaryButton
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.theme.BreakfastType
@@ -1915,10 +1915,9 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
 
 
 
+/** The 48dp outline under a scanned product's log, as M-Food-Detail draws it. */
 @Composable internal fun ContributionAction(vm: BreakfastViewModel) {
-    OutlinedButton(vm::reviewContribution, Modifier.fillMaxWidth()) {
-        Text("Contribute to Open Food Facts")
-    }
+    SecondaryButton("Contribute to Open Food Facts", vm::reviewContribution)
 }
 
 @Composable private fun ContributionReviewScreen(vm: BreakfastViewModel, draft: OffContributionDraft) {
