@@ -327,6 +327,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var contributionReviewOpen by mutableStateOf(false); private set
     var contributionAuthOpen by mutableStateOf(false); private set
     var contributionFailure by mutableStateOf<String?>(null); private set
+    /** The field New food moves focus to after a refused save; consumed by the form. */
+    internal var foodFormFocus by mutableStateOf<FoodFormFocus?>(null); private set
+    private var foodFormFocusSerial = 0L
+    fun foodFormFocusHandled() { foodFormFocus = null }
     /** The failure shown is "may have been sent": the answer to a sent contribution was lost. */
     var contributionUncertain by mutableStateOf(false); private set
     var contributionUsername by mutableStateOf(""); private set
@@ -1583,19 +1587,22 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun saveCustom() {
         val name = draft.name; val brand = draft.brand; val barcode = draft.barcode.trim()
         val aliasList = draft.allAliases(); val servingList = draft.servings
-        val resolved = resolveNutrition(draft.nutritionInput())
-        val kcal = resolved.calories; val proteinValue = resolved.protein; val carbsValue = resolved.carbohydrates; val fatValue = resolved.fat
-        if (resolved.invalid) { notice = "Nutrition values must be finite and nonnegative."; return }
-        if (name.isBlank() || kcal == null) { notice = "Name and calories are required."; return }
+        val input = draft.nutritionInput()
+        val resolved = resolveNutrition(input)
         val editingId = editingLibraryFoodId
         val originalBarcode = editingId?.let { id -> foods.firstOrNull { it.id == id }?.barcode?.trim() }
         val barcodeError = if (barcode == originalBarcode) null else validateBarcodeInput(barcode, foods, editingId)
-        if (barcodeError != null) { notice = barcodeError; return }
+        // A refused save names the problem and moves focus to the field to fix (New food reads the request).
+        foodSaveRefusal(name, input, resolved, barcodeError)?.let { refusal ->
+            notice = refusal.message
+            if (editingId == null) foodFormFocus = FoodFormFocus(refusal.field, ++foodFormFocusSerial)
+            return
+        }
+        val kcal = resolved.calories ?: return
         val basisAmount = resolved.basisAmount
         val basisUnit = resolved.basisUnit
-        val nutrition = NutritionValues(kcal, proteinValue, carbsValue, fatValue)
-        if (!nutrition.calories.isFinite() || nutrition.calories < 0.0 || nutrition.calories > 10000.0 || listOf(nutrition.protein, nutrition.carbohydrates, nutrition.fat).any { it != null && (!it.isFinite() || it < 0.0 || it > 1000.0) }) { notice = "Nutrition values must be finite and nonnegative."; return }
-        if (!ready || busy || !basisAmount.isFinite() || basisAmount <= 0.0) { notice = "Enter a positive nutrition basis."; return }
+        val nutrition = NutritionValues(kcal, resolved.protein, resolved.carbohydrates, resolved.fat)
+        if (!ready || busy) { notice = "Enter a positive nutrition basis."; return }
         val resolutionPlan = resolverLogPlan(resolutionContinuation, unknownQueue.isNotEmpty(), unknownQueueTarget, slot)
         val saveTarget = resolutionPlan?.meal
         val resolvesQueue = resolutionPlan?.advancesQueue == true
@@ -1651,6 +1658,9 @@ private const val CONTRIBUTION_UNCERTAIN = "Check Open Food Facts before sending
 
 /** The notice when an Undo could not be applied. */
 private const val UNDO_FAILED = "Could not undo."
+
+/** A request to focus [field]; [serial] makes a repeated refusal of the same field a new request. */
+internal data class FoodFormFocus(val field: FoodFormField, val serial: Long)
 
 internal data class ProductPrefill(val amount: Double, val unit: MeasureUnit)
 

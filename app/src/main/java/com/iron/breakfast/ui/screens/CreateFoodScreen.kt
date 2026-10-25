@@ -24,6 +24,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -40,6 +41,7 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.BreakfastViewModel
+import com.iron.breakfast.FoodFormField
 import com.iron.breakfast.domain.asciiDigits
 import com.iron.breakfast.domain.parseNutritionShorthand
 import com.iron.breakfast.domain.validateBarcodeInput
@@ -61,17 +63,14 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
     val barcodeError = validateBarcodeInput(draft.barcode, vm.foods)
     val state = createFoodState(draft.nutritionInput(), draft.name, barcodeError)
     val colors = LocalBreakfastColors.current
-    val nameFocus = remember { FocusRequester() }
-    val barcodeFocus = remember { FocusRequester() }
-    val kcalFocus = remember { FocusRequester() }
-    // Save while something blocks it says nothing new: it moves focus to the first field to fix, which TalkBack reads.
-    val focusFirstInvalid = {
-        when (firstInvalidCreateField(draft.name, barcodeError, state.caloriesMissing)) {
-            CreateFoodField.NAME -> nameFocus.requestFocus()
-            CreateFoodField.BARCODE -> barcodeFocus.requestFocus()
-            CreateFoodField.KCAL -> kcalFocus.requestFocus()
-            null -> Unit
-        }
+    // A save the view model refuses (Save was enabled, but a number is out of range) moves focus to the field to fix,
+    // which TalkBack then reads; nothing new is shown.
+    val focus = remember { FoodFormField.entries.associateWith { FocusRequester() } }
+    val focusRequest = vm.foodFormFocus
+    LaunchedEffect(focusRequest) {
+        if (focusRequest == null) return@LaunchedEffect
+        runCatching { focus.getValue(focusRequest.field).requestFocus() }
+        vm.foodFormFocusHandled()
     }
     BackHandler(onBack = vm::leaveCustom)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
@@ -79,7 +78,7 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).imePadding().padding(bottom = 12.dp)) {
                 TopBar("New food", vm::leaveCustom, Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
                 Column(Modifier.padding(horizontal = Gutter).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Field("Name", draft.name, { draft.name = it }, required = true, fieldModifier = Modifier.focusRequester(nameFocus))
+                    Field("Name", draft.name, { draft.name = it }, required = true, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.NAME)))
                     Field("Brand", draft.brand, { draft.brand = it })
                     Field(
                         label = "Barcode",
@@ -89,7 +88,7 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
                         errorMessage = barcodeError,
                         hint = if (draft.barcodeFromScan) "from scan" else null,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        fieldModifier = Modifier.focusRequester(barcodeFocus),
+                        fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.BARCODE)),
                         trailing = if (draft.barcodeFromScan) null else ({
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 if (draft.barcode.isNotBlank()) IconButton(onClick = { draft.barcode = "" }, modifier = Modifier.size(44.dp)) { Icon(Icons.Outlined.Close, "Clear barcode", tint = colors.soft) }
@@ -117,7 +116,7 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
                     Column {
                         Text("Basis", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(bottom = 4.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            DecimalField("Basis", basisAmount, { draft.basisEdited = true; draft.basisAmount = it }, Modifier.weight(1.6f), labelVisible = false)
+                            DecimalField("Basis", basisAmount, { draft.basisEdited = true; draft.basisAmount = it }, Modifier.weight(1.6f), labelVisible = false, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.BASIS)))
                             listOf("g", "ml").forEach { unit -> ChoiceOption(unit, basisUnit == unit, { draft.basisEdited = true; draft.basisUnit = unit }, Modifier.weight(1f)) }
                         }
                     }
@@ -126,18 +125,18 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
                         error = state.showRequired,
                         errorMessage = if (state.showRequired) "kcal is required" else null,
                         required = true,
-                        fieldModifier = Modifier.focusRequester(kcalFocus),
+                        fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.KCAL)),
                     )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        DecimalField("Protein, g", protein, { draft.proteinEdited = true; draft.protein = it }, Modifier.weight(1f))
-                        DecimalField("Carbs, g", carbs, { draft.carbsEdited = true; draft.carbs = it }, Modifier.weight(1f))
-                        DecimalField("Fat, g", fat, { draft.fatEdited = true; draft.fat = it }, Modifier.weight(1f))
+                        DecimalField("Protein, g", protein, { draft.proteinEdited = true; draft.protein = it }, Modifier.weight(1f), fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.PROTEIN)))
+                        DecimalField("Carbs, g", carbs, { draft.carbsEdited = true; draft.carbs = it }, Modifier.weight(1f), fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.CARBS)))
+                        DecimalField("Fat, g", fat, { draft.fatEdited = true; draft.fat = it }, Modifier.weight(1f), fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.FAT)))
                     }
                     Field("Alias", draft.aliasInput, { draft.aliasInput = it })
                 }
             }
             Column(Modifier.fillMaxWidth().imePadding().padding(horizontal = Gutter, vertical = 8.dp)) {
-                PrimaryButton("Save", vm::saveCustom, Modifier.padding(top = 8.dp), enabled = state.canSave, kind = ButtonKind.Constructive, onDisabledClick = focusFirstInvalid)
+                PrimaryButton("Save", vm::saveCustom, Modifier.padding(top = 8.dp), enabled = state.canSave, kind = ButtonKind.Constructive)
             }
         }
     }

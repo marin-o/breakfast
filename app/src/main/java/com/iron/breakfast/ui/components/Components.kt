@@ -118,8 +118,6 @@ fun PrimaryButton(
     enabled: Boolean = true,
     kind: ButtonKind = ButtonKind.Constructive,
     fillWidth: Boolean = true,
-    /** Called on a tap while not [enabled], such as moving focus to the field that blocks it; the button stays dimmed. */
-    onDisabledClick: (() -> Unit)? = null,
 ) {
     val colors = LocalBreakfastColors.current
     val fill = if (kind == ButtonKind.Constructive) colors.ok else colors.ink
@@ -131,11 +129,7 @@ fun PrimaryButton(
             .alpha(if (enabled) 1f else 0.45f)
             .clip(PrimaryShape)
             .background(fill)
-            // A dimmed button with [onDisabledClick] takes the tap without a ripple, so it still looks inactive.
-            .then(
-                if (enabled || onDisabledClick == null) Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-                else Modifier.clickable(interactionSource = null, indication = null, role = Role.Button, onClick = onDisabledClick)
-            )
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
