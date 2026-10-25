@@ -242,6 +242,17 @@ internal data class CreateFoodState(
     val canSave: Boolean,
 )
 
+/** A New food field that can keep the form from saving. */
+internal enum class CreateFoodField { NAME, BARCODE, KCAL }
+
+/** The first field, top to bottom, that keeps New food from saving: Save moves focus there. Null when it can save. */
+internal fun firstInvalidCreateField(name: String, barcodeError: String?, caloriesMissing: Boolean): CreateFoodField? = when {
+    name.isBlank() -> CreateFoodField.NAME
+    barcodeError != null -> CreateFoodField.BARCODE
+    caloriesMissing -> CreateFoodField.KCAL
+    else -> null
+}
+
 internal fun createFoodState(input: NutritionInput, name: String, barcodeError: String?): CreateFoodState {
     val nutrition = resolveNutrition(input)
     val missing = nutrition.calories == null

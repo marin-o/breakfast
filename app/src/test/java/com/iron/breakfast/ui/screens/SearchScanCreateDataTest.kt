@@ -129,4 +129,14 @@ class SearchScanCreateDataTest {
         assertEquals(130.0, resolved.calories!!, 0.0)
         assertEquals(5.0, resolved.protein!!, 0.0)
     }
+
+    @Test fun saveFocusesTheFirstFieldThatBlocksItTopToBottom() {
+        assertEquals(CreateFoodField.NAME, firstInvalidCreateField(" ", "That barcode already belongs to Milk.", caloriesMissing = true))
+        assertEquals(CreateFoodField.BARCODE, firstInvalidCreateField("Ajvar", "That barcode already belongs to Milk.", caloriesMissing = true))
+        assertEquals(CreateFoodField.KCAL, firstInvalidCreateField("Ajvar", null, caloriesMissing = true))
+        assertNull(firstInvalidCreateField("Ajvar", null, caloriesMissing = false))
+        // It agrees with whether Save is enabled.
+        val state = createFoodState(NutritionInput(), "Ajvar", null)
+        assertEquals(state.canSave, firstInvalidCreateField("Ajvar", null, state.caloriesMissing) == null)
+    }
 }

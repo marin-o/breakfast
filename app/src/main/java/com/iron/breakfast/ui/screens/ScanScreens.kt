@@ -460,6 +460,7 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
                 },
                 modifier = Modifier.padding(top = 16.dp),
                 error = parsed == null && amountText.isNotBlank(),
+                errorDescription = "Enter a positive amount and a supported unit, such as 100 g or 1 tbsp.",
                 hint = approx?.let { "≈$it" },
             )
             if (!fromLibrary) {

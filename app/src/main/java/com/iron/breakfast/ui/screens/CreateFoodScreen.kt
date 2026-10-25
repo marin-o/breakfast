@@ -24,6 +24,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -58,13 +61,25 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
     val barcodeError = validateBarcodeInput(draft.barcode, vm.foods)
     val state = createFoodState(draft.nutritionInput(), draft.name, barcodeError)
     val colors = LocalBreakfastColors.current
+    val nameFocus = remember { FocusRequester() }
+    val barcodeFocus = remember { FocusRequester() }
+    val kcalFocus = remember { FocusRequester() }
+    // Save while something blocks it says nothing new: it moves focus to the first field to fix, which TalkBack reads.
+    val focusFirstInvalid = {
+        when (firstInvalidCreateField(draft.name, barcodeError, state.caloriesMissing)) {
+            CreateFoodField.NAME -> nameFocus.requestFocus()
+            CreateFoodField.BARCODE -> barcodeFocus.requestFocus()
+            CreateFoodField.KCAL -> kcalFocus.requestFocus()
+            null -> Unit
+        }
+    }
     BackHandler(onBack = vm::leaveCustom)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).imePadding().padding(bottom = 12.dp)) {
                 TopBar("New food", vm::leaveCustom, Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
                 Column(Modifier.padding(horizontal = Gutter).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Field("Name", draft.name, { draft.name = it }, required = true)
+                    Field("Name", draft.name, { draft.name = it }, required = true, fieldModifier = Modifier.focusRequester(nameFocus))
                     Field("Brand", draft.brand, { draft.brand = it })
                     Field(
                         label = "Barcode",
@@ -74,6 +89,7 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
                         errorMessage = barcodeError,
                         hint = if (draft.barcodeFromScan) "from scan" else null,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        fieldModifier = Modifier.focusRequester(barcodeFocus),
                         trailing = if (draft.barcodeFromScan) null else ({
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 if (draft.barcode.isNotBlank()) IconButton(onClick = { draft.barcode = "" }, modifier = Modifier.size(44.dp)) { Icon(Icons.Outlined.Close, "Clear barcode", tint = colors.soft) }
@@ -110,6 +126,7 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
                         error = state.showRequired,
                         errorMessage = if (state.showRequired) "kcal is required" else null,
                         required = true,
+                        fieldModifier = Modifier.focusRequester(kcalFocus),
                     )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         DecimalField("Protein, g", protein, { draft.proteinEdited = true; draft.protein = it }, Modifier.weight(1f))
@@ -120,7 +137,7 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
                 }
             }
             Column(Modifier.fillMaxWidth().imePadding().padding(horizontal = Gutter, vertical = 8.dp)) {
-                PrimaryButton("Save", vm::saveCustom, Modifier.padding(top = 8.dp), enabled = state.canSave, kind = ButtonKind.Constructive)
+                PrimaryButton("Save", vm::saveCustom, Modifier.padding(top = 8.dp), enabled = state.canSave, kind = ButtonKind.Constructive, onDisabledClick = focusFirstInvalid)
             }
         }
     }

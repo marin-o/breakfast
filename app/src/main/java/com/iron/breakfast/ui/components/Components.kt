@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -63,6 +65,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -115,6 +118,8 @@ fun PrimaryButton(
     enabled: Boolean = true,
     kind: ButtonKind = ButtonKind.Constructive,
     fillWidth: Boolean = true,
+    /** Called on a tap while not [enabled], such as moving focus to the field that blocks it; the button stays dimmed. */
+    onDisabledClick: (() -> Unit)? = null,
 ) {
     val colors = LocalBreakfastColors.current
     val fill = if (kind == ButtonKind.Constructive) colors.ok else colors.ink
@@ -126,7 +131,7 @@ fun PrimaryButton(
             .alpha(if (enabled) 1f else 0.45f)
             .clip(PrimaryShape)
             .background(fill)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .clickable(enabled = enabled || onDisabledClick != null, role = Role.Button, onClick = if (enabled) onClick else onDisabledClick ?: {})
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -250,7 +255,7 @@ fun ChoiceOption(
         modifier
             .heightIn(min = ChoiceMinHeight)
             .border(if (selected) 1.5.dp else 1.dp, if (selected) colors.ink else colors.line, ChoiceShape)
-            .clickable(role = Role.RadioButton, onClick = onClick)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
             .padding(horizontal = if (compact) 8.dp else 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.Center,
     ) {
@@ -322,8 +327,11 @@ fun Field(
     trailing: (@Composable () -> Unit)? = null,
     /** Marks the field as needed to save: "required" sits at the end of the label row. */
     required: Boolean = false,
+    /** What TalkBack says for an [error] that shows only the red ring; a visible [errorMessage] is said instead. */
+    errorDescription: String? = null,
 ) {
     val colors = LocalBreakfastColors.current
+    val spokenError = errorMessage ?: errorDescription?.takeIf { error }
     Column(modifier.fillMaxWidth()) {
         if (labelVisible) Row(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
             Text(label, color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.weight(1f))
@@ -337,7 +345,11 @@ fun Field(
                     .weight(1f)
                     .then(fieldModifier)
                     .onFocusChanged(onFocus)
-                    .semantics { contentDescription = if (required) "$label, required" else label },
+                    // The visible label names the field; the error is a semantic error, so TalkBack says it on the field itself.
+                    .semantics {
+                        contentDescription = if (required) "$label, required" else label
+                        if (spokenError != null) error(spokenError)
+                    },
                 singleLine = singleLine,
                 minLines = minLines,
                 readOnly = readOnly,
@@ -374,10 +386,13 @@ fun DecimalField(
     error: Boolean = false,
     errorMessage: String? = null,
     required: Boolean = false,
+    /** Applied to the text field itself, for a FocusRequester. */
+    fieldModifier: Modifier = Modifier,
 ) = Field(
     label, value, { onValueChange(it.decimalInput()) }, modifier,
     labelVisible = labelVisible, error = error, errorMessage = errorMessage, required = required,
     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+    fieldModifier = fieldModifier,
 )
 
 /** Field with a leading magnifier and a trailing clear button. */
@@ -683,7 +698,7 @@ fun InkBar(modifier: Modifier = Modifier, endPadding: Dp = 4.dp, content: @Compo
 /** Two text tabs, centred with a 40dp gap. The active tab is ink, the other soft. */
 @Composable
 fun BottomNav(selectedToday: Boolean, onToday: () -> Unit, onLibrary: () -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.fillMaxWidth().padding(vertical = 4.dp).selectableGroup(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
         NavTab("Today", selected = selectedToday, onClick = onToday)
         Spacer(Modifier.width(40.dp))
         NavTab("Library", selected = !selectedToday, onClick = onLibrary)
@@ -696,7 +711,7 @@ private fun NavTab(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
             .heightIn(min = TertiaryHeight)
-            .clickable(role = Role.Tab, onClick = onClick)
+            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
             .padding(horizontal = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -846,14 +861,14 @@ fun MealChoices(selected: MealSlot?, onSelect: (MealSlot) -> Unit, modifier: Mod
             val padding = with(LocalDensity.current) { (if (compact) 16.dp else 24.dp).roundToPx() + 2.dp.roundToPx() }
             val quarter = with(LocalDensity.current) { ((maxWidth - 24.dp) / 4).roundToPx() }
             if (widest + padding <= quarter) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     MealSlot.entries.forEach { meal -> ChoiceOption(meal.label(), selected == meal, { onSelect(meal) }, Modifier.weight(1f), compact = compact) }
                 }
             } else MealChoices(selected, onSelect, Modifier.fillMaxWidth(), singleRow = false, compact = compact)
         }
         return
     }
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         MealSlot.entries.chunked(2).forEach { pair ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 pair.forEach { meal ->
