@@ -107,8 +107,8 @@ interface FoodDao {
     @Query("SELECT * FROM foods")
     suspend fun all(): List<FoodEntity>
 
-    @Query("SELECT * FROM foods WHERE barcode = :barcode LIMIT 1")
-    suspend fun byBarcode(barcode: String): FoodEntity?
+    @Query("SELECT * FROM foods WHERE barcode IN (:barcodes)")
+    suspend fun byBarcodes(barcodes: List<String>): List<FoodEntity>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(foods: List<FoodEntity>)

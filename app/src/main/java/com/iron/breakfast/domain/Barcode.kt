@@ -44,6 +44,40 @@ fun normalizeBarcode(raw: String): String? {
 }
 
 /**
+ * The one form product codes are compared and stored in. A 12-digit UPC-A and its 13-digit EAN (a leading 0) are one
+ * code, and so is a GTIN-14 that only adds a leading 0: UPC-A becomes "0" + code, a GTIN-14 starting with 0 drops it.
+ * Other EAN-13, EAN-8 and other GTIN-14 codes stay as they are. Null when [raw] is not a product barcode.
+ */
+fun canonicalBarcode(raw: String): String? {
+    val code = normalizeBarcode(raw) ?: return null
+    return when {
+        code.length == 12 -> "0$code"
+        code.length == 14 && code[0] == '0' -> code.substring(1)
+        else -> code
+    }
+}
+
+/** True when [a] and [b] are the same product code in any of their forms; false when either is not a barcode. */
+fun sameBarcode(a: String?, b: String?): Boolean {
+    val left = a?.let(::canonicalBarcode) ?: return false
+    return left == b?.let(::canonicalBarcode)
+}
+
+/**
+ * Every spelling a stored row may hold for the code [raw]: for "036000291452", that, "0036000291452" and
+ * "00036000291452". [raw]'s own form comes first. Empty when [raw] is not a product barcode.
+ */
+fun barcodeForms(raw: String): List<String> {
+    val own = normalizeBarcode(raw) ?: return emptyList()
+    val canonical = canonicalBarcode(own) ?: return emptyList()
+    val forms = when (canonical.length) {
+        13 -> listOfNotNull(canonical, canonical.substring(1).takeIf { canonical[0] == '0' }, "0$canonical")
+        else -> listOf(canonical)
+    }
+    return (listOf(own) + forms).distinct()
+}
+
+/**
  * The scanner's guard: what a decoded symbol becomes before any lookup, or null when it is not a product barcode
  * (a QR code's text, a URL), so the frame is ignored and scanning goes on. A UPC-E symbol ([upcE]) is expanded to
  * its 12-digit UPC-A first, so it is not read as an EAN-8.
@@ -86,6 +120,6 @@ fun expandUpcE(code: String): String? {
 fun validateBarcodeInput(value: String, foods: List<FoodRecord>, editingId: String? = null): String? {
     if (value.isBlank()) return null
     val barcode = normalizeBarcode(value) ?: return "Enter an 8, 12, 13 or 14 digit barcode or clear the field."
-    val holder = foods.firstOrNull { it.id != editingId && it.barcode?.trim() == barcode } ?: return null
+    val holder = foods.firstOrNull { it.id != editingId && sameBarcode(it.barcode, barcode) } ?: return null
     return "That barcode already belongs to ${holder.name}."
 }

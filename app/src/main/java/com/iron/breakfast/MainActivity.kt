@@ -140,6 +140,8 @@ import com.iron.breakfast.domain.NutritionCalculator
 import com.iron.breakfast.domain.RankedFood
 import com.iron.breakfast.domain.asciiDigits
 import com.iron.breakfast.domain.normalizeBarcode
+import com.iron.breakfast.domain.canonicalBarcode
+import com.iron.breakfast.domain.sameBarcode
 import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.domain.parseDecimal
 import com.iron.breakfast.domain.resolveNutrition
@@ -1591,7 +1593,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val resolved = resolveNutrition(input)
         val editingId = editingLibraryFoodId
         val originalBarcode = editingId?.let { id -> foods.firstOrNull { it.id == id }?.barcode?.trim() }
-        val barcodeError = if (barcode == originalBarcode) null else validateBarcodeInput(barcode, foods, editingId)
+        val barcodeUnchanged = barcode == originalBarcode || sameBarcode(barcode, originalBarcode)
+        val barcodeError = if (barcodeUnchanged) null else validateBarcodeInput(barcode, foods, editingId)
         // A refused save names the problem and moves focus to the field to fix (New food reads the request).
         foodSaveRefusal(name, input, resolved, barcodeError)?.let { refusal ->
             notice = refusal.message
@@ -1599,6 +1602,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             return
         }
         val kcal = resolved.calories ?: return
+        // A new or changed code is stored in its canonical form; an unchanged one keeps the spelling it has.
+        val storedBarcode = if (barcodeUnchanged && originalBarcode != null) originalBarcode else canonicalBarcode(barcode) ?: barcode
         val basisAmount = resolved.basisAmount
         val basisUnit = resolved.basisUnit
         val nutrition = NutritionValues(kcal, resolved.protein, resolved.carbohydrates, resolved.fat)
@@ -1624,14 +1629,14 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         busy = true; viewModelScope.launch { runCatching {
             if (editingId != null) {
                 val original = foods.firstOrNull { it.id == editingId } ?: error("That personal food is no longer available.")
-                engine.updateFood(editedCustomFoodRecord(original, name, brand, barcode, aliasText, nutrition, basisAmount, basisUnit, aliases = aliasList, servings = servingList))
+                engine.updateFood(editedCustomFoodRecord(original, name, brand, storedBarcode, aliasText, nutrition, basisAmount, basisUnit, aliases = aliasList, servings = servingList))
                 original
             } else {
                 val target = saveTarget
                 if (target != null) {
-                    val entry = engine.saveCustomAndLog(name, brand, barcode, aliasText, nutrition, basisAmount, basisUnit, target, basisAmount, basisUnit, dayKey = capturedDayKey, sourceName = offSource, sourceDescription = "Saved from an incomplete Open Food Facts barcode result")
+                    val entry = engine.saveCustomAndLog(name, brand, storedBarcode, aliasText, nutrition, basisAmount, basisUnit, target, basisAmount, basisUnit, dayKey = capturedDayKey, sourceName = offSource, sourceDescription = "Saved from an incomplete Open Food Facts barcode result")
                     engine.foodById(entry.foodId) ?: error("Saved food could not be reloaded.")
-                } else engine.saveCustomFood(name, brand, barcode, aliasText, nutrition, basisAmount, basisUnit, sourceName = offSource, sourceDescription = "Saved from an incomplete Open Food Facts barcode result")
+                } else engine.saveCustomFood(name, brand, storedBarcode, aliasText, nutrition, basisAmount, basisUnit, sourceName = offSource, sourceDescription = "Saved from an incomplete Open Food Facts barcode result")
             }
         }.onSuccess { saved ->
             if (editingId == null && saveTarget != null) offerUndo(null)

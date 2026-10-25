@@ -182,7 +182,7 @@ internal fun contributionAvailable(food: FoodRecord): Boolean {
     val barcode = com.iron.breakfast.domain.normalizeBarcode(food.barcode ?: return false) ?: return false
     // A food that cannot become a draft (implausible per 100 g, no g or ml basis) offers no action that would only refuse.
     if (com.iron.breakfast.data.OffContributionDraft.fromFood(food) == null) return false
-    return !isOpenFoodFactsSource(food) || food.sourceId?.trim() == barcode
+    return !isOpenFoodFactsSource(food) || com.iron.breakfast.domain.sameBarcode(food.sourceId, barcode)
 }
 
 internal fun foodCountLabel(count: Int): String = if (count == 1) "1 food" else "$count foods"

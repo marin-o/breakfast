@@ -10,6 +10,7 @@ import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.Preference
+import com.iron.breakfast.domain.barcodeForms
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
@@ -133,7 +134,9 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
     suspend fun foodByBarcode(barcode: String): FoodRecord? {
         requireReady()
         return withContext(Dispatchers.IO) {
-            val entity = database.foodDao().byBarcode(barcode)?.takeUnless { it.archived } ?: return@withContext null
+            // A row matches in whichever form it was stored (UPC-A or its EAN-13); an exact spelling is preferred.
+            val forms = barcodeForms(barcode).ifEmpty { listOf(barcode) }
+            val entity = pickBarcodeMatch(database.foodDao().byBarcodes(forms), barcode) ?: return@withContext null
             val aliases = database.foodAliasDao().all().filter { it.foodId == entity.id }.map { it.alias }
             val conversions = database.servingConversionDao().all().filter { it.foodId == entity.id }.map {
                 it.toDomain()
@@ -300,3 +303,7 @@ internal fun unchangedEntryIds(expected: List<MealEntry>, stored: List<MealEntry
     val byId = stored.associateBy { it.id }
     return expected.filter { byId[it.id] == it.toEntity() }.map { it.id }
 }
+
+/** Of the rows holding [barcode] in any of its forms, the live one, its exact spelling first; null when only archived rows match. */
+internal fun pickBarcodeMatch(rows: List<FoodEntity>, barcode: String): FoodEntity? =
+    rows.filterNot { it.archived }.sortedBy { if (it.barcode?.trim() == barcode.trim()) 0 else 1 }.firstOrNull()
