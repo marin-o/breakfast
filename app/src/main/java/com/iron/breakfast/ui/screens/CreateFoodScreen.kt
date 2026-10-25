@@ -19,7 +19,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -45,6 +44,7 @@ import com.iron.breakfast.ui.components.ButtonKind
 import com.iron.breakfast.ui.components.ChoiceOption
 import com.iron.breakfast.ui.components.Field
 import com.iron.breakfast.ui.components.PrimaryButton
+import com.iron.breakfast.ui.components.ScanBarcodeIcon
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 
@@ -77,7 +77,7 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
                         trailing = if (draft.barcodeFromScan) null else ({
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 if (draft.barcode.isNotBlank()) IconButton(onClick = { draft.barcode = "" }, modifier = Modifier.size(44.dp)) { Icon(Icons.Outlined.Close, "Clear barcode", tint = colors.soft) }
-                                IconButton(onClick = vm::beginBarcodeRescan, modifier = Modifier.size(44.dp)) { Icon(Icons.Outlined.QrCodeScanner, "Scan barcode", tint = colors.ink) }
+                                IconButton(onClick = vm::beginBarcodeRescan, modifier = Modifier.size(44.dp)) { Icon(ScanBarcodeIcon, "Scan barcode", tint = colors.ink) }
                             }
                         }),
                     )

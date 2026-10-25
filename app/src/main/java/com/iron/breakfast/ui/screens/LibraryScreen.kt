@@ -35,7 +35,6 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -365,7 +364,7 @@ internal fun FoodBarcodeField(vm: BreakfastViewModel, label: String = "Barcode")
         label, draft.barcode, { draft.barcode = it.asciiDigits() }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         trailing = {
             if (draft.barcode.isNotBlank()) IconButton(onClick = { draft.barcode = "" }, modifier = Modifier.size(44.dp)) { Icon(Icons.Outlined.Close, "Clear barcode", tint = colors.soft) }
-            IconButton(onClick = vm::beginBarcodeRescan, modifier = Modifier.size(44.dp)) { Icon(Icons.Outlined.QrCodeScanner, "Scan barcode", tint = colors.ink) }
+            IconButton(onClick = vm::beginBarcodeRescan, modifier = Modifier.size(44.dp)) { Icon(ScanBarcodeIcon, "Scan barcode", tint = colors.ink) }
         },
     )
 }
