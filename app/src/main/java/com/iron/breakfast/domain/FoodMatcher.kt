@@ -114,8 +114,10 @@ class FoodMatcher(
                 fullMatch = if (identityQueries.isEmpty()) exactName else identityHits.all { it != null },
                 wholeMatch = if (identityQueries.isEmpty()) exactName else identityHits.all { it != null && !it.prefix },
                 firstLetterEdit = matched.any { it.firstLetterEdit },
+                exact = exactName || aliasExact || stemmedName,
             )
-        }.sortedWith(compareByDescending<RankedFood> { it.score }.thenBy { it.food.name }).take(limit)
+            // An exact name or alias ranks first; a learned preference only orders matches of equal standing.
+        }.sortedWith(compareByDescending<RankedFood> { it.exact }.thenByDescending { it.score }.thenBy { it.food.name }).take(limit)
     }
 
     /**

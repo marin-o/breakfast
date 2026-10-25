@@ -199,6 +199,8 @@ data class RankedFood(
     val wholeMatch: Boolean = false,
     /** A typo whose edit is at the first letter, which never resolves on its own. */
     val firstLetterEdit: Boolean = false,
+    /** The typed phrase is the food's name or alias (or its singular): it ranks above every other match. */
+    val exact: Boolean = false,
 )
 
 data class SavedMeal(

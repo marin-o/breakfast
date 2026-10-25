@@ -19,8 +19,8 @@ class ChosenPinTest {
     @Test fun theTappedEggStaysEggWhenAPreferenceRanksEggplantFirst() {
         val chosen = planner.choose("1 egg", egg)
         assertEquals(chosen.part, chosen.input)
-        // Without the pin the chosen text re-resolves to the preferred Eggplant; with it, it is the tapped Egg.
-        assertEquals(eggplant, planner.resolve(chosen.input)?.food?.id)
+        // The pin holds the tapped Egg whatever the ranking does with the chosen text (an exact name now ranks first,
+        // so the text alone also reads Egg; the pin keeps it so if two foods ever share the name).
         val after = pinned(chosen)
         assertEquals(listOf("egg"), after.plan(chosen.input).entries.map { it.food.id })
         val draft = after.draft(chosen.input)
