@@ -1,6 +1,7 @@
 package com.iron.breakfast.domain
 
 import com.iron.breakfast.data.BreakfastStore
+import com.iron.breakfast.data.DiaryRows
 import java.util.UUID
 
 class BreakfastEngine(private val store: BreakfastStore) {
@@ -10,6 +11,12 @@ class BreakfastEngine(private val store: BreakfastStore) {
     private var cachedMatcher: FoodMatcher? = null
 
     suspend fun initialize() = store.initialize()
+
+    /** Every stored row, for Export diary. */
+    internal suspend fun exportRows(): DiaryRows = store.exportRows()
+
+    /** Import diary: the stored diary becomes [rows], or stays as it was if the write fails. */
+    internal suspend fun replaceDiary(rows: DiaryRows) = store.replaceDiary(rows)
 
     private var cachedPlanner: LogPlanner? = null
     private var plannerMatcher: FoodMatcher? = null

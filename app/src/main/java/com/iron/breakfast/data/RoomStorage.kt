@@ -115,6 +115,13 @@ interface FoodDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(food: FoodEntity)
+
+    /** Diary import: a clash fails the whole transaction. */
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAllOrAbort(foods: List<FoodEntity>)
+
+    @Query("DELETE FROM foods")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -127,6 +134,12 @@ interface FoodAliasDao {
 
     @Query("DELETE FROM food_aliases WHERE foodId = :foodId")
     suspend fun deleteForFood(foodId: String)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAllOrAbort(aliases: List<FoodAliasEntity>)
+
+    @Query("DELETE FROM food_aliases")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -139,6 +152,12 @@ interface ServingConversionDao {
 
     @Query("DELETE FROM serving_conversions WHERE foodId = :foodId")
     suspend fun deleteForFood(foodId: String)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAllOrAbort(conversions: List<ServingConversionEntity>)
+
+    @Query("DELETE FROM serving_conversions")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -148,6 +167,12 @@ interface PreferenceDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(preference: PreferenceEntity)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAllOrAbort(preferences: List<PreferenceEntity>)
+
+    @Query("DELETE FROM preferences")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -166,6 +191,12 @@ interface MealEntryDao {
 
     @Query("DELETE FROM meal_entries WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<String>)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAllOrAbort(entries: List<MealEntryEntity>)
+
+    @Query("DELETE FROM meal_entries")
+    suspend fun deleteAll()
 }
 
 @Database(

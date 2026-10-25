@@ -241,6 +241,52 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
         }
     }
 
+    /** Every stored row, read in one transaction so the copy is consistent. For Export diary. */
+    internal suspend fun exportRows(): DiaryRows {
+        requireReady()
+        return writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                database.withTransaction {
+                    DiaryRows(
+                        foods = database.foodDao().all(),
+                        aliases = database.foodAliasDao().all(),
+                        conversions = database.servingConversionDao().all(),
+                        preferences = database.preferenceDao().all(),
+                        entries = database.mealEntryDao().all(),
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Import diary: replaces every table with [rows] in one transaction, then seeds and syncs the catalogue as at start.
+     * Any failure rolls the whole transaction back, so the stored diary and [model] stay as they were. [rows] must
+     * already have passed [validateDiary].
+     */
+    internal suspend fun replaceDiary(rows: DiaryRows) {
+        requireReady()
+        writeMutex.withLock {
+            withContext(NonCancellable + Dispatchers.IO) {
+                database.withTransaction {
+                    database.mealEntryDao().deleteAll()
+                    database.preferenceDao().deleteAll()
+                    database.servingConversionDao().deleteAll()
+                    database.foodAliasDao().deleteAll()
+                    database.foodDao().deleteAll()
+                    database.foodDao().insertAllOrAbort(rows.foods)
+                    database.foodAliasDao().insertAllOrAbort(rows.aliases)
+                    database.servingConversionDao().insertAllOrAbort(rows.conversions)
+                    database.preferenceDao().insertAllOrAbort(rows.preferences)
+                    database.mealEntryDao().insertAllOrAbort(rows.entries)
+                    seedMissingFixtures()
+                    syncBuiltInFoods()
+                }
+                model = readSnapshot()
+            }
+        }
+    }
+
     /** Writes the food row with its aliases and conversions, replacing any stored ones. Runs inside a transaction. */
     private suspend fun insertFoodRows(food: FoodRecord) {
         database.foodDao().upsert(food.toEntity())

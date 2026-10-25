@@ -5,6 +5,7 @@ package com.iron.breakfast
 import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -122,6 +123,12 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.common.InputImage
 import com.iron.breakfast.data.BreakfastStore
+import com.iron.breakfast.data.DiaryImport
+import com.iron.breakfast.data.DiarySettings
+import com.iron.breakfast.data.decodeDiary
+import com.iron.breakfast.data.diaryFileOf
+import com.iron.breakfast.data.encodeDiary
+import com.iron.breakfast.data.readDiaryText
 import com.iron.breakfast.data.OffContributionDraft
 import com.iron.breakfast.data.OffContributionResult
 import com.iron.breakfast.data.OffPreflightResult
@@ -393,6 +400,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var busy by mutableStateOf(false); private set
     /** Storage failed to open; the dialog stays until a retry opens it. */
     var storageUnavailable by mutableStateOf(false); private set
+    /** A diary file that passed every check, waiting for Replace diary. */
+    internal var pendingImport by mutableStateOf<DiaryImport.Valid?>(null); private set
     var entryEditMode by mutableStateOf(EntryEditMode.NONE); private set
     var editingEntryId by mutableStateOf<String?>(null); private set
     var editingFoodName by mutableStateOf<String?>(null); private set
@@ -510,6 +519,84 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         dayStartHour = hour
         settings.dayStartHour = hour
         checkDay(returning = true)
+    }
+    /** Export diary: writes every stored row and the settings to [uri], a new file from the system save picker. */
+    fun exportDiary(uri: Uri) {
+        if (!ready || busy) return
+        busy = true
+        val current = DiarySettings(dayStartHour, longDraft)
+        val resolver = getApplication<Application>().contentResolver
+        viewModelScope.launch {
+            val written = try {
+                val rows = engine.exportRows()
+                withContext(Dispatchers.IO) {
+                    val bytes = encodeDiary(diaryFileOf(rows, current, clock())).toByteArray(Charsets.UTF_8)
+                    (resolver.openOutputStream(uri) ?: error("no output stream")).use { it.write(bytes) }
+                }
+                true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(LOG_TAG, "Diary export failed", e)
+                false
+            } finally {
+                busy = false
+            }
+            notice = if (written) DIARY_EXPORTED else DIARY_EXPORT_FAILED
+        }
+    }
+    /** Import diary: reads and checks the whole file at [uri]; only a file that passes everything asks to replace. */
+    fun importDiary(uri: Uri) {
+        if (!ready || busy) return
+        busy = true
+        val resolver = getApplication<Application>().contentResolver
+        viewModelScope.launch {
+            val result = try {
+                withContext(Dispatchers.IO) {
+                    val text = (resolver.openInputStream(uri) ?: error("no input stream")).use { readDiaryText(it) }
+                    if (text == null) DiaryImport.Invalid("file too big") else decodeDiary(text)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                DiaryImport.Invalid("unreadable: ${e.message}")
+            } finally {
+                busy = false
+            }
+            when (result) {
+                is DiaryImport.Valid -> pendingImport = result
+                is DiaryImport.Invalid -> { Log.w(LOG_TAG, "Diary import refused: ${result.reason}"); notice = DIARY_IMPORT_REFUSED }
+            }
+        }
+    }
+    fun cancelImport() { pendingImport = null }
+    /** Replace diary: every table becomes the file's rows in one transaction, then the screens and settings follow. */
+    fun confirmImport() {
+        val pending = pendingImport ?: return
+        if (!ready || busy) return
+        pendingImport = null
+        busy = true
+        viewModelScope.launch {
+            try {
+                engine.replaceDiary(pending.rows)
+                // Nothing from the old diary may be undone, pinned or confirmed into the new one.
+                offerUndo(null); loggedBatchIds = emptyList(); logPins.clear(); feedbackIds = emptySet()
+                longDraft = pending.settings.longDraft
+                settings.longDraft = pending.settings.longDraft
+                dayStartHour = pending.settings.dayStartHour
+                settings.dayStartHour = pending.settings.dayStartHour
+                checkDay(returning = true)
+                refresh()
+                refreshLibrary()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(LOG_TAG, "Diary import failed; the stored diary is unchanged", e)
+                notice = DIARY_IMPORT_REFUSED
+            } finally {
+                busy = false
+            }
+        }
     }
     fun openLibrary() {
         cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = false; refreshLibrary()
@@ -1676,6 +1763,9 @@ private const val CONTRIBUTION_UNCERTAIN = "Check Open Food Facts before sending
 /** The notice when an Undo could not be applied. */
 private const val UNDO_FAILED = "Could not undo."
 private const val LOG_TAG = "Breakfast"
+private const val DIARY_EXPORTED = "Diary exported."
+private const val DIARY_EXPORT_FAILED = "Could not export the diary."
+private const val DIARY_IMPORT_REFUSED = "That file can't be imported."
 
 /** A request to focus [field]; [serial] makes a repeated refusal of the same field a new request. */
 internal data class FoodFormFocus(val field: FoodFormField, val serial: Long)
@@ -1900,6 +1990,11 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     if (vm.contributionAuthOpen) ContributionSignInScreen(vm)
     vm.contributionFailure?.let { ContributionFailureScreen(vm, it) }
     vm.notice?.let { message -> AlertDialog(onDismissRequest = vm::dismissNotice, confirmButton = { TextButton(vm::dismissNotice) { Text("OK") } }, text = { Text(message) }) }
+    if (vm.pendingImport != null) AlertDialog(
+        onDismissRequest = vm::cancelImport,
+        confirmButton = { TextButton(vm::confirmImport) { Text("Replace diary") } },
+        dismissButton = { TextButton(vm::cancelImport) { Text("Cancel") } },
+    )
     if (vm.storageUnavailable) AlertDialog(onDismissRequest = {}, confirmButton = { TextButton(vm::retryStorage) { Text("Try again") } }, title = { Text("Storage unavailable") }, text = { Text("Storage could not be opened.") })
 }
 

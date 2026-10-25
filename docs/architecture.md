@@ -10,6 +10,7 @@ A single-module Android app (`app/`, package `com.iron.breakfast`): Kotlin, Jetp
 | `domain/` | Pure Kotlin rules with no Android types (except `BreakfastEngine`). `ShorthandParser`/`ShorthandLexicon` (text to segments), `FoodMatcher` (local ranking, script rule), `LogPlanner` (draft rows and totals), `NutritionCalculator`, `NutritionShorthand`, `Barcode`, `Models`, `FoodCatalog` (bundled USDA and generic fixtures), `BuiltInCatalogSync`. `BreakfastEngine` is the facade the VM calls; it wraps `BreakfastStore`. |
 | `data/BreakfastStore.kt` | The only writer. Opens Room (`breakfast.db`), seeds and syncs the catalogue, holds the in-memory `StoreSnapshot` the UI reads. |
 | `data/RoomStorage.kt` | Entities, DAOs, `BreakfastDatabase` (schema v6), migrations 1 to 6. Exported schemas: `app/schemas/debug` (used by every variant). |
+| `data/DiaryExport.kt` | The diary file for Export diary and Import diary: DTOs, Room rows to file and back, and the import checks. Pure, unit-tested (see Export and import). |
 | `data/OpenFoodFactsClient.kt` | The only network code (see OFF boundary). |
 | `FoodDraft.kt` | New food / edit food form state, its typed values (`FoodDraftFields`) and the dirty check. |
 | `AppDecisions.kt` | Pure routing decisions the VM makes (`topOverlay`, `exitLibraryTarget`, submit and review plans, the Undo window, `resolveSelectedDay`), unit-tested. |
@@ -40,6 +41,18 @@ All state lives in `BreakfastViewModel`, so it survives configuration changes (t
 ## Durable save path
 
 Add (or any edit) runs in `viewModelScope`: `BreakfastViewModel` calls `BreakfastEngine` (for example `save`, `saveCustomAndLog`, `replaceEntry*`), which calls a `BreakfastStore` suspend function. The store takes one `Mutex`, switches to `Dispatchers.IO`, writes inside `database.withTransaction`, then reloads the whole `StoreSnapshot`. "Saved" means that Room transaction committed. A logged entry stores its own nutrition snapshot and conversion provenance, so later food edits never rewrite history. Migrations are additive and there is no destructive fallback.
+
+## Export and import
+
+Settings has Export diary and Import diary. Both use the system document picker (Storage Access Framework), so no permission is needed. The file is one JSON document (`data/DiaryExport.kt`, kotlinx-serialization, strict: unknown or missing fields fail):
+
+- `format` (`"breakfast-diary"`), `formatVersion` (1: the layout of this file), `schemaVersion` (the Room schema the rows came from, now 6), `exportedAtEpochMs`.
+- `settings`: `dayStartHour` and `longDraft` (a `LongDraft` name).
+- One array per Room table, every row and column as stored: `foods` (`foods`: bundled catalogue rows, custom, Open Food Facts, archived and personally edited foods), `foodAliases` (`food_aliases`), `servingConversions` (`serving_conversions`), `preferences` (`preferences`), `mealEntries` (`meal_entries`, each with its own nutrition snapshot). Rows are sorted by key, so the same diary always writes the same file. An alias, conversion or preference whose food is not stored is left out (the app never shows one).
+
+Catalogue rows are included as stored rather than re-derived, so a built-in food the user edited or archived comes back exactly. Import reads the whole file (at most 32 MB) and checks all of it before anything is written: the format and its version, a schema version no newer than the app's, settings in range, every enum name known, every number finite and not negative (a nutrition basis and a serving size above zero), day keys real dates, ids unique (per table key), and each alias, conversion and preference naming a food in the file. An entry's food id need not name a food: the entry keeps its own name and snapshot. A file that fails any check changes nothing and shows "That file can't be imported."; the reason goes to logcat (tag `Breakfast`). A file that passes asks Cancel or Replace diary. Replace diary runs `BreakfastStore.replaceDiary`: one Room transaction deletes every table, inserts the file's rows (a clash aborts), then seeds and syncs the catalogue as at start, so a file from an older build gets the current catalogue. A failure rolls everything back. The settings from the file are then applied, and Undo, log pins and pending confirmations from the old diary are dropped. `DiaryImportTest` (androidTest) covers export, wipe, import with equal counts and checksum, and a failing insert that leaves the previous diary.
+
+When the schema changes, bump `DIARY_SCHEMA_VERSION` with it (a unit test fails until it matches `app/schemas` and covers every table), and keep reading files from older schema versions.
 
 ## Day boundary
 
