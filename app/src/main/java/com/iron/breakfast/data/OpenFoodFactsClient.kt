@@ -139,6 +139,9 @@ sealed interface OffPreflightResult {
 
 private val USER_AGENT = "Breakfast/${BuildConfig.VERSION_NAME} (daily food logger)"
 
+/** Open Food Facts answered, but with an HTTP error (a 503, a 429) or data that cannot be read. No connection is [OffResult.Unavailable]. */
+internal const val OFF_NOT_RESPONDING = "Open Food Facts is not responding. Add the product manually."
+
 /** Explicit-submit adapter. It is deliberately independent of matching and Room. */
 class OpenFoodFactsClient(
     private val connectionFactory: (URL) -> HttpURLConnection? = { url ->
@@ -149,13 +152,14 @@ class OpenFoodFactsClient(
 
     fun search(query: String): OffSearchResult {
         val legacyUrl = URL("https://world.openfoodfacts.org/cgi/search.pl?search_terms=" + URLEncoder.encode(query, "UTF-8") + "&search_simple=1&action=process&json=1&page_size=20&fields=code,product_name,brands,nutriments,nutrition_data_per,product_quantity,product_quantity_unit,quantity,serving_size,serving_quantity_unit")
-        return when (val legacy = requestSearch(legacyUrl, ::parseSearchResponse)) {
-            OffSearchResult.Unavailable -> searchFallback(query)
-            else -> legacy
-        }
+        val legacy = requestSearch(legacyUrl, ::parseSearchResponse)
+        if (legacy is OffSearchResult.Success) return legacy
+        val fallback = searchFallback(query)
+        // When search.pl answered with an error and the fallback could not connect, the error is the truer report.
+        return if (fallback is OffSearchResult.Unavailable && legacy is OffSearchResult.Error) legacy else fallback
     }
 
-    /** The newer search service (search.openfoodfacts.org, results under "hits"), asked only when search.pl is unavailable. */
+    /** The newer search service (search.openfoodfacts.org, results under "hits"), asked only when search.pl fails. */
     private fun searchFallback(query: String): OffSearchResult {
         val url = URL("https://search.openfoodfacts.org/search?q=" + URLEncoder.encode(query, "UTF-8") + "&page=1&page_size=20&fields=" + URLEncoder.encode("code,product_name,brands,nutriments,quantity,serving_size,serving_quantity_unit", "UTF-8"))
         return requestSearch(url, ::parseFallbackSearchResponse)
@@ -164,7 +168,7 @@ class OpenFoodFactsClient(
     private fun requestSearch(url: URL, parser: (String) -> OffSearchResult): OffSearchResult {
         val connection = open(url) ?: return OffSearchResult.Unavailable
         return try {
-            if (connection.responseCode !in 200..299) return OffSearchResult.Unavailable
+            if (connection.responseCode !in 200..299) return OffSearchResult.Error(OFF_NOT_RESPONDING)
             parser(connection.inputStream.bufferedReader().readText())
         } catch (_: java.io.IOException) {
             OffSearchResult.Unavailable
@@ -175,15 +179,25 @@ class OpenFoodFactsClient(
         }
     }
 
+    /**
+     * Looks up one product. No connection (an [java.io.IOException]) is [OffResult.Unavailable]; an HTTP error other
+     * than 404 or an unreadable body is [OffResult.Error]. A code that is not a product barcode is never sent.
+     */
     fun barcode(code: String): OffResult {
-        val connection = open(URL("https://world.openfoodfacts.org/api/v3/product/${URLEncoder.encode(code, "UTF-8")}.json")) ?: return OffResult.Unavailable
+        val barcode = normalizeBarcode(code) ?: return OffResult.Missing
+        val connection = open(URL("https://world.openfoodfacts.org/api/v3/product/${URLEncoder.encode(barcode, "UTF-8")}.json")) ?: return OffResult.Unavailable
         return try {
-            if (connection.responseCode == 404) return OffResult.Missing
-            if (connection.responseCode !in 200..299) return OffResult.Unavailable
+            val status = connection.responseCode
+            if (status == 404) return OffResult.Missing
+            if (status !in 200..299) return OffResult.Error(OFF_NOT_RESPONDING)
             val product = json.parseToJsonElement(connection.inputStream.bufferedReader().readText()).jsonObject["product"]?.jsonObject
                 ?: return OffResult.Missing
-            parseProduct(product, code)?.let { OffResult.Found(it) } ?: OffResult.Ineligible(product.string("product_name"), product.string("brands"), code)
-        } catch (_: Exception) { OffResult.Unavailable } finally { connection.disconnect() }
+            parseProduct(product, barcode)?.let { OffResult.Found(it) } ?: OffResult.Ineligible(product.string("product_name"), product.string("brands"), barcode)
+        } catch (_: java.io.IOException) {
+            OffResult.Unavailable
+        } catch (_: Exception) {
+            OffResult.Error(OFF_NOT_RESPONDING)
+        } finally { connection.disconnect() }
     }
 
     fun contribute(draft: OffContributionDraft, username: String, password: String): OffContributionResult {

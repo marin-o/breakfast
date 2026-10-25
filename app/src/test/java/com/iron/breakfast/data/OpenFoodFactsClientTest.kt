@@ -458,6 +458,42 @@ class OpenFoodFactsClientTest {
         assertNull(OpenFoodFactsClient().parseProductForTesting("""{"product_name":"Bad macro","product_quantity_unit":"g","nutriments":{"energy-kcal_100g":42,"fat_100g":-1}}"""))
     }
 
+    @Test fun barcodeServerErrorsAreErrorsAndOnlyNoConnectionIsUnavailable() {
+        fun lookup(connection: (URL) -> HttpURLConnection?) = OpenFoodFactsClient(connection).barcode("3017620422003")
+        listOf(503, 429, 500).forEach { status ->
+            assertEquals(OffResult.Error(OFF_NOT_RESPONDING), lookup { url -> FakeConnection(url, status, "", null) })
+        }
+        assertEquals(OffResult.Error(OFF_NOT_RESPONDING), lookup { url -> FakeConnection(url, 200, "<html>busy</html>", null) })
+        assertEquals(OffResult.Error(OFF_NOT_RESPONDING), lookup { url -> FakeConnection(url, 200, "{\"product\":[1]}", null) })
+        assertEquals(OffResult.Unavailable, lookup { url -> FakeConnection(url, 200, "", null, failOnResponse = true) })
+        assertEquals(OffResult.Unavailable, lookup { throw java.io.IOException("no route") })
+        assertEquals(OffResult.Missing, lookup { url -> FakeConnection(url, 404, "{\"status\":\"failure\"}", null) })
+    }
+
+    @Test fun aCodeThatIsNotAProductBarcodeIsNeverSent() {
+        val connections = mutableListOf<FakeConnection>()
+        val client = OpenFoodFactsClient { url -> FakeConnection(url, 200, "{}", null).also { connections += it } }
+        assertEquals(OffResult.Missing, client.barcode("WIFI:S:x;;"))
+        assertEquals(0, connections.size)
+    }
+
+    @Test fun searchServerErrorsAreErrorsAndOnlyNoConnectionIsUnavailable() {
+        fun search(connection: (URL) -> HttpURLConnection?) = OpenFoodFactsClient(connection).search("yogurt")
+        listOf(503, 429).forEach { status ->
+            assertTrue(search { url -> FakeConnection(url, status, "", null) } is OffSearchResult.Error)
+        }
+        assertTrue(search { url -> FakeConnection(url, 200, "not-json", null) } is OffSearchResult.Error)
+        assertEquals(OffSearchResult.Unavailable, search { url -> FakeConnection(url, 200, "", null, failOnResponse = true) })
+        // search.pl answers 503 and the fallback cannot connect: the server error is reported, not "no connection".
+        assertTrue(search { url ->
+            if (url.host == "world.openfoodfacts.org") FakeConnection(url, 503, "", null) else FakeConnection(url, 200, "", null, failOnResponse = true)
+        } is OffSearchResult.Error)
+        // search.pl cannot connect and the fallback answers 429: an error too.
+        assertTrue(search { url ->
+            if (url.host == "world.openfoodfacts.org") FakeConnection(url, 200, "", null, failOnResponse = true) else FakeConnection(url, 429, "", null)
+        } is OffSearchResult.Error)
+    }
+
     @Test fun rejectsAmbiguousBasisAndPresentInvalidNutrients() {
         val client = OpenFoodFactsClient()
         assertNull(client.parseProductForTesting("""{"product_name":"Unknown package","nutrition_data_per":"100g","nutriments":{"energy-kcal_100g":42}}"""))
@@ -471,7 +507,9 @@ private class FakeConnection(
     private val status: Int,
     private val body: String,
     private val setCookie: String?,
-    private val failOnOutput: Boolean = false
+    private val failOnOutput: Boolean = false,
+    /** The request goes out, then reading the response fails: a connection lost before the answer arrived. */
+    private val failOnResponse: Boolean = false,
 ) : HttpURLConnection(url) {
     val written = ByteArrayOutputStream()
     val headersSeen = mutableMapOf<String, String>()
@@ -479,8 +517,8 @@ private class FakeConnection(
     override fun connect() = Unit
     override fun disconnect() = Unit
     override fun usingProxy(): Boolean = false
-    override fun getResponseCode(): Int = status
-    override fun getInputStream() = ByteArrayInputStream(body.toByteArray())
+    override fun getResponseCode(): Int = if (failOnResponse) throw java.io.IOException("connection reset") else status
+    override fun getInputStream() = if (failOnResponse) throw java.io.IOException("connection reset") else ByteArrayInputStream(body.toByteArray())
     override fun getErrorStream() = if (status in 200..299) null else ByteArrayInputStream(body.toByteArray())
     override fun getOutputStream() = if (failOnOutput) throw java.io.IOException("offline") else written
     override fun getHeaderFields(): MutableMap<String, MutableList<String>> = mutableMapOf<String, MutableList<String>>().apply {
