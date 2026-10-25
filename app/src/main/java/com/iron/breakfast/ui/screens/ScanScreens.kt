@@ -7,6 +7,19 @@ import android.content.pm.PackageManager
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Animatable
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.camera.core.UseCaseGroup
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -126,6 +139,7 @@ import java.util.concurrent.atomic.AtomicBoolean
     var manualOpen by remember { mutableStateOf(false) }
     val hasCameraHardware = remember { context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasPermission = granted; if (!granted) vm.scannerPermissionDenied() }
+    val feather = with(LocalDensity.current) { ScanFeather.toPx() }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -161,39 +175,38 @@ import java.util.concurrent.atomic.AtomicBoolean
                 analysis.setAnalyzer(ContextCompat.getMainExecutor(ctx)) { proxy ->
                     val image = proxy.image
                     if (image == null || delivered || session.disposed.get()) { proxy.close(); return@setAnalyzer }
-                    scanner.process(InputImage.fromMediaImage(image, proxy.imageInfo.rotationDegrees)).addOnSuccessListener { codes ->
-                        codes.firstOrNull()?.rawValue?.let { code -> if (!delivered && !session.disposed.get()) { delivered = true; vm.onBarcode(code) } }
+                    val rotation = proxy.imageInfo.rotationDegrees
+                    val frame = ScanFrame(proxy.width, proxy.height, rotation, proxy.cropRect.let { Rect(it.left.toFloat(), it.top.toFloat(), it.right.toFloat(), it.bottom.toFloat()) })
+                    scanner.process(InputImage.fromMediaImage(image, rotation)).addOnSuccessListener { codes ->
+                        // Only a code inside the brackets (plus a little feathering) counts, not one anywhere in view.
+                        val code = codes.firstOrNull { barcode ->
+                            val box = barcode.boundingBox ?: return@firstOrNull false
+                            barcode.rawValue != null && session.accepts(Rect(box.left.toFloat(), box.top.toFloat(), box.right.toFloat(), box.bottom.toFloat()), frame, feather)
+                        }?.rawValue
+                        code?.let { if (!delivered && !session.disposed.get()) { delivered = true; vm.onBarcode(it) } }
                     }.addOnCompleteListener { proxy.close() }
                 }
-                val camera = provider.bindToLifecycle(context as ComponentActivity, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+                // A shared view port crops the analysis frame to what the preview shows, so a box maps straight onto the screen.
+                val owner = context as ComponentActivity
+                val camera = view.viewPort?.let { port ->
+                    provider.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, UseCaseGroup.Builder().setViewPort(port).addUseCase(preview).addUseCase(analysis).build())
+                } ?: provider.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
                 session.camera = camera
                 torchAvailable = camera.cameraInfo.hasFlashUnit()
             }.onFailure { if (!session.disposed.get()) { session.dispose(); vm.scannerUnavailable() } } }, ContextCompat.getMainExecutor(ctx))
-        } }, Modifier.fillMaxSize())
-        // Overlay: the viewfinder centres in the space above a bottom block, so it scales with the screen and font.
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        } }, Modifier.fillMaxSize().onGloballyPositioned { session.previewBounds = it.boundsInRoot() })
+        ScannerFrame(
+            top = {
                 IconButton(onClick = vm::endScan, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.cameraMark) }
                 Box(Modifier.weight(1f))
                 if (torchAvailable) IconToggleButton(checked = torchOn, onCheckedChange = { torchOn = it }, Modifier.size(44.dp).semantics { role = Role.Switch; stateDescription = if (torchOn) "On" else "Off" }) {
                     Icon(if (torchOn) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff, contentDescription = "Torch", tint = colors.cameraMark)
                 }
-            }
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Viewfinder(Modifier.size(width = 260.dp, height = 140.dp), colors.cameraMark)
-            }
-            Column(Modifier.fillMaxWidth().padding(start = Gutter, end = Gutter, bottom = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                if (vm.scannerLookupBusy) LookupProgress(vm.scannerLookupCode, vm::cancelBarcodeLookup)
-                else {
-                    Text(
-                        if (hasPermission) "Point the camera at a barcode" else "Camera permission is required to scan.",
-                        color = colors.cameraMark.copy(alpha = 0.7f),
-                        style = BreakfastType.Secondary,
-                        textAlign = TextAlign.Center,
-                    )
-                    SecondaryButton("Manual barcode", { manualOpen = true }, Modifier.padding(top = 24.dp).widthIn(min = 220.dp), fillWidth = false, onDark = true)
-                }
-            }
+            },
+            viewfinderModifier = Modifier.onGloballyPositioned { session.viewfinderBounds = it.boundsInRoot() },
+        ) {
+            if (vm.scannerLookupBusy) LookupProgress(vm.scannerLookupCode, vm::cancelBarcodeLookup)
+            else ScannerHint(hasPermission, onManual = { manualOpen = true })
         }
     }
     if (manualOpen) ManualBarcodeSheet(onDismiss = { manualOpen = false }, onLookup = { code -> manualOpen = false; vm.onBarcode(code) })
@@ -226,6 +239,33 @@ private fun LookupProgress(code: String, onCancel: () -> Unit, modifier: Modifie
         LinearProgress("Looking up $code", onDark = true)
         TertiaryButton("Cancel", onCancel, Modifier.fillMaxWidth().padding(top = 14.dp), onDark = true)
     }
+}
+
+/** The scanner's layout: the top bar, then the viewfinder centred in the space above [bottom], so it scales with the screen and font. */
+@Composable private fun ScannerFrame(
+    top: @Composable RowScope.() -> Unit,
+    viewfinderModifier: Modifier = Modifier,
+    bottom: @Composable ColumnScope.() -> Unit,
+) {
+    val colors = LocalBreakfastColors.current
+    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, content = top)
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Viewfinder(viewfinderModifier.size(width = 260.dp, height = 140.dp), colors.cameraMark)
+        }
+        Column(Modifier.fillMaxWidth().padding(start = Gutter, end = Gutter, bottom = 24.dp), horizontalAlignment = Alignment.CenterHorizontally, content = bottom)
+    }
+}
+
+@Composable private fun ScannerHint(hasPermission: Boolean, onManual: () -> Unit) {
+    val colors = LocalBreakfastColors.current
+    Text(
+        if (hasPermission) "Point the camera at a barcode" else "Camera permission is required to scan.",
+        color = colors.cameraMark.copy(alpha = 0.7f),
+        style = BreakfastType.Secondary,
+        textAlign = TextAlign.Center,
+    )
+    SecondaryButton("Manual barcode", onManual, Modifier.padding(top = 24.dp).widthIn(min = 220.dp), fillWidth = false, onDark = true)
 }
 
 /** Four 2dp white corner brackets with 10dp rounded corners and 30dp arms, inside the 260x140 frame. */
@@ -261,14 +301,26 @@ private fun LookupProgress(code: String, onCancel: () -> Unit, modifier: Modifie
  */
 @Composable internal fun ScanReviewBackdrop(onBack: () -> Unit) {
     val colors = LocalBreakfastColors.current
+    // The brackets start where the scanner drew them and slide up above the sheet, as drawn, instead of jumping.
+    val target = with(LocalDensity.current) { ReviewViewfinderTop.toPx() }
+    var start by remember { mutableStateOf<Float?>(null) }
+    val slide = remember { Animatable(0f) }
+    LaunchedEffect(start != null) { if (start != null) slide.animateTo(1f, tween(durationMillis = 280)) }
     Box(Modifier.fillMaxSize().background(colors.cameraGround)) {
-        Viewfinder(Modifier.align(Alignment.TopCenter).padding(top = 96.dp).size(width = 260.dp, height = 140.dp), colors.cameraMark)
-        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.cameraMark) }
-            Box(Modifier.weight(1f))
-            Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.FlashlightOff, contentDescription = null, tint = colors.cameraMark)
-            }
+        ScannerFrame(
+            top = {
+                IconButton(onClick = onBack, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.cameraMark) }
+                Box(Modifier.weight(1f))
+                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.FlashlightOff, contentDescription = null, tint = colors.cameraMark)
+                }
+            },
+            viewfinderModifier = Modifier
+                .onGloballyPositioned { if (start == null) start = it.boundsInRoot().top }
+                .graphicsLayer { translationY = start?.let { (target - it) * slide.value } ?: 0f },
+        ) {
+            // The scanner's bottom block, unseen, so the brackets stay exactly where they were while scanning.
+            Column(Modifier.alpha(0f).clearAndSetSemantics { }, horizontalAlignment = Alignment.CenterHorizontally) { ScannerHint(hasPermission = true, onManual = {}) }
         }
     }
 }
@@ -422,10 +474,22 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
             } else {
                 PrimaryButton("Save to Library", vm::saveSelectedToLibrary, Modifier.padding(top = 14.dp), enabled = canAdd)
             }
-            Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                TertiaryButton(if (editing) "Hide details" else "Edit details", { editing = !editing }, Modifier.weight(1f).semantics { stateDescription = if (editing) "Expanded" else "Collapsed" })
-                TertiaryButton("Find better match", { vm.clearSelectedProduct(); vm.openSearch(fromResolver = vm.resolutionContinuation) }, Modifier.weight(1f))
-                TertiaryButton("Rescan", { vm.clearSelectedProduct(); vm.beginScan() }, Modifier.weight(1f))
+            val actions = listOf(
+                (if (editing) "Hide details" else "Edit details") to { editing = !editing },
+                "Find better match" to { vm.clearSelectedProduct(); vm.openSearch(fromResolver = vm.resolutionContinuation) },
+                "Rescan" to { vm.clearSelectedProduct(); vm.beginScan() },
+            )
+            // One row when every label fits on one line in a third; otherwise stacked, never wrapped or cut.
+            BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                val measurer = rememberTextMeasurer()
+                val third = with(LocalDensity.current) { (maxWidth / 3 - 28.dp).roundToPx() }
+                val fits = actions.all { (label, _) -> measurer.measure(label, BreakfastType.Button).size.width <= third }
+                val editState = Modifier.semantics { stateDescription = if (editing) "Expanded" else "Collapsed" }
+                if (fits) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    actions.forEachIndexed { index, (label, action) -> TertiaryButton(label, action, Modifier.weight(1f).then(if (index == 0) editState else Modifier)) }
+                } else Column(Modifier.fillMaxWidth()) {
+                    actions.forEachIndexed { index, (label, action) -> TertiaryButton(label, action, Modifier.fillMaxWidth().then(if (index == 0) editState else Modifier)) }
+                }
             }
         }
     }
@@ -443,6 +507,15 @@ private class ScannerSession {
     @Volatile var analysis: ImageAnalysis? = null
     @Volatile var scanner: BarcodeScanner? = null
     @Volatile var camera: Camera? = null
+    @Volatile var previewBounds: Rect? = null
+    @Volatile var viewfinderBounds: Rect? = null
+
+    /** True when [box] lies inside the brackets grown by [feather]. Before the layout is known every code counts. */
+    fun accepts(box: Rect, frame: ScanFrame, feather: Float): Boolean {
+        val preview = previewBounds ?: return true
+        val finder = viewfinderBounds ?: return true
+        return barcodeInViewfinder(box, frame, preview.size, finder.translate(-preview.left, -preview.top), feather)
+    }
 
     fun dispose() {
         if (!disposed.compareAndSet(false, true)) return
@@ -452,4 +525,36 @@ private class ScannerSession {
         val currentAnalysis = analysis
         if (currentPreview != null && currentAnalysis != null) provider?.unbind(currentPreview, currentAnalysis)
     }
+}
+
+/** Where the brackets rest above the review sheet: 96dp from the top, as M-Scan-Review draws them. */
+private val ReviewViewfinderTop = 96.dp
+
+/** The 32dp a barcode may reach past the brackets and still count. */
+private val ScanFeather = 32.dp
+
+/** One analysis frame: its buffer size, how far it is rotated to stand upright, and the part the preview shows (unrotated). */
+internal data class ScanFrame(val width: Int, val height: Int, val rotation: Int, val crop: Rect)
+
+/**
+ * True when [box], an ML Kit box in the upright frame, maps onto the preview inside [viewfinder] grown by [feather].
+ * The preview fills its [previewSize] centre-cropped, as PreviewView does; [viewfinder] is in preview pixels.
+ */
+internal fun barcodeInViewfinder(box: Rect, frame: ScanFrame, previewSize: Size, viewfinder: Rect, feather: Float): Boolean {
+    val shown = uprightRect(frame.crop, frame.width, frame.height, frame.rotation)
+    if (shown.width <= 0f || shown.height <= 0f) return true
+    val scale = maxOf(previewSize.width / shown.width, previewSize.height / shown.height)
+    val dx = (previewSize.width - shown.width * scale) / 2f - shown.left * scale
+    val dy = (previewSize.height - shown.height * scale) / 2f - shown.top * scale
+    val mapped = Rect(box.left * scale + dx, box.top * scale + dy, box.right * scale + dx, box.bottom * scale + dy)
+    val allowed = viewfinder.inflate(feather)
+    return mapped.left >= allowed.left && mapped.top >= allowed.top && mapped.right <= allowed.right && mapped.bottom <= allowed.bottom
+}
+
+/** [rect] in a [width] x [height] buffer, turned by [rotation] degrees clockwise into the upright frame. */
+internal fun uprightRect(rect: Rect, width: Int, height: Int, rotation: Int): Rect = when (rotation) {
+    90 -> Rect(height - rect.bottom, rect.left, height - rect.top, rect.right)
+    180 -> Rect(width - rect.right, height - rect.bottom, width - rect.left, height - rect.top)
+    270 -> Rect(rect.top, width - rect.right, rect.bottom, width - rect.left)
+    else -> rect
 }
