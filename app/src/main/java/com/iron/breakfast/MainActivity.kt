@@ -1534,17 +1534,17 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         scannerOpen = true
     }
     private fun barcodeRequestStillTargets(token: Long, day: String, meal: MealSlot?): Boolean = token == barcodeRequestToken && day == selectedDayKey && meal == slot
+    /** [code] comes from the scanner or manual entry, already a product barcode; anything else is ignored before any lookup or notice. */
     fun onBarcode(code: String) {
+        val barcode = normalizeBarcode(code) ?: return
         scannerUnavailableState = false
         scannerUnavailableReason = null
         if (rescanningBarcode) {
             rescanningBarcode = false
             scannerOpen = false
-            val scanned = normalizeBarcode(code)
-            if (scanned == null) notice = "Not a product barcode." else { draft.barcode = scanned; draft.barcodeFromScan = true }
+            draft.barcode = barcode; draft.barcodeFromScan = true
             return
         }
-        val barcode = code.trim()
         val token = barcodeRequestToken
         val originDay = barcodeOriginDay
         val originMeal = barcodeOriginMeal

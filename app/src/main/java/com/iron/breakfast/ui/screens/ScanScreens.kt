@@ -98,6 +98,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.google.mlkit.vision.barcode.BarcodeScanner
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
+import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import com.iron.breakfast.BreakfastViewModel
@@ -109,6 +111,7 @@ import com.iron.breakfast.domain.asciiDigits
 import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.domain.normalizeBarcode
+import com.iron.breakfast.domain.scannedProductBarcode
 import com.iron.breakfast.label
 import com.iron.breakfast.canSaveProductToLibrary
 import com.iron.breakfast.pretty
@@ -172,7 +175,12 @@ import java.util.concurrent.atomic.AtomicBoolean
                 val provider = providerFuture.get()
                 val preview = Preview.Builder().build().also { it.surfaceProvider = view.surfaceProvider }
                 val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
-                val scanner = BarcodeScanning.getClient(); var delivered = false
+                // Product symbologies only: a QR code (Wi-Fi details, a link with a token) is never decoded or sent.
+                val scanner = BarcodeScanning.getClient(
+                    BarcodeScannerOptions.Builder()
+                        .setBarcodeFormats(Barcode.FORMAT_EAN_13, Barcode.FORMAT_EAN_8, Barcode.FORMAT_UPC_A, Barcode.FORMAT_UPC_E)
+                        .build()
+                ); var delivered = false
                 session.provider = provider; session.preview = preview; session.analysis = analysis; session.scanner = scanner
                 analysis.setAnalyzer(ContextCompat.getMainExecutor(ctx)) { proxy ->
                     @androidx.annotation.OptIn(ExperimentalGetImage::class) val image = proxy.image
@@ -180,11 +188,14 @@ import java.util.concurrent.atomic.AtomicBoolean
                     val rotation = proxy.imageInfo.rotationDegrees
                     val frame = ScanFrame(proxy.width, proxy.height, rotation, proxy.cropRect.let { Rect(it.left.toFloat(), it.top.toFloat(), it.right.toFloat(), it.bottom.toFloat()) })
                     scanner.process(InputImage.fromMediaImage(image, rotation)).addOnSuccessListener { codes ->
-                        // Only a code inside the brackets (plus a little feathering) counts, not one anywhere in view.
-                        val code = codes.firstOrNull { barcode ->
-                            val box = barcode.boundingBox ?: return@firstOrNull false
-                            barcode.rawValue != null && session.accepts(Rect(box.left.toFloat(), box.top.toFloat(), box.right.toFloat(), box.bottom.toFloat()), frame, feather)
-                        }?.rawValue
+                        // Only a product code inside the brackets (plus a little feathering) counts, not one anywhere in view;
+                        // anything else leaves the frame ignored and the scanner looking.
+                        val code = codes.firstNotNullOfOrNull { barcode ->
+                            val raw = barcode.rawValue ?: return@firstNotNullOfOrNull null
+                            val box = barcode.boundingBox ?: return@firstNotNullOfOrNull null
+                            if (!session.accepts(Rect(box.left.toFloat(), box.top.toFloat(), box.right.toFloat(), box.bottom.toFloat()), frame, feather)) null
+                            else scannedProductBarcode(raw, upcE = barcode.format == Barcode.FORMAT_UPC_E)
+                        }
                         code?.let { if (!delivered && !session.disposed.get()) { delivered = true; vm.onBarcode(it) } }
                     }.addOnCompleteListener { proxy.close() }
                 }
