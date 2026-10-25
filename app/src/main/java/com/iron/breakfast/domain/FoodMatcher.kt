@@ -180,12 +180,14 @@ class FoodMatcher(
         val cyrillic = script == TextScript.CYRILLIC
         val folded = foldDiacritics(word)
         val now = nowMs()
+        // Scripts never cross, word by word: a fragment matches only the name words in its own script, so "Протеин bar"
+        // is found by "про" and by "bar", and a food with no word in that script is not suggested at all.
+        val inScript = { nameWord: String -> scriptOf(nameWord).let { it != TextScript.MIXED && (it == TextScript.CYRILLIC) == cyrillic } }
+        val starts = { nameWord: String -> inScript(nameWord) && foldDiacritics(nameWord).startsWith(folded) }
         return catalog.mapNotNull { food ->
-            // Scripts never cross: only names and aliases in the typed script can match, so a food with no name in
-            // that script is not suggested at all.
-            val inScript = food.allNames().filter { name -> scriptOf(name).let { it != TextScript.MIXED && (it == TextScript.CYRILLIC) == cyrillic } }
-            if (inScript.none { name -> tokens(name).any { foldDiacritics(it).startsWith(folded) } }) return@mapNotNull null
-            val namesStart = inScript.any { foldDiacritics(it).startsWith(folded) }
+            val names = food.allNames().map(::tokens)
+            if (names.none { words -> words.any(starts) }) return@mapNotNull null
+            val namesStart = names.any { words -> words.firstOrNull()?.let(starts) == true }
             Triple(
                 RankedFood(
                     food = food,

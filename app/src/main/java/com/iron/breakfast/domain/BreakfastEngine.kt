@@ -89,6 +89,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
             ?: return ReplacementResult.Failure("That saved entry is no longer available.")
         val food = store.foods().firstOrNull { it.id == foodId && !it.archived }
             ?: return ReplacementResult.Failure("That catalogue record is no longer available.")
+        if (!old.enteredAmount.isFinite() || old.enteredAmount <= 0.0) return ReplacementResult.Failure("Enter a positive amount.")
         val calculation = calculator.calculate(food, old.enteredAmount, old.enteredUnit)
         if (!calculation.supported) {
             return ReplacementResult.Failure(
@@ -243,7 +244,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
         val food = FoodRecord(
             id = id,
             name = name.trim(),
-            aliases = alias?.split(',')?.map(String::trim)?.filter(String::isNotBlank).orEmpty(),
+            aliases = alias?.let(::splitAliases).orEmpty(),
             category = "Personal food",
             origin = FoodOrigin.CUSTOM,
             nutrition = NutritionBasis(basisAmount, basisUnit, nutrition),
@@ -275,7 +276,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
         require(name.isNotBlank()) { "Name is required" }
         require(basisAmount.isFinite() && basisAmount > 0.0) { "Nutrition basis must be positive" }
         require(nutrition.calories.isFinite() && nutrition.calories >= 0.0) { "Calories are required" }
-        val food = FoodRecord("custom-" + UUID.randomUUID(), name.trim(), alias?.split(',')?.map(String::trim)?.filter(String::isNotBlank).orEmpty(), "Personal food", FoodOrigin.CUSTOM,
+        val food = FoodRecord("custom-" + UUID.randomUUID(), name.trim(), alias?.let(::splitAliases).orEmpty(), "Personal food", FoodOrigin.CUSTOM,
             NutritionBasis(basisAmount, basisUnit, nutrition), listOf(ServingConversion(basisUnit, basisAmount, "custom basis")),
             basisAmount, basisUnit, sourceId = barcode?.trim()?.ifBlank { null }, sourceName = sourceName, sourceDescription = sourceDescription,
             personalOverride = true,
@@ -299,6 +300,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
             store.foodById(food.id),
             food.barcode?.let { store.foodByBarcode(it) }
         )
+        require(amount.isFinite() && amount > 0.0) { "Enter a positive amount." }
         val calculation = calculator.calculate(effectiveFood, amount, unit)
         require(calculation.supported) { "Amount unit is incompatible with the nutrition basis" }
         val now = System.currentTimeMillis()

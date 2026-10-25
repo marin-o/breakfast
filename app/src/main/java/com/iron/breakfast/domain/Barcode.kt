@@ -22,7 +22,16 @@ fun String.decimalInput(): String {
 }
 
 /** A number typed in a field, by the same rule as [decimalInput]: "12,5" is 12.5. Null when blank or not a number. */
-fun parseDecimal(text: String): Double? = text.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it.isFinite() }
+fun parseDecimal(text: String): Double? = text.trim().replace(',', '.')
+    .takeIf { DecimalText.matches(it) }?.toDoubleOrNull()?.takeIf { it.isFinite() }
+
+private val DecimalText = Regex("\\d+(?:\\.\\d*)?|\\.\\d+")
+
+/** A comma that separates items: every comma except one between two digits, which is a decimal ("mleko 2,8%"). */
+internal val ItemComma = Regex("(?<!\\d),|,(?!\\d)")
+
+/** Aliases typed as one comma list, split by the [ItemComma] rule. */
+fun splitAliases(text: String): List<String> = text.split(ItemComma).map(String::trim).filter(String::isNotBlank)
 
 /**
  * The single barcode rule: trimmed, ASCII digits only, 8, 12, 13 or 14 long

@@ -404,7 +404,7 @@ class ShorthandParser {
         )
         val COMPOSITION_TAIL = Regex("(?iu)^(?:raw|cooked|roasted|grilled|boneless|skinless|lean|fat)\\b.*")
         /** A comma between two digits is a decimal separator ("1,5 kg"), never a break; "oats,1 banana" still breaks. */
-        val HARD_BREAK = Regex("(?<!\\d),|,(?!\\d)|[;\n]")
+        val HARD_BREAK = Regex("${ItemComma.pattern}|[;\n]")
         val WORD = Regex("\\S+")
         val NUMBER = Regex("\\d+(?:[.,]\\d+)?")
         val FRACTION = Regex("\\d+/\\d+")

@@ -189,7 +189,7 @@ class LogPlanner(
     private fun joinBefore(prefix: String, replacement: String): String {
         val head = prefix.trimEnd()
         if (head.isEmpty()) return replacement
-        if (head.last() in ",;+&\n" || SEPARATOR_WORD_AT_END.containsMatchIn(head)) return prefix + replacement
+        if (head.last() in ",;+&\n" || SEPARATOR_WORD_AT_END.containsMatchIn(head)) return joinDraft(prefix, replacement)
         return "$head, $replacement"
     }
 
@@ -310,4 +310,14 @@ class LogPlanner(
 
 /** [input] with the part at [start] until [end] replaced by [text]; every other part keeps its text and place. */
 fun replaceDraftPart(input: String, start: Int, end: Int, text: String): String =
-    input.substring(0, start) + text + input.substring(end)
+    joinDraft(joinDraft(input.substring(0, start), text), input.substring(end))
+
+/**
+ * [left] then [right], with a space after a comma that would otherwise sit between two digits and read as a decimal:
+ * "2," then "1 piece Banana" is "2, 1 piece Banana", never 2.1.
+ */
+internal fun joinDraft(left: String, right: String): String = when {
+    left.endsWith(',') && left.getOrNull(left.length - 2)?.isDigit() == true && right.firstOrNull()?.isDigit() == true -> "$left $right"
+    left.lastOrNull()?.isDigit() == true && right.startsWith(',') && right.getOrNull(1)?.isDigit() == true -> "$left, ${right.drop(1)}"
+    else -> left + right
+}

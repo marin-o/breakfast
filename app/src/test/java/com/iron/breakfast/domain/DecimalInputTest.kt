@@ -30,6 +30,8 @@ class DecimalInputTest {
         assertNull(parseDecimal(""))
         assertNull(parseDecimal("."))
         assertNull(parseDecimal("abc"))
+        assertNull(parseDecimal("12f"))
+        assertNull(parseDecimal("1e3"))
     }
 
     @Test fun aDecimalCommaInTheLogIsOnePart() {
@@ -67,5 +69,23 @@ class DecimalInputTest {
         val resolved = resolveNutrition(NutritionInput(calories = "120"))
         assertNull(resolved.protein)
         assertFalse(resolved.invalid)
+    }
+
+    @Test fun pickingAChoiceAfterADigitAndACommaKeepsTheAmountsApart() {
+        val banana = FoodCatalog.fixtures.first { it.id == "banana" }
+        val picked = planner.withChoice("eggs 2,ban", banana)
+        assertEquals("eggs 2, 1 piece Banana", picked)
+        assertEquals(listOf("eggs 2", "1 piece Banana"), planner.segments(picked).map { it.text })
+    }
+
+    @Test fun aReplacedPartNeverJoinsTheNextAmountIntoADecimal() {
+        assertEquals("Banana 2, 3 eggs", replaceDraftPart("ban,3 eggs", 0, 3, "Banana 2"))
+        assertEquals("eggs 2, 7 Days croissant", replaceDraftPart("eggs 2,cro", 7, 10, "7 Days croissant"))
+        assertEquals("2, 7 Days", joinDraft("2,", "7 Days"))
+        assertEquals("eggs,7 Days", joinDraft("eggs,", "7 Days"))
+    }
+
+    @Test fun aliasesSplitOnCommasButNotOnADecimalComma() {
+        assertEquals(listOf("mleko 2,8%", "млеко", "milk"), splitAliases("mleko 2,8%, млеко,milk"))
     }
 }

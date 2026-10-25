@@ -7,6 +7,7 @@ import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionInput
 import com.iron.breakfast.domain.ServingConversion
+import com.iron.breakfast.domain.splitAliases
 
 /**
  * Holds the personal-food form (create and edit) in the ViewModel so it survives the barcode
@@ -46,11 +47,11 @@ class FoodDraft {
 
     fun load(food: FoodRecord?) {
         name = food?.name.orEmpty(); brand = food?.brand.orEmpty(); barcode = food?.barcode.orEmpty(); shorthand = ""
-        calories = food?.nutrition?.values?.calories?.toString().orEmpty()
-        protein = food?.nutrition?.values?.protein?.toString().orEmpty()
-        carbs = food?.nutrition?.values?.carbohydrates?.toString().orEmpty()
-        fat = food?.nutrition?.values?.fat?.toString().orEmpty()
-        basisAmount = food?.nutrition?.amount?.toString() ?: "100"
+        calories = food?.nutrition?.values?.calories?.fieldText().orEmpty()
+        protein = food?.nutrition?.values?.protein?.fieldText().orEmpty()
+        carbs = food?.nutrition?.values?.carbohydrates?.fieldText().orEmpty()
+        fat = food?.nutrition?.values?.fat?.fieldText().orEmpty()
+        basisAmount = food?.nutrition?.amount?.fieldText() ?: "100"
         basisUnit = food?.nutrition?.unit?.label ?: "g"
         fromOff = false; barcodeFromScan = false
         caloriesEdited = false; proteinEdited = false; carbsEdited = false; fatEdited = false; basisEdited = false
@@ -61,7 +62,7 @@ class FoodDraft {
 
     /** Aliases already added plus any typed but not yet confirmed in the alias field. */
     fun allAliases(): List<String> =
-        (aliases + aliasInput.split(',').map(String::trim)).filter(String::isNotBlank).distinctBy { it.lowercase() }
+        (aliases + splitAliases(aliasInput)).distinctBy { it.lowercase() }
 
     fun commitAlias() {
         aliases = allAliases(); aliasInput = ""; aliasFieldOpen = false
@@ -79,3 +80,6 @@ class FoodDraft {
         servingFormOpen = false; servingAmount = ""; servingLabel = ""
     }
 }
+
+/** A stored number as the form shows it: as written, never in exponent form ("5.0E-4" would edit into 5.04). */
+private fun Double.fieldText(): String = toString().let { if ('E' in it) java.math.BigDecimal.valueOf(this).stripTrailingZeros().toPlainString() else it }

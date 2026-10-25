@@ -41,4 +41,16 @@ class MixedScriptTest {
             assertTrue(ranked.food.name, ranked.food.allNames().any { scriptOf(it) == TextScript.CYRILLIC })
         }
     }
+
+    @Test fun aNameWithWordsInBothScriptsIsFoundByEachWordInItsScript() {
+        val bar = FoodRecord(
+            id = "protein_bar", name = "Протеин bar", aliases = emptyList(), category = "Snack", origin = FoodOrigin.CUSTOM,
+            nutrition = NutritionBasis(1.0, MeasureUnit.PIECE, NutritionValues(200.0, 20.0, 20.0, 5.0)),
+            defaultAmount = 1.0, defaultUnit = MeasureUnit.PIECE,
+        )
+        val custom = FoodMatcher(FoodCatalog.fixtures + bar)
+        assertTrue(custom.startingWith("про", limit = 50).any { it.food.id == "protein_bar" })
+        assertTrue(custom.startingWith("bar", limit = 50).any { it.food.id == "protein_bar" })
+        assertTrue(custom.startingWith("bаr").isEmpty())
+    }
 }

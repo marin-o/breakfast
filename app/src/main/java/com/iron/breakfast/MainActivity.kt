@@ -138,7 +138,10 @@ import com.iron.breakfast.domain.NutritionCalculator
 import com.iron.breakfast.domain.RankedFood
 import com.iron.breakfast.domain.asciiDigits
 import com.iron.breakfast.domain.normalizeBarcode
+import com.iron.breakfast.domain.decimalInput
+import com.iron.breakfast.domain.parseDecimal
 import com.iron.breakfast.domain.resolveNutrition
+import com.iron.breakfast.domain.splitAliases
 import com.iron.breakfast.domain.validateBarcodeInput
 import com.iron.breakfast.domain.ReplacementResult
 import com.iron.breakfast.domain.LogPlan
@@ -1126,7 +1129,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     fun onContributionPackageQuantityMl(v: String) {
         contributionPackageQuantityMl = v
-        pendingContribution = pendingContribution?.copy(packageQuantityMl = v.toDoubleOrNull())
+        pendingContribution = pendingContribution?.copy(packageQuantityMl = parseDecimal(v))
     }
     fun submitContribution() {
         val draft = pendingContribution ?: return
@@ -1404,8 +1407,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val aliasList = draft.allAliases(); val servingList = draft.servings
         val resolved = resolveNutrition(draft.nutritionInput())
         val kcal = resolved.calories; val proteinValue = resolved.protein; val carbsValue = resolved.carbohydrates; val fatValue = resolved.fat
-        if (name.isBlank() || kcal == null) { notice = "Name and calories are required."; return }
         if (resolved.invalid) { notice = "Nutrition values must be finite and nonnegative."; return }
+        if (name.isBlank() || kcal == null) { notice = "Name and calories are required."; return }
         val editingId = editingLibraryFoodId
         val originalBarcode = editingId?.let { id -> foods.firstOrNull { it.id == id }?.barcode?.trim() }
         val barcodeError = if (barcode == originalBarcode) null else validateBarcodeInput(barcode, foods, editingId)
@@ -1489,7 +1492,7 @@ internal fun editedCustomFoodRecord(
     servings: List<com.iron.breakfast.domain.ServingConversion>? = null,
 ): FoodRecord {
     val editedAliases = aliases ?: aliasText.trim().takeIf { it.isNotBlank() }
-        ?.split(',')?.map(String::trim)?.filter(String::isNotBlank)
+        ?.let(::splitAliases)
         ?: original.aliases
     val isCustom = original.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM
     val preserveImportedServings = !isCustom && original.nutrition.unit == basisUnit
@@ -1777,7 +1780,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
                         ChoiceOption("EN", vm.contributionLanguageCode == "en", { vm.onContributionLanguage("en") }, Modifier.widthIn(min = 64.dp))
                         ChoiceOption("MK", vm.contributionLanguageCode == "mk", { vm.onContributionLanguage("mk") }, Modifier.widthIn(min = 64.dp))
                     }
-                    if (draft.basisUnit == MeasureUnit.MILLILITER) Field("Package quantity, ml", vm.contributionPackageQuantityMl, vm::onContributionPackageQuantityMl, Modifier.padding(top = 16.dp))
+                    if (draft.basisUnit == MeasureUnit.MILLILITER) Field("Package quantity, ml", vm.contributionPackageQuantityMl, { vm.onContributionPackageQuantityMl(it.decimalInput()) }, Modifier.padding(top = 16.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                     Text("New product: Breakfast creates it.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 12.dp))
                 }
                 Hairline(Modifier.padding(top = 24.dp))
