@@ -124,7 +124,7 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
     LazyColumn(modifier.fillMaxSize().background(colors.bg).padding(horizontal = Gutter)) {
         item {
             Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (archived || !root) IconButton(onClick = { if (archived) vm.openLibrary() else vm.closeMeal() }, modifier = Modifier.size(44.dp)) {
+                if (archived || !root) IconButton(onClick = vm::exitLibrary, modifier = Modifier.size(44.dp)) {
                     Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.ink)
                 }
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {

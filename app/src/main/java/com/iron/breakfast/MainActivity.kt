@@ -394,9 +394,21 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun openArchivedLibrary() {
         cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = true; refreshLibrary()
     }
-    fun closeLibrary() {
+    fun closeLibrary() = leaveLibrary(returnTo = null)
+    /**
+     * The Library's arrow and system Back, by [exitLibraryTarget]. A Library opened from a meal keeps that meal in
+     * [slot], so [slot] is where it came from.
+     */
+    fun exitLibrary() {
+        when (exitLibraryTarget(logResolve != null, libraryArchivedOnly, slot)) {
+            LibraryExit.LIBRARY -> openLibrary()
+            LibraryExit.MEAL -> leaveLibrary(returnTo = slot)
+            LibraryExit.LOG, LibraryExit.DAILY -> closeLibrary()
+        }
+    }
+    private fun leaveLibrary(returnTo: MealSlot?) {
         logResolve?.let { endResolve(it, it.draftText); return }
-        libraryRefreshJob?.cancel(); libraryRefreshGeneration++; libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null; expandedLibraryFoodId = null; libraryPendingAmount = null; libraryPendingUnit = null; libraryPendingBatch = emptyList(); libraryBatchMealPickerOpen = false; libraryArchivedOnly = false; selectMeal(null)
+        libraryRefreshJob?.cancel(); libraryRefreshGeneration++; libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null; expandedLibraryFoodId = null; libraryPendingAmount = null; libraryPendingUnit = null; libraryPendingBatch = emptyList(); libraryBatchMealPickerOpen = false; libraryArchivedOnly = false; selectMeal(returnTo)
         libraryQuery = ""
         libraryResultsQuery = null
         input = ""
@@ -1640,9 +1652,8 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     // LogScreen and every overlay own Back while they are open.
     if (!vm.logOpen && vm.topOverlay() == null) {
         if (vm.libraryOpen) {
-            // Archived foods is a child destination of Library. Keep system/predictive
-            // Back aligned with the top-bar arrow before leaving the Library flow.
-            BackHandler { if (vm.libraryArchivedOnly) vm.openLibrary() else vm.closeLibrary() }
+            // The same exit as the Library's top-bar arrow: Archived goes to Library, a meal's Library to the meal.
+            BackHandler { vm.exitLibrary() }
         } else if (vm.slot != null) {
             BackHandler { vm.closeMeal() }
         }

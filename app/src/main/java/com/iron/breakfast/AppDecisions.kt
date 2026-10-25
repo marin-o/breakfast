@@ -129,3 +129,17 @@ internal fun topOverlay(
     entryEdit -> Overlay.ENTRY_EDIT
     else -> null
 }
+
+/** Where leaving the Library goes. */
+internal enum class LibraryExit { LOG, LIBRARY, MEAL, DAILY }
+
+/**
+ * The Library's arrow and system Back both go here: a part being resolved back to the Log, Archived foods to the
+ * Library, a Library opened from a meal ([origin]) back to that meal, and the Library tab to Daily.
+ */
+internal fun exitLibraryTarget(resolving: Boolean, archivedOnly: Boolean, origin: MealSlot?): LibraryExit = when {
+    resolving -> LibraryExit.LOG
+    archivedOnly -> LibraryExit.LIBRARY
+    origin != null -> LibraryExit.MEAL
+    else -> LibraryExit.DAILY
+}
