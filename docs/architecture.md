@@ -82,7 +82,14 @@ Every build, including `perf`, is signed with the machine's Android debug key, `
 
 ## Backup
 
-`android:allowBackup="true"` with no backup rules, so Android auto-backup may include `breakfast.db`. Whether to keep, restrict or disable it is undecided (MOB-012, open). Do not rely on it as the only copy.
+`android:allowBackup="true"` with explicit rules (MOB-012, decided 2026-10-26: the diary stays out of Google's cloud):
+
+| Copy | Android 12+ (`res/xml/data_extraction_rules.xml`) | Android 11 and older (`res/xml/backup_rules.xml`) |
+| --- | --- | --- |
+| Google cloud backup | Settings (`SharedPreferences`) only. `breakfast.db` and its `-wal`, `-shm` and `-journal` files are excluded. | The same: the database files are excluded. |
+| Device-to-device transfer (cable or local transfer to a new phone, such as Smart Switch) | Everything, the diary included (no device-transfer rules, so all app data moves). | Not the diary: one rule set covers both, and it excludes the database. |
+
+The backup is the user's own file: Settings, Export diary (see Export and import). After a reinstall or on a new phone, Import diary puts it back.
 
 ## Versions
 

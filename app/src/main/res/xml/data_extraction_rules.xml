@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12 (API 31) and later. The diary (breakfast.db and its journal files) stays out of Google cloud backup:
+  all data stays on the device, and Settings > Export diary is the backup. A device-to-device transfer (a cable or
+  local transfer to a new phone) moves everything, the diary included; with no device-transfer rules, all app data
+  is transferred. Settings (SharedPreferences) stay in cloud backup: they hold no diary data.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="database" path="breakfast.db" />
+        <exclude domain="database" path="breakfast.db-wal" />
+        <exclude domain="database" path="breakfast.db-shm" />
+        <exclude domain="database" path="breakfast.db-journal" />
+    </cloud-backup>
+</data-extraction-rules>
