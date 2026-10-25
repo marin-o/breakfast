@@ -130,6 +130,25 @@ private sealed interface OffLoginResult {
     data class Error(val message: String) : OffLoginResult
 }
 
+private sealed interface BasisEvidence {
+    data class Unit(val unit: MeasureUnit) : BasisEvidence
+    data object None : BasisEvidence
+    data object Conflicting : BasisEvidence
+}
+
+/**
+ * A number and a mass or volume unit in quantity or serving text: "500g", "1 kg", "1L", "0,5 l", "33 cl", "330 ml".
+ * Any case; "mg" and words such as "portion" are not units here.
+ */
+private val QuantityUnit = Regex("""(?i)\d\s*(kg|g|ml|cl|dl|l)(?!\p{L})""")
+
+/** g and kg are grams; ml, cl, dl and l are millilitres. */
+private fun quantityUnit(token: String): MeasureUnit? = when (token.lowercase()) {
+    "g", "kg" -> MeasureUnit.GRAM
+    "ml", "cl", "dl", "l" -> MeasureUnit.MILLILITER
+    else -> null
+}
+
 sealed interface OffPreflightResult {
     data object Existing : OffPreflightResult
     data object NewProduct : OffPreflightResult
@@ -274,8 +293,13 @@ class OpenFoodFactsClient(
             if (dataPer != "100g") {
                 return OffPreflightResult.Ineligible("Open Food Facts stores this product's nutrition per serving or with an unclear basis, so Breakfast will not overwrite it with a partial correction.")
             }
-            val sourceUnit = product.basisUnit()
-                ?: return OffPreflightResult.Ineligible("Open Food Facts does not provide a clear gram or milliliter basis for this product.")
+            // A record with no package or serving unit at all says nothing against the local basis, so that basis
+            // stands; only evidence that conflicts (mixed g/ml text, fields that disagree) refuses.
+            val sourceUnit = when (val evidence = product.basisEvidence()) {
+                BasisEvidence.None -> draft.basisUnit
+                BasisEvidence.Conflicting -> return OffPreflightResult.Ineligible("Open Food Facts does not provide a clear gram or milliliter basis for this product.")
+                is BasisEvidence.Unit -> evidence.unit
+            }
             if (sourceUnit != draft.basisUnit) {
                 return OffPreflightResult.Ineligible("The local correction basis does not match the product's Open Food Facts basis, so it was not submitted.")
             }
@@ -420,23 +444,16 @@ class OpenFoodFactsClient(
     internal fun parseProductForTesting(raw: String, fallbackBarcode: String? = null): FoodRecord? =
         json.parseToJsonElement(raw).jsonObject.let { parseProduct(it, fallbackBarcode) }
 
-    private fun unitCandidates(value: String?): Set<MeasureUnit> {
-        val units = Regex("(?i)(?<!\\p{L})(g|ml)(?!\\p{L})")
-            .findAll(value.orEmpty())
-            .mapNotNull { it.groupValues.getOrNull(1)?.lowercase() }
-            .map { if (it == "g") MeasureUnit.GRAM else MeasureUnit.MILLILITER }
-            .toSet()
-        return units
-    }
+    private fun unitCandidates(value: String?): Set<MeasureUnit> =
+        QuantityUnit.findAll(value.orEmpty()).mapNotNull { quantityUnit(it.groupValues[1]) }.toSet()
 
-    private fun normalizedUnit(value: String?): MeasureUnit? = when (value?.trim()?.lowercase()) {
-        "g" -> MeasureUnit.GRAM
-        "ml" -> MeasureUnit.MILLILITER
-        else -> null
-    }
+    private fun normalizedUnit(value: String?): MeasureUnit? = value?.trim()?.let(::quantityUnit)
 
-    /** Resolves a product's logging basis while rejecting conflicting evidence. */
-    private fun kotlinx.serialization.json.JsonObject.basisUnit(): MeasureUnit? {
+    /** Resolves a product's logging basis while rejecting conflicting evidence; null when unclear or absent. */
+    private fun kotlinx.serialization.json.JsonObject.basisUnit(): MeasureUnit? = (basisEvidence() as? BasisEvidence.Unit)?.unit
+
+    /** What a product's package and serving fields say about its basis: one unit, nothing at all, or a conflict. */
+    private fun kotlinx.serialization.json.JsonObject.basisEvidence(): BasisEvidence {
         val packageUnit = normalizedUnit(string("product_quantity_unit"))
         val quantityUnits = unitCandidates(string("quantity"))
         val servingUnit = normalizedUnit(string("serving_quantity_unit"))
@@ -444,18 +461,18 @@ class OpenFoodFactsClient(
 
         // Mixed g/ml text is ambiguous even when another field happens to be
         // explicit; using that other field would silently guess the basis.
-        if (quantityUnits.size > 1 || servingSizeUnits.size > 1) return null
+        if (quantityUnits.size > 1 || servingSizeUnits.size > 1) return BasisEvidence.Conflicting
 
         val quantityUnit = quantityUnits.singleOrNull()
-        if (packageUnit != null && quantityUnit != null && packageUnit != quantityUnit) return null
+        if (packageUnit != null && quantityUnit != null && packageUnit != quantityUnit) return BasisEvidence.Conflicting
         val packageBasis = packageUnit ?: quantityUnit
 
         val servingSizeUnit = servingSizeUnits.singleOrNull()
-        if (servingUnit != null && servingSizeUnit != null && servingUnit != servingSizeUnit) return null
+        if (servingUnit != null && servingSizeUnit != null && servingUnit != servingSizeUnit) return BasisEvidence.Conflicting
         val servingBasis = servingUnit ?: servingSizeUnit
 
-        if (packageBasis != null && servingBasis != null && packageBasis != servingBasis) return null
-        return packageBasis ?: servingBasis
+        if (packageBasis != null && servingBasis != null && packageBasis != servingBasis) return BasisEvidence.Conflicting
+        return (packageBasis ?: servingBasis)?.let { BasisEvidence.Unit(it) } ?: BasisEvidence.None
     }
 
     private fun kotlinx.serialization.json.JsonObject.string(key: String): String? = when (val value = this[key]) {

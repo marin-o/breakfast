@@ -494,6 +494,47 @@ class OpenFoodFactsClientTest {
         } is OffSearchResult.Error)
     }
 
+    @Test fun aRecordWithNoUnitEvidenceKeepsTheLocalBasisInPreflight() {
+        // 5310382009733 (Apetini peanut butter) as Open Food Facts holds it: per 100g, and no quantity or serving field.
+        val product = """{"code":"5310382009733","product_name":"Peanut butter","nutrition_data_per":"100g","nutriments":{"energy-kcal_100g":600}}"""
+        val client = OpenFoodFactsClient { url -> FakeConnection(url, 200, "{\"product\":$product}", null) }
+        val draft = OffContributionDraft("5310382009733", "Peanut butter", "Apetini", 100.0, MeasureUnit.GRAM, NutritionValues(600.0, 25.0, 15.0, 50.0))
+        assertEquals(OffPreflightResult.Existing, client.preflight(draft))
+        assertEquals(OffPreflightResult.Existing, client.preflight(draft.copy(basisUnit = MeasureUnit.MILLILITER)))
+        // Reading it for logging still needs a unit: nothing is guessed there.
+        assertNull(client.parseProductForTesting(product))
+    }
+
+    @Test fun quantityTextInKgLitresCentilitresAndDecilitresIsUnitEvidence() {
+        fun unitOf(quantity: String) = OpenFoodFactsClient().parseProductForTesting(
+            """{"product_name":"Item","quantity":"$quantity","nutrition_data_per":"100g","nutriments":{"energy-kcal_100g":42}}"""
+        )?.nutrition?.unit
+        assertEquals(MeasureUnit.GRAM, unitOf("1 kg"))
+        assertEquals(MeasureUnit.GRAM, unitOf("0,5KG"))
+        assertEquals(MeasureUnit.GRAM, unitOf("250 G"))
+        assertEquals(MeasureUnit.MILLILITER, unitOf("1L"))
+        assertEquals(MeasureUnit.MILLILITER, unitOf("0,5 l"))
+        assertEquals(MeasureUnit.MILLILITER, unitOf("33 cl"))
+        assertEquals(MeasureUnit.MILLILITER, unitOf("2 dl"))
+        assertEquals(MeasureUnit.MILLILITER, unitOf("500ML"))
+        assertNull(unitOf("330 ml (340 g)"))
+        assertNull(unitOf("1 l / 1 kg"))
+        assertNull(unitOf("500 mg"))
+        assertNull(unitOf("2 lb"))
+    }
+
+    @Test fun preflightStillRefusesMixedOrDisagreeingUnits() {
+        fun preflight(fields: String, unit: MeasureUnit = MeasureUnit.GRAM): OffPreflightResult {
+            val client = OpenFoodFactsClient { url -> FakeConnection(url, 200, "{\"product\":{\"nutrition_data_per\":\"100g\",$fields}}", null) }
+            return client.preflight(OffContributionDraft("5310382009733", "Item", null, 100.0, unit, NutritionValues(100.0, null, null, null)))
+        }
+        assertTrue(preflight("\"quantity\":\"330 ml (340 g)\"") is OffPreflightResult.Ineligible)
+        assertTrue(preflight("\"product_quantity_unit\":\"g\",\"quantity\":\"1 l\"") is OffPreflightResult.Ineligible)
+        assertTrue(preflight("\"quantity\":\"1 kg\"", MeasureUnit.MILLILITER) is OffPreflightResult.Ineligible)
+        assertEquals(OffPreflightResult.Existing, preflight("\"quantity\":\"1 kg\""))
+        assertEquals(OffPreflightResult.Existing, preflight("\"quantity\":\"33 cl\"", MeasureUnit.MILLILITER))
+    }
+
     @Test fun rejectsAmbiguousBasisAndPresentInvalidNutrients() {
         val client = OpenFoodFactsClient()
         assertNull(client.parseProductForTesting("""{"product_name":"Unknown package","nutrition_data_per":"100g","nutriments":{"energy-kcal_100g":42}}"""))
