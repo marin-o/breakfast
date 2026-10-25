@@ -79,6 +79,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -151,7 +152,6 @@ import com.iron.breakfast.domain.SegmentResolution
 import com.iron.breakfast.domain.DraftRow
 import com.iron.breakfast.domain.replaceDraftPart
 import com.iron.breakfast.domain.DraftView
-import com.iron.breakfast.domain.SegmentSpan
 import com.iron.breakfast.domain.TypedPart
 import com.iron.breakfast.domain.ShorthandLexicon
 import com.iron.breakfast.domain.ShorthandParser
@@ -315,7 +315,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     /** A "Not in your foods" part sent to the library: picking a food there puts it back in the draft, not in the log. */
     var logResolve by mutableStateOf<LogResolveRequest?>(null); private set
     /** Foods picked from the library this session, by the part text they now read as; the planner resolves those parts to them. */
-    private val logPins = mutableMapOf<String, FoodRecord>()
+    // Observable, so a pin added without a text change still recomputes the Log page's draft.
+    private val logPins = mutableStateMapOf<String, FoodRecord>()
     /** The pins as they are now, for a draft computed off the main thread. */
     internal fun logPinsSnapshot(): Map<String, FoodRecord> = logPins.toMap()
     var logMealMenuOpen by mutableStateOf(false); private set
@@ -787,11 +788,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     /** The meal the Log page writes to, by [logTargetMealOf] precedence. Also drives the picker label. */
     internal fun logTargetMeal(): MealSlot? = logTargetMealOf(logChosen, mealMarkers(logDraft), logPreset)
-    /** The part being typed: the last smart part, unless the draft ends with a separator. Null when nothing is being typed. */
-    private fun activeSpan(planner: LogPlanner): SegmentSpan? {
-        if (!ready || logDraft.isBlank() || logDraftCommitted || planner.endsOpen(logDraft)) return null
-        return planner.segments(logDraft).lastOrNull()
-    }
     /**
      * Everything the Log page shows for the current draft, computed in one pass from one planner, so the rows,
      * the choices and the add-bar sum all come from the same resolution.
@@ -812,15 +808,19 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             activePhrase = draft.activePhrase,
             // The sum is the draft's own count: what Add would save.
             logged = draft.logged,
+            // Each choice's kcal from the same planner and text as the sum, so the two never disagree.
+            choiceCalculations = draft.choices.map { planner.calculationFor(draft.activeText, it.food) },
         )
     }
-    /** kcal of [food] at the amount Add would log for the active part with that food: the same numbers the choice shows. */
-    internal fun quickAddSuggestionCalculation(food: FoodRecord): Calculation =
-        engine.planner(logPins.toMap()).calculationFor(activeSpan(engine.planner(logPins.toMap()))?.text.orEmpty(), food)
 
-    /** Tapping a choice or a suggestion: the typed part becomes the amount, unit and name it would log. */
+    /**
+     * Tapping a choice or a suggestion: the typed part becomes the amount, unit and name it would log, pinned to the
+     * tapped food so it stays that food. Pins live as long as the draft (cleared on Add or an empty draft).
+     */
     fun chooseQuickSuggestion(food: FoodRecord) {
-        onLogDraft(engine.planner(logPins.toMap()).withChoice(logDraft, food, typing = !logDraftCommitted))
+        val chosen = engine.planner(logPins.toMap()).choose(logDraft, food, typing = !logDraftCommitted)
+        chosen.part?.let { logPins[it] = food }
+        onLogDraft(chosen.input)
     }
     fun submitLibraryInput() {
         val raw = input.trim()
@@ -1646,6 +1646,8 @@ internal data class LogDraftView(
     val activePhrase: String,
     /** What Add will save; the add bar's sum and count come from this. */
     val logged: List<SegmentResolution>,
+    /** The kcal each of [choices] would log, in the same order. */
+    val choiceCalculations: List<Calculation> = emptyList(),
 )
 
 /** What Add saves for the Log's [input]: the same plan the draft's sum uses. Done and Add never open library search. */

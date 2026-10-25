@@ -85,10 +85,10 @@ internal fun LogScreen(vm: BreakfastViewModel) {
     // One resolution pass per draft: rows, choices and the add-bar sum all come from the same planner run.
     // It runs off the main thread so typing never waits on matching; the last draft shows until the next is ready.
     var draft by remember { mutableStateOf(vm.logDraftView()) }
-    LaunchedEffect(vm.logDraft, vm.logDraftCommitted, vm.foods, vm.ready) {
+    val pins = vm.logPinsSnapshot()
+    LaunchedEffect(vm.logDraft, vm.logDraftCommitted, pins, vm.foods, vm.ready) {
         val input = vm.logDraft
         val committed = vm.logDraftCommitted
-        val pins = vm.logPinsSnapshot()
         draft = withContext(Dispatchers.Default) { vm.logDraftView(input, committed, pins) }
     }
     val suggestions = draft.choices
@@ -180,7 +180,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
                             selected = index == 0 && draft.preselected,
                             onClick = { vm.chooseQuickSuggestion(ranked.food) },
                             modifier = Modifier.widthIn(min = 168.dp),
-                            detail = choiceKcalDetail(vm.quickAddSuggestionCalculation(ranked.food)),
+                            detail = draft.choiceCalculations.getOrNull(index)?.let(::choiceKcalDetail),
                         )
                     }
                 }

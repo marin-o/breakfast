@@ -15,29 +15,37 @@ import org.junit.Test
  * each state a draft passes through while it is typed is covered.
  */
 class AddBarMatchesAddTest {
-    private data class Saved(val foodId: String, val amount: Double, val unit: MeasureUnit)
+    private data class Saved(val foodId: String, val amount: Double, val unit: MeasureUnit, val kcal: Double)
 
-    private val fixtures = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+    private fun fixturesPlanner() = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+    private val fixtures = fixturesPlanner()
     private val messy = DraftInvariantTest.messyPlanner()
     private val extra = listOf("2 eggs, milk", "1 ban", "2 eggs, ban", "milk", "ban", "дом")
 
-    private val cases: List<Pair<LogPlanner, String>> =
-        (LogRegressionTest().inputs + extra).map { fixtures to it } + (DraftInvariantTest.MESSY + extra).map { messy to it }
+    /** Each input with the planner the Log page reads it with, and a factory for an independent planner. */
+    private val cases: List<Triple<LogPlanner, () -> LogPlanner, String>> =
+        (LogRegressionTest().inputs + extra).map { Triple(fixtures, ::fixturesPlanner, it) } +
+            (DraftInvariantTest.MESSY + extra).map { Triple(messy, DraftInvariantTest::messyPlanner, it) }
+
+    private fun saved(entries: List<com.iron.breakfast.domain.SegmentResolution>) =
+        entries.map { Saved(it.food.id, it.amount, it.unit, it.calculation.nutrition.calories) }
 
     /** Every input as it is typed, letter by letter, then whole. */
     private fun typedStates(input: String) = (1..input.length).map { input.substring(0, it) }
 
     @Test fun theBarCountsExactlyTheEntriesAddSaves() {
-        val failures = cases.flatMap { (planner, input) ->
+        val failures = cases.flatMap { (planner, fresh, input) ->
             typedStates(input).flatMap { text ->
                 listOf(true, false).mapNotNull { typing ->
                     val logged = planner.draft(text, typing).logged
-                    val saved = planner.plan(text).entries
+                    // Add's save() plans the committed text with a planner of its own: a fresh one, so no cached
+                    // resolution is shared with the draft. Compared by value.
+                    val saved = fresh().plan(text).entries
                     val barKcal = logged.sumOf { it.calculation.nutrition.calories }
                     // save() snapshots each entry's calculation; this is the total it stores.
                     val savedKcal = saved.sumOf { it.calculation.nutrition.calories }
                     when {
-                        logged.map { Saved(it.food.id, it.amount, it.unit) } != saved.map { Saved(it.food.id, it.amount, it.unit) } ->
+                        saved(logged) != saved(saved) ->
                             "[$text typing=$typing] bar ${logged.map { it.food.id }}, Add ${saved.map { it.food.id }}"
                         barKcal != savedKcal -> "[$text typing=$typing] bar $barKcal kcal, Add $savedKcal kcal"
                         else -> null
@@ -50,7 +58,7 @@ class AddBarMatchesAddTest {
 
     /** The part being typed is counted exactly when it is shown as counted: an entry row or the selected first choice. */
     @Test fun whatIsCountedShowsSelectedAndNothingElseDoes() {
-        val failures = cases.flatMap { (planner, input) ->
+        val failures = cases.flatMap { (planner, _, input) ->
             typedStates(input).mapNotNull { text ->
                 val draft = planner.draft(text, typing = true)
                 val counted = draft.counted

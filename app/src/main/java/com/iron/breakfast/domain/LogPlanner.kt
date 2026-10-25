@@ -20,6 +20,9 @@ data class SegmentResolution(
 /** What Add logs for one input: the segments that save, in order, and the raw segments that do not. */
 data class LogPlan(val entries: List<SegmentResolution>, val unresolved: List<String>)
 
+/** The Log draft after a choice is tapped: the new [input], and the [part] text that names the tapped food, if any. */
+data class ChosenDraft(val input: String, val part: String?)
+
 /** A typed part as the library reads it: the food text, and the amount and unit typed (null when none). */
 data class TypedPart(val foodPhrase: String, val amount: Double?, val unit: MeasureUnit?)
 
@@ -181,11 +184,18 @@ class LogPlanner(
      * The input after the user taps [food] for the part being typed. The chosen text replaces that part; when text
      * comes before it, a comma keeps the chosen amount from joining the earlier food ("2 eggs, 100 g Buckwheat").
      */
-    fun withChoice(input: String, food: FoodRecord, typing: Boolean = true): String {
-        if (!typing || endsOpen(input)) return input
-        val span = segments(input).lastOrNull() ?: return input
-        if (ShorthandLexicon.mealSlotOf(span.text) != null) return input
-        return joinBefore(input.substring(0, span.start), chosenText(span.text, food))
+    fun withChoice(input: String, food: FoodRecord, typing: Boolean = true): String = choose(input, food, typing).input
+
+    /**
+     * [withChoice], and the part text that now names [food] (null when the input is unchanged). Pinning that text to
+     * [food] keeps the tapped food: re-resolving the chosen text alone may rank another food first.
+     */
+    fun choose(input: String, food: FoodRecord, typing: Boolean = true): ChosenDraft {
+        if (!typing || endsOpen(input)) return ChosenDraft(input, null)
+        val span = segments(input).lastOrNull() ?: return ChosenDraft(input, null)
+        if (ShorthandLexicon.mealSlotOf(span.text) != null) return ChosenDraft(input, null)
+        val text = chosenText(span.text, food)
+        return ChosenDraft(joinBefore(input.substring(0, span.start), text), text)
     }
 
     private fun joinBefore(prefix: String, replacement: String): String {
