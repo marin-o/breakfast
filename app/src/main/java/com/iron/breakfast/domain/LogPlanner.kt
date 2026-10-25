@@ -35,7 +35,8 @@ sealed interface DraftRow {
 /**
  * What the Log page shows for one draft. [rows] are the entries and unresolved parts in typed order. The part being
  * typed may add a choice group ([choices], from [active]) or suggestions ([suggestions], the foods its word starts).
- * Neither suggestions nor unpicked choices are in [logged], and nothing is preselected in a suggestion group.
+ * [logged] is exactly what Add saves. When Add saves the part being typed ([counted]), its food is the first of the
+ * group and shows selected; when Add does not save it, nothing in the group is selected.
  */
 data class DraftView(
     val rows: List<DraftRow>,
@@ -46,6 +47,8 @@ data class DraftView(
     val activePhrase: String = "",
     /** Foods the word being typed starts; shown in place of a Not-in-your-foods outcome for the active part. */
     val suggestions: List<RankedFood> = emptyList(),
+    /** The part being typed as Add saves it (the last of [logged]); null when Add does not save it. */
+    val counted: SegmentResolution? = null,
 ) {
     val previews: List<SegmentResolution> get() = rows.filterIsInstance<DraftRow.Entry>().map { it.resolution }
     val unresolved: List<String> get() = rows.filterIsInstance<DraftRow.Unresolved>().map { it.text }
@@ -64,9 +67,8 @@ data class DraftView(
     /** The "which one?" hint shows for real choices, not for suggestions. */
     val choiceHint: Boolean get() = suggestions.isEmpty()
 
-    /** The first choice is preselected only for a clean match among several candidates, which Add logs. */
-    val preselected: Boolean get() =
-        suggestions.isEmpty() && active != null && active.supported && !active.needsChoice && active.ranked.size > 1
+    /** The first choice shows selected exactly when Add saves the part being typed, and it is the food Add saves. */
+    val preselected: Boolean get() = counted != null && choices.firstOrNull()?.food?.id == counted.food.id
 
     companion object {
         val EMPTY = DraftView(emptyList(), "", null, emptyList())
@@ -250,18 +252,21 @@ class LogPlanner(
 
         var active: SegmentResolution? = null
         var suggestions: List<RankedFood> = emptyList()
-        // While the word is typed and only suggested, it is not counted: nothing is counted until a suggestion is tapped.
-        var suggesting = false
+        var counted: SegmentResolution? = null
         if (activeText.isNotBlank() && ShorthandLexicon.mealSlotOf(activeText) == null) {
             val resolution = resolve(activeText)
+            // Add saves the part being typed by the same rule as every other part (see [plan]).
+            counted = resolution?.takeIf { it.supported && !it.needsChoice }
             // Each outcome renders the part exactly once: a suggestion group, a choice group, an entry row, or a
             // Not-in-your-foods row.
             when {
                 // Nothing matches the word being typed, only a prefix of a longer word does, or a bare word names
-                // several foods (it is not logged until one is chosen): suggest the foods it starts.
+                // several foods: suggest the foods it starts. When Add saves the word, the food it saves leads.
                 resolution == null || (isBareWord(activeText) && (!resolution.ranked.first().wholeMatch || resolution.ranked.size > 1)) -> {
-                    suggesting = true
-                    suggestions = matcher.startingWith(activeText, preferences, SUGGESTION_LIMIT)
+                    val starting = matcher.startingWith(activeText, preferences, SUGGESTION_LIMIT)
+                    suggestions = counted?.let { saved ->
+                        (listOf(saved.ranked.first()) + starting.filterNot { it.food.id == saved.food.id }).take(SUGGESTION_LIMIT)
+                    } ?: starting
                 }
                 // A partial or weak match is a choice group only; the group is the part's rendering, not a second row.
                 resolution.needsChoice -> active = resolution
@@ -282,9 +287,8 @@ class LogPlanner(
             logged = plan(input).entries,
             activePhrase = if (activeText.isBlank()) "" else stripArticle(phraseOf(activeText)),
             suggestions = suggestions,
-        ).let { view ->
-            if (suggesting) view.copy(logged = view.logged.filterNot { it.raw == activeText }) else view
-        }
+            counted = counted,
+        )
     }
 
     private fun rowFor(span: SegmentSpan): DraftRow {
@@ -301,7 +305,7 @@ class LogPlanner(
     private fun stripArticle(text: String): String = text.replace(LEADING_ARTICLE, "")
 
     companion object {
-        /** How many matches the Log page offers as choices. The preselected one is always the first. */
+        /** How many matches the Log page offers as choices or suggestions. The preselected one is always the first. */
         const val SUGGESTION_LIMIT = 4
         private val WHITESPACE = Regex("\\s+")
         private val LEADING_ARTICLE = Regex("(?iu)^(?:a|an)\\s+")

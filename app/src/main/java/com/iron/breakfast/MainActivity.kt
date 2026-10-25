@@ -1641,7 +1641,7 @@ internal data class LogDraftView(
     val choices: List<RankedFood>,
     /** The "which one?" hint, shown for real choices only. */
     val choiceHint: Boolean,
-    /** True only when the first choice is a full match that Add would log; a partial match is offered unselected. */
+    /** True exactly when Add saves the part being typed; the first choice or suggestion is then the food it saves. */
     val preselected: Boolean,
     val activePhrase: String,
     /** What Add will save; the add bar's sum and count come from this. */

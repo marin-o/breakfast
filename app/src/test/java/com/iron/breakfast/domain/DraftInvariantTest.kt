@@ -10,29 +10,36 @@ import org.junit.Test
  * entry, as an unresolved row, or as the active "which one?" group. Nothing else is shown.
  */
 class DraftInvariantTest {
-    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures + listOf(
-        FoodRecord(
-            id = "bufu", name = "Buckwheat", aliases = emptyList(), category = "Grain", origin = FoodOrigin.CUSTOM,
-            nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(340.0, 12.0, 70.0, 3.0)),
-            defaultAmount = 100.0, defaultUnit = MeasureUnit.GRAM,
-        ),
-        FoodRecord(
-            id = "macadamia", name = "Macadamia", aliases = emptyList(), category = "Nut", origin = FoodOrigin.CUSTOM,
-            nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(700.0, 8.0, 14.0, 75.0)),
-            defaultAmount = 30.0, defaultUnit = MeasureUnit.GRAM,
-        ),
-    )))
+    companion object {
+        /** Messy inputs, shared with the add-bar invariant in [com.iron.breakfast.AddBarMatchesAddTest]. */
+        internal val MESSY = listOf(
+            "two eggs and a bananna", "kiselo mleko 200g 1 kg rolled oats", "banana 1 egg 2", "oats 60g milk 200ml",
+            "100g buckwheat 1 tsp pb", "100g buckwheat 1 tsp pb 1 banana", "Mac and cheese", "M&M", "Ben & Jerry's",
+            "apple", "lunch", "lunch, 1 banana", "lunch 1 banana", "dinner, 2 eggs", "snacks, 1 egg", "1 banana,",
+            "1 banana, ", "bananna", "vanana", "2 egg 1", "egg and", "egg &", "1 banana; 2 eggs", "1 banana\n2 eggs",
+            "3 eggs,1 banana", "pb, a banana", "a", "an", "a warm milk", "ten grain", "2x egg", "egg x2",
+            "half a tbsp pb", "milk 3.2% 1 banana", "Protein 2 bar", "crunchy peanut butter 1 tbsp", "chicken and rice",
+            "rice + beans", "egg & cheese", "kiselo mleko", "1 ban", "bread and butter", "2 ban", "xyzzy 2 qwerty",
+            "nonsense and more nonsense", "Домашно млеко 200 ml", "kiselo mleko 2.8%, 1 banana", "   ", "",
+        )
 
-    private val messy = listOf(
-        "two eggs and a bananna", "kiselo mleko 200g 1 kg rolled oats", "banana 1 egg 2", "oats 60g milk 200ml",
-        "100g buckwheat 1 tsp pb", "100g buckwheat 1 tsp pb 1 banana", "Mac and cheese", "M&M", "Ben & Jerry's",
-        "apple", "lunch", "lunch, 1 banana", "lunch 1 banana", "dinner, 2 eggs", "snacks, 1 egg", "1 banana,",
-        "1 banana, ", "bananna", "vanana", "2 egg 1", "egg and", "egg &", "1 banana; 2 eggs", "1 banana\n2 eggs",
-        "3 eggs,1 banana", "pb, a banana", "a", "an", "a warm milk", "ten grain", "2x egg", "egg x2",
-        "half a tbsp pb", "milk 3.2% 1 banana", "Protein 2 bar", "crunchy peanut butter 1 tbsp", "chicken and rice",
-        "rice + beans", "egg & cheese", "kiselo mleko", "1 ban", "bread and butter", "2 ban", "xyzzy 2 qwerty",
-        "nonsense and more nonsense", "Домашно млеко 200 ml", "kiselo mleko 2.8%, 1 banana", "   ", "",
-    )
+        /** The planner the messy inputs are read with: the fixtures plus two custom foods. */
+        internal fun messyPlanner() = LogPlanner(FoodMatcher(FoodCatalog.fixtures + listOf(
+            FoodRecord(
+                id = "bufu", name = "Buckwheat", aliases = emptyList(), category = "Grain", origin = FoodOrigin.CUSTOM,
+                nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(340.0, 12.0, 70.0, 3.0)),
+                defaultAmount = 100.0, defaultUnit = MeasureUnit.GRAM,
+            ),
+            FoodRecord(
+                id = "macadamia", name = "Macadamia", aliases = emptyList(), category = "Nut", origin = FoodOrigin.CUSTOM,
+                nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(700.0, 8.0, 14.0, 75.0)),
+                defaultAmount = 30.0, defaultUnit = MeasureUnit.GRAM,
+            ),
+        )))
+    }
+
+    private val planner = messyPlanner()
+    private val messy = MESSY
 
     private fun nonMeal(input: String) = planner.segments(input)
         .map { it.text }
@@ -40,7 +47,8 @@ class DraftInvariantTest {
 
     /**
      * Every typed part ends up as a logged entry, a Not-in-your-foods row, a choice group, or, only for the part being
-     * typed, a suggestion group or nothing. Rows follow the typed order, and suggestions are never counted.
+     * typed, a suggestion group or nothing. Rows follow the typed order, and the first choice or suggestion shows
+     * selected exactly when Add saves the part being typed.
      */
     @Test fun everyTypedPartIsEntryRowChoiceOrActiveSuggestion() {
         val failures = messy.flatMap { input ->
@@ -61,7 +69,9 @@ class DraftInvariantTest {
                 when {
                     lost.isNotEmpty() -> "[$input typing=$typing] lost: $lost"
                     !orderOk -> "[$input typing=$typing] rows out of typed order: $rowTexts"
-                    draft.preselected && draft.suggestions.isNotEmpty() -> "[$input] a suggestion is preselected"
+                    // Whatever Add saves of the part being typed shows selected; nothing else does.
+                    draft.preselected != (draft.counted != null && draft.choices.isNotEmpty()) ->
+                        "[$input typing=$typing] preselected=${draft.preselected} counted=${draft.counted?.food?.id}"
                     else -> null
                 }
             }

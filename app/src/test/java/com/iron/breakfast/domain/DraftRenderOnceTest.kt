@@ -29,14 +29,17 @@ class DraftRenderOnceTest {
         assertTrue(draft.choices.isEmpty())
     }
 
-    @Test fun aBareAmbiguousWordIsAnUncountedSuggestionNotASelectedChoice() {
-        // "milk" names Milk 2.8% and Milk 3.2%. While typed it is not logged, so nothing looks selected or counted.
+    @Test fun aBareAmbiguousWordIsACountedSuggestionWithTheSavedFoodSelected() {
+        // "milk" names Milk 2.8% and Milk 3.2%. Add saves the best-ranked one, so the bar counts it and it leads the
+        // suggestions, selected; the group stays a suggestion group (no "which one?").
         val draft = planner.draft("milk")
+        val saved = planner.plan("milk").entries.single()
         val ids = draft.suggestions.map { it.food.id }
         assertTrue(ids.toString(), "milk_28" in ids && "milk_32" in ids)
-        assertFalse(draft.preselected)
+        assertEquals(saved.food.id, ids.first())
+        assertTrue(draft.preselected)
         assertFalse(draft.choiceHint)
         assertTrue(draft.rows.isEmpty())
-        assertTrue(draft.logged.isEmpty())
+        assertEquals(listOf(saved.food.id), draft.logged.map { it.food.id })
     }
 }

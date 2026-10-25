@@ -71,6 +71,9 @@ class LogRegressionTest {
         "1 banana, lunch" to listOf(s("banana", 1.0, piece)),
     )
 
+    /** The inputs alone, for invariants that hold for every input (see [AddBarMatchesAddTest]). */
+    internal val inputs: List<String> get() = expected.map { it.first }
+
     @Test fun resolvedInputsKeepTheirFoodAmountAndUnit() {
         val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
         val drifted = expected.mapNotNull { (input, want) ->

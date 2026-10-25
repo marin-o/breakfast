@@ -60,11 +60,15 @@ class DraftFragmentTest {
         assertEquals(listOf("egg"), done.logged.map { it.food.id })
     }
 
-    @Test fun cyrillicDomGivesTheHomemadeMilkSuggestion() {
+    @Test fun cyrillicDomGivesTheHomemadeMilkSuggestionAndCountsWhatAddSaves() {
+        // "дом" starts Домашно млеко and Домашен ајвар. Add saves the best-ranked one: the bar counts it, and it leads
+        // the suggestions, selected.
         val draft = planner.draft("дом")
+        val saved = planner.plan("дом").entries.single()
         assertTrue(draft.suggestions.map { it.food.id }.toString(), "custom_home_milk" in draft.suggestions.map { it.food.id })
-        assertTrue(draft.logged.isEmpty())
-        assertFalse(draft.preselected)
+        assertEquals(saved.food.id, draft.suggestions.first().food.id)
+        assertEquals(listOf(saved.food.id), draft.logged.map { it.food.id })
+        assertTrue(draft.preselected)
         assertEquals("дом", draft.activePhrase)
     }
 
