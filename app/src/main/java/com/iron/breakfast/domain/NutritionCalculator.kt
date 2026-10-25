@@ -6,11 +6,13 @@ class NutritionCalculator {
         val conversion = food.conversions.firstOrNull { it.unit == unit }
         val fallback = conversion ?: fallbackConversion(food.nutrition, unit)
         val supported = unit == food.nutrition.unit || fallback != null
-        if (!supported) {
+        // An amount of zero, below zero or not a number ("0 banana", "1/0 banana", "-1 banana") is never counted.
+        val validAmount = amount.isFinite() && amount > 0.0
+        if (!supported || !validAmount) {
             return Calculation(
                 nutrition = NutritionValues.ZERO,
                 resolvedBaseAmount = amount,
-                provenance = "unsupported ${unit.displayLabel()} conversion for ${food.name}",
+                provenance = if (!validAmount) "invalid amount" else "unsupported ${unit.displayLabel()} conversion for ${food.name}",
                 approximate = true,
                 supported = false
             )

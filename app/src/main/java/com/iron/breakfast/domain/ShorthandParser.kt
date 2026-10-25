@@ -301,7 +301,7 @@ class ShorthandParser {
 
         val quantity = findQuantity(raw) ?: return ParsedSegment(raw, raw, null, null, null, null)
         val foodPhrase = (raw.removeRange(quantity.range)).replace(Regex("\\s+"), " ").trim()
-        val modifiers = Regex("(?i)(?:\\b\\d+(?:[.,]\\d+)?%|\\b(?:small|large|oat|smooth|crunchy|raw|cooked|roasted|boneless|skinless|drained|canned)\\b)")
+        val modifiers = Regex("(?iu)(?:\\b\\d+(?:[.,]\\d+)?%|\\b(?:small|large|oat|smooth|crunchy|raw|cooked|roasted|boneless|skinless|drained|canned)\\b)")
             .findAll(foodPhrase)
             .map { it.value.lowercase(Locale.ROOT) }
             .toList()
@@ -331,7 +331,8 @@ class ShorthandParser {
         numberPattern.findAll(raw).firstOrNull { candidate ->
             !isCompositionRatio(candidate, raw) || candidate.groupValues.getOrNull(2).orEmpty().isNotBlank()
         }?.let { match ->
-            return quantityWithUnit(parseAmount(match.groupValues[1]), match.groupValues[2], match.range)
+            val amount = parseAmount(match.groupValues[1])
+            return quantityWithUnit(if (isNegated(raw, match.range.first)) -amount else amount, match.groupValues[2], match.range)
         }
         wordPattern.find(raw)?.let { match ->
             val unitText = match.groupValues[2]
@@ -363,6 +364,10 @@ class ShorthandParser {
         return normalized.toDoubleOrNull() ?: 0.0
     }
 
+    /** True for a minus sign straight before the number at [index] that starts a word: "-1 banana", not "2-3". */
+    private fun isNegated(raw: String, index: Int): Boolean =
+        index > 0 && raw[index - 1] == '-' && (index == 1 || raw[index - 2].isWhitespace())
+
     private fun fraction(text: String): Double {
         val parts = text.split('/')
         if (parts.size != 2) return 0.0
@@ -383,31 +388,32 @@ class ShorthandParser {
     private companion object {
         val unit = ShorthandLexicon.unitAlternation()
         val halfPattern = Regex(
-            "(?i)(?<![\\p{L}\\p{N}])(?:a\\s+)?(half|quarter|половина)(?![\\p{L}\\p{N}])(?:\\s+a(?![\\p{L}\\p{N}]))?\\s*" +
+            "(?iu)(?<![\\p{L}\\p{N}])(?:a\\s+)?(half|quarter|половина)(?![\\p{L}\\p{N}])(?:\\s+a(?![\\p{L}\\p{N}]))?\\s*" +
                 "($unit)?(?![\\p{L}\\p{N}])"
         )
         /** Number words other than the half family, longest first so "a couple of" wins over "a". */
         val wordPattern = Regex(
-            "(?i)(?<![\\p{L}\\p{N}])(${ShorthandLexicon.wordAlternation()})(?![\\p{L}\\p{N}])\\s*" +
+            "(?iu)(?<![\\p{L}\\p{N}])(${ShorthandLexicon.wordAlternation()})(?![\\p{L}\\p{N}])\\s*" +
                 "($unit)?(?![\\p{L}\\p{N}])"
         )
         /** "2x egg" and "egg x2". */
-        val multiplierPattern = Regex("(?i)(?<![\\p{L}\\p{N}])(?:(\\d+)\\s*x|x(\\d+))(?![\\p{L}\\p{N}.,])")
+        val multiplierPattern = Regex("(?iu)(?<![\\p{L}\\p{N}])(?:(\\d+)\\s*x|x(\\d+))(?![\\p{L}\\p{N}.,])")
         val numberPattern = Regex(
-            "(?i)\\b(\\d+\\s+\\d+/\\d+|\\d+/\\d+|\\d+(?:[.,]\\d+)?)(?![.,\\d]|\\s*%)\\s*" +
+            "(?iu)\\b(\\d+\\s+\\d+/\\d+|\\d+/\\d+|\\d+(?:[.,]\\d+)?)(?![.,\\d]|\\s*%)\\s*" +
                 "($unit)?(?![\\p{L}\\p{N}])"
         )
-        val COMPOSITION_TAIL = Regex("(?i)^(?:raw|cooked|roasted|grilled|boneless|skinless|lean|fat)\\b.*")
-        val HARD_BREAK = Regex("[,;\n]")
+        val COMPOSITION_TAIL = Regex("(?iu)^(?:raw|cooked|roasted|grilled|boneless|skinless|lean|fat)\\b.*")
+        /** A comma between two digits is a decimal separator ("1,5 kg"), never a break; "oats,1 banana" still breaks. */
+        val HARD_BREAK = Regex("(?<!\\d),|,(?!\\d)|[;\n]")
         val WORD = Regex("\\S+")
         val NUMBER = Regex("\\d+(?:[.,]\\d+)?")
         val FRACTION = Regex("\\d+/\\d+")
-        val MULTIPLIER = Regex("(?i)\\d+x|x\\d+")
+        val MULTIPLIER = Regex("(?iu)\\d+x|x\\d+")
         val ATTACHED_QUANTITY = Regex("(\\d+(?:[.,]\\d+)?)(\\p{L}+)")
         val ARTICLES = setOf("a", "an")
         val COMPOSITION_WORDS = setOf("raw", "cooked", "roasted", "grilled", "boneless", "skinless", "lean", "fat")
         val OPEN_TAIL_CHARS = setOf(',', ';', '+', '&', '\n')
-        val END_SEPARATOR_WORD = Regex("(?i)(?:^|\\s)(?:and|и)$")
+        val END_SEPARATOR_WORD = Regex("(?iu)(?:^|\\s)(?:and|и)$")
     }
 }
 

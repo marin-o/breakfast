@@ -60,6 +60,7 @@ import com.iron.breakfast.BreakfastViewModel
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
+import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.label
 import com.iron.breakfast.pretty
@@ -161,7 +162,7 @@ internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 AddCircle("Decrease amount", { amount = adjustAmount(amount, -1.0) }, icon = Icons.Outlined.Remove)
                 Field(
-                    "Amount", amount, { amount = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.weight(1f),
+                    "Amount", amount, { amount = it.decimalInput() }, Modifier.weight(1f),
                     labelVisible = false, amountStyle = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { keyboard?.hide(); vm.onInput("${amount.trim()} ${unit.displayLabel()}"); vm.submit() }),
@@ -217,7 +218,7 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
                     Field("Food", selectedFood?.name ?: entry.foodName, {}, Modifier.weight(1f), readOnly = true)
                     SecondaryButton("Replace", vm::openEditFoodPicker, modifier = Modifier.widthIn(min = 96.dp * fontScale), fillWidth = false)
                 }
-                Field("Amount", amount, { amount = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.widthIn(min = 140.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                Field("Amount", amount, { amount = it.decimalInput() }, Modifier.widthIn(min = 140.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     units.forEach { candidate -> ChoiceOption(candidate.displayLabel(), unit == candidate, { unit = candidate }) }
                 }

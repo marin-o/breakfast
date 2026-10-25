@@ -15,25 +15,37 @@ class FoodMatcher(
         "g" to "gram"
     )
 
+    /**
+     * The words of a food's names and aliases in one script, read the way a typed token is (lowercase, apostrophes
+     * joined, diacritics folded): [names] for a substring match, [words] for a whole word, a stem or a typo.
+     */
+    private class NameWords(val words: Set<String>) {
+        val names: String = words.joinToString(" ")
+    }
+
     /** Only a food's name and aliases are matched; its category, preparation and source text are not. */
     private class IndexedFood(
         val food: FoodRecord,
-        val names: String,
-        val nameTokens: Set<String>,
-        /** Words of the name and aliases: the vocabulary a typo is checked against and a whole word matches. */
-        val nameWords: Set<String>,
+        /** Every name word, whatever its script: what a token with no letters (a number, "2.8") is matched against. */
+        val all: NameWords,
+        /** The name words by script. A token is matched only against the words in its own script. */
+        val byScript: Map<TextScript, NameWords>,
         val normalizedNames: Set<String>,
         val normalizedAliases: Set<String>
-    )
+    ) {
+        fun inScriptOf(query: QueryToken): NameWords? = when (query.script) {
+            TextScript.NONE -> all
+            TextScript.MIXED -> null
+            else -> byScript[query.script]
+        }
+    }
 
     private val indexedCatalog = catalog.map { food ->
-        val names = food.allNames().joinToString(" ").lowercase(Locale.ROOT)
-        val nameWords = tokens(names).toSet()
+        val words = food.allNames().flatMap(::tokens).toSet()
         IndexedFood(
             food = food,
-            names = names,
-            nameTokens = nameWords,
-            nameWords = nameWords,
+            all = NameWords(words),
+            byScript = words.groupBy(::scriptOf).mapValues { NameWords(it.value.toSet()) },
             normalizedNames = food.allNames().mapTo(mutableSetOf(), ::normalize),
             normalizedAliases = food.aliases.mapTo(mutableSetOf(), ::normalize)
         )
@@ -41,6 +53,7 @@ class FoodMatcher(
 
     /** One input token with everything the tiers need, computed once per call rather than once per food. */
     private class QueryToken(val raw: String) {
+        val script = scriptOf(raw)
         val stems = stems(raw)
         val typoAllowance = typoAllowance(raw)
         val isShortWord = raw.length < 3 && raw.all { it.isLetter() }
@@ -65,7 +78,7 @@ class FoodMatcher(
 
         return indexedCatalog.mapNotNull { indexed ->
             val food = indexed.food
-            if (explicitModifiers.any { it !in indexed.names }) return@mapNotNull null
+            if (explicitModifiers.any { it !in indexed.all.names }) return@mapNotNull null
             val hits = queries.map { hit(it, indexed) }
             val identityHits = hits.filterIndexed { index, _ -> !queries[index].isModifier }
             val exactName = normalizedPhrase in indexed.normalizedNames
@@ -107,21 +120,23 @@ class FoodMatcher(
 
     /**
      * How one input token matches a food, within its own script: an exact form (a substring of the names, whole or a
-     * prefix), a singular form that is a whole name word, or a typo of a name word. Null when no tier matches.
+     * prefix), a singular form that is a whole name word, or a typo of a name word. Null when no tier matches, and
+     * always null for a token that mixes scripts ("bаnana" with a Cyrillic а): it is neither Latin nor Cyrillic.
      */
     private fun hit(query: QueryToken, indexed: IndexedFood): TokenHit? {
         val raw = query.raw
+        val scope = indexed.inScriptOf(query) ?: return null
         // A short word (under three letters) names a food only as a whole word: "m" must not find "Grandma's".
         if (query.isShortWord) {
-            return if (raw in indexed.nameWords) EXACT_HIT else null
+            return if (raw in scope.words) EXACT_HIT else null
         }
-        if (raw in indexed.names) {
+        if (raw in scope.names) {
             // A whole word of the name is exact; a part of a longer word ("ban" in banana) is a prefix match.
-            return if (raw in indexed.nameWords) EXACT_HIT else PREFIX_HIT
+            return if (raw in scope.words) EXACT_HIT else PREFIX_HIT
         }
-        if (query.stems.any { it in indexed.nameTokens }) return STEM_HIT
+        if (query.stems.any { it in scope.words }) return STEM_HIT
         if (query.typoAllowance > 0) {
-            indexed.nameWords.firstOrNull { withinEditDistance(raw, it, query.typoAllowance) }
+            scope.words.firstOrNull { withinEditDistance(raw, it, query.typoAllowance) }
                 ?.let { return TokenHit(TYPO_WEIGHT, it.first() != raw.first()) }
         }
         return null
@@ -160,13 +175,15 @@ class FoodMatcher(
      */
     fun startingWith(fragment: String, preferences: Map<String, Preference> = emptyMap(), limit: Int = 4): List<RankedFood> {
         val word = tokens(expandAbbreviations(fragment)).lastOrNull() ?: return emptyList()
-        val cyrillic = isCyrillic(word)
+        val script = scriptOf(word)
+        if (script == TextScript.MIXED) return emptyList()
+        val cyrillic = script == TextScript.CYRILLIC
         val folded = foldDiacritics(word)
         val now = nowMs()
         return catalog.mapNotNull { food ->
             // Scripts never cross: only names and aliases in the typed script can match, so a food with no name in
             // that script is not suggested at all.
-            val inScript = food.allNames().filter { isCyrillic(it) == cyrillic }
+            val inScript = food.allNames().filter { name -> scriptOf(name).let { it != TextScript.MIXED && (it == TextScript.CYRILLIC) == cyrillic } }
             if (inScript.none { name -> tokens(name).any { foldDiacritics(it).startsWith(folded) } }) return@mapNotNull null
             val namesStart = inScript.any { foldDiacritics(it).startsWith(folded) }
             Triple(
@@ -184,8 +201,6 @@ class FoodMatcher(
                 .thenBy { it.third }
         ).take(limit).map { it.first }
     }
-
-    private fun isCyrillic(text: String): Boolean = text.any { it in '\u0400'..'\u04FF' }
 
     /** Lowercase with the Latin diacritics folded (č and ć to c, š to s, ž to z, đ to d). */
     private fun foldDiacritics(text: String): String = text.lowercase(Locale.ROOT)
@@ -259,5 +274,28 @@ class FoodMatcher(
             }
             return previous[b.length] <= max
         }
+    }
+}
+
+/** The script a word is written in. Matching never crosses scripts, and a word that mixes them matches nothing. */
+internal enum class TextScript { NONE, LATIN, CYRILLIC, MIXED }
+
+/** The script of [text]'s letters: [TextScript.NONE] with no Latin or Cyrillic letter, [TextScript.MIXED] with both. */
+internal fun scriptOf(text: String): TextScript {
+    var latin = false
+    var cyrillic = false
+    for (c in text) {
+        if (!c.isLetter()) continue
+        when (Character.UnicodeScript.of(c.code)) {
+            Character.UnicodeScript.LATIN -> latin = true
+            Character.UnicodeScript.CYRILLIC -> cyrillic = true
+            else -> Unit
+        }
+    }
+    return when {
+        latin && cyrillic -> TextScript.MIXED
+        latin -> TextScript.LATIN
+        cyrillic -> TextScript.CYRILLIC
+        else -> TextScript.NONE
     }
 }

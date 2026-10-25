@@ -13,6 +13,7 @@ import com.iron.breakfast.domain.ParsedAmountUnit
 import com.iron.breakfast.domain.ResolvedNutrition
 import com.iron.breakfast.domain.ShorthandParser
 import com.iron.breakfast.domain.parseStrictAmountUnit
+import com.iron.breakfast.domain.parseDecimal
 import com.iron.breakfast.domain.resolveNutrition
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.pretty
@@ -51,6 +52,10 @@ internal fun QuantityDisplay.plainLine(): String = approximateLabel?.let { "≈$
 
 /** Whole kcal, used the same way in every row, total and sheet. */
 internal fun formatKcal(value: Double): String = round(value).toInt().toString()
+
+/** The kcal a Log choice shows. None when the choice cannot be counted, so it never reads "0 kcal". */
+internal fun choiceKcalDetail(calculation: Calculation): String? =
+    calculation.takeIf { it.supported }?.let { "${formatKcal(it.nutrition.calories)} kcal" }
 
 internal fun quantityRateDisplay(
     entry: MealEntry,
@@ -221,8 +226,8 @@ internal fun matchDisplay(food: FoodRecord, raw: String, calculator: NutritionCa
 
 /** Review amount field: "2 tbsp", or a bare number meaning the product's own basis unit. Null while it cannot be logged. */
 internal fun parseProductAmount(text: String, basisUnit: MeasureUnit): ParsedAmountUnit? {
-    val bare = text.trim().replace(',', '.').toDoubleOrNull()
-    if (bare != null) return if (bare.isFinite() && bare > 0.0) ParsedAmountUnit(bare, basisUnit) else null
+    val bare = parseDecimal(text)
+    if (bare != null) return if (bare > 0.0) ParsedAmountUnit(bare, basisUnit) else null
     return parseStrictAmountUnit(text)
 }
 

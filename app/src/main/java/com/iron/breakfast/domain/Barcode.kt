@@ -2,9 +2,27 @@ package com.iron.breakfast.domain
 
 private val BarcodeLengths = setOf(8, 12, 13, 14)
 
-/** Keeps ASCII 0-9 only; Arabic-Indic and fullwidth digits are dropped. [allowDecimalPoint] also keeps '.'. */
-fun String.asciiDigits(allowDecimalPoint: Boolean = false): String =
-    filter { it in '0'..'9' || (allowDecimalPoint && it == '.') }
+/** Keeps ASCII 0-9 only; Arabic-Indic and fullwidth digits are dropped. */
+fun String.asciiDigits(): String = filter { it in '0'..'9' }
+
+/**
+ * The single decimal-input rule for number fields: ASCII digits and one separator. A comma is the decimal separator
+ * as much as a point ("12,5" is "12.5"); any separator after the first is dropped.
+ */
+fun String.decimalInput(): String {
+    val out = StringBuilder()
+    var separator = false
+    for (c in this) {
+        when {
+            c in '0'..'9' -> out.append(c)
+            (c == '.' || c == ',') && !separator -> { out.append('.'); separator = true }
+        }
+    }
+    return out.toString()
+}
+
+/** A number typed in a field, by the same rule as [decimalInput]: "12,5" is 12.5. Null when blank or not a number. */
+fun parseDecimal(text: String): Double? = text.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it.isFinite() }
 
 /**
  * The single barcode rule: trimmed, ASCII digits only, 8, 12, 13 or 14 long

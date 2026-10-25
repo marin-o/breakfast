@@ -11,6 +11,7 @@ import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.asciiDigits
+import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.domain.normalizeBarcode
 import com.iron.breakfast.domain.validateBarcodeInput
 import com.iron.breakfast.domain.NutritionCalculator
@@ -122,7 +123,7 @@ class MainActivityTest {
         assertNull(normalizeBarcode("https://example.com/12345678"))
         assertNull(normalizeBarcode("1234 5678"))
         assertEquals("12", "1٢a2".asciiDigits())
-        assertEquals("1.5", "1.٣5".asciiDigits(allowDecimalPoint = true))
+        assertEquals("1.5", "1.٣5".decimalInput())
         assertEquals("15", "1.٣5".asciiDigits())
     }
 

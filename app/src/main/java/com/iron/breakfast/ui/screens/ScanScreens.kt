@@ -105,6 +105,7 @@ import com.iron.breakfast.ScannerUnavailableReason
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.asciiDigits
+import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.domain.normalizeBarcode
 import com.iron.breakfast.label
@@ -428,10 +429,10 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
                     Text(basisLabel(basis.amount, basis.unit), color = colors.soft, style = BreakfastType.Meta)
                     NutrientInputs(
                         listOf(
-                            NutrientInput("kcal", vm.productCalories) { vm.onProductCalories(it.asciiDigits(allowDecimalPoint = true)) },
-                            NutrientInput("Protein, g", vm.productProtein) { vm.onProductProtein(it.asciiDigits(allowDecimalPoint = true)) },
-                            NutrientInput("Carbs, g", vm.productCarbs) { vm.onProductCarbs(it.asciiDigits(allowDecimalPoint = true)) },
-                            NutrientInput("Fat, g", vm.productFat) { vm.onProductFat(it.asciiDigits(allowDecimalPoint = true)) },
+                            NutrientInput("kcal", vm.productCalories) { vm.onProductCalories(it.decimalInput()) },
+                            NutrientInput("Protein, g", vm.productProtein) { vm.onProductProtein(it.decimalInput()) },
+                            NutrientInput("Carbs, g", vm.productCarbs) { vm.onProductCarbs(it.decimalInput()) },
+                            NutrientInput("Fat, g", vm.productFat) { vm.onProductFat(it.decimalInput()) },
                         ),
                     )
                 }

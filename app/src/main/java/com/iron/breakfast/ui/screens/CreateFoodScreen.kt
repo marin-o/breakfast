@@ -38,6 +38,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.BreakfastViewModel
 import com.iron.breakfast.domain.asciiDigits
+import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.domain.parseNutritionShorthand
 import com.iron.breakfast.domain.validateBarcodeInput
 import com.iron.breakfast.ui.components.ButtonKind
@@ -101,21 +102,21 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
                     Column {
                         Text("Basis", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(bottom = 4.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Field("Basis", basisAmount, { draft.basisEdited = true; draft.basisAmount = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1.6f), labelVisible = false, keyboardOptions = decimal)
+                            Field("Basis", basisAmount, { draft.basisEdited = true; draft.basisAmount = it.decimalInput() }, Modifier.weight(1.6f), labelVisible = false, keyboardOptions = decimal)
                             listOf("g", "ml").forEach { unit -> ChoiceOption(unit, basisUnit == unit, { draft.basisEdited = true; draft.basisUnit = unit }, Modifier.weight(1f)) }
                         }
                     }
                     Field(
-                        "kcal", calories, { draft.caloriesEdited = true; draft.calories = it.asciiDigits(allowDecimalPoint = true) },
+                        "kcal", calories, { draft.caloriesEdited = true; draft.calories = it.decimalInput() },
                         keyboardOptions = decimal,
                         error = state.showRequired,
                         errorMessage = if (state.showRequired) "kcal is required" else null,
                         required = true,
                     )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Field("Protein, g", protein, { draft.proteinEdited = true; draft.protein = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f), keyboardOptions = decimal)
-                        Field("Carbs, g", carbs, { draft.carbsEdited = true; draft.carbs = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f), keyboardOptions = decimal)
-                        Field("Fat, g", fat, { draft.fatEdited = true; draft.fat = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f), keyboardOptions = decimal)
+                        Field("Protein, g", protein, { draft.proteinEdited = true; draft.protein = it.decimalInput() }, Modifier.weight(1f), keyboardOptions = decimal)
+                        Field("Carbs, g", carbs, { draft.carbsEdited = true; draft.carbs = it.decimalInput() }, Modifier.weight(1f), keyboardOptions = decimal)
+                        Field("Fat, g", fat, { draft.fatEdited = true; draft.fat = it.decimalInput() }, Modifier.weight(1f), keyboardOptions = decimal)
                     }
                     Field("Alias", draft.aliasInput, { draft.aliasInput = it })
                 }

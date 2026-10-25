@@ -313,7 +313,7 @@ object FoodCatalog {
             id = "usda_2346389_romaine_raw",
             sourceId = 2346389,
             name = "Romaine lettuce raw",
-            aliases = listOf("lettuce", "romaine", "марула", "зелена салата"),
+            aliases = listOf("lettuce", "romaine", "марула"),
             category = "vegetable raw",
             nutrition = NutritionValues(20.8, 0.977, 4.06, 0.071),
             preparation = "raw"

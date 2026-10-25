@@ -785,8 +785,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         )
     }
     /** kcal of [food] at the amount Add would log for the active part with that food: the same numbers the choice shows. */
-    internal fun quickAddSuggestionCalories(food: FoodRecord): Double =
-        engine.planner(logPins.toMap()).calculationFor(activeSpan(engine.planner(logPins.toMap()))?.text.orEmpty(), food).nutrition.calories
+    internal fun quickAddSuggestionCalculation(food: FoodRecord): Calculation =
+        engine.planner(logPins.toMap()).calculationFor(activeSpan(engine.planner(logPins.toMap()))?.text.orEmpty(), food)
 
     /** Tapping a choice or a suggestion: the typed part becomes the amount, unit and name it would log. */
     fun chooseQuickSuggestion(food: FoodRecord) {
@@ -1405,6 +1405,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val resolved = resolveNutrition(draft.nutritionInput())
         val kcal = resolved.calories; val proteinValue = resolved.protein; val carbsValue = resolved.carbohydrates; val fatValue = resolved.fat
         if (name.isBlank() || kcal == null) { notice = "Name and calories are required."; return }
+        if (resolved.invalid) { notice = "Nutrition values must be finite and nonnegative."; return }
         val editingId = editingLibraryFoodId
         val originalBarcode = editingId?.let { id -> foods.firstOrNull { it.id == id }?.barcode?.trim() }
         val barcodeError = if (barcode == originalBarcode) null else validateBarcodeInput(barcode, foods, editingId)

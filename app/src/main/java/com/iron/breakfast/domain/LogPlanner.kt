@@ -303,8 +303,8 @@ class LogPlanner(
         /** How many matches the Log page offers as choices. The preselected one is always the first. */
         const val SUGGESTION_LIMIT = 4
         private val WHITESPACE = Regex("\\s+")
-        private val LEADING_ARTICLE = Regex("(?i)^(?:a|an)\\s+")
-        private val SEPARATOR_WORD_AT_END = Regex("(?i)(?:^|\\s)(?:and|и)$")
+        private val LEADING_ARTICLE = Regex("(?iu)^(?:a|an)\\s+")
+        private val SEPARATOR_WORD_AT_END = Regex("(?iu)(?:^|\\s)(?:and|и)$")
     }
 }
 

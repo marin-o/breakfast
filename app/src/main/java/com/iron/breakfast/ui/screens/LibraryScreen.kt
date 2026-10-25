@@ -79,6 +79,7 @@ import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionCalculator
 import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.asciiDigits
+import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.label
 import com.iron.breakfast.pretty
@@ -375,6 +376,7 @@ internal fun LibraryFoodEditScreen(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
     val food = vm.foods.firstOrNull { it.id == vm.editingLibraryFoodId } ?: return
     val draft = vm.draft
+    val decimal = KeyboardOptions(keyboardType = KeyboardType.Decimal)
     BackHandler { vm.closeCustom() }
     Column(Modifier.fillMaxSize().background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         TopBar("Edit food", vm::closeCustom, Modifier.padding(top = 8.dp))
@@ -383,12 +385,12 @@ internal fun LibraryFoodEditScreen(vm: BreakfastViewModel) {
         FoodBarcodeField(vm)
         Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Secondary)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Field("kcal", draft.calories, { draft.calories = it }, Modifier.weight(1f), required = true)
-            Field("Protein, g", draft.protein, { draft.protein = it }, Modifier.weight(1f))
+            Field("kcal", draft.calories, { draft.calories = it.decimalInput() }, Modifier.weight(1f), required = true, keyboardOptions = decimal)
+            Field("Protein, g", draft.protein, { draft.protein = it.decimalInput() }, Modifier.weight(1f), keyboardOptions = decimal)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Field("Carbs, g", draft.carbs, { draft.carbs = it }, Modifier.weight(1f))
-            Field("Fat, g", draft.fat, { draft.fat = it }, Modifier.weight(1f))
+            Field("Carbs, g", draft.carbs, { draft.carbs = it.decimalInput() }, Modifier.weight(1f), keyboardOptions = decimal)
+            Field("Fat, g", draft.fat, { draft.fat = it.decimalInput() }, Modifier.weight(1f), keyboardOptions = decimal)
         }
         SectionHeading("Servings")
         draft.servings.forEach { conversion ->
@@ -406,7 +408,7 @@ internal fun LibraryFoodEditScreen(vm: BreakfastViewModel) {
                     Field("Name", draft.servingLabel, { draft.servingLabel = it }, Modifier.weight(1f))
                     Text("=", color = colors.ink, style = BreakfastType.Body, modifier = Modifier.padding(top = 22.dp))
                     Field(
-                        "Amount", draft.servingAmount, { draft.servingAmount = it.asciiDigits(allowDecimalPoint = true) }, Modifier.weight(1f),
+                        "Amount", draft.servingAmount, { draft.servingAmount = it.decimalInput() }, Modifier.weight(1f),
                         error = amountError,
                         errorMessage = if (amountError) "Enter more than 0 ${draft.servingUnit.label}." else null,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -466,7 +468,7 @@ private fun LibraryAmountSheet(vm: BreakfastViewModel, food: FoodRecord, target:
             Text(foodText(food.name), color = colors.ink, style = BreakfastType.Section)
             Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Secondary)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Field("Amount", amountText, { amountText = it.asciiDigits(allowDecimalPoint = true) }, Modifier.widthIn(min = 96.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                Field("Amount", amountText, { amountText = it.decimalInput() }, Modifier.widthIn(min = 96.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                 Row(Modifier.weight(1f).padding(top = 22.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     units.forEach { candidate -> ChoiceOption(candidate.displayLabel(), unit == candidate, { unit = candidate }) }
                 }

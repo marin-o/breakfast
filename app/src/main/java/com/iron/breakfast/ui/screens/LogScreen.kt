@@ -180,7 +180,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
                             selected = index == 0 && draft.preselected,
                             onClick = { vm.chooseQuickSuggestion(ranked.food) },
                             modifier = Modifier.widthIn(min = 168.dp),
-                            detail = "${formatKcal(vm.quickAddSuggestionCalories(ranked.food))} kcal",
+                            detail = choiceKcalDetail(vm.quickAddSuggestionCalculation(ranked.food)),
                         )
                     }
                 }

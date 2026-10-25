@@ -19,6 +19,8 @@ data class ResolvedNutrition(
     val fat: Double?,
     val basisAmount: Double,
     val basisUnit: MeasureUnit,
+    /** True when a structured field holds text that is not a number; it is never read as unknown. */
+    val invalid: Boolean = false,
 )
 
 /** Recognised numbers in the shorthand, as character ranges to print bold (number and its "g"). */
@@ -39,7 +41,7 @@ data class ParsedShorthand(
 private const val NumberPattern = "([0-9]+(?:[.,][0-9]+)?)"
 
 private fun labelledNumber(shorthand: String, label: String): ShorthandMatch? {
-    val match = Regex("(?i)$NumberPattern(\\s*g)?\\s*$label").find(shorthand) ?: return null
+    val match = Regex("(?iu)$NumberPattern(\\s*g)?\\s*$label").find(shorthand) ?: return null
     val value = match.groupValues[1].replace(',', '.').toDoubleOrNull() ?: return null
     val end = (match.groups[2] ?: match.groups[1])!!.range.last
     return ShorthandMatch(value, match.groups[1]!!.range.first..end)
@@ -51,7 +53,7 @@ private fun labelledNumber(shorthand: String, label: String): ShorthandMatch? {
  * optional "per 100 g / per 250 ml" basis is the only addition.
  */
 fun parseNutritionShorthand(shorthand: String): ParsedShorthand {
-    val basis = Regex("(?i)\\bper\\s+$NumberPattern\\s*(g|grams?|ml)\\b").find(shorthand)
+    val basis = Regex("(?iu)\\bper\\s+$NumberPattern\\s*(g|grams?|ml)\\b").find(shorthand)
     val basisAmount = basis?.let { match ->
         match.groupValues[1].replace(',', '.').toDoubleOrNull()?.let { ShorthandMatch(it, match.groups[1]!!.range.first..match.groups[2]!!.range.last) }
     }
@@ -71,14 +73,16 @@ fun parseNutritionShorthand(shorthand: String): ParsedShorthand {
  */
 fun resolveNutrition(input: NutritionInput): ResolvedNutrition {
     val parsed = parseNutritionShorthand(input.shorthand)
-    val structuredBasisChanged = input.basisAmount.toDoubleOrNull() != 100.0 || input.basisUnit.trim().lowercase() != "g"
+    val structuredBasisChanged = parseDecimal(input.basisAmount) != 100.0 || input.basisUnit.trim().lowercase() != "g"
     val useShorthandBasis = parsed.basisAmount != null && !structuredBasisChanged
+    val fields = listOf(input.calories, input.protein, input.carbs, input.fat, input.basisAmount)
     return ResolvedNutrition(
-        calories = input.calories.toDoubleOrNull() ?: parsed.calories?.value,
-        protein = input.protein.toDoubleOrNull() ?: parsed.protein?.value,
-        carbohydrates = input.carbs.toDoubleOrNull() ?: parsed.carbohydrates?.value,
-        fat = input.fat.toDoubleOrNull() ?: parsed.fat?.value,
-        basisAmount = (if (useShorthandBasis) parsed.basisAmount?.value else null) ?: input.basisAmount.toDoubleOrNull() ?: 100.0,
+        calories = parseDecimal(input.calories) ?: parsed.calories?.value,
+        protein = parseDecimal(input.protein) ?: parsed.protein?.value,
+        carbohydrates = parseDecimal(input.carbs) ?: parsed.carbohydrates?.value,
+        fat = parseDecimal(input.fat) ?: parsed.fat?.value,
+        basisAmount = (if (useShorthandBasis) parsed.basisAmount?.value else null) ?: parseDecimal(input.basisAmount) ?: 100.0,
         basisUnit = (if (useShorthandBasis) parsed.basisUnit else null) ?: if (input.basisUnit.trim().lowercase() == "ml") MeasureUnit.MILLILITER else MeasureUnit.GRAM,
+        invalid = fields.any { it.isNotBlank() && parseDecimal(it) == null },
     )
 }

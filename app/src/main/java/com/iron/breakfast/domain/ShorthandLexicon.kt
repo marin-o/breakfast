@@ -11,6 +11,19 @@ object ShorthandLexicon {
         "dinner" to MealSlot.DINNER,
         "snacks" to MealSlot.SNACKS,
         "snack" to MealSlot.SNACKS,
+        // Macedonian, Cyrillic and Latin. A Latin č, š or ž is read without its mark ("ruček" is "rucek").
+        "појадок" to MealSlot.BREAKFAST,
+        "pojadok" to MealSlot.BREAKFAST,
+        "доручек" to MealSlot.BREAKFAST,
+        "dorucek" to MealSlot.BREAKFAST,
+        "ручек" to MealSlot.LUNCH,
+        "rucek" to MealSlot.LUNCH,
+        "вечера" to MealSlot.DINNER,
+        "vecera" to MealSlot.DINNER,
+        "ужина" to MealSlot.SNACKS,
+        "uzina" to MealSlot.SNACKS,
+        "закуска" to MealSlot.SNACKS,
+        "zakuska" to MealSlot.SNACKS,
     )
 
     /** Number words and their amounts, English and Macedonian. "a half" is read through "half" with its article. */
@@ -64,7 +77,9 @@ object ShorthandLexicon {
     val explicitSeparators: Set<String> = setOf("+", "&", "and", "и")
 
     /** The meal a whole segment names, such as "lunch". Null for anything else. */
-    fun mealSlotOf(text: String): MealSlot? = mealWords[text.trim().lowercase(Locale.ROOT)]
+    fun mealSlotOf(text: String): MealSlot? = mealWords[
+        text.trim().lowercase(Locale.ROOT).replace('č', 'c').replace('š', 's').replace('ž', 'z')
+    ]
 
     /** The amount a number word stands for ("two" is 2, "half" is 0.5). Null when [text] is not a number word. */
     fun wordAmount(text: String): Double? = wordAmounts[normalizeWords(text)]

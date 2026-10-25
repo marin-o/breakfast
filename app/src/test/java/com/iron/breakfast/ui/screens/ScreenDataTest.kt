@@ -6,8 +6,10 @@ import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionBasis
+import com.iron.breakfast.domain.NutritionCalculator
 import com.iron.breakfast.domain.NutritionValues
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 import java.time.ZoneOffset
 import kotlin.math.round
@@ -219,4 +221,9 @@ class ScreenDataTest {
         assertEquals("389", formatKcal(388.6))
     }
 
+    @Test fun aChoiceThatCannotBeCountedShowsNoKcal() {
+        val oats = FoodCatalog.fixtures.first { it.nutrition.unit == MeasureUnit.GRAM && it.conversions.none { c -> c.unit == MeasureUnit.PIECE } }
+        assertNull(choiceKcalDetail(NutritionCalculator().calculate(oats, 2.0, MeasureUnit.PIECE)))
+        assertEquals("${formatKcal(oats.nutrition.values.calories)} kcal", choiceKcalDetail(NutritionCalculator().calculate(oats, oats.nutrition.amount, oats.nutrition.unit)))
+    }
 }
