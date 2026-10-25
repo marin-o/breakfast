@@ -26,6 +26,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -174,7 +175,7 @@ import java.util.concurrent.atomic.AtomicBoolean
                 val scanner = BarcodeScanning.getClient(); var delivered = false
                 session.provider = provider; session.preview = preview; session.analysis = analysis; session.scanner = scanner
                 analysis.setAnalyzer(ContextCompat.getMainExecutor(ctx)) { proxy ->
-                    val image = proxy.image
+                    @androidx.annotation.OptIn(ExperimentalGetImage::class) val image = proxy.image
                     if (image == null || delivered || session.disposed.get()) { proxy.close(); return@setAnalyzer }
                     val rotation = proxy.imageInfo.rotationDegrees
                     val frame = ScanFrame(proxy.width, proxy.height, rotation, proxy.cropRect.let { Rect(it.left.toFloat(), it.top.toFloat(), it.right.toFloat(), it.bottom.toFloat()) })

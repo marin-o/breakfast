@@ -1,0 +1,6 @@
+<resources>
+    <!-- windowLightNavigationBar needs API 27. -->
+    <style name="Theme.Breakfast" parent="Base.Theme.Breakfast">
+        <item name="android:windowLightNavigationBar">@bool/light_bars</item>
+    </style>
+</resources>

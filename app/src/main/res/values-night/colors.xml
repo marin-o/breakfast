@@ -1,0 +1,5 @@
+<resources>
+    <!-- Mirrors DarkBreakfastColors.bg in ui/theme/Color.kt. The icon keeps its light-mode colours. -->
+    <color name="window_bg">#111214</color>
+    <bool name="light_bars">false</bool>
+</resources>

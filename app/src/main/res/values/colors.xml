@@ -1,0 +1,8 @@
+<resources>
+    <!-- Mirror LightBreakfastColors in ui/theme/Color.kt: window_bg is bg; the icon is bg on ink. -->
+    <color name="window_bg">#D0D4D8</color>
+    <color name="icon_ink">#111214</color>
+    <color name="icon_mark">#D0D4D8</color>
+    <!-- Dark bar icons on the light launch window. -->
+    <bool name="light_bars">true</bool>
+</resources>

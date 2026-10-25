@@ -1,13 +1,15 @@
 <resources>
-    <!-- Dark-only graphite window so launch never flashes white. The bars are drawn edge-to-edge in code. -->
-    <style name="Theme.Breakfast" parent="android:style/Theme.Material.NoActionBar">
+    <!-- The launch window uses the bg token of the system mode (values/ light, values-night/ dark), so a cold start
+         never flashes the other mode. The bars are drawn edge-to-edge in code. -->
+    <style name="Base.Theme.Breakfast" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">monospace</item>
         <item name="android:colorAccent">#3D63D9</item>
-        <item name="android:colorBackground">#2A2730</item>
-        <item name="android:windowBackground">#2A2730</item>
+        <item name="android:colorBackground">@color/window_bg</item>
+        <item name="android:windowBackground">@color/window_bg</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowLightStatusBar">@bool/light_bars</item>
     </style>
+
+    <style name="Theme.Breakfast" parent="Base.Theme.Breakfast" />
 </resources>
