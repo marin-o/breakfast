@@ -247,14 +247,4 @@ internal fun createFoodState(input: NutritionInput, name: String, barcodeError: 
     return CreateFoodState(nutrition, missing, showRequired = missing && touched, canSave = !missing && name.isNotBlank() && barcodeError == null)
 }
 
-/** The parsed-result slip values; null prints as "unknown". */
-internal data class NutritionSlipValues(val label: String, val calories: String?, val protein: String?, val carbs: String?, val fat: String?)
-
-internal fun nutritionSlipValues(nutrition: ResolvedNutrition): NutritionSlipValues = NutritionSlipValues(
-    label = basisLabel(nutrition.basisAmount, nutrition.basisUnit),
-    calories = nutrition.calories?.let(::formatKcal),
-    protein = nutrition.protein?.let { "${it.pretty()} g" },
-    carbs = nutrition.carbohydrates?.let { "${it.pretty()} g" },
-    fat = nutrition.fat?.let { "${it.pretty()} g" },
-)
 

@@ -378,12 +378,12 @@ internal fun LibraryFoodEditScreen(vm: BreakfastViewModel) {
     BackHandler { vm.closeCustom() }
     Column(Modifier.fillMaxSize().background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         TopBar("Edit food", vm::closeCustom, Modifier.padding(top = 8.dp))
-        Field("Name", draft.name, { draft.name = it })
+        Field("Name", draft.name, { draft.name = it }, required = true)
         Field("Brand", draft.brand, { draft.brand = it })
         FoodBarcodeField(vm)
-        Text("Source: ${entrySourceLabel(food)}. Local edits stay on this device.", color = colors.soft, style = BreakfastType.Secondary)
+        Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Secondary)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Field("kcal", draft.calories, { draft.calories = it }, Modifier.weight(1f))
+            Field("kcal", draft.calories, { draft.calories = it }, Modifier.weight(1f), required = true)
             Field("Protein, g", draft.protein, { draft.protein = it }, Modifier.weight(1f))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

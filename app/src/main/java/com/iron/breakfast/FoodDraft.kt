@@ -18,7 +18,6 @@ class FoodDraft {
     var barcode by mutableStateOf("")
     /** The barcode was seeded by a scan; the create form tags it "from scan" until it is edited. */
     var barcodeFromScan by mutableStateOf(false)
-    var fullFormOpen by mutableStateOf(false)
     var shorthand by mutableStateOf("")
     var calories by mutableStateOf("")
     var protein by mutableStateOf("")
@@ -53,7 +52,7 @@ class FoodDraft {
         fat = food?.nutrition?.values?.fat?.toString().orEmpty()
         basisAmount = food?.nutrition?.amount?.toString() ?: "100"
         basisUnit = food?.nutrition?.unit?.label ?: "g"
-        fromOff = false; barcodeFromScan = false; fullFormOpen = false
+        fromOff = false; barcodeFromScan = false
         caloriesEdited = false; proteinEdited = false; carbsEdited = false; fatEdited = false; basisEdited = false
         aliases = food?.aliases.orEmpty(); aliasInput = ""; aliasFieldOpen = false
         servings = food?.householdServings().orEmpty()

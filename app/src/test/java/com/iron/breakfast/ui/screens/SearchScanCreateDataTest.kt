@@ -83,22 +83,23 @@ class SearchScanCreateDataTest {
     }
 
     @Test
-    fun slipPrintsParsedValuesAndNullForAbsentOnes() {
+    fun shorthandFillsParsedValuesAndLeavesAbsentOnesEmpty() {
         val state = createFoodState(NutritionInput(shorthand = "per 100g: 120 kcal, 2g protein, 8g fat"), "Ajvar", null)
-        val slip = nutritionSlipValues(state.nutrition)
-        assertEquals("Per 100 g", slip.label)
-        assertEquals("120", slip.calories)
-        assertEquals("2 g", slip.protein)
-        assertNull(slip.carbs)
-        assertEquals("8 g", slip.fat)
+        assertEquals(100.0, state.nutrition.basisAmount, 0.0)
+        assertEquals(MeasureUnit.GRAM, state.nutrition.basisUnit)
+        assertEquals(120.0, state.nutrition.calories!!, 0.0)
+        assertEquals(2.0, state.nutrition.protein!!, 0.0)
+        assertNull(state.nutrition.carbohydrates)
+        assertEquals(8.0, state.nutrition.fat!!, 0.0)
         assertTrue(state.canSave)
         assertFalse(state.showRequired)
     }
 
     @Test
-    fun slipUsesMillilitresWhenShorthandSaysSo() {
-        val slip = nutritionSlipValues(createFoodState(NutritionInput(shorthand = "per 250ml: 90 kcal"), "Juice", null).nutrition)
-        assertEquals("Per 250 ml", slip.label)
+    fun shorthandBasisUsesMillilitresWhenItSaysSo() {
+        val nutrition = createFoodState(NutritionInput(shorthand = "per 250ml: 90 kcal"), "Juice", null).nutrition
+        assertEquals(250.0, nutrition.basisAmount, 0.0)
+        assertEquals(MeasureUnit.MILLILITER, nutrition.basisUnit)
     }
 
     @Test
@@ -110,8 +111,8 @@ class SearchScanCreateDataTest {
         val started = createFoodState(NutritionInput(shorthand = "per 100g: 2g protein"), "Ajvar", null)
         assertTrue(started.showRequired)
         assertFalse(started.canSave)
-        assertEquals("2 g", nutritionSlipValues(started.nutrition).protein)
-        assertNull(nutritionSlipValues(started.nutrition).calories)
+        assertEquals(2.0, started.nutrition.protein!!, 0.0)
+        assertNull(started.nutrition.calories)
     }
 
     @Test

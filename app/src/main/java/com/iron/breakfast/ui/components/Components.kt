@@ -313,10 +313,15 @@ fun Field(
     /** Applied to the text field itself, for a FocusRequester. */
     fieldModifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
+    /** Marks the field as needed to save: "required" sits at the end of the label row. */
+    required: Boolean = false,
 ) {
     val colors = LocalBreakfastColors.current
     Column(modifier.fillMaxWidth()) {
-        if (labelVisible) Text(label, color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(bottom = 4.dp))
+        if (labelVisible) Row(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+            Text(label, color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.weight(1f))
+            if (required) Text("required", color = colors.soft, style = BreakfastType.Meta)
+        }
         FieldFrame(error = error, modifier = Modifier.fillMaxWidth()) { onFocus ->
             BasicTextField(
                 value = value,
@@ -325,7 +330,7 @@ fun Field(
                     .weight(1f)
                     .then(fieldModifier)
                     .onFocusChanged(onFocus)
-                    .semantics { contentDescription = label },
+                    .semantics { contentDescription = if (required) "$label, required" else label },
                 singleLine = singleLine,
                 minLines = minLines,
                 readOnly = readOnly,
