@@ -131,7 +131,11 @@ fun PrimaryButton(
             .alpha(if (enabled) 1f else 0.45f)
             .clip(PrimaryShape)
             .background(fill)
-            .clickable(enabled = enabled || onDisabledClick != null, role = Role.Button, onClick = if (enabled) onClick else onDisabledClick ?: {})
+            // A dimmed button with [onDisabledClick] takes the tap without a ripple, so it still looks inactive.
+            .then(
+                if (enabled || onDisabledClick == null) Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+                else Modifier.clickable(interactionSource = null, indication = null, role = Role.Button, onClick = onDisabledClick)
+            )
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
