@@ -76,7 +76,7 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
 
 /**
  * The full-screen Log page: one text input, found foods, an ambiguous-word choice and the add bar.
- * It reuses the view model's quick-add logic; the draft lives in `vm.input` until it is added or the page is left.
+ * It reuses the view model's quick-add logic; the draft lives in `vm.logDraft` until it is added or cleared; leaving the page keeps it.
  */
 @Composable
 internal fun LogScreen(vm: BreakfastViewModel) {
@@ -85,9 +85,9 @@ internal fun LogScreen(vm: BreakfastViewModel) {
     // One resolution pass per draft: rows, choices and the add-bar sum all come from the same planner run.
     // It runs off the main thread so typing never waits on matching; the last draft shows until the next is ready.
     var draft by remember { mutableStateOf(vm.logDraftView()) }
-    LaunchedEffect(vm.input, vm.inputCommitted, vm.foods, vm.ready) {
-        val input = vm.input
-        val committed = vm.inputCommitted
+    LaunchedEffect(vm.logDraft, vm.logDraftCommitted, vm.foods, vm.ready) {
+        val input = vm.logDraft
+        val committed = vm.logDraftCommitted
         val pins = vm.logPinsSnapshot()
         draft = withContext(Dispatchers.Default) { vm.logDraftView(input, committed, pins) }
     }
@@ -97,7 +97,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
     val logged = draft.logged
     val kcal = logged.sumOf { it.calculation.nutrition.calories }
     // Any draft can be added: unresolved segments open the resolve-unknown flow, as before.
-    val canAdd = vm.input.isNotBlank() && !vm.busy
+    val canAdd = vm.logDraft.isNotBlank() && !vm.busy
     val placeholder = if (vm.selectedDayKey == dayKeyForToday()) "2 eggs, 1 banana" else "Add to ${shortDateLabel(vm.selectedDayKey)}"
     val requester = remember { FocusRequester() }
     LaunchedEffect(Unit) { requester.requestFocus() }
@@ -119,20 +119,20 @@ internal fun LogScreen(vm: BreakfastViewModel) {
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Gutter)) {
             // The field keeps its own caret. A change made from outside (a tapped choice) moves the caret to the end.
-            var field by remember { mutableStateOf(inputFieldFor(vm.input)) }
-            LaunchedEffect(vm.input) { field = syncedInputField(field, vm.input) }
+            var field by remember { mutableStateOf(inputFieldFor(vm.logDraft)) }
+            LaunchedEffect(vm.logDraft) { field = syncedInputField(field, vm.logDraft) }
             BasicTextField(
                 value = field,
                 // One logical line: Done submits, so a newline is never typed.
                 onValueChange = { next ->
                     val text = next.text.replace("\n", " ")
                     field = next.copy(text = text)
-                    vm.onInput(text)
+                    vm.onLogDraft(text)
                 },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = {
                     // Done commits the text: the last word is no longer being typed.
-                    vm.commitInput()
+                    vm.commitLogDraft()
                     if (canAdd) vm.submit()
                 }),
                 textStyle = BreakfastType.LargeInput.copy(color = colors.ink),
@@ -140,7 +140,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
                 modifier = Modifier.fillMaxWidth().padding(top = 18.dp).focusRequester(requester),
                 decorationBox = { inner ->
                     Box {
-                        if (vm.input.isEmpty()) Text(placeholder, color = colors.soft, style = BreakfastType.LargeInput)
+                        if (vm.logDraft.isEmpty()) Text(placeholder, color = colors.soft, style = BreakfastType.LargeInput)
                         inner()
                     }
                 },

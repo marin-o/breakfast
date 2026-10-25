@@ -120,12 +120,12 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
 /** Ink composer that opens the Log page with this meal preset, over the fade. Shows the logged-batch and delete snackbars. */
 @Composable
 internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot, modifier: Modifier = Modifier) {
-    val draft = vm.input.isNotBlank()
+    val draft = vm.logDraft.isNotBlank()
     ComposerFade(modifier) {
         vm.loggedBatchMessage?.let { Snackbar(it, "Undo", vm::undoLoggedBatch, Modifier.padding(bottom = 8.dp)) }
         vm.undoEntry?.let { deleted -> Snackbar("${deleted.foodName} deleted", "Undo", vm::undo, Modifier.padding(bottom = 8.dp)) }
         Composer(
-            placeholder = if (draft) vm.input else "Add to ${target.label()}",
+            placeholder = if (draft) vm.logDraft else "Add to ${target.label()}",
             onClick = { vm.openLog(target) },
             onScan = vm::beginScan,
             draft = draft,

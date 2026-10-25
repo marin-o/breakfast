@@ -213,9 +213,9 @@ internal fun DailyComposer(vm: BreakfastViewModel, modifier: Modifier = Modifier
     ComposerFade(modifier) {
         vm.loggedBatchMessage?.let { Snackbar(it, "Undo", vm::undoLoggedBatch, Modifier.padding(bottom = 8.dp)) }
         vm.undoEntry?.let { Snackbar("${it.foodName} deleted", "Undo", vm::undo, Modifier.padding(bottom = 8.dp)) }
-        val draft = vm.input.isNotBlank()
+        val draft = vm.logDraft.isNotBlank()
         Composer(
-            placeholder = if (draft) vm.input else "Log food",
+            placeholder = if (draft) vm.logDraft else "Log food",
             onClick = { vm.openLog(null) },
             onScan = vm::beginScan,
             draft = draft,
