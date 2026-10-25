@@ -570,7 +570,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }
     }
     fun cancelImport() { pendingImport = null }
-    /** Replace diary: every table becomes the file's rows in one transaction, then the screens and settings follow. */
+    /** Replace diary: every table becomes the file's rows in one transaction. The phone's settings stay as they are. */
     fun confirmImport() {
         val pending = pendingImport ?: return
         if (!ready || busy) return
@@ -581,11 +581,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 engine.replaceDiary(pending.rows)
                 // Nothing from the old diary may be undone, pinned or confirmed into the new one.
                 offerUndo(null); loggedBatchIds = emptyList(); logPins.clear(); feedbackIds = emptySet()
-                longDraft = pending.settings.longDraft
-                settings.longDraft = pending.settings.longDraft
-                dayStartHour = pending.settings.dayStartHour
-                settings.dayStartHour = pending.settings.dayStartHour
-                checkDay(returning = true)
                 refresh()
                 refreshLibrary()
             } catch (e: CancellationException) {
@@ -1994,6 +1989,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
         onDismissRequest = vm::cancelImport,
         confirmButton = { TextButton(vm::confirmImport) { Text("Replace diary") } },
         dismissButton = { TextButton(vm::cancelImport) { Text("Cancel") } },
+        text = { Text("This replaces entries and foods, not settings.") },
     )
     if (vm.storageUnavailable) AlertDialog(onDismissRequest = {}, confirmButton = { TextButton(vm::retryStorage) { Text("Try again") } }, title = { Text("Storage unavailable") }, text = { Text("Storage could not be opened.") })
 }

@@ -12,7 +12,8 @@ import java.time.LocalDate
 
 /*
  * The diary file written by Settings > Export diary and read back by Import diary: one JSON document holding every row
- * of every table in [BreakfastDatabase], plus the user's settings. It is the diary's backup (Android cloud backup
+ * of every table in [BreakfastDatabase], plus the user's settings (written for reference; an import leaves the phone's
+ * settings as they are). It is the diary's backup (Android cloud backup
  * leaves the database out). The bundled catalogue rows are included as stored, so built-in foods the user edited,
  * archived or added aliases to come back exactly; after an import the store seeds and syncs the catalogue as at
  * every start, so a file from an older build still gets the current catalogue.
@@ -45,7 +46,7 @@ internal data class DiaryRows(
 @Serializable
 internal data class DiarySettingsDto(val dayStartHour: Int, val longDraft: String)
 
-/** A validated settings pair, ready to apply. */
+/** The settings an export writes. */
 internal data class DiarySettings(val dayStartHour: Int, val longDraft: LongDraft)
 
 @Serializable
@@ -132,9 +133,10 @@ private val diaryJson = Json {
     allowSpecialFloatingPointValues = false
 }
 
-/** What reading a diary file gave: rows and settings that passed every check, or the first reason it was refused. */
+/** What reading a diary file gave: rows that passed every check, or the first reason it was refused. Settings in the
+ * file are checked but never returned: an import does not change them. */
 internal sealed interface DiaryImport {
-    data class Valid(val rows: DiaryRows, val settings: DiarySettings) : DiaryImport
+    data class Valid(val rows: DiaryRows) : DiaryImport
     data class Invalid(val reason: String) : DiaryImport
 }
 
@@ -186,7 +188,6 @@ internal fun validateDiary(file: DiaryFile): DiaryImport {
             preferences = file.preferences.map { PreferenceEntity(it.foodId, it.explicitCount, it.lastReinforcedEpochMs) },
             entries = file.mealEntries.map { it.toEntity() },
         ),
-        settings = DiarySettings(file.settings.dayStartHour, LongDraft.valueOf(file.settings.longDraft)),
     )
 }
 

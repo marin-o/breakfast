@@ -20,7 +20,7 @@ Success means familiar meals are logged without touching a suggestion, a new com
 
 ## Positioning
 
-Logging is shorthand-first and resolution is personal. The user's own aliases, custom foods and deliberate past selections outrank global matches, so `1 tsp pb` resolves to their usual local brand. Automatic guesses never train preferences; only an explicit selection or Confirm does. Parsing, matching and nutrition calculation are separate deterministic steps, with no LLM and no estimated nutrition presented as fact. All data stays on the device: Google cloud backup leaves the diary out, and the backup is a file the user makes with Export diary (Settings) and restores with Import diary, which replaces the whole diary. A direct device-to-device transfer to a new phone (Android 12 and later) still moves the diary.
+Logging is shorthand-first and resolution is personal. The user's own aliases, custom foods and deliberate past selections outrank global matches, so `1 tsp pb` resolves to their usual local brand. Automatic guesses never train preferences; only an explicit selection or Confirm does. Parsing, matching and nutrition calculation are separate deterministic steps, with no LLM and no estimated nutrition presented as fact. All data stays on the device: Google cloud backup leaves the diary out, and the backup is a file the user makes with Export diary (Settings) and restores with Import diary, which replaces the entries and foods but keeps the phone's settings. A direct device-to-device transfer to a new phone (Android 12 and later) still moves the diary.
 
 The diary, search and food-detail patterns follow MyFitnessPal so the app feels familiar. Breakfast does not copy MyFitnessPal's branding, visuals, account model or wider feature set.
 

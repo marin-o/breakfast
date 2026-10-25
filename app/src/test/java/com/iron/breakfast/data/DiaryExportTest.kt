@@ -58,14 +58,19 @@ class DiaryExportTest {
 
     private fun file() = diaryFileOf(rows(), settings, exportedAtEpochMs = 5_000L)
 
-    @Test fun roundTripGivesBackEveryRowAndTheSettings() {
+    @Test fun roundTripGivesBackEveryRow() {
         val text = encodeDiary(file())
         val imported = valid(text)
         assertEquals(sorted(rows()), sorted(imported.rows))
-        assertEquals(settings, imported.settings)
         assertTrue(imported.rows.foods.single { it.id == "archived-1" }.archived)
         assertTrue(imported.rows.foods.single { it.id == "edited-builtin" }.personalOverride)
         assertEquals(entry("e-2", "deleted-food", 1_000L), imported.rows.entries.single { it.id == "e-2" })
+    }
+
+    /** Owner decision: an import leaves the phone's settings alone, so the file's settings never reach the result. */
+    @Test fun settingsInTheFileDoNotChangeWhatIsImported() {
+        val other = diaryFileOf(rows(), DiarySettings(0, LongDraft.END), exportedAtEpochMs = 5_000L)
+        assertEquals(valid(encodeDiary(file())), valid(encodeDiary(other)))
     }
 
     @Test fun theFileNamesItsVersionsAndFields() {

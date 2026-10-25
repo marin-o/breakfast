@@ -87,7 +87,6 @@ class DiaryImportTest {
         assertNotEquals(beforeCounts, counts())
 
         val imported = decodeDiary(before) as DiaryImport.Valid
-        assertEquals(settings, imported.settings)
         store.replaceDiary(imported.rows)
 
         assertEquals(beforeCounts, counts())
