@@ -8,6 +8,7 @@ import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionInput
 import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.splitAliases
+import kotlinx.serialization.Serializable
 
 /**
  * Holds the personal-food form (create and edit) in the ViewModel so it survives the barcode
@@ -88,9 +89,29 @@ class FoodDraft {
 
     /** True when any typed value differs from [baseline], the form as it opened. Opening a field changes nothing. */
     fun isDirty(baseline: FoodDraftFields): Boolean = fields() != baseline
+
+    /** The whole form, values and flags, so it can be put back as it was after the process is killed. */
+    fun state() = FoodDraftState(
+        fields(), barcodeFromScan, fromOff, caloriesEdited, proteinEdited, carbsEdited, fatEdited, basisEdited,
+        aliasFieldOpen, servingFormOpen,
+    )
+
+    fun restore(state: FoodDraftState) {
+        val f = state.fields
+        name = f.name; brand = f.brand; barcode = f.barcode; shorthand = f.shorthand
+        calories = f.calories; protein = f.protein; carbs = f.carbs; fat = f.fat
+        basisAmount = f.basisAmount; basisUnit = f.basisUnit
+        aliases = f.aliases; aliasInput = f.aliasInput
+        servings = f.servings; servingUnit = f.servingUnit; servingAmount = f.servingAmount; servingLabel = f.servingLabel
+        barcodeFromScan = state.barcodeFromScan; fromOff = state.fromOff
+        caloriesEdited = state.caloriesEdited; proteinEdited = state.proteinEdited; carbsEdited = state.carbsEdited
+        fatEdited = state.fatEdited; basisEdited = state.basisEdited
+        aliasFieldOpen = state.aliasFieldOpen; servingFormOpen = state.servingFormOpen
+    }
 }
 
 /** The food form's typed values. Opening the alias or serving field and the "from scan" tag are not part of them. */
+@Serializable
 data class FoodDraftFields(
     val name: String = "",
     val brand: String = "",
@@ -108,6 +129,21 @@ data class FoodDraftFields(
     val servingUnit: MeasureUnit = MeasureUnit.PIECE,
     val servingAmount: String = "",
     val servingLabel: String = "",
+)
+
+/** [FoodDraftFields] plus the form's own flags: what [FoodDraft.restore] needs to show the form as it was. */
+@Serializable
+data class FoodDraftState(
+    val fields: FoodDraftFields = FoodDraftFields(),
+    val barcodeFromScan: Boolean = false,
+    val fromOff: Boolean = false,
+    val caloriesEdited: Boolean = false,
+    val proteinEdited: Boolean = false,
+    val carbsEdited: Boolean = false,
+    val fatEdited: Boolean = false,
+    val basisEdited: Boolean = false,
+    val aliasFieldOpen: Boolean = false,
+    val servingFormOpen: Boolean = false,
 )
 
 /** A stored number as the form shows it: as written, never in exponent form ("5.0E-4" would edit into 5.04). */

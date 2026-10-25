@@ -81,6 +81,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.key.Key
@@ -266,7 +267,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var editingLibraryFoodId by mutableStateOf<String?>(null); private set
     val draft = FoodDraft()
     /** The food form as it opened; Back asks before discarding only when [draft] differs from it. */
-    private var draftBaseline = FoodDraftFields()
+    private var draftBaseline by mutableStateOf(FoodDraftFields())
     var discardFoodOpen by mutableStateOf(false); private set
     var searchOpen by mutableStateOf(false); private set
     var searchQuery by mutableStateOf(""); private set
@@ -374,7 +375,35 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var loggedBatchMessage by mutableStateOf<String?>(null); private set
     private var loggedBatchIds: List<String> = emptyList()
 
-    init { viewModelScope.launch { runCatching { engine.initialize(); refresh() }.onSuccess { ready = true }.onFailure { initializationError = "Storage could not be opened: ${it.message}" } } }
+    init {
+        // Typed work comes back after the process was killed: the log draft, and an open food form.
+        restoreLogDraft(savedState).let { logDraft = it.text; logDraftCommitted = it.committed }
+        restoreFoodForm(savedState)?.let { form ->
+            draft.restore(form.draft)
+            draftBaseline = form.baseline
+            editingLibraryFoodId = form.editingFoodId
+            customOpen = true
+        }
+        // Every change is mirrored, so an added or cleared draft and a closed or saved form drop their keys.
+        viewModelScope.launch { snapshotFlow { SavedLogDraft(logDraft, logDraftCommitted) }.collect { saveLogDraft(savedState, it) } }
+        viewModelScope.launch { snapshotFlow { foodFormToSave() }.collect { saveFoodForm(savedState, it) } }
+        viewModelScope.launch {
+            runCatching { engine.initialize(); refresh() }
+                .onSuccess {
+                    ready = true
+                    // A restored Edit food whose food is gone has nothing to edit.
+                    if (customOpen && editingLibraryFoodId?.let { id -> foods.none { it.id == id } } == true) closeCustom()
+                }
+                .onFailure { initializationError = "Storage could not be opened: ${it.message}" }
+        }
+    }
+    /**
+     * The open food form, for [saveFoodForm]. Not while a part is being resolved or a resolve queue is open: what Save
+     * does there depends on state that does not come back, so a restored form would save somewhere else.
+     */
+    private fun foodFormToSave(): SavedFoodForm? =
+        if (!customOpen || logResolve != null || resolutionContinuation) null
+        else SavedFoodForm(editingLibraryFoodId, draft.state(), draftBaseline)
     private fun refresh() {
         foods = engine.foods()
         entries = engine.persistedMeal().entries
