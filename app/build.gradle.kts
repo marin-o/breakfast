@@ -15,7 +15,8 @@ android {
         applicationId = "com.iron.breakfast"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        // Bump versionCode by 1 for every build installed on the phone; versionName stays 0.x until a release.
+        versionCode = 2
         versionName = "0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -43,6 +44,7 @@ android {
         jvmTarget = "17"
     }
     buildFeatures {
+        buildConfig = true
         compose = true
     }
     packaging {
@@ -87,5 +89,5 @@ room {
     schemaDirectory("debug", "$projectDir/schemas/debug")
     schemaDirectory("debugUnitTest", "$projectDir/schemas/debug")
     schemaDirectory("debugAndroidTest", "$projectDir/schemas/debug")
-    schemaDirectory("perf", "$projectDir/schemas/perf")
+    schemaDirectory("perf", "$projectDir/schemas/debug")
 }

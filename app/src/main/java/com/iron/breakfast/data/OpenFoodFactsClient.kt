@@ -1,5 +1,6 @@
 package com.iron.breakfast.data
 
+import com.iron.breakfast.BuildConfig
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MeasureUnit
@@ -96,7 +97,7 @@ data class OffContributionDraft(
             put("comment", "Nutrition correction from Breakfast")
         }
         put("app_name", "Breakfast")
-        put("app_version", "0.1")
+        put("app_version", BuildConfig.VERSION_NAME)
     }
 
     companion object {
@@ -135,6 +136,8 @@ sealed interface OffPreflightResult {
     data class Ineligible(val message: String) : OffPreflightResult
     data object Unavailable : OffPreflightResult
 }
+
+private val USER_AGENT = "Breakfast/${BuildConfig.VERSION_NAME} (daily food logger)"
 
 /** Explicit-submit adapter. It is deliberately independent of matching and Room. */
 class OpenFoodFactsClient(
@@ -297,7 +300,7 @@ class OpenFoodFactsClient(
     private fun open(url: URL): HttpURLConnection? = try {
         connectionFactory(url)?.apply {
             connectTimeout = 4500; readTimeout = 4500; requestMethod = "GET"
-            setRequestProperty("User-Agent", "Breakfast/0.1 (daily food logger)")
+            setRequestProperty("User-Agent", USER_AGENT)
         }
     } catch (_: Exception) { null }
 
@@ -306,7 +309,7 @@ class OpenFoodFactsClient(
             connectTimeout = 4500; readTimeout = 4500; requestMethod = "POST"
             doOutput = true
             setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-            setRequestProperty("User-Agent", "Breakfast/0.1 (daily food logger)")
+            setRequestProperty("User-Agent", USER_AGENT)
         }
     } catch (_: Exception) { null }
 
