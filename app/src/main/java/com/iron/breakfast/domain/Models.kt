@@ -152,7 +152,6 @@ data class ParsedSegment(
     val unit: MeasureUnit?,
     val quantityStart: Int?,
     val quantityEnd: Int?,
-    val explicitModifiers: List<String> = emptyList(),
     /** True when a number word or article was read as the amount, which a food's own name may contain instead. */
     val wordQuantity: Boolean = false,
     /** True for a bare "a" or "an" with no unit: one when the food is counted by the piece, else the food's default. */

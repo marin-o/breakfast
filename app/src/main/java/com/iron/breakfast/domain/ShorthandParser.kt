@@ -300,13 +300,9 @@ class ShorthandParser {
         if (raw.isEmpty()) return ParsedSegment(raw, "", null, null, null, null)
 
         val quantity = findQuantity(raw) ?: return ParsedSegment(raw, raw, null, null, null, null)
-        val foodPhrase = (raw.removeRange(quantity.range)).replace(Regex("\\s+"), " ").trim()
-        val modifiers = Regex("(?iu)(?:\\b\\d+(?:[.,]\\d+)?%|\\b(?:small|large|oat|smooth|crunchy|raw|cooked|roasted|boneless|skinless|drained|canned)\\b)")
-            .findAll(foodPhrase)
-            .map { it.value.lowercase(Locale.ROOT) }
-            .toList()
+        val foodPhrase = (raw.removeRange(quantity.range)).replace(WHITESPACE, " ").trim()
         return ParsedSegment(
-            raw, foodPhrase, quantity.amount, quantity.unit, quantity.range.first, quantity.range.last + 1, modifiers,
+            raw, foodPhrase, quantity.amount, quantity.unit, quantity.range.first, quantity.range.last + 1,
             wordQuantity = quantity.fromWord, articleQuantity = quantity.article,
         )
     }
@@ -356,7 +352,7 @@ class ShorthandParser {
     private fun parseAmount(text: String): Double {
         val normalized = text.trim().lowercase(Locale.ROOT).replace(',', '.')
         if (normalized == "half") return 0.5
-        val pieces = normalized.split(Regex("\\s+"))
+        val pieces = normalized.split(WHITESPACE)
         if (pieces.size == 2 && '/' in pieces[1]) {
             return (pieces[0].toDoubleOrNull() ?: 0.0) + fraction(pieces[1])
         }
@@ -406,6 +402,7 @@ class ShorthandParser {
         /** A comma between two digits is a decimal separator ("1,5 kg"), never a break; "oats,1 banana" still breaks. */
         val HARD_BREAK = Regex("${ItemComma.pattern}|[;\n]")
         val WORD = Regex("\\S+")
+        val WHITESPACE = Regex("\\s+")
         val NUMBER = Regex("\\d+(?:[.,]\\d+)?")
         val FRACTION = Regex("\\d+/\\d+")
         val MULTIPLIER = Regex("(?iu)\\d+x|x\\d+")

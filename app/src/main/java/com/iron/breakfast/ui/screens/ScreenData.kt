@@ -112,13 +112,6 @@ internal fun entryDateLabel(dayKey: String): String =
     runCatching { java.time.LocalDate.parse(dayKey) }.getOrNull()
         ?.format(DateTimeFormatter.ofPattern("EEE d MMMM", Locale.ENGLISH)) ?: dayKey
 
-/** The Match row only appears when the entry was matched from an alias or a phrase different from the food name. */
-internal fun matchedPhraseLabel(sourcePhrase: String, foodName: String): String? {
-    val phrase = sourcePhrase.trim()
-    if (phrase.isEmpty() || phrase.equals(foodName.trim(), ignoreCase = true)) return null
-    return "Matched from $phrase"
-}
-
 /** Source label beside the O/B/P box on the entry detail. */
 internal fun entrySourceLabel(food: FoodRecord?): String = sourceLabel(sourceLetter(food))
 

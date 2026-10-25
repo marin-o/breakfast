@@ -28,7 +28,7 @@ The pinned exports are small build-time source snapshots; the app has no runtime
 
 ## Focused checks
 
-`BreakfastDomainTest` covers quantity-first and quantity-after parsing, fractions, comma segments, modifier-constrained matching in English and Cyrillic, serving conversion and nutrition calculation, and legacy codec round trips. `RoomStorageMappingTest` covers stable-ID seeding, entity round trips, source metadata, and nullable-vs-zero snapshot columns. Core logging works locally; submitted OFF search, barcode lookup, and optional contribution require a connection.
+`BreakfastDomainTest` covers quantity-first and quantity-after parsing, fractions, comma segments, modifier-constrained matching in English and Cyrillic, and serving conversion and nutrition calculation. `RoomStorageMappingTest` covers stable-ID seeding, entity round trips, source metadata, and nullable-vs-zero snapshot columns. Core logging works locally; submitted OFF search, barcode lookup, and optional contribution require a connection.
 
 `BreakfastDatabaseTest` is an Android test for additive seed idempotence, meal snapshots surviving a database close/reopen, transactional food upserts, and the Room migrations 1→5, 2→4 and 5→6 (the schema is at version 6). It runs only on a device; the JVM tests do not cover migrations. Compile it with `compileDebugAndroidTestKotlin`. Never run `connectedDebugAndroidTest` on the phone that holds the diary: AGP uninstalls the app afterwards. Use the manual procedure in [`docs/architecture.md`](docs/architecture.md).
 

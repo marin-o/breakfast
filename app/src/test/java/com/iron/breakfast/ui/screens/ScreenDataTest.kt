@@ -204,13 +204,6 @@ class ScreenDataTest {
     }
 
     @Test
-    fun matchRowOnlyForAliasOrDifferentPhrase() {
-        assertEquals(null, matchedPhraseLabel("Peanut butter", "peanut butter"))
-        assertEquals(null, matchedPhraseLabel("  ", "Peanut butter"))
-        assertEquals("Matched from pb", matchedPhraseLabel("pb", "Peanut butter"))
-    }
-
-    @Test
     fun entryDateLineHasNoComma() {
         assertEquals("Wed 14 October", entryDateLabel("2026-10-14"))
     }

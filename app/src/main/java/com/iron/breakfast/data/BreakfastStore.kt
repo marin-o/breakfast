@@ -6,64 +6,15 @@ import androidx.room.withTransaction
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.BuiltInCatalogSync
 import com.iron.breakfast.domain.FoodCatalog
-import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.Preference
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-
-@Serializable
-data class StorageModel(
-    val foods: List<FoodRecord> = emptyList(),
-    val entries: List<MealEntry> = emptyList(),
-    val preferences: List<Preference> = emptyList()
-)
-
-object StorageCodec {
-    private val json = Json { ignoreUnknownKeys = true }
-
-    fun encode(model: StorageModel): String = json.encodeToString(StorageModel.serializer(), model)
-
-    fun decode(value: String): StorageModel = runCatching {
-        json.decodeFromString(StorageModel.serializer(), value)
-    }.getOrDefault(StorageModel())
-}
-object StorageMigrations {
-    fun addFixtureConversions(model: StorageModel, fixtures: List<FoodRecord> = FoodCatalog.fixtures): StorageModel {
-        val fixtureByKey = fixtures.associateBy { it.id }
-        val migratedFoods = model.foods.map { existing ->
-            val fixture = fixtureByKey[existing.id]
-            if (fixture == null || existing.name != fixture.name || existing.origin != fixture.origin) {
-                existing
-            } else {
-                val mergedConversions = existing.conversions + fixture.conversions.filter { candidate ->
-                    existing.conversions.none { it.unit == candidate.unit }
-                }
-                existing.copy(
-                    aliases = (existing.aliases + fixture.aliases).distinct(),
-                    conversions = mergedConversions,
-                    sourceId = existing.sourceId ?: fixture.sourceId,
-                    sourceName = existing.sourceName ?: fixture.sourceName,
-                    sourceRelease = existing.sourceRelease ?: fixture.sourceRelease,
-                    preparation = existing.preparation ?: fixture.preparation,
-                    sourceDescription = existing.sourceDescription ?: fixture.sourceDescription
-                )
-            }
-        }
-        val existingIds = model.foods.mapTo(mutableSetOf()) { it.id }
-        val missingFixtures = fixtures.filter {
-            it.origin == FoodOrigin.GENERIC && it.id !in existingIds
-        }
-        return model.copy(foods = migratedFoods + missingFixtures)
-    }
-}
 
 private data class StoreSnapshot(
     val foods: List<FoodRecord> = emptyList(),

@@ -1,8 +1,5 @@
 package com.iron.breakfast.domain
 
-import com.iron.breakfast.data.StorageCodec
-import com.iron.breakfast.data.StorageMigrations
-import com.iron.breakfast.data.StorageModel
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -225,85 +222,5 @@ class BreakfastDomainTest {
         assertEquals(13.8, NutritionCalculator().calculate(mayonnaise, 1.0, MeasureUnit.TABLESPOON).resolvedBaseAmount, 0.01)
         assertEquals(5.3, NutritionCalculator().calculate(soySauce, 1.0, MeasureUnit.TEASPOON).resolvedBaseAmount, 0.01)
         assertEquals(17.0, NutritionCalculator().calculate(barbecue, 1.0, MeasureUnit.TABLESPOON).resolvedBaseAmount, 0.01)
-    }
-
-    @Test
-    fun storageCodecRoundTripsEntriesPreferencesAndFoods() {
-        val food = FoodCatalog.fixtures.first { it.id == "usda_2646170_chicken_breast_raw" }
-        val entry = MealEntry(
-            id = "entry-1",
-            foodId = food.id,
-            foodName = food.name,
-            enteredAmount = 2.0,
-            enteredUnit = MeasureUnit.TABLESPOON,
-            resolvedBaseAmount = 30.0,
-            nutritionSnapshot = NutritionValues(16.2, 0.96, 1.44, 0.84),
-            conversionProvenance = "15 ml household tablespoon",
-            approximateConversion = false,
-            savedAtEpochMs = 123L,
-            sourcePhrase = "1 tbsp smooth peanut butter"
-        )
-        val original = StorageModel(listOf(food), listOf(entry), listOf(Preference(food.id, 2, 123L)))
-        val restored = StorageCodec.decode(StorageCodec.encode(original))
-        assertEquals(original, restored)
-        assertEquals("2646170", restored.foods.first().sourceId)
-        assertEquals("2026-04-30", restored.foods.first().sourceRelease)
-        assertEquals("Chicken, breast, boneless, skinless, raw", restored.foods.first().sourceDescription)
-    }
-
-    @Test
-    fun fixtureMigrationAddsConversionsWithoutOverwritingUserData() {
-        val peanutButter = FoodCatalog.fixtures.first { it.id == "peanut_butter_smooth" }
-        val oldFixture = peanutButter.copy(
-            aliases = listOf("my pb"),
-            conversions = peanutButter.conversions.filter { it.unit == MeasureUnit.TABLESPOON }
-        )
-        val userFood = peanutButter.copy(id = "user_pb", name = "My peanut butter", aliases = listOf("my jar"))
-        val original = StorageModel(
-            foods = listOf(oldFixture, userFood),
-            entries = emptyList(),
-            preferences = listOf(Preference("user_pb", explicitCount = 3, lastReinforcedEpochMs = 99L))
-        )
-
-        val migrated = StorageMigrations.addFixtureConversions(original)
-        val migratedFixture = migrated.foods.first { it.id == peanutButter.id }
-        assertEquals("my pb", migratedFixture.aliases.first())
-        assertTrue("peanut butter" in migratedFixture.aliases)
-        assertTrue(migratedFixture.conversions.any { it.unit == MeasureUnit.TEASPOON })
-        assertEquals(userFood, migrated.foods.first { it.id == "user_pb" })
-        assertEquals(original.preferences, migrated.preferences)
-        assertEquals(original.entries, migrated.entries)
-    }
-
-    @Test
-    fun fixtureMigrationAppendsNewFoodsWithoutReplacingStoredFoods() {
-        val storedFixture = FoodCatalog.fixtures.first { it.id == "milk_28" }
-            .copy(aliases = listOf("my milk"))
-        val legacyChicken = FoodCatalog.fixtures.first { it.id == "usda_2646170_chicken_breast_raw" }
-            .copy(aliases = listOf("my chicken"), sourceDescription = null)
-        val userFood = storedFixture.copy(id = "user_milk", name = "My milk")
-        val original = StorageModel(
-            foods = listOf(storedFixture, userFood, legacyChicken),
-            entries = emptyList(),
-            preferences = listOf(Preference("user_milk", explicitCount = 2, lastReinforcedEpochMs = 7L))
-        )
-
-        val migrated = StorageMigrations.addFixtureConversions(original)
-
-        assertTrue(migrated.foods.any { it.id == "usda_2646170_chicken_breast_raw" })
-        assertTrue(migrated.foods.any { it.id == "usda_171009_mayonnaise" })
-        assertTrue(migrated.foods.any { it.id == "usda_174277_soy_sauce" })
-        assertTrue(migrated.foods.any { it.id == "usda_174523_barbecue_sauce" })
-        assertTrue(migrated.foods.none { it.id == "custom_grandmas_ajvar" })
-        val migratedMilk = migrated.foods.first { it.id == "milk_28" }
-        assertEquals("my milk", migratedMilk.aliases.first())
-        assertTrue("milk" in migratedMilk.aliases)
-        val migratedChicken = migrated.foods.first { it.id == legacyChicken.id }
-        assertTrue("my chicken" in migratedChicken.aliases)
-        assertTrue("skinless chicken" in migratedChicken.aliases)
-        assertEquals("Chicken, breast, boneless, skinless, raw", migratedChicken.sourceDescription)
-        assertEquals(userFood, migrated.foods.first { it.id == "user_milk" })
-        assertEquals(original.preferences, migrated.preferences)
-        assertEquals(original.entries, migrated.entries)
     }
 }

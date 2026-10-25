@@ -199,11 +199,6 @@ class BreakfastEngine(private val store: BreakfastStore) {
 
     suspend fun deleteEntry(id: String) = store.deleteEntry(id)
 
-    suspend fun updateEntryPlacement(id: String, mealSlot: MealSlot, dayKey: String) {
-        val entry = store.entries().firstOrNull { it.id == id } ?: return
-        store.replaceEntry(entry.copy(mealSlot = mealSlot, dayKey = dayKey))
-    }
-
     suspend fun restoreEntry(entry: MealEntry) = store.saveEntries(listOf(entry))
 
     suspend fun archiveFood(foodId: String) = store.archiveFood(foodId)
