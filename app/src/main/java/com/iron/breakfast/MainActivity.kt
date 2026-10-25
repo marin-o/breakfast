@@ -1653,7 +1653,6 @@ internal fun draftLogPlan(input: String, planner: LogPlanner): LogPlan = planner
 
 internal fun MealSlot.label() = name.lowercase().replaceFirstChar { it.titlecase() }
 internal fun Double.pretty() = if (this % 1 == 0.0) "%.0f".format(Locale.ROOT, this) else "%.1f".format(Locale.ROOT, this)
-internal fun Double?.macro() = this?.let { "${it.pretty()} g" } ?: "—"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

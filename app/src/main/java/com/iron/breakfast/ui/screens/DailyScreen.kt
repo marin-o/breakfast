@@ -48,11 +48,14 @@ import com.iron.breakfast.BreakfastViewModel
 import com.iron.breakfast.EntryEditMode
 import com.iron.breakfast.ContributionAction
 import com.iron.breakfast.domain.FoodRecord
+import com.iron.breakfast.domain.MacroTotal
+import com.iron.breakfast.domain.MacroTotals
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.NutritionValues
+import com.iron.breakfast.domain.macroTotalsOf
 import com.iron.breakfast.label
-import com.iron.breakfast.macro
+import com.iron.breakfast.pretty
 import com.iron.breakfast.ui.components.BottomNav
 import com.iron.breakfast.ui.components.ChoiceOption
 import com.iron.breakfast.ui.components.Composer
@@ -118,7 +121,13 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                     nextEnabled = !isToday,
                     onTitleClick = { pickerOpen = true },
                 )
-                DayTotal(formatKcal(total.calories), dailyMacroStats(total), Modifier.padding(top = 18.dp))
+                val macros = macroTotalsOf(selected.map { it.nutritionSnapshot })
+                DayTotal(
+                    formatKcal(total.calories),
+                    dailyMacroStats(total.calories, macros),
+                    Modifier.padding(top = 18.dp),
+                    note = dailyMacroNote(macros),
+                )
             }
             vm.mealDraftError?.let { message -> item { Text(message, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(vertical = 6.dp)) } }
             items(MealSlot.entries) { slot ->
@@ -161,16 +170,29 @@ private fun DayPickerDialog(dayKey: String, onDismiss: () -> Unit, onPick: (Stri
     ) { DatePicker(state = state) }
 }
 
-/** Macro columns for the day total. Each bar is the macro's share of the day's kcal. */
-private fun dailyMacroStats(total: NutritionValues): List<MacroStat> {
-    val kcal = total.calories
-    fun share(kcalOfMacro: Double?): Float = if (kcal > 0.0 && kcalOfMacro != null) (kcalOfMacro / kcal).toFloat() else 0f
+/**
+ * Macro columns for the day total. Each bar is the macro's known share of the day's kcal. A macro no entry has reads
+ * "—", as the Library shows an unknown value; a sum that leaves out entries without the macro reads "12 g ?".
+ */
+internal fun dailyMacroStats(kcal: Double, macros: MacroTotals): List<MacroStat> {
+    fun stat(label: String, total: MacroTotal, kcalPerGram: Double): MacroStat {
+        val share = if (kcal > 0.0) (total.sum * kcalPerGram / kcal).toFloat() else 0f
+        return when {
+            total.allUnknown -> MacroStat(label, "—", "g", share)
+            total.partial -> MacroStat(label, total.sum.pretty(), "g ?", share)
+            else -> MacroStat(label, total.sum.pretty(), "g", share)
+        }
+    }
     return listOf(
-        MacroStat("Protein", total.protein?.macro()?.removeSuffix(" g") ?: "0", "g", share(total.protein?.times(4.0))),
-        MacroStat("Carbs", total.carbohydrates?.macro()?.removeSuffix(" g") ?: "0", "g", share(total.carbohydrates?.times(4.0))),
-        MacroStat("Fat", total.fat?.macro()?.removeSuffix(" g") ?: "0", "g", share(total.fat?.times(9.0))),
+        stat("Protein", macros.protein, 4.0),
+        stat("Carbs", macros.carbohydrates, 4.0),
+        stat("Fat", macros.fat, 9.0),
     )
 }
+
+/** The one line under the macros when any of them shows "?". */
+internal fun dailyMacroNote(macros: MacroTotals): String? =
+    if (macros.anyPartial) "? some foods have no value" else null
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable

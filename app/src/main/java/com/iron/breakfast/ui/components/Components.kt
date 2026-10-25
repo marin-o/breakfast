@@ -555,6 +555,8 @@ fun DayTotal(
     macros: List<MacroStat>,
     modifier: Modifier = Modifier,
     caption: String = "kilocalories today",
+    /** One soft line under the macros, or nothing. */
+    note: String? = null,
 ) {
     val colors = LocalBreakfastColors.current
     val stacked = isLargeFont(LocalDensity.current.fontScale)
@@ -589,6 +591,7 @@ fun DayTotal(
                 }
             }
         }
+        note?.let { Text(it, color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 10.dp)) }
     }
 }
 

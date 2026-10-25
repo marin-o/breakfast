@@ -49,6 +49,35 @@ private fun Double?.sumIfSupplied(other: Double?): Double? = when {
     else -> this + other
 }
 
+/**
+ * One macro summed over a day's entries: the sum of the known values, and how many entries knew it or did not.
+ * Calories are always known; a macro may not be, so a sum that skips unknown parts says so.
+ */
+data class MacroTotal(val sum: Double, val known: Int, val unknown: Int) {
+    /** Some entries have the macro and some do not: [sum] is only part of the day. */
+    val partial: Boolean get() = known > 0 && unknown > 0
+
+    /** No entry has the macro: there is no sum to show. An empty day is not unknown; it is zero. */
+    val allUnknown: Boolean get() = known == 0 && unknown > 0
+}
+
+/** The day's protein, carbohydrates and fat, each as a [MacroTotal]. */
+data class MacroTotals(val protein: MacroTotal, val carbohydrates: MacroTotal, val fat: MacroTotal) {
+    /** At least one macro is only partly known. */
+    val anyPartial: Boolean get() = listOf(protein, carbohydrates, fat).any { it.partial }
+}
+
+/** Folds one macro's values: null is unknown, never zero. */
+internal fun macroTotalOf(values: List<Double?>): MacroTotal =
+    MacroTotal(values.sumOf { it ?: 0.0 }, values.count { it != null }, values.count { it == null })
+
+/** Folds the macros of [values] (one per entry) without turning an unknown macro into zero. */
+internal fun macroTotalsOf(values: List<NutritionValues>): MacroTotals = MacroTotals(
+    protein = macroTotalOf(values.map { it.protein }),
+    carbohydrates = macroTotalOf(values.map { it.carbohydrates }),
+    fat = macroTotalOf(values.map { it.fat }),
+)
+
 @Serializable
 data class NutritionBasis(
     val amount: Double,
