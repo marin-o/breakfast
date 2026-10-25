@@ -41,6 +41,8 @@ class FoodDraft {
     var servingUnit by mutableStateOf(MeasureUnit.PIECE)
     var servingAmount by mutableStateOf("")
     var servingLabel by mutableStateOf("")
+    /** What the serving form showed when Add serving opened it; until it changes, nothing was typed there. */
+    private var servingOpenedWith by mutableStateOf<PendingServing?>(null)
 
     fun reset() = load(null)
 
@@ -58,7 +60,7 @@ class FoodDraft {
         caloriesEdited = false; proteinEdited = false; carbsEdited = false; fatEdited = false; basisEdited = false
         aliases = food?.aliases.orEmpty(); aliasInput = ""; aliasFieldOpen = false
         servings = food?.householdServings().orEmpty()
-        servingFormOpen = false; servingUnit = MeasureUnit.PIECE; servingAmount = ""; servingLabel = ""
+        servingFormOpen = false; servingUnit = MeasureUnit.PIECE; servingAmount = ""; servingLabel = ""; servingOpenedWith = null
     }
 
     /** Aliases already added plus any typed but not yet confirmed in the alias field. */
@@ -73,13 +75,26 @@ class FoodDraft {
         val base = servingAmount.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 } ?: return false
         val label = servingLabel.trim().ifBlank { null }
         servings = servings.filterNot { it.unit == servingUnit && it.label == label } + ServingConversion(servingUnit, base, "personal serving", label = label)
-        servingFormOpen = false; servingAmount = ""; servingLabel = ""
+        closeServing()
         return true
     }
 
-    fun cancelServing() {
-        servingFormOpen = false; servingAmount = ""; servingLabel = ""
+    /** Add serving: the form opens on [unit] with amount "0" and no name. */
+    fun openServing(unit: MeasureUnit) {
+        servingUnit = unit; servingAmount = "0"; servingLabel = ""; servingFormOpen = true
+        servingOpenedWith = PendingServing(unit, "0", "")
     }
+
+    /** Cancel puts the serving inputs back as the form loaded them. */
+    fun cancelServing() = closeServing()
+
+    private fun closeServing() {
+        servingFormOpen = false; servingUnit = MeasureUnit.PIECE; servingAmount = ""; servingLabel = ""; servingOpenedWith = null
+    }
+
+    /** The open serving form holds input the user typed or chose, not just what Add serving put there. */
+    private fun servingTyped(): Boolean =
+        servingFormOpen && PendingServing(servingUnit, servingAmount, servingLabel) != (servingOpenedWith ?: PendingServing(MeasureUnit.PIECE, "", ""))
 
     /** The values typed into the form, as they are now. */
     fun fields() = FoodDraftFields(
@@ -87,13 +102,17 @@ class FoodDraft {
         aliases, aliasInput, servings, servingUnit, servingAmount, servingLabel,
     )
 
-    /** True when any typed value differs from [baseline], the form as it opened. Opening a field changes nothing. */
-    fun isDirty(baseline: FoodDraftFields): Boolean = fields() != baseline
+    /**
+     * True when any typed value differs from [baseline], the form as it opened. Opening a field changes nothing:
+     * the pending serving inputs count only once typed into; an added serving counts through [servings].
+     */
+    fun isDirty(baseline: FoodDraftFields): Boolean =
+        fields().withoutPendingServing() != baseline.withoutPendingServing() || servingTyped()
 
     /** The whole form, values and flags, so it can be put back as it was after the process is killed. */
     fun state() = FoodDraftState(
         fields(), barcodeFromScan, fromOff, caloriesEdited, proteinEdited, carbsEdited, fatEdited, basisEdited,
-        aliasFieldOpen, servingFormOpen,
+        aliasFieldOpen, servingFormOpen, servingOpenedWith,
     )
 
     fun restore(state: FoodDraftState) {
@@ -106,9 +125,15 @@ class FoodDraft {
         barcodeFromScan = state.barcodeFromScan; fromOff = state.fromOff
         caloriesEdited = state.caloriesEdited; proteinEdited = state.proteinEdited; carbsEdited = state.carbsEdited
         fatEdited = state.fatEdited; basisEdited = state.basisEdited
-        aliasFieldOpen = state.aliasFieldOpen; servingFormOpen = state.servingFormOpen
+        aliasFieldOpen = state.aliasFieldOpen; servingFormOpen = state.servingFormOpen; servingOpenedWith = state.servingOpenedWith
     }
 }
+
+/** The serving form's three inputs, as Add serving filled them. */
+@Serializable
+data class PendingServing(val unit: MeasureUnit, val amount: String, val label: String)
+
+private fun FoodDraftFields.withoutPendingServing() = copy(servingUnit = MeasureUnit.PIECE, servingAmount = "", servingLabel = "")
 
 /** The food form's typed values. Opening the alias or serving field and the "from scan" tag are not part of them. */
 @Serializable
@@ -144,6 +169,7 @@ data class FoodDraftState(
     val basisEdited: Boolean = false,
     val aliasFieldOpen: Boolean = false,
     val servingFormOpen: Boolean = false,
+    val servingOpenedWith: PendingServing? = null,
 )
 
 /** A stored number as the form shows it: as written, never in exponent form ("5.0E-4" would edit into 5.04). */

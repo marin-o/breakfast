@@ -6,6 +6,7 @@ import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.ServingConversion
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -54,9 +55,9 @@ class FoodDraftDirtyTest {
             { it.aliases = it.aliases + "pindjur" },
             { it.aliasInput = "pindjur" },
             { it.servings = it.servings + ServingConversion(MeasureUnit.TABLESPOON, 15.0, "personal serving") },
-            { it.servingUnit = MeasureUnit.TABLESPOON },
-            { it.servingAmount = "15" },
-            { it.servingLabel = "jar" },
+            { it.openServing(MeasureUnit.GRAM); it.servingUnit = MeasureUnit.MILLILITER },
+            { it.openServing(MeasureUnit.GRAM); it.servingAmount = "15" },
+            { it.openServing(MeasureUnit.GRAM); it.servingLabel = "jar" },
         )
         edits.forEachIndexed { index, edit ->
             val (draft, baseline) = opened(ajvar)
@@ -70,6 +71,48 @@ class FoodDraftDirtyTest {
         draft.aliasFieldOpen = true
         draft.servingFormOpen = true
         assertFalse(draft.isDirty(baseline))
+    }
+
+    @Test fun addServingWithNothingTypedIsClean() {
+        // What the Edit food "Add serving" button does: the form opens on the food's unit with amount "0".
+        val (draft, baseline) = opened(ajvar)
+        draft.openServing(MeasureUnit.GRAM)
+        assertFalse(draft.isDirty(baseline))
+    }
+
+    @Test fun addServingThenCancelIsClean() {
+        val (draft, baseline) = opened(ajvar)
+        draft.openServing(MeasureUnit.GRAM)
+        draft.servingAmount = "15"
+        draft.servingUnit = MeasureUnit.MILLILITER
+        assertTrue(draft.isDirty(baseline))
+        draft.cancelServing()
+        assertFalse(draft.isDirty(baseline))
+        assertEquals(baseline, draft.fields())
+    }
+
+    @Test fun aCommittedServingStaysDirty() {
+        val (draft, baseline) = opened(ajvar)
+        draft.openServing(MeasureUnit.GRAM)
+        draft.servingAmount = "280"
+        draft.servingLabel = "jar"
+        assertTrue(draft.commitServing())
+        assertFalse(draft.servingFormOpen)
+        assertTrue(draft.isDirty(baseline))
+    }
+
+    @Test fun anOpenedServingFormSurvivesRestoreStillClean() {
+        val (draft, baseline) = opened(ajvar)
+        draft.openServing(MeasureUnit.GRAM)
+        val again = FoodDraft().apply { restore(draft.state()) }
+        assertFalse(again.isDirty(baseline))
+    }
+
+    @Test fun backDuringASaveDoesNothing() {
+        assertEquals(FoodFormBack.IGNORE, foodFormBack(saving = true, dirty = true))
+        assertEquals(FoodFormBack.IGNORE, foodFormBack(saving = true, dirty = false))
+        assertEquals(FoodFormBack.ASK, foodFormBack(saving = false, dirty = true))
+        assertEquals(FoodFormBack.CLOSE, foodFormBack(saving = false, dirty = false))
     }
 
     @Test fun typingBackTheOriginalValueIsClean() {

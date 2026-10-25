@@ -143,3 +143,13 @@ internal fun exitLibraryTarget(resolving: Boolean, archivedOnly: Boolean, origin
     origin != null -> LibraryExit.MEAL
     else -> LibraryExit.DAILY
 }
+
+/** What Back or the arrow does on New food or Edit food. */
+internal enum class FoodFormBack { IGNORE, ASK, CLOSE }
+
+/** While a save runs, Back waits for it; a changed form asks before discarding; an unchanged one closes. */
+internal fun foodFormBack(saving: Boolean, dirty: Boolean): FoodFormBack = when {
+    saving -> FoodFormBack.IGNORE
+    dirty -> FoodFormBack.ASK
+    else -> FoodFormBack.CLOSE
+}

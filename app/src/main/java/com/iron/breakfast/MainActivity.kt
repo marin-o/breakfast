@@ -709,6 +709,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         selectMeal(request.slot)
         searchOpen = false
         customOpen = false
+        discardFoodOpen = false
         selectedProduct = null
         logDraft = draftInput
         logDraftCommitted = false
@@ -1097,14 +1098,21 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         draft.barcodeFromScan = draft.barcode.isNotEmpty()
         draft.fromOff = fromOff
         draftBaseline = draft.fields()
+        discardFoodOpen = false
         customOpen = true
         searchOpen = false
         resolverOpen = false
     }
     /** Back or the arrow on New food or Edit food: a changed form asks before it is discarded. */
-    fun leaveCustom() { if (draft.isDirty(draftBaseline)) discardFoodOpen = true else closeCustom() }
+    fun leaveCustom() {
+        when (foodFormBack(saving = busy, dirty = draft.isDirty(draftBaseline))) {
+            FoodFormBack.IGNORE -> Unit
+            FoodFormBack.ASK -> discardFoodOpen = true
+            FoodFormBack.CLOSE -> closeCustom()
+        }
+    }
     fun keepEditingFood() { discardFoodOpen = false }
-    fun discardFood() { discardFoodOpen = false; closeCustom() }
+    fun discardFood() { if (busy) return; discardFoodOpen = false; closeCustom() }
     fun closeCustom() {
         customOpen = false; editingLibraryFoodId = null; rescanningBarcode = false; discardFoodOpen = false; draft.reset()
         if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false
@@ -1116,6 +1124,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         editingLibraryFoodId = food.id
         draft.load(food)
         draftBaseline = draft.fields()
+        discardFoodOpen = false
         customOpen = true; selectedLibraryFood = null
     }
     fun closeResolver() { abandonUnknownResolution(); resolverSearchOpen = false }
@@ -1215,6 +1224,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         resolutionContinuation = fromResolver
         searchOpen = true
         customOpen = false
+        discardFoodOpen = false
         resolverOpen = false
         searchQuery = prefill ?: ""
         offResults = emptyList()
@@ -1487,6 +1497,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }.onSuccess { saved ->
             refresh()
             customOpen = false
+            discardFoodOpen = false
             editingLibraryFoodId = null
             draft.reset()
             pendingContribution = contribution?.copy(

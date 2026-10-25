@@ -423,10 +423,7 @@ internal fun LibraryFoodEditScreen(vm: BreakfastViewModel) {
             }
         } else {
             TertiaryButton("Add serving", {
-                draft.servingUnit = food.nutrition.unit.takeIf { it == MeasureUnit.GRAM || it == MeasureUnit.MILLILITER } ?: MeasureUnit.GRAM
-                draft.servingAmount = "0"
-                draft.servingLabel = ""
-                draft.servingFormOpen = true
+                draft.openServing(food.nutrition.unit.takeIf { it == MeasureUnit.GRAM || it == MeasureUnit.MILLILITER } ?: MeasureUnit.GRAM)
             })
         }
         SectionHeading("Aliases")
