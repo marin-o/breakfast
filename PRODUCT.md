@@ -26,10 +26,10 @@ The diary, search and food-detail patterns follow MyFitnessPal so the app feels 
 
 ## Operating Context
 
-- **Daily** opens first. It is a dated diary that swipes horizontally between days, with a Today control, daily totals, and four fixed meals: Breakfast, Lunch, Dinner, Snacks. Logging targets the selected date.
-- A fixed quick-add field sits above the bottom navigation and the keyboard, and stays visible without scrolling. Bottom navigation has exactly two destinations: **Daily** and **Library**.
+- The diary (the **Today** tab, called Daily in the design files) opens first. It is a dated diary that swipes horizontally between days, with a Today control, daily totals, and four fixed meals: Breakfast, Lunch, Dinner, Snacks. Logging targets the selected date.
+- A fixed quick-add field sits above the bottom navigation and the keyboard, and stays visible without scrolling. Bottom navigation has exactly two destinations: **Today** and **Library**.
 - **Logged entries** have a confirmed gesture contract: tap opens entry detail, double-tap opens amount-only quick edit, long press opens full entry edit, and a right-to-left swipe inside meal detail deletes with Undo. Every gesture has an explicit accessibility action.
-- **Library** holds reusable food records: bundled, cached from Open Food Facts (OFF), and personal foods, all in one list. Recently logged foods come first, with a quick repeat into any meal. A meal-focused variant opens from a meal's Add food. Scan lives in the Library contexts, not on Daily.
+- **Library** holds reusable food records: bundled, cached from Open Food Facts (OFF), and personal foods, all in one list. Recently logged foods come first, with a quick repeat into any meal. A meal-focused variant opens from a meal's Add food. Scan sits on the composer (the diary and meal detail) and in the Library.
 - A logged entry and a library food are different objects. Editing a library food affects future logs only. Past entries keep their nutrition snapshot and conversion provenance.
 - Foods that don't resolve go into a queue: local match first, then explicit OFF search or barcode scan, then personal-food creation. The typed quantity and context are preserved throughout.
 - OFF search is explicit; there is no network search-as-you-type. Contributing to OFF is a separate, optional action from food detail. It never submits logging estimates as public nutrition facts and never persists the OFF password.

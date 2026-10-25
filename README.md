@@ -6,18 +6,19 @@ The Room-backed diary has Breakfast, Lunch, Dinner, and Snacks for each date. Sw
 
 ## Build locally
 
-Tool downloads and caches belong under `_stack`; the source tree and debug APK stay in normal project paths. Use JDK 21 at `<jdk21>` if the machine default is Java 8. A local Gradle distribution can be placed at `_stack/gradle/gradle-8.9/bin/gradle.bat`, and an Android SDK can be placed at `_stack/android-sdk`.
+Tool downloads and caches belong under `_stack`; the source tree and debug APK stay in normal project paths. Use JDK 21 at `<jdk21>` if the machine default is Java 8. An Android SDK can be placed at `_stack/android-sdk`. The Gradle wrapper is pinned to Gradle 8.9; with `GRADLE_USER_HOME` set as below, it downloads the distribution once into `_stack/gradle-home`.
 
 ```powershell
+git config core.hooksPath .githooks
 $env:JAVA_HOME = '<jdk21>'
-$env:ANDROID_SDK_ROOT = './_stack/android-sdk'
+$env:ANDROID_HOME = './_stack/android-sdk'
 $env:GRADLE_USER_HOME = './_stack/gradle-home'
-& './_stack/gradle/gradle-8.9/bin/gradle.bat' testDebugUnitTest assembleDebug assemblePerf
+.\gradlew.bat testDebugUnitTest assembleDebug assemblePerf
 ```
 
-The debug APK is produced at `app/build/outputs/apk/debug/app-debug.apk`. Install it with the existing platform-tools `adb` when a device is attached. This preserves the app's existing local data when using `adb install -r`.
+The debug APK is produced at `app/build/outputs/apk/debug/app-debug.apk` and the `perf` APK (R8-minified, signed with the debug key) at `app/build/outputs/apk/perf/app-perf.apk`. Install with the existing platform-tools `adb install -r`, which keeps the app's local data. Bump `versionCode` in `app/build.gradle.kts` by 1 for every build installed on the phone; `versionName` stays `0.x` until a release. Signing, backup and recovery are in [`docs/architecture.md`](docs/architecture.md).
 
-Room uses version 2.8.5 with KAPT and the official Room Gradle plugin. The `perf` APK is produced at `app/build/outputs/apk/perf/app-perf.apk`. Versioned schema JSON is exported under `app/schemas/debug` and `app/schemas/perf` for migrations; separate variant directories keep repeated builds deterministic. KAPT emits its standard Kotlin 2.0 language-version fallback warning, but the Room compiler and both variants build successfully.
+Room uses version 2.8.5 with KAPT and the official Room Gradle plugin. Versioned schema JSON for migrations is exported under `app/schemas/debug`, which every variant uses. KAPT emits its standard Kotlin 2.0 language-version fallback warning, but the Room compiler and both variants build successfully.
 
 ## Fixture catalogue
 
@@ -29,8 +30,8 @@ The pinned exports are small build-time source snapshots; the app has no runtime
 
 `BreakfastDomainTest` covers quantity-first and quantity-after parsing, fractions, comma segments, modifier-constrained matching in English and Cyrillic, serving conversion and nutrition calculation, and legacy codec round trips. `RoomStorageMappingTest` covers stable-ID seeding, entity round trips, source metadata, and nullable-vs-zero snapshot columns. Core logging works locally; submitted OFF search, barcode lookup, and optional contribution require a connection.
 
-`BreakfastDatabaseTest` is an Android test for additive seed idempotence, meal snapshots surviving a database close/reopen, and Room migrations through version 3. Compile it with `compileDebugAndroidTestKotlin`; run the instrumentation test only when an authorized Android device is attached.
+`BreakfastDatabaseTest` is an Android test for additive seed idempotence, meal snapshots surviving a database close/reopen, transactional food upserts, and the Room migrations 1→5, 2→4 and 5→6 (the schema is at version 6). It runs only on a device; the JVM tests do not cover migrations. Compile it with `compileDebugAndroidTestKotlin`. Never run `connectedDebugAndroidTest` on the phone that holds the diary: AGP uninstalls the app afterwards. Use the manual procedure in [`docs/architecture.md`](docs/architecture.md).
 
 ## Commit messages
 
-The repository uses a local `commit-msg` hook at `.githooks/commit-msg`, enabled through repository-local `core.hooksPath`. It accepts Conventional Commit prefixes such as `feat:`, `fix:`, `docs:`, `test:`, `chore:`, and `build:` with optional scopes or `!`, and rejects other messages before commit creation. No global Git configuration is changed.
+The repository uses a local `commit-msg` hook at `.githooks/commit-msg`. Enable it once per clone with `git config core.hooksPath .githooks` (repository-local; no global Git configuration is changed). It accepts Conventional Commit prefixes such as `feat:`, `fix:`, `docs:`, `test:`, `chore:`, and `build:` with optional scopes or `!`, plus the subjects git writes itself for `git revert` (`Revert "…"`) and `git merge` (`Merge …`), and rejects other messages before commit creation.
