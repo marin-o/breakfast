@@ -4,6 +4,7 @@ import java.util.Locale
 
 /** The words the shorthand reads as structure rather than food: meal markers, number words and filler words. */
 object ShorthandLexicon {
+    private val WHITESPACE = Regex("\\s+")
     private val mealWords = mapOf(
         "breakfast" to MealSlot.BREAKFAST,
         "lunch" to MealSlot.LUNCH,
@@ -77,5 +78,5 @@ object ShorthandLexicon {
         .sortedByDescending { it.length }
         .joinToString("|") { key -> key.split(' ').joinToString("\\s+") { Regex.escape(it) } }
 
-    private fun normalizeWords(text: String): String = text.trim().lowercase(Locale.ROOT).split(Regex("\\s+")).joinToString(" ")
+    private fun normalizeWords(text: String): String = text.trim().lowercase(Locale.ROOT).split(WHITESPACE).joinToString(" ")
 }

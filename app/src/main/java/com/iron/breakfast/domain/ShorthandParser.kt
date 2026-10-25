@@ -24,23 +24,6 @@ interface FoodProbe {
 data class SegmentSpan(val text: String, val start: Int, val end: Int)
 
 class ShorthandParser {
-    private val unit = ShorthandLexicon.unitAlternation()
-    private val halfPattern = Regex(
-        "(?i)(?<![\\p{L}\\p{N}])(?:a\\s+)?(half|quarter|половина)(?![\\p{L}\\p{N}])(?:\\s+a(?![\\p{L}\\p{N}]))?\\s*" +
-            "($unit)?(?![\\p{L}\\p{N}])"
-    )
-    /** Number words other than the half family, longest first so "a couple of" wins over "a". */
-    private val wordPattern = Regex(
-        "(?i)(?<![\\p{L}\\p{N}])(${ShorthandLexicon.wordAlternation()})(?![\\p{L}\\p{N}])\\s*" +
-            "($unit)?(?![\\p{L}\\p{N}])"
-    )
-    /** "2x egg" and "egg x2". */
-    private val multiplierPattern = Regex("(?i)(?<![\\p{L}\\p{N}])(?:(\\d+)\\s*x|x(\\d+))(?![\\p{L}\\p{N}.,])")
-    private val numberPattern = Regex(
-        "(?i)\\b(\\d+\\s+\\d+/\\d+|\\d+/\\d+|\\d+(?:[.,]\\d+)?)(?![.,\\d]|\\s*%)\\s*" +
-            "($unit)?(?![\\p{L}\\p{N}])"
-    )
-
     fun split(input: String, probe: FoodProbe? = null): List<String> = parts(input, probe).map { it.text }
 
     /**
@@ -393,12 +376,28 @@ class ShorthandParser {
         if ('/' !in amountText || match.groupValues.getOrNull(2).orEmpty().isNotBlank()) return false
         val numerator = amountText.substringBefore('/').trim().toDoubleOrNull() ?: return false
         val following = raw.substring(match.range.last + 1).trim()
-        return numerator >= 10.0 || following.matches(
-            Regex("(?i)^(?:raw|cooked|roasted|grilled|boneless|skinless|lean|fat)\\b.*")
-        )
+        return numerator >= 10.0 || following.matches(COMPOSITION_TAIL)
     }
 
+    // Built once: compiling these patterns per parser made every keystroke slow.
     private companion object {
+        val unit = ShorthandLexicon.unitAlternation()
+        val halfPattern = Regex(
+            "(?i)(?<![\\p{L}\\p{N}])(?:a\\s+)?(half|quarter|половина)(?![\\p{L}\\p{N}])(?:\\s+a(?![\\p{L}\\p{N}]))?\\s*" +
+                "($unit)?(?![\\p{L}\\p{N}])"
+        )
+        /** Number words other than the half family, longest first so "a couple of" wins over "a". */
+        val wordPattern = Regex(
+            "(?i)(?<![\\p{L}\\p{N}])(${ShorthandLexicon.wordAlternation()})(?![\\p{L}\\p{N}])\\s*" +
+                "($unit)?(?![\\p{L}\\p{N}])"
+        )
+        /** "2x egg" and "egg x2". */
+        val multiplierPattern = Regex("(?i)(?<![\\p{L}\\p{N}])(?:(\\d+)\\s*x|x(\\d+))(?![\\p{L}\\p{N}.,])")
+        val numberPattern = Regex(
+            "(?i)\\b(\\d+\\s+\\d+/\\d+|\\d+/\\d+|\\d+(?:[.,]\\d+)?)(?![.,\\d]|\\s*%)\\s*" +
+                "($unit)?(?![\\p{L}\\p{N}])"
+        )
+        val COMPOSITION_TAIL = Regex("(?i)^(?:raw|cooked|roasted|grilled|boneless|skinless|lean|fat)\\b.*")
         val HARD_BREAK = Regex("[,;\n]")
         val WORD = Regex("\\S+")
         val NUMBER = Regex("\\d+(?:[.,]\\d+)?")

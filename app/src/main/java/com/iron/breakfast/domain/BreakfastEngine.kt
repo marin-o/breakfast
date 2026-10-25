@@ -11,11 +11,17 @@ class BreakfastEngine(private val store: BreakfastStore) {
 
     suspend fun initialize() = store.initialize()
 
+    private var cachedPlanner: LogPlanner? = null
+    private var plannerMatcher: FoodMatcher? = null
+    private var plannerPreferences: Map<String, Preference>? = null
+    private var plannerPins: Map<String, FoodRecord>? = null
+
+    /** Rebuilt only when the stored foods change: indexing the catalog is the costly part of matching. */
     private fun matcher(): FoodMatcher {
-        val foods = foodsAvailableForLogging(store.foods())
+        val foods = store.foods()
         if (cachedMatcher == null || foods !== matcherCatalog) {
             matcherCatalog = foods
-            cachedMatcher = FoodMatcher(foods)
+            cachedMatcher = FoodMatcher(foodsAvailableForLogging(foods))
         }
         return cachedMatcher!!
     }
@@ -66,7 +72,15 @@ class BreakfastEngine(private val store: BreakfastStore) {
     }
 
     /** The planner for the current foods and preferences. [save] and the Log page both resolve through it. */
-    fun planner(pins: Map<String, FoodRecord> = emptyMap()): LogPlanner = LogPlanner(matcher(), store.preferenceMap(), calculator, parser, pins)
+    fun planner(pins: Map<String, FoodRecord> = emptyMap()): LogPlanner {
+        val matcher = matcher()
+        val preferences = store.preferenceMap()
+        // The same foods, preferences and pins give the same planner, so its per-part cache carries across keystrokes.
+        cachedPlanner?.let { if (matcher === plannerMatcher && preferences === plannerPreferences && pins == plannerPins) return it }
+        return LogPlanner(matcher, preferences, calculator, parser, pins).also {
+            cachedPlanner = it; plannerMatcher = matcher; plannerPreferences = preferences; plannerPins = pins
+        }
+    }
 
     suspend fun replaceEntry(entryId: String, foodId: String): ReplacementResult {
         val old = store.entries().firstOrNull { it.id == entryId }

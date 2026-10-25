@@ -104,7 +104,18 @@ class BreakfastStore(context: Context) {
 
     fun entries(): List<MealEntry> = model.entries
 
-    fun preferenceMap(): Map<String, Preference> = model.preferences.associateBy { it.foodId }
+    private var preferenceMapModel: StoreSnapshot? = null
+    private var cachedPreferenceMap: Map<String, Preference> = emptyMap()
+
+    /** Built once per snapshot: the Log page asks for it on every keystroke. */
+    fun preferenceMap(): Map<String, Preference> {
+        val current = model
+        if (current !== preferenceMapModel) {
+            cachedPreferenceMap = current.preferences.associateBy { it.foodId }
+            preferenceMapModel = current
+        }
+        return cachedPreferenceMap
+    }
 
     suspend fun saveEntries(entries: List<MealEntry>) {
         requireReady()

@@ -293,14 +293,16 @@ class LogPlanner(
 
     /** One bare word with no quantity: the form a name is typed in, before it is finished. */
     private fun isBareWord(text: String): Boolean =
-        text.trim().split(Regex("\\s+")).size == 1 && text.any { it.isLetter() } && parser.parse(text).let { it.amount == null && !it.wordQuantity }
+        text.trim().split(WHITESPACE).size == 1 && text.any { it.isLetter() } && parser.parse(text).let { it.amount == null && !it.wordQuantity }
 
     /** A leading "a" or "an" is not part of the food the user named: "a bananna" reads "bananna". */
-    private fun stripArticle(text: String): String = text.replace(Regex("(?i)^(?:a|an)\\s+"), "")
+    private fun stripArticle(text: String): String = text.replace(LEADING_ARTICLE, "")
 
     companion object {
         /** How many matches the Log page offers as choices. The preselected one is always the first. */
         const val SUGGESTION_LIMIT = 4
+        private val WHITESPACE = Regex("\\s+")
+        private val LEADING_ARTICLE = Regex("(?i)^(?:a|an)\\s+")
         private val SEPARATOR_WORD_AT_END = Regex("(?i)(?:^|\\s)(?:and|и)$")
     }
 }

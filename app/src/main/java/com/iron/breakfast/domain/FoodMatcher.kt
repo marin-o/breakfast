@@ -192,7 +192,7 @@ class FoodMatcher(
         .replace('č', 'c').replace('ć', 'c').replace('š', 's').replace('ž', 'z').replace('đ', 'd')
 
     fun expandAbbreviations(phrase: String): String = phrase.lowercase(Locale.ROOT)
-        .split(Regex("\\s+"))
+        .split(WHITESPACE)
         .joinToString(" ") { abbreviations[it] ?: it }
 
     private fun tokens(value: String): List<String> = value
@@ -207,6 +207,7 @@ class FoodMatcher(
     private fun normalize(value: String): String = tokens(expandAbbreviations(value)).joinToString(" ")
 
     companion object {
+        private val WHITESPACE = Regex("\\s+")
         private const val EXACT_WEIGHT = 1.0
         private const val STEM_WEIGHT = 0.95
         private const val TYPO_WEIGHT = 0.6
