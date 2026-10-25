@@ -175,6 +175,14 @@ class ScreenDataTest {
     }
 
     @Test
+    fun contributionIsHiddenForAFoodWhoseNutritionCouldNotBeSent() {
+        val food = generic.copy(barcode = "4006381333931")
+        assertEquals(true, contributionAvailable(food))
+        val heavy = food.copy(nutrition = food.nutrition.copy(amount = 100.0, values = NutritionValues(400.0, 500.0, null, null)))
+        assertEquals(false, contributionAvailable(heavy))
+    }
+
+    @Test
     fun foodCountPluralises() {
         assertEquals("0 foods", foodCountLabel(0))
         assertEquals("1 food", foodCountLabel(1))
