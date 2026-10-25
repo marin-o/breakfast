@@ -6,6 +6,7 @@ import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
@@ -390,7 +391,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private var barcodeOriginMeal: MealSlot? = slot
     var ready by mutableStateOf(false); private set
     var busy by mutableStateOf(false); private set
-    var initializationError by mutableStateOf<String?>(null); private set
+    /** Storage failed to open; the dialog stays until a retry opens it. */
+    var storageUnavailable by mutableStateOf(false); private set
     var entryEditMode by mutableStateOf(EntryEditMode.NONE); private set
     var editingEntryId by mutableStateOf<String?>(null); private set
     var editingFoodName by mutableStateOf<String?>(null); private set
@@ -428,16 +430,26 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         // Every change is mirrored, so an added or cleared draft and a closed or saved form drop their keys.
         viewModelScope.launch { snapshotFlow { SavedLogDraft(logDraft, logDraftCommitted) }.collect { saveLogDraft(savedState, it) } }
         viewModelScope.launch { snapshotFlow { foodFormToSave() }.collect { saveFoodForm(savedState, it) } }
+        openStore()
+    }
+    private var storeOpening = false
+    /** Opens storage; on failure the "Storage unavailable" dialog offers [retryStorage]. The cause goes to the log only. */
+    private fun openStore() {
+        if (ready || storeOpening) return
+        storeOpening = true
         viewModelScope.launch {
-            runCatching { engine.initialize(); refresh() }
-                .onSuccess {
-                    ready = true
-                    // A restored Edit food whose food is gone has nothing to edit.
-                    if (customOpen && editingLibraryFoodId?.let { id -> foods.none { it.id == id } } == true) closeCustom()
-                }
-                .onFailure { initializationError = "Storage could not be opened: ${it.message}" }
+            val opened = openStorage({ engine.initialize(); refresh() }) { Log.e(LOG_TAG, "Storage could not be opened", it) }
+            storeOpening = false
+            storageUnavailable = !opened
+            if (opened) {
+                ready = true
+                // A restored Edit food whose food is gone has nothing to edit.
+                if (customOpen && editingLibraryFoodId?.let { id -> foods.none { it.id == id } } == true) closeCustom()
+            }
         }
     }
+    /** "Try again" on the storage dialog: runs the same open again. */
+    fun retryStorage() = openStore()
     /**
      * The open food form, for [saveFoodForm]. Not while a part is being resolved or a resolve queue is open: what Save
      * does there depends on state that does not come back, so a restored form would save somewhere else.
@@ -1663,6 +1675,7 @@ private const val CONTRIBUTION_UNCERTAIN = "Check Open Food Facts before sending
 
 /** The notice when an Undo could not be applied. */
 private const val UNDO_FAILED = "Could not undo."
+private const val LOG_TAG = "Breakfast"
 
 /** A request to focus [field]; [serial] makes a repeated refusal of the same field a new request. */
 internal data class FoodFormFocus(val field: FoodFormField, val serial: Long)
@@ -1887,7 +1900,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     if (vm.contributionAuthOpen) ContributionSignInScreen(vm)
     vm.contributionFailure?.let { ContributionFailureScreen(vm, it) }
     vm.notice?.let { message -> AlertDialog(onDismissRequest = vm::dismissNotice, confirmButton = { TextButton(vm::dismissNotice) { Text("OK") } }, text = { Text(message) }) }
-    vm.initializationError?.let { message -> AlertDialog(onDismissRequest = {}, confirmButton = {}, title = { Text("Storage unavailable") }, text = { Text(message) }) }
+    if (vm.storageUnavailable) AlertDialog(onDismissRequest = {}, confirmButton = { TextButton(vm::retryStorage) { Text("Try again") } }, title = { Text("Storage unavailable") }, text = { Text("Storage could not be opened.") })
 }
 
 

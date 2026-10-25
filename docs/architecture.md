@@ -90,4 +90,4 @@ Bump `versionCode` by 1 for every build installed on the phone. `versionName` st
   ```
 
   The last step puts the perf build back. The test APK (`com.iron.breakfast.test`) can stay installed or be removed with `adb uninstall com.iron.breakfast.test`; that never touches the app's data.
-- If storage fails to open, the app shows an error screen with no retry (MOB-019); the database file is untouched, so force-stop and reopen.
+- If storage fails to open, the app shows "Storage unavailable" with Try again, which runs the same open once more (`openStorage` in `AppDecisions.kt`); the cause goes to logcat (tag `Breakfast`), not to the screen. The database file is untouched.

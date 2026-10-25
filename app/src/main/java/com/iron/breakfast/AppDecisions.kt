@@ -6,6 +6,7 @@ import com.iron.breakfast.domain.ResolvedNutrition
 import com.iron.breakfast.domain.parseDecimal
 import com.iron.breakfast.domain.dayKeyFor
 import java.time.ZoneId
+import kotlin.coroutines.cancellation.CancellationException
 
 // Pure routing and screen decisions the view model makes. Kept out of the Activity file so each can be unit-tested.
 
@@ -230,3 +231,18 @@ internal fun undoOpen(offeredAtMs: Long, nowMs: Long, windowMs: Long = UNDO_WIND
 /** What is left of an Undo offer's window at [nowMs]; 0 once it has closed. */
 internal fun undoRemainingMs(offeredAtMs: Long, nowMs: Long, windowMs: Long = UNDO_WINDOW_MS): Long =
     if (undoOpen(offeredAtMs, nowMs, windowMs)) offeredAtMs + windowMs - nowMs else 0L
+
+/**
+ * One attempt to open storage: true when [open] completed. A failure goes to [onFailure] (the log) and is not thrown,
+ * so the caller can offer Try again; cancellation is thrown as usual.
+ */
+internal suspend fun openStorage(open: suspend () -> Unit, onFailure: (Exception) -> Unit): Boolean =
+    try {
+        open()
+        true
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        onFailure(e)
+        false
+    }
