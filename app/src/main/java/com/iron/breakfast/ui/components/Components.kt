@@ -61,7 +61,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.text
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -651,7 +653,11 @@ private fun EndOfText(text: String, color: Color, modifier: Modifier) {
             if (!constraints.hasBoundedWidth) text
             else startEllipsized(text) { candidate -> measurer.measure(candidate, style, maxLines = 1, softWrap = false).size.width <= width }
         }
-        Text(fitted, color = color, style = style, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
+        // TalkBack reads the whole draft, not the shortened line.
+        Text(
+            fitted, color = color, style = style, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
+            modifier = Modifier.clearAndSetSemantics { this.text = AnnotatedString(text) },
+        )
     }
 }
 

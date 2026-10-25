@@ -1,6 +1,7 @@
 package com.iron.breakfast.ui.components
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DraftTextTest {
@@ -37,5 +38,22 @@ class DraftTextTest {
         val shown = startEllipsized(draft, fitsIn(2))
         assertEquals("…", shown)
         assertEquals("…\uD83E\uDD5A", startEllipsized(draft, fitsIn(3)))
+    }
+
+    @Test fun aCutNeverSplitsACharacter() {
+        val family = "\uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67" // man, ZWJ, woman, ZWJ, girl
+        val flag = "\uD83C\uDDF2\uD83C\uDDF0" // MK: two regional indicators
+        val accent = "e\u0301" // e and a combining acute
+        for (whole in listOf(family, flag, accent)) {
+            val draft = "1 egg, $whole"
+            for (width in 1..draft.length + 1) {
+                val end = startEllipsized(draft, fitsIn(width)).removePrefix("…")
+                val cut = draft.length - end.length
+                // The last character is shown whole or not at all.
+                assertTrue("$whole at $width: $end", cut <= draft.length - whole.length || cut == draft.length)
+            }
+            assertEquals("…", startEllipsized(draft, fitsIn(whole.length)))
+            assertEquals("…$whole", startEllipsized(draft, fitsIn(whole.length + 1)))
+        }
     }
 }

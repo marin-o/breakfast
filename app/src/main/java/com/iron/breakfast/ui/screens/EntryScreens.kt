@@ -235,7 +235,7 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
                         .fillMaxWidth()
                         .heightIn(min = FieldMinHeight)
                         .border(1.dp, colors.line, FieldShape)
-                        .clickable(role = Role.Button) { DatePickerDialog(context, { _, year, month, day -> dayKey = LocalDate.of(year, month + 1, day).toString() }, date.year, date.monthValue - 1, date.dayOfMonth).show() }
+                        .clickable(role = Role.Button) { DatePickerDialog(context, { _, year, month, day -> dayKey = LocalDate.of(year, month + 1, day).toString() }, date.year, date.monthValue - 1, date.dayOfMonth).apply { datePicker.maxDate = datePickerMaxMs(vm.todayKey, java.time.ZoneId.systemDefault()) }.show() }
                         .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

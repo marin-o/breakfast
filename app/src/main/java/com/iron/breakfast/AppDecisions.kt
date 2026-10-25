@@ -181,6 +181,12 @@ internal fun resolveSelectedDay(
     }
 }
 
+/** A logged batch replaces the offer; a batch that saved nothing ([logged] null) keeps [current]. */
+internal fun undoAfterLog(current: UndoOffer?, logged: UndoOffer.Logged?): UndoOffer? = logged ?: current
+
+/** An activity stop counts as leaving the app unless it is a recreation for a configuration change. */
+internal fun stopMeansLeaving(changingConfigurations: Boolean): Boolean = !changingConfigurations
+
 /** How long an Undo offer stays: from the log or delete it undoes. */
 internal const val UNDO_WINDOW_MS = 15_000L
 

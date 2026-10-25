@@ -660,8 +660,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun saveFullEdit(foodId: String, amount: String, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
         val id = editingEntryId ?: return
         val session = editSession
+        // A tap while the save runs is ignored, not reported as invalid.
+        if (!ready || busy) return
         val parsedAmount = amount.toDoubleOrNull()
-        if (parsedAmount == null || parsedAmount <= 0.0 || foodId.isBlank() || !ready || busy) {
+        if (parsedAmount == null || parsedAmount <= 0.0 || foodId.isBlank()) {
             markEditInvalid("Enter a positive amount and choose a food.")
             return
         }
@@ -1155,8 +1157,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             if (undoOffer === offer) undoOffer = null
         }
     }
-    private fun offerLoggedUndo(message: String, entries: List<MealEntry>) =
-        offerUndo(if (entries.isEmpty()) null else UndoOffer.Logged(message, entries, clock()))
+    /** A batch that saved nothing leaves the current offer alone. */
+    private fun offerLoggedUndo(message: String, entries: List<MealEntry>) {
+        val next = undoAfterLog(undoOffer, if (entries.isEmpty()) null else UndoOffer.Logged(message, entries, clock()))
+        if (next !== undoOffer) offerUndo(next)
+    }
     /** The offer, while its window is open; an expired one is cleared. */
     private fun liveUndoOffer(): UndoOffer? {
         val offer = undoOffer ?: return null
@@ -1778,7 +1783,9 @@ internal fun Double.pretty() = if (this % 1 == 0.0) "%.0f".format(Locale.ROOT, t
 fun IronApp(vm: BreakfastViewModel = viewModel()) {
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); vm.reloadToday() } }
     // Back from the background: a user following today opens on the new today.
-    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { vm.onAppStopped() }
+    val activity = LocalContext.current as? android.app.Activity
+    // A recreation (dark mode, resize, locale) stops the old activity, but the user never left.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { if (stopMeansLeaving(activity?.isChangingConfigurations == true)) vm.onAppStopped() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { vm.onAppStarted() }
     LaunchedEffect(vm.feedbackUntil, vm.resolverOpen) { while (vm.feedbackUntil > 0L) { kotlinx.coroutines.delay(1000); if (vm.resolverOpen) vm.holdFeedback() else if (System.currentTimeMillis() >= vm.feedbackUntil) { vm.expireFeedback(); break } } }
     if (vm.scannerOpen) { ScannerScreen(vm); return }
