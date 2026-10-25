@@ -47,7 +47,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
         input: String,
         nowMs: Long = System.currentTimeMillis(),
         mealSlot: MealSlot = MealSlot.BREAKFAST,
-        dayKey: String = dayKeyForEpochMs(nowMs),
+        dayKey: String,
         pins: Map<String, FoodRecord> = emptyMap(),
     ): SavedMeal {
         val plan = planner(pins).plan(input)
@@ -235,7 +235,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
         amount: Double,
         amountUnit: MeasureUnit,
         nowMs: Long = System.currentTimeMillis(),
-        dayKey: String = dayKeyForEpochMs(nowMs),
+        dayKey: String,
         sourceName: String? = null,
         sourceDescription: String? = null
     ): MealEntry {
@@ -297,7 +297,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
         return effectiveFood
     }
 
-    suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, mealSlot: MealSlot, dayKey: String = dayKeyForEpochMs(System.currentTimeMillis())): MealEntry {
+    suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, mealSlot: MealSlot, dayKey: String): MealEntry {
         val effectiveFood = cachedFoodForLogging(
             food,
             store.foodById(food.id),

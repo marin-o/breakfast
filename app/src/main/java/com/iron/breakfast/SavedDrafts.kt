@@ -4,12 +4,29 @@ import androidx.lifecycle.SavedStateHandle
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-// Typed work that survives the process being killed in the background: the log draft and a half-filled food form.
-// Only these keys are written here. The Open Food Facts login is never among them.
+// Typed work that survives the process being killed in the background: the log draft and a half-filled food form,
+// and which day the diary shows. Only these keys are written here. The Open Food Facts login is never among them.
 
 internal const val LOG_DRAFT_KEY = "log_draft"
 internal const val LOG_DRAFT_COMMITTED_KEY = "log_draft_committed"
 internal const val FOOD_FORM_KEY = "food_form"
+internal const val SELECTED_DAY_KEY = "selected_day"
+internal const val FOLLOWING_TODAY_KEY = "following_today"
+
+/** The day the diary shows: [followingToday], or the past day the user picked ([dayKey]). */
+internal data class SavedDay(val dayKey: String?, val followingToday: Boolean)
+
+/** Following today stores no date, so a restore never brings back a stale today. */
+internal fun saveSelectedDay(state: SavedStateHandle, day: SavedDay) {
+    state[FOLLOWING_TODAY_KEY] = day.followingToday
+    if (day.followingToday || day.dayKey == null) state.remove<String>(SELECTED_DAY_KEY) else state[SELECTED_DAY_KEY] = day.dayKey
+}
+
+/** Nothing saved means today. A date saved by an older build, with no flag, stays the picked day. */
+internal fun restoreSelectedDay(state: SavedStateHandle): SavedDay {
+    val dayKey = state.get<String>(SELECTED_DAY_KEY)
+    return SavedDay(dayKey, state.get<Boolean>(FOLLOWING_TODAY_KEY) ?: (dayKey == null))
+}
 
 internal data class SavedLogDraft(val text: String, val committed: Boolean)
 

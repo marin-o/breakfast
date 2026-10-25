@@ -156,7 +156,7 @@ import com.iron.breakfast.domain.TypedPart
 import com.iron.breakfast.domain.ShorthandLexicon
 import com.iron.breakfast.domain.ShorthandParser
 import com.iron.breakfast.domain.toMeasureUnit
-import com.iron.breakfast.domain.dayKeyForEpochMs
+import com.iron.breakfast.domain.dayKeyFor
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.ui.screens.DailyScreen
 import com.iron.breakfast.ui.screens.LogScreen
@@ -204,6 +204,10 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import java.time.LocalDate
+import java.time.ZoneId
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import com.iron.breakfast.ui.screens.SettingsScreen
 import kotlin.math.abs
 import kotlin.math.hypot
 
@@ -258,6 +262,13 @@ data class LogResolveRequest(
 
 class BreakfastViewModel(application: Application, private val savedState: SavedStateHandle) : AndroidViewModel(application) {
     private val clock: () -> Long = System::currentTimeMillis
+    private val settings = AppSettings(application)
+    private val zone: ZoneId get() = ZoneId.systemDefault()
+    /** The hour a diary day starts at, from Settings. */
+    var dayStartHour by mutableStateOf(settings.dayStartHour); private set
+    /** Today's day by the clock and [dayStartHour]. The 60-second loop and every return keep it current. */
+    var todayKey by mutableStateOf(dayKeyFor(clock(), zone, dayStartHour)); private set
+    var settingsOpen by mutableStateOf(false); private set
     private val engine = BreakfastEngine(BreakfastStore(application))
     private val off = OpenFoodFactsClient()
     private val parser = ShorthandParser()
@@ -270,7 +281,12 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var logDraftCommitted by mutableStateOf(false); private set
     var foods by mutableStateOf<List<FoodRecord>>(emptyList()); private set
     var entries by mutableStateOf<List<MealEntry>>(emptyList()); private set
-    var selectedDayKey by mutableStateOf(savedState["selected_day"] ?: dayKeyForEpochMs(System.currentTimeMillis())); private set
+    /** True while the user is on today, not on a day they picked: a return from the background then opens the new today. */
+    private var followingToday = restoreSelectedDay(savedState).followingToday
+    /** Opened or restored after being closed: a user following today lands on today; a past day they picked stays. */
+    var selectedDayKey by mutableStateOf(
+        restoreSelectedDay(savedState).let { resolveSelectedDay(it.dayKey, it.followingToday, returning = true, clock(), zone, dayStartHour) }
+    ); private set
     var slot by mutableStateOf(savedState.get<String>("meal_slot")?.let { runCatching { MealSlot.valueOf(it) }.getOrNull() }); private set
     var customOpen by mutableStateOf(false); private set
     var editingLibraryFoodId by mutableStateOf<String?>(null); private set
@@ -389,6 +405,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private var loggedBatchIds: List<String> = emptyList()
 
     init {
+        if (selectedDayKey == todayKey) followingToday = true
+        saveSelectedDay(savedState, SavedDay(selectedDayKey, followingToday))
         // Typed work comes back after the process was killed: the log draft, and an open food form.
         restoreLogDraft(savedState).let { logDraft = it.text; logDraftCommitted = it.committed }
         restoreFoodForm(savedState)?.let { form ->
@@ -422,16 +440,50 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         entries = engine.persistedMeal().entries
         selectedEntry = selectedEntryId?.let { id -> entries.firstOrNull { it.id == id } }
     }
-    fun reloadToday() { if (ready) refresh() }
-    private fun selectDay(value: String) { selectedDayKey = value; savedState["selected_day"] = value }
+    /** The 60-second loop: today is recomputed, while the selected day stays where it is. */
+    fun reloadToday() { checkDay(returning = false); if (ready) refresh() }
+    private var stopped = false
+    /** The activity left the screen (backgrounded or closed). */
+    fun onAppStopped() { stopped = true }
+    /** The activity is on screen again after a stop: a user following today moves to the new today. */
+    fun onAppStarted() {
+        if (!stopped) return
+        stopped = false
+        checkDay(returning = true)
+        if (ready) refresh()
+    }
+    /** Recomputes today and applies [resolveSelectedDay]; the selection moves only when [returning]. */
+    private fun checkDay(returning: Boolean) {
+        val now = clock()
+        todayKey = dayKeyFor(now, zone, dayStartHour)
+        val day = resolveSelectedDay(selectedDayKey, followingToday, returning, now, zone, dayStartHour)
+        if (day != selectedDayKey) selectDay(day, following = true)
+    }
+    private fun todayNow(): String = dayKeyFor(clock(), zone, dayStartHour).also { todayKey = it }
+    private fun selectDay(value: String, following: Boolean) {
+        selectedDayKey = value
+        followingToday = following
+        saveSelectedDay(savedState, SavedDay(value, following))
+        barcodeRequestToken++
+    }
     private fun selectMeal(value: MealSlot?) { slot = value; savedState["meal_slot"] = value?.name }
     fun shiftSelectedDay(delta: Long) { goToDay(runCatching { LocalDate.parse(selectedDayKey).plusDays(delta).toString() }.getOrDefault(selectedDayKey)) }
-    fun goToday() = goToDay(dayKeyForEpochMs(System.currentTimeMillis()))
+    fun goToday() = goToDay(todayNow())
     /** Selects a day from the arrows, swipe or date picker. Days after today are refused, so Next stops at today. */
     fun goToDay(dayKey: String) {
-        if (dayKey > dayKeyForEpochMs(System.currentTimeMillis())) return
-        selectDay(dayKey)
-        barcodeRequestToken++
+        val today = todayNow()
+        if (dayKey > today) return
+        selectDay(dayKey, following = dayKey == today)
+    }
+    /** Settings, over the Library; its arrow and Back return there. */
+    fun openSettings() { settingsOpen = true }
+    fun closeSettings() { settingsOpen = false }
+    /** The "Day starts at" stepper. Today follows the new start at once; a user on today stays on today. */
+    fun shiftDayStart(delta: Int) {
+        val hour = shiftDayStartHour(dayStartHour, delta)
+        dayStartHour = hour
+        settings.dayStartHour = hour
+        checkDay(returning = true)
     }
     fun openLibrary() {
         cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = false; refreshLibrary()
@@ -453,7 +505,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     private fun leaveLibrary(returnTo: MealSlot?) {
         logResolve?.let { endResolve(it, it.draftText); return }
-        libraryRefreshJob?.cancel(); libraryRefreshGeneration++; libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null; expandedLibraryFoodId = null; libraryPendingAmount = null; libraryPendingUnit = null; libraryPendingBatch = emptyList(); libraryBatchMealPickerOpen = false; libraryArchivedOnly = false; selectMeal(returnTo)
+        libraryRefreshJob?.cancel(); libraryRefreshGeneration++; libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null; expandedLibraryFoodId = null; libraryPendingAmount = null; libraryPendingUnit = null; libraryPendingBatch = emptyList(); libraryBatchMealPickerOpen = false; libraryArchivedOnly = false; settingsOpen = false; selectMeal(returnTo)
         libraryQuery = ""
         libraryResultsQuery = null
         input = ""
@@ -500,6 +552,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         scanner = scannerOpen, entryDetail = selectedEntry != null, productReview = selectedProduct != null,
         resolver = resolverOpen, offSearch = searchOpen, foodForm = customOpen,
         libraryFood = selectedLibraryFood != null, entryEdit = entryEditMode != EntryEditMode.NONE,
+        settings = settingsOpen,
     )
     /** A library search that finished with nothing and has no other screen over it: the "No local match" screen. */
     fun libraryNoMatch(): Boolean = isLibraryNoMatch(
@@ -1724,6 +1777,9 @@ internal fun Double.pretty() = if (this % 1 == 0.0) "%.0f".format(Locale.ROOT, t
 @Composable
 fun IronApp(vm: BreakfastViewModel = viewModel()) {
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); vm.reloadToday() } }
+    // Back from the background: a user following today opens on the new today.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { vm.onAppStopped() }
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { vm.onAppStarted() }
     LaunchedEffect(vm.feedbackUntil, vm.resolverOpen) { while (vm.feedbackUntil > 0L) { kotlinx.coroutines.delay(1000); if (vm.resolverOpen) vm.holdFeedback() else if (System.currentTimeMillis() >= vm.feedbackUntil) { vm.expireFeedback(); break } } }
     if (vm.scannerOpen) { ScannerScreen(vm); return }
     val scanReviewBackdropVisible = vm.selectedProduct != null && vm.selectedProductFromScan
@@ -1778,6 +1834,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     if (vm.customOpen) {
         if (vm.editingLibraryFoodId != null) LibraryFoodEditScreen(vm) else CreateFoodScreen(vm)
     }
+    if (vm.settingsOpen) SettingsScreen(vm)
     if (vm.discardFoodOpen) AlertDialog(
         onDismissRequest = vm::keepEditingFood,
         confirmButton = { TextButton(vm::discardFood) { Text("Discard") } },

@@ -158,8 +158,18 @@ data class MealEntry(
     val resolvedBaseUnit: MeasureUnit = MeasureUnit.UNKNOWN
 )
 
-fun dayKeyForEpochMs(epochMs: Long): String =
-    Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalDate().toString()
+/** The calendar date of [epochMs], for stored entries that lack a day. A new log takes its day from [dayKeyFor]. */
+fun dayKeyForEpochMs(epochMs: Long): String = dayKeyFor(epochMs, ZoneId.systemDefault(), 0)
+
+/**
+ * The diary day [epochMs] belongs to when a day starts at [dayStartHour] (0 to 23) local time: before that hour it is
+ * still the previous date. It reads the wall clock, so a daylight-saving day is still one day.
+ */
+fun dayKeyFor(epochMs: Long, zone: ZoneId, dayStartHour: Int): String {
+    val local = Instant.ofEpochMilli(epochMs).atZone(zone).toLocalDateTime()
+    val date = local.toLocalDate()
+    return (if (local.hour < dayStartHour.coerceIn(0, 23)) date.minusDays(1) else date).toString()
+}
 
 data class Calculation(
     val nutrition: NutritionValues,

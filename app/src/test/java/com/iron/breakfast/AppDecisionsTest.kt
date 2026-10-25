@@ -15,7 +15,8 @@ class AppDecisionsTest {
         foodForm: Boolean = false,
         libraryFood: Boolean = false,
         entryEdit: Boolean = false,
-    ) = topOverlay(scanner, entryDetail, productReview, resolver, offSearch, foodForm, libraryFood, entryEdit)
+        settings: Boolean = false,
+    ) = topOverlay(scanner, entryDetail, productReview, resolver, offSearch, foodForm, libraryFood, entryEdit, settings)
 
     @Test fun nothingOpenMeansNoOverlay() {
         assertNull(overlay())
@@ -28,6 +29,7 @@ class AppDecisionsTest {
         assertEquals(Overlay.RESOLVER, overlay(resolver = true))
         assertEquals(Overlay.OFF_SEARCH, overlay(offSearch = true))
         assertEquals(Overlay.FOOD_FORM, overlay(foodForm = true))
+        assertEquals(Overlay.SETTINGS, overlay(settings = true))
         assertEquals(Overlay.LIBRARY_FOOD, overlay(libraryFood = true))
         assertEquals(Overlay.ENTRY_EDIT, overlay(entryEdit = true))
     }

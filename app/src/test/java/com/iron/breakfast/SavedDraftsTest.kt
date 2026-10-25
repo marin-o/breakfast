@@ -91,6 +91,26 @@ class SavedDraftsTest {
         assertNull(restoreFoodForm(SavedStateHandle(mapOf(FOOD_FORM_KEY to "{not json"))))
     }
 
+    @Test fun followingTodayStoresNoDate() {
+        val state = SavedStateHandle()
+        saveSelectedDay(state, SavedDay("2026-10-20", followingToday = false))
+        saveSelectedDay(state, SavedDay("2026-10-25", followingToday = true))
+        assertFalse(state.contains(SELECTED_DAY_KEY))
+        assertEquals(SavedDay(null, followingToday = true), restoreSelectedDay(afterProcessDeath(state)))
+    }
+
+    @Test fun aPickedDayComesBack() {
+        val state = SavedStateHandle()
+        saveSelectedDay(state, SavedDay("2026-10-20", followingToday = false))
+        assertEquals(SavedDay("2026-10-20", followingToday = false), restoreSelectedDay(afterProcessDeath(state)))
+    }
+
+    @Test fun nothingSavedMeansToday() {
+        assertEquals(SavedDay(null, followingToday = true), restoreSelectedDay(SavedStateHandle()))
+        // A date from a build before the flag stays the picked day.
+        assertEquals(SavedDay("2026-10-20", followingToday = false), restoreSelectedDay(SavedStateHandle(mapOf(SELECTED_DAY_KEY to "2026-10-20"))))
+    }
+
     @Test fun onlyTheDraftKeysAreWritten() {
         // The Open Food Facts login lives in other view-model fields; nothing here can write it.
         val state = SavedStateHandle()

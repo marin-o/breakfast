@@ -1,6 +1,8 @@
 package com.iron.breakfast
 
 import com.iron.breakfast.domain.MealSlot
+import com.iron.breakfast.domain.dayKeyFor
+import java.time.ZoneId
 
 // Pure routing and screen decisions the view model makes. Kept out of the Activity file so each can be unit-tested.
 
@@ -103,7 +105,7 @@ internal fun resolvePosition(total: Int, remaining: Int): Pair<Int, Int> {
 }
 
 /** A screen or sheet drawn over Daily, Meal or Library that handles Back itself. */
-internal enum class Overlay { SCANNER, ENTRY_DETAIL, PRODUCT_REVIEW, RESOLVER, OFF_SEARCH, FOOD_FORM, LIBRARY_FOOD, ENTRY_EDIT }
+internal enum class Overlay { SCANNER, ENTRY_DETAIL, PRODUCT_REVIEW, RESOLVER, OFF_SEARCH, FOOD_FORM, SETTINGS, LIBRARY_FOOD, ENTRY_EDIT }
 
 /**
  * What sits over the screen beneath, topmost first; null when nothing does. The one rule for "is something on top":
@@ -118,6 +120,7 @@ internal fun topOverlay(
     foodForm: Boolean,
     libraryFood: Boolean,
     entryEdit: Boolean,
+    settings: Boolean,
 ): Overlay? = when {
     scanner -> Overlay.SCANNER
     entryDetail -> Overlay.ENTRY_DETAIL
@@ -125,6 +128,7 @@ internal fun topOverlay(
     resolver -> Overlay.RESOLVER
     offSearch -> Overlay.OFF_SEARCH
     foodForm -> Overlay.FOOD_FORM
+    settings -> Overlay.SETTINGS
     libraryFood -> Overlay.LIBRARY_FOOD
     entryEdit -> Overlay.ENTRY_EDIT
     else -> null
@@ -152,6 +156,29 @@ internal fun foodFormBack(saving: Boolean, dirty: Boolean): FoodFormBack = when 
     saving -> FoodFormBack.IGNORE
     dirty -> FoodFormBack.ASK
     else -> FoodFormBack.CLOSE
+}
+
+/**
+ * The day the diary shows. While the app is on screen ([returning] false) the selection never moves: once the day
+ * starts over, the old day simply stops being today. Back from the background, or reopened or restored after being
+ * closed, a user who was [followingToday] lands on the new today; an older day they picked stays, and a day that is
+ * no longer past (the clock or the day start moved) becomes today. Today is [dayKeyFor] at [nowMs].
+ */
+internal fun resolveSelectedDay(
+    selected: String?,
+    followingToday: Boolean,
+    returning: Boolean,
+    nowMs: Long,
+    zone: ZoneId,
+    dayStartHour: Int,
+): String {
+    val today = dayKeyFor(nowMs, zone, dayStartHour)
+    return when {
+        selected == null -> today
+        !returning -> selected
+        followingToday || selected > today -> today
+        else -> selected
+    }
 }
 
 /** How long an Undo offer stays: from the log or delete it undoes. */

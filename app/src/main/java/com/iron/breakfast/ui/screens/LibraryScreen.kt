@@ -144,6 +144,7 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
                             // The one shadow in the app: the overflow menu popover.
                             Column(Modifier.widthIn(min = 220.dp).shadow(6.dp, SecondaryShape).background(colors.bg).border(1.dp, colors.line, SecondaryShape).padding(vertical = 2.dp)) {
                                 TertiaryButton("Archived foods", { menuOpen = false; vm.openArchivedLibrary() }, Modifier.fillMaxWidth())
+                                TertiaryButton("Settings", { menuOpen = false; vm.openSettings() }, Modifier.fillMaxWidth())
                             }
                         }
                     }

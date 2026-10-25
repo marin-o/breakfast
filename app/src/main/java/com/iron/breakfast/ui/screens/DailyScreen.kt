@@ -78,7 +78,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
     val selected = vm.entries.filter { it.dayKey == vm.selectedDayKey }
     val foods = vm.foods.associateBy { it.id }
     val total = selected.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
-    val isToday = vm.selectedDayKey == dayKeyForToday()
+    val isToday = vm.selectedDayKey == vm.todayKey
     val colors = LocalBreakfastColors.current
     val touchSlop = LocalViewConfiguration.current.touchSlop
     val swipeThreshold = with(androidx.compose.ui.platform.LocalDensity.current) { 96.dp.toPx() }
@@ -142,6 +142,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
     }
     if (pickerOpen) DayPickerDialog(
         dayKey = vm.selectedDayKey,
+        todayKey = vm.todayKey,
         onDismiss = { pickerOpen = false },
         onPick = { dayKey -> vm.goToDay(dayKey); pickerOpen = false },
     )
@@ -150,8 +151,8 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
 /** Date picker opened from the day title. Future days are not selectable, as with Next. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DayPickerDialog(dayKey: String, onDismiss: () -> Unit, onPick: (String) -> Unit) {
-    val todayMillis = LocalDate.parse(dayKeyForToday()).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+private fun DayPickerDialog(dayKey: String, todayKey: String, onDismiss: () -> Unit, onPick: (String) -> Unit) {
+    val todayMillis = LocalDate.parse(todayKey).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
     val state = rememberDatePickerState(
         initialSelectedDateMillis = LocalDate.parse(dayKey).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
         selectableDates = object : SelectableDates {
@@ -276,8 +277,6 @@ internal fun CorrectionStrip(vm: BreakfastViewModel, entry: MealEntry) {
         }
     }
 }
-
-internal fun dayKeyForToday(): String = com.iron.breakfast.domain.dayKeyForEpochMs(System.currentTimeMillis())
 
 /** "Wed 14 Oct", English. */
 internal fun shortDateLabel(dayKey: String): String = runCatching { LocalDate.parse(dayKey).format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH)) }.getOrDefault(dayKey)

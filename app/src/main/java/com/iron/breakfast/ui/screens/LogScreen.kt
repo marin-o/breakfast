@@ -98,7 +98,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
     val kcal = logged.sumOf { it.calculation.nutrition.calories }
     // Any draft can be added: unresolved segments open the resolve-unknown flow, as before.
     val canAdd = vm.logDraft.isNotBlank() && !vm.busy
-    val placeholder = if (vm.selectedDayKey == dayKeyForToday()) "2 eggs, 1 banana" else "Add to ${shortDateLabel(vm.selectedDayKey)}"
+    val placeholder = if (vm.selectedDayKey == vm.todayKey) "2 eggs, 1 banana" else "Add to ${shortDateLabel(vm.selectedDayKey)}"
     val requester = remember { FocusRequester() }
     LaunchedEffect(Unit) { requester.requestFocus() }
 
