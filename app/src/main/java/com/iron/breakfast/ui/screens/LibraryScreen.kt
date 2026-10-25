@@ -64,8 +64,12 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.iron.breakfast.BreakfastViewModel
@@ -200,6 +204,11 @@ private fun defaultServingCalories(food: FoodRecord): String = formatKcal(com.ir
 internal fun LibraryComposer(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
     val inMeal = vm.slot != null
+    // While resolving, a cleared search lands here: the bar takes the keyboard so typing goes on.
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val resolveCleared = vm.logResolve != null && vm.libraryQuery.isEmpty()
+    LaunchedEffect(resolveCleared) { if (resolveCleared) { runCatching { focus.requestFocus() }; keyboard?.show() } }
     Column(Modifier.fillMaxWidth().background(colors.bg).then(if (inMeal) Modifier else Modifier.navigationBarsPadding()).padding(horizontal = Gutter, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         InkBar(if (inMeal) Modifier.navigationBarsPadding() else Modifier) {
             BasicTextField(
@@ -212,6 +221,7 @@ internal fun LibraryComposer(vm: BreakfastViewModel) {
                 keyboardActions = KeyboardActions(onSearch = { vm.submitLibraryInput() }, onDone = { vm.submitLibraryInput() }),
                 modifier = Modifier
                     .weight(1f)
+                    .focusRequester(focus)
                     .onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { vm.submitLibraryInput(); true } else false }
                     .semantics { contentDescription = "Search foods" },
                 decorationBox = { inner ->

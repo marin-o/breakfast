@@ -49,7 +49,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.FocusState
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.SolidColor
@@ -359,12 +361,14 @@ fun SearchField(
     fieldModifier: Modifier = Modifier,
 ) {
     val colors = LocalBreakfastColors.current
+    // Clearing keeps the bar selected so the next letters land in it.
+    val focus = remember { FocusRequester() }
     FieldFrame(error = false, modifier = modifier.fillMaxWidth()) { onFocus ->
         Icon(Icons.Outlined.Search, contentDescription = null, tint = colors.soft, modifier = Modifier.size(20.dp))
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
-            modifier = Modifier.weight(1f).then(fieldModifier).onFocusChanged(onFocus).semantics { contentDescription = label },
+            modifier = Modifier.weight(1f).then(fieldModifier).focusRequester(focus).onFocusChanged(onFocus).semantics { contentDescription = label },
             singleLine = true,
             textStyle = BreakfastType.Body.copy(color = colors.ink),
             cursorBrush = SolidColor(colors.ink),
@@ -378,7 +382,7 @@ fun SearchField(
             },
         )
         if (value.isNotEmpty()) {
-            IconButton(onClick = onClear, modifier = Modifier.size(IconTarget)) {
+            IconButton(onClick = { onClear(); focus.requestFocus() }, modifier = Modifier.size(IconTarget)) {
                 Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = colors.soft, modifier = Modifier.size(20.dp))
             }
         }

@@ -445,7 +445,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             }
         }
     }
-    fun openLibraryFood(food: FoodRecord) { selectedLibraryFood = food }
+    fun openLibraryFood(food: FoodRecord) {
+        // While resolving, a tapped food is the pick, like its +: the part keeps its typed amount and meal.
+        if (logResolve != null) { logLibraryFood(food); return }
+        selectedLibraryFood = food
+    }
     /** A library search that finished with nothing and has no other screen over it: the "No local match" screen. */
     fun libraryNoMatch(): Boolean = isLibraryNoMatch(
         ready, libraryOpen, libraryQuery, libraryResultsQuery, libraryFoods.isEmpty(),
