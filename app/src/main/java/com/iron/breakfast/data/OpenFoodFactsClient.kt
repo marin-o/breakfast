@@ -389,7 +389,8 @@ class OpenFoodFactsClient(
         val carbs = macro("carbohydrates_100g")
         val fat = macro("fat_100g")
         if (listOf(protein, carbs, fat).any { it?.isNaN() == true }) return null
-        val barcode = p.string("code") ?: fallbackBarcode
+        // A blank code is no code: it must not become the shared id "off-" or a stored empty barcode.
+        val barcode = p.string("code")?.trim()?.ifBlank { null } ?: fallbackBarcode?.trim()?.ifBlank { null }
         return FoodRecord(
             id = "off-" + (barcode ?: name.lowercase().replace(" ", "-")), name = name,
             aliases = emptyList(), category = "Open Food Facts",

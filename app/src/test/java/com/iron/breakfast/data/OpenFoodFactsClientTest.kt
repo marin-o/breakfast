@@ -309,6 +309,18 @@ class OpenFoodFactsClientTest {
         assertTrue(urls.last().contains("serving_quantity_unit"))
     }
 
+    @Test fun aBlankCodeIsNoCodeSoProductsDoNotShareOneId() {
+        val raw = """
+            {"products":[
+              {"code":"","product_name":"Pesto","product_quantity_unit":"g","nutriments":{"energy-kcal_100g":400}},
+              {"code":" ","product_name":"Ajvar","product_quantity_unit":"g","nutriments":{"energy-kcal_100g":80}}
+            ]}
+        """.trimIndent()
+        val foods = (OpenFoodFactsClient().parseSearchResponseForTesting(raw) as OffSearchResult.Success).foods
+        assertEquals(listOf("off-pesto", "off-ajvar"), foods.map { it.id })
+        assertEquals(listOf(null, null), foods.map { it.barcode })
+    }
+
     @Test fun searchParsingRetainsOnlyEligibleNutritionRecords() {
         val raw = """
             {"products":[
