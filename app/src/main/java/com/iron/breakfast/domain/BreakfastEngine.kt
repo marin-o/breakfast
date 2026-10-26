@@ -23,7 +23,10 @@ class BreakfastEngine(private val store: BreakfastStore) {
     private var plannerPreferences: Map<String, Preference>? = null
     private var plannerPins: Map<String, FoodRecord>? = null
 
-    /** Rebuilt only when the stored foods change: indexing the catalog is the costly part of matching. */
+    /**
+     * Rebuilt whenever [BreakfastStore.foods] is a new list. Every store write reloads the whole snapshot, so any write,
+     * an entry-only one included, rebuilds it on the next call; indexing the catalog is the costly part of matching.
+     */
     @Synchronized
     private fun matcher(): FoodMatcher {
         val foods = store.foods()

@@ -50,6 +50,11 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
+    // The synthetic year and timing helpers, shared by the JVM benchmark test and the device benchmark (MOB-028).
+    sourceSets {
+        getByName("test").java.srcDir("src/benchShared/java")
+        getByName("androidTest").java.srcDir("src/benchShared/java")
+    }
 }
 
 dependencies {
