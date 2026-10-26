@@ -10,7 +10,8 @@ Packages under `com.iron.breakfast`. Feature packages hold that feature's screen
 | --- | --- |
 | `app/MainActivity.kt` | Entry point. `MainActivity` applies Theme and Text size before its window exists, sets edge-to-edge and hosts `IronApp` inside `BreakfastTheme`. |
 | `app/AppRoot.kt` | `IronApp`, the root composable: the diary pickers, the lifecycle hooks, which screen and overlays are drawn and in what order, and the root dialogs (discard food, notice, Replace diary, Delete all, Storage unavailable). Routing is a set of VM flags, not a nav graph. |
-| `app/BreakfastViewModel.kt` | `BreakfastViewModel` (`AndroidViewModel` + `SavedStateHandle`) owns all screen state and every user action. |
+| `app/BreakfastViewModel.kt` | `BreakfastViewModel` (`AndroidViewModel` + `SavedStateHandle`) owns the screen state and every user action, and builds `DiarySession`. |
+| `app/DiarySession.kt`, `app/DiaryChange.kt` | The diary read model, the write gate, the post-write fan-out and the notice channel; the kinds of committed change and `undoAfterChange` (see State owners). |
 | `app/SavedDrafts.kt` | Save and restore of the log draft, an open food form and the selected day in `SavedStateHandle`. |
 | `AppDecisions.kt` | Pure routing decisions the VM makes (`topOverlay`, `exitLibraryTarget`, submit and review plans, the Undo window, `resolveSelectedDay`), unit-tested. Not yet split by feature. |
 | `SuspendResult.kt` | `suspendRunCatching`, which rethrows `CancellationException`. |
@@ -36,7 +37,14 @@ Packages under `com.iron.breakfast`. Feature packages hold that feature's screen
 
 ## State owners
 
-All state lives in `BreakfastViewModel`, so it survives configuration changes (the app is portrait only; dark mode and font size still recreate the activity); very little survives process death.
+All state lives in `BreakfastViewModel` and the owners it builds (`DiarySession`), so it survives configuration changes (the app is portrait only; dark mode and font size still recreate the activity); very little survives process death.
+
+`DiarySession` (`app/DiarySession.kt`, built by the VM with a `DiarySource` over `BreakfastEngine`, `viewModelScope` and two callbacks) owns the diary as shown and the one way to write it:
+
+- **Read model:** `foods`, `entries`, `ready` and `storageUnavailable`. `refresh()` reloads them (and reloads a stale snapshot once more); `open()` opens storage and is also the storage dialog's Try again.
+- **Write gate:** `busy`, one diary write at a time (a UX rule over the store's own lock). Every write goes through `write(change, entry, nonCancellable, onFailure, onSuccess) { run }`. `GateEntry.NOW` (user actions) is refused unless storage is open and nothing runs, and holds the gate from the call; `GateEntry.WHEN_IDLE` (the export and import picker results) waits until both are true. `nonCancellable` (the full entry edit) finishes the write and its handlers even if its job is cancelled. Without `onFailure` a failure propagates; a cancel is never a failure.
+- **Fan-out:** after `run` returns, `change` names the committed `DiaryChange` (`app/DiaryChange.kt`), or null for nothing to publish (a refused edit, an edit no longer open, a read). The session reloads the read model (unless the change has no rows, a confirmed match), publishes the change to its listeners, then runs `onSuccess`. The VM's listener applies `undoAfterChange` to the pending Undo and recomputes the Library list for changes with `refreshesLibrary`. Features never set `busy`, call `refresh`, refresh the Library or end Undo after a write themselves.
+- **Notice:** `notice`, the single modal message; `show` replaces it, `dismissNotice` clears it.
 
 | State | Owner | Survives process death |
 | --- | --- | --- |
@@ -50,14 +58,15 @@ All state lives in `BreakfastViewModel`, so it survives configuration changes (t
 | Log pins, resolve queue | VM | No |
 | New / edit food form (`FoodDraft`) | VM + `SavedStateHandle` (`food_form`, one JSON string) | Yes, the form reopens; not while resolving a part or a queue |
 | Edit-sheet typed values (entry quick and full edit, Library amount sheet, manual barcode, scan review) and the scanner's "camera permission asked" flag | Composition `rememberSaveable`, so a configuration change (dark mode, font size) keeps them; a save error (`mealDraftError`) stays until one of them changes | No; these sheets do not reopen after process death |
-| Pending Undo (`UndoOffer`) | VM; expires after the Undo setting's window (15 s by default; 5 s, 30 s, or none: "Until next action") from the log or delete, and always at the next log, edit or delete; a "Not right?" pick keeps it (`undoEndsAt`) | No |
+| Diary read model (`foods`, `entries`), storage state, write gate (`busy`), notice | `DiarySession` (see above); the VM exposes them read-only | Diary rows: Room. The rest: no |
+| Pending Undo (`UndoOffer`) | VM; changed only by its timer, the Undo window setting and the `DiaryChange` listener (`undoAfterChange`): a batch with its own Undo or a delete replaces it, a batch that saved nothing keeps it, the next log, edit, delete, Undo or diary replace ends it, a "Not right?" pick, a confirmed match and a food change keep it (`undoEndsAt`). It expires after the Undo setting's window (15 s by default; 5 s, 30 s, or none: "Until next action") | No |
 | OFF search query and results, scan review fields | VM | No |
 | OFF username and password | VM memory only | No, by design |
 | Diary, foods, aliases, conversions, preferences | Room | Yes |
 
 ## Durable save path
 
-Add (or any edit) runs in `viewModelScope`: `BreakfastViewModel` calls `BreakfastEngine` (for example `save`, `saveCustomAndLog`, `replaceEntry*`), which calls a `BreakfastStore` suspend function. The store takes one `Mutex`, switches to `Dispatchers.IO` under `NonCancellable` (every user-confirmed write; a cancel while waiting for the lock writes nothing), writes inside `database.withTransaction`, then reloads the whole `StoreSnapshot`. The VM wraps these calls in `suspendRunCatching`, which rethrows `CancellationException`, so a cancel is never shown as a failed save. "Saved" means that Room transaction committed. If the reload after it fails, the write still counts as saved: the snapshot is marked stale and reloaded on the next refresh, so a retry never logs the same food twice. Entry edits re-read the row inside the transaction and write it with `UPDATE ... WHERE id`, so a deleted entry is never re-created; saving an edited food keeps its stored archived state. A logged entry stores its own nutrition snapshot and conversion provenance, so later food edits never rewrite history. Migrations are additive and there is no destructive fallback.
+Add (or any edit) runs in `viewModelScope` through `DiarySession.write`: `BreakfastViewModel` calls `BreakfastEngine` (for example `save`, `saveCustomAndLog`, `replaceEntry*`), which calls a `BreakfastStore` suspend function. The store takes one `Mutex`, switches to `Dispatchers.IO` under `NonCancellable` (every user-confirmed write; a cancel while waiting for the lock writes nothing), writes inside `database.withTransaction`, then reloads the whole `StoreSnapshot`. The gate runs these calls in `suspendRunCatching`, which rethrows `CancellationException`, so a cancel is never shown as a failed save. "Saved" means that Room transaction committed. If the reload after it fails, the write still counts as saved: the snapshot is marked stale and reloaded on the next refresh, so a retry never logs the same food twice. Entry edits re-read the row inside the transaction and write it with `UPDATE ... WHERE id`, so a deleted entry is never re-created; saving an edited food keeps its stored archived state. A logged entry stores its own nutrition snapshot and conversion provenance, so later food edits never rewrite history. Migrations are additive and there is no destructive fallback.
 
 ## Export and import
 

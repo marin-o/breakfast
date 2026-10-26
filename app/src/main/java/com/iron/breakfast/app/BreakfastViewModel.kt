@@ -18,7 +18,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.ZoneId
@@ -47,8 +46,6 @@ import com.iron.breakfast.library.LibraryLogDraft
 import com.iron.breakfast.data.DiaryImport
 import com.iron.breakfast.entry.EntryEditMode
 import com.iron.breakfast.domain.RankedFood
-import com.iron.breakfast.openStorage
-import com.iron.breakfast.suspendRunCatching
 import com.iron.breakfast.SettingsPage
 import com.iron.breakfast.settingsPageBack
 import com.iron.breakfast.ui.components.LongDraft
@@ -111,7 +108,6 @@ import com.iron.breakfast.domain.ShorthandLexicon
 import com.iron.breakfast.domain.mealMarkerSlots
 import com.iron.breakfast.settings.undoWindowMs
 import com.iron.breakfast.undoRemainingMs
-import com.iron.breakfast.undoAfterLog
 import com.iron.breakfast.undoOpen
 import com.iron.breakfast.domain.normalizeBarcode
 import com.iron.breakfast.foodFormBack
@@ -121,8 +117,7 @@ import com.iron.breakfast.domain.parseDecimal
 import com.iron.breakfast.data.OffContributionResult
 import com.iron.breakfast.contribution.CONTRIBUTION_UNCERTAIN
 import com.iron.breakfast.activeResolutionTarget
-import com.iron.breakfast.undoEndsAt
-import com.iron.breakfast.DiaryChange
+import com.iron.breakfast.domain.SavedMeal
 import com.iron.breakfast.shouldApplyOffSearchResult
 import com.iron.breakfast.data.OffSearchResult
 import com.iron.breakfast.productReviewOrigin
@@ -195,6 +190,18 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         it.countTyping = countTyping
         it.learnFromPicks = learnFromPicks
     }
+    /** The read model, the write gate and the notice channel (see [DiarySession]). */
+    private val session = DiarySession(
+        source = object : DiarySource {
+            override suspend fun open() = engine.initialize()
+            override fun foods() = engine.foods()
+            override fun entries() = engine.persistedMeal().entries
+            override suspend fun reloadIfStale() = engine.reloadIfStale()
+        },
+        scope = viewModelScope,
+        onOpenFailed = { Log.e(LOG_TAG, "Storage could not be opened", it) },
+        onRefreshed = { selectedEntry = selectedEntryId?.let { id -> entries.firstOrNull { it.id == id } } },
+    )
     private val off = OpenFoodFactsClient()
     private val parser = ShorthandParser()
     private val calculator = NutritionCalculator()
@@ -204,8 +211,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var logDraft by mutableStateOf(""); private set
     /** True after Done or Add: the draft is no longer being typed, so every part follows the finished rules. */
     var logDraftCommitted by mutableStateOf(false); private set
-    var foods by mutableStateOf<List<FoodRecord>>(emptyList()); private set
-    var entries by mutableStateOf<List<MealEntry>>(emptyList()); private set
+    val foods: List<FoodRecord> get() = session.foods
+    val entries: List<MealEntry> get() = session.entries
     /** True while the user is on today, not on a day they picked: a return from the background then opens the new today. */
     private var followingToday = restoreSelectedDay(savedState).followingToday
     /** Opened or restored after being closed: a user following today lands on today; a past day they picked stays. */
@@ -243,7 +250,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var productProtein by mutableStateOf(""); private set
     var productCarbs by mutableStateOf(""); private set
     var productFat by mutableStateOf(""); private set
-    var notice by mutableStateOf<String?>(null); private set
+    val notice: String? get() = session.notice
     var pendingContribution by mutableStateOf<OffContributionDraft?>(null); private set
     var contributionReviewOpen by mutableStateOf(false); private set
     var contributionAuthOpen by mutableStateOf(false); private set
@@ -309,10 +316,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private var rescanningBarcode = false
     private var barcodeOriginDay = selectedDayKey
     private var barcodeOriginMeal: MealSlot? = slot
-    var ready by mutableStateOf(false); private set
-    var busy by mutableStateOf(false); private set
+    val ready: Boolean get() = session.ready
+    /** A diary write is running ([DiarySession.write]); user actions that write are refused meanwhile. */
+    val busy: Boolean get() = session.busy
     /** Storage failed to open; the dialog stays until a retry opens it. */
-    var storageUnavailable by mutableStateOf(false); private set
+    val storageUnavailable: Boolean get() = session.storageUnavailable
     /** A diary file that passed every check, waiting for Replace diary. */
     internal var pendingImport by mutableStateOf<DiaryImport.Valid?>(null); private set
     var entryEditMode by mutableStateOf(EntryEditMode.NONE); private set
@@ -352,24 +360,14 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         // Every change is mirrored, so an added or cleared draft and a closed or saved form drop their keys.
         viewModelScope.launch { snapshotFlow { SavedLogDraft(logDraft, logDraftCommitted) }.collect { saveLogDraft(savedState, it) } }
         viewModelScope.launch { snapshotFlow { foodFormToSave() }.collect { saveFoodForm(savedState, it) } }
+        session.onChange(::onDiaryChange)
         openStore()
     }
-    private var storeOpening = false
     /** Opens storage; on failure the "Storage unavailable" dialog offers [retryStorage]. The cause goes to the log only. */
-    private fun openStore() {
-        if (ready || storeOpening) return
-        storeOpening = true
-        viewModelScope.launch {
-            val opened = openStorage({ engine.initialize(); refresh() }) { Log.e(LOG_TAG, "Storage could not be opened", it) }
-            storeOpening = false
-            storageUnavailable = !opened
-            if (opened) {
-                ready = true
-                checkExportReminder()
-                // A restored Edit food whose food is gone has nothing to edit.
-                if (customOpen && editingLibraryFoodId?.let { id -> foods.none { it.id == id } } == true) closeCustom()
-            }
-        }
+    private fun openStore() = session.open {
+        checkExportReminder()
+        // A restored Edit food whose food is gone has nothing to edit.
+        if (customOpen && editingLibraryFoodId?.let { id -> foods.none { it.id == id } } == true) closeCustom()
     }
     /** "Try again" on the storage dialog: runs the same open again. */
     fun retryStorage() = openStore()
@@ -380,15 +378,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private fun foodFormToSave(): SavedFoodForm? =
         if (!customOpen || logResolve != null || resolutionContinuation) null
         else SavedFoodForm(editingLibraryFoodId, draft.state(), draftBaseline)
-    private fun refresh() {
-        foods = engine.foods()
-        entries = engine.persistedMeal().entries
-        selectedEntry = selectedEntryId?.let { id -> entries.firstOrNull { it.id == id } }
-        // A write that committed but could not reload the diary is reloaded now, and the screens read it again.
-        viewModelScope.launch { if (suspendRunCatching { engine.reloadIfStale() }.getOrDefault(false)) refresh() }
-    }
     /** The 60-second loop: today is recomputed, while the selected day stays where it is. */
-    fun reloadToday() { checkDay(returning = false); if (ready) refresh() }
+    fun reloadToday() { checkDay(returning = false); if (ready) session.refresh() }
     private var stopped = false
     /** The activity left the screen (backgrounded or closed). */
     fun onAppStopped() { stopped = true; exportReminderVisible = false }
@@ -397,7 +388,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (!stopped) return
         stopped = false
         checkDay(returning = true)
-        if (ready) refresh()
+        if (ready) session.refresh()
         checkExportReminder()
     }
     /** Recomputes today and applies [resolveSelectedDay]; the selection moves only when [returning]. */
@@ -500,8 +491,17 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val alsoSettings = deleteAllAlsoSettings
         cancelDeleteAll()
         val safetyDir = getApplication<Application>().noBackupFilesDir
-        launchBusy {
-            val deleted = withContext(NonCancellable) {
+        session.write(
+            change = { deleted -> DiaryChange.DiaryReplaced.takeIf { deleted } },
+            onSuccess = { deleted ->
+                if (!deleted) { session.show(DIARY_DELETE_FAILED); return@write }
+                // Nothing deleted may be undone (the change ended it), pinned, confirmed or resolved into the empty diary.
+                loggedBatchIds = emptyList(); logPins.clear(); feedbackIds = emptySet(); pendingContribution = null
+                abandonUnknownResolution(); closeEntryDetail()
+                if (alsoSettings) resetSettings()
+            },
+        ) {
+            withContext(NonCancellable) {
                 try {
                     if (safetyCopyStep(keepSafetyCopy, deletingAll = true) == SafetyCopyStep.WRITE) {
                         val current = diaryFileOf(engine.exportRows(), DiarySettings(dayStartHour, longDraft), clock())
@@ -514,13 +514,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                     false
                 }
             }
-            if (!deleted) { notice = DIARY_DELETE_FAILED; return@launchBusy }
-            // Nothing deleted may be undone, pinned, confirmed or resolved into the empty diary.
-            offerUndo(null); loggedBatchIds = emptyList(); logPins.clear(); feedbackIds = emptySet(); pendingContribution = null
-            abandonUnknownResolution(); closeEntryDetail()
-            if (alsoSettings) resetSettings()
-            refresh()
-            refreshLibrary()
         }
     }
     /** Every setting back to its default, on the phone and on screen. */
@@ -619,10 +612,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var diaryPickerRequest by mutableStateOf<DiaryPicker?>(null); private set
     fun requestDiaryPicker(picker: DiaryPicker) { if (ready && !busy) diaryPickerRequest = picker }
     fun diaryPickerLaunched() { diaryPickerRequest = null }
-    /** Waits until storage is open and no write is running; a picker result can arrive before either (after recreation). */
-    private suspend fun awaitIdleStore() {
-        while (!ready || busy) snapshotFlow { ready && !busy }.first { it }
-    }
     /**
      * Export diary: writes every stored row and the settings to [uri], the new file the save picker just created. It
      * says "Diary exported." only after the copy was read back and imports; on any failure the file is deleted, so
@@ -630,10 +619,16 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
      */
     fun exportDiary(uri: Uri) {
         val resolver = getApplication<Application>().contentResolver
-        viewModelScope.launch {
-            awaitIdleStore()
-            busy = true
-            val written = withContext(NonCancellable) {
+        // A picker result can arrive before storage is open or while a write runs (after recreation): it waits.
+        session.write(
+            change = { _: Boolean -> null },
+            entry = GateEntry.WHEN_IDLE,
+            onSuccess = { written ->
+                if (written) { settings.lastExportMs = clock(); exportReminderVisible = false }
+                session.show(if (written) DIARY_EXPORTED else DIARY_EXPORT_FAILED)
+            },
+        ) {
+            withContext(NonCancellable) {
                 val problem = try {
                     val file = diaryFileOf(engine.exportRows(), DiarySettings(dayStartHour, longDraft), clock())
                     withContext(Dispatchers.IO) {
@@ -655,18 +650,23 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 }
                 problem == null
             }
-            busy = false
-            if (written) { settings.lastExportMs = clock(); exportReminderVisible = false }
-            notice = if (written) DIARY_EXPORTED else DIARY_EXPORT_FAILED
         }
     }
     /** Import diary: reads and checks the whole file at [uri]; only a file that passes everything asks to replace. */
     fun importDiary(uri: Uri) {
         val resolver = getApplication<Application>().contentResolver
-        viewModelScope.launch {
-            awaitIdleStore()
-            busy = true
-            val result = try {
+        // Holds the gate while the file is read, so no write changes the diary under the check.
+        session.write(
+            change = { _: DiaryImport -> null },
+            entry = GateEntry.WHEN_IDLE,
+            onSuccess = { result ->
+                when (result) {
+                    is DiaryImport.Valid -> pendingImport = result
+                    is DiaryImport.Invalid -> { Log.w(LOG_TAG, "Diary import refused: ${result.reason}"); session.show(DIARY_IMPORT_REFUSED) }
+                }
+            },
+        ) {
+            try {
                 withContext(Dispatchers.IO) {
                     val text = (resolver.openInputStream(uri) ?: error("no input stream")).use { readDiaryText(it) }
                     if (text == null) DiaryImport.Invalid("file too big") else decodeDiary(text)
@@ -675,12 +675,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 throw e
             } catch (e: Exception) {
                 DiaryImport.Invalid("unreadable: $e")
-            } finally {
-                busy = false
-            }
-            when (result) {
-                is DiaryImport.Valid -> pendingImport = result
-                is DiaryImport.Invalid -> { Log.w(LOG_TAG, "Diary import refused: ${result.reason}"); notice = DIARY_IMPORT_REFUSED }
             }
         }
     }
@@ -694,11 +688,19 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val pending = pendingImport ?: return
         if (!ready || busy) return
         pendingImport = null
-        busy = true
         val safetyDir = getApplication<Application>().noBackupFilesDir
-        viewModelScope.launch {
-            try {
-                val replaced = withContext(NonCancellable) {
+        session.write(
+            change = { replaced -> DiaryChange.DiaryReplaced.takeIf { replaced } },
+            onSuccess = { replaced ->
+                if (!replaced) {
+                    session.show(DIARY_IMPORT_REFUSED)
+                    return@write
+                }
+                // Nothing from the old diary may be undone (the change ended it), pinned or confirmed into the new one.
+                loggedBatchIds = emptyList(); logPins.clear(); feedbackIds = emptySet()
+            },
+        ) {
+                withContext(NonCancellable) {
                     try {
                         when (safetyCopyStep(keepSafetyCopy, deletingAll = false)) {
                             SafetyCopyStep.WRITE -> {
@@ -715,17 +717,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                         false
                     }
                 }
-                if (!replaced) {
-                    notice = DIARY_IMPORT_REFUSED
-                    return@launch
-                }
-                // Nothing from the old diary may be undone, pinned or confirmed into the new one.
-                offerUndo(null); loggedBatchIds = emptyList(); logPins.clear(); feedbackIds = emptySet()
-                refresh()
-                refreshLibrary()
-            } finally {
-                busy = false
-            }
         }
     }
     fun openLibrary() {
@@ -811,7 +802,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         expandedLibraryFoodId = if (expandedLibraryFoodId == food.id) null else food.id
     }
     fun collapseLibraryFoodPicker() { expandedLibraryFoodId = null }
-    fun noticeForInvalidLibraryAmount() { notice = "Enter a positive amount and a supported unit such as g, ml, tbsp, tsp, or piece." }
+    fun noticeForInvalidLibraryAmount() { session.show("Enter a positive amount and a supported unit such as g, ml, tbsp, tsp, or piece.") }
 
     fun logLibraryFood(food: FoodRecord, amount: Double = lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount, unit: MeasureUnit = lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit) {
         if (!ready || busy || food.archived) return
@@ -835,11 +826,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private fun logLibraryBatch(drafts: List<LibraryLogDraft>, target: MealSlot) {
         if (!ready || busy || drafts.isEmpty()) return
         val capturedDayKey = selectedDayKey
-        launchBusy {
-            suspendRunCatching { drafts.forEach { draft -> engine.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, capturedDayKey) } }
-                .onSuccess { offerUndo(null); refresh(); refreshLibrary(); notice = "Added ${drafts.size} food${if (drafts.size == 1) "" else "s"} to ${target.label()} on $capturedDayKey" }
-                .onFailure { notice = it.message ?: "Could not log this food." }
-        }
+        session.write(
+            change = { _: Unit -> DiaryChange.FoodsLogged },
+            onSuccess = { session.show("Added ${drafts.size} food${if (drafts.size == 1) "" else "s"} to ${target.label()} on $capturedDayKey") },
+            onFailure = { session.show(it.message ?: "Could not log this food.") },
+        ) { drafts.forEach { draft -> engine.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, capturedDayKey) } }
     }
 
     fun chooseLibraryBatchMeal(target: MealSlot) {
@@ -864,19 +855,19 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     fun archiveLibraryFood(food: FoodRecord) {
         if (!ready || busy || food.archived || food.origin != com.iron.breakfast.domain.FoodOrigin.CUSTOM) return
-        launchBusy {
-            suspendRunCatching { engine.archiveFood(food.id) }
-                .onSuccess { selectedLibraryFood = null; if (editingLibraryFoodId == food.id) closeCustom(); refresh(); refreshLibrary(); notice = "Food archived; saved diary entries remain readable." }
-                .onFailure { notice = it.message ?: "Could not archive this food." }
-        }
+        session.write(
+            change = { _: Unit -> DiaryChange.FoodsChanged },
+            onSuccess = { selectedLibraryFood = null; if (editingLibraryFoodId == food.id) closeCustom(); session.show("Food archived; saved diary entries remain readable.") },
+            onFailure = { session.show(it.message ?: "Could not archive this food.") },
+        ) { engine.archiveFood(food.id) }
     }
     fun restoreLibraryFood(food: FoodRecord) {
         if (!ready || busy || !food.archived) return
-        launchBusy {
-            suspendRunCatching { engine.restoreFood(food.id) }
-                .onSuccess { refresh(); selectedLibraryFood = foods.firstOrNull { it.id == food.id }; refreshLibrary(); notice = "Food restored to your library." }
-                .onFailure { notice = it.message ?: "Could not restore this food." }
-        }
+        session.write(
+            change = { _: Unit -> DiaryChange.FoodsChanged },
+            onSuccess = { selectedLibraryFood = foods.firstOrNull { it.id == food.id }; session.show("Food restored to your library.") },
+            onFailure = { session.show(it.message ?: "Could not restore this food.") },
+        ) { engine.restoreFood(food.id) }
     }
     fun openEntryDetail(entry: MealEntry) {
         // A double tap is resolved by combinedClickable into quick edit. If a
@@ -891,7 +882,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun editingEntry(): MealEntry? = editingEntryId?.let { id -> entries.firstOrNull { it.id == id } }
     fun saveFullEdit(foodId: String, amount: String, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
         val id = editingEntryId ?: return
-        val session = editSession
+        val edit = editSession
         // A tap while the save runs is ignored, not reported as invalid.
         if (!ready || busy) return
         val parsedAmount = amount.toDoubleOrNull()
@@ -899,30 +890,20 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             markEditInvalid("Enter a positive amount and choose a food.")
             return
         }
-        busy = true
         fullSaveJob?.cancel()
-        fullSaveJob = viewModelScope.launch {
-            withContext(NonCancellable) {
-                try {
-                    when (val result = engine.replaceEntryDraft(id, foodId, parsedAmount, unit, meal, dayKey)) {
-                        is ReplacementResult.Success -> if (editSession == session && editingEntryId == id) {
-                            offerUndo(null)
-                            refresh()
-                            fullSaveJob = null
-                            cancelEdit()
-                        }
-                        is ReplacementResult.Failure -> if (editSession == session && editingEntryId == id) markEditInvalid(result.reason)
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Throwable) {
-                    if (editSession == session && editingEntryId == id) markEditInvalid(error.message ?: "Could not save this entry.")
-                } finally {
-                    // This save owns busy until it ends, whatever the session is now (nothing else clears it).
-                    busy = false
+        // This save owns the gate until it ends, whatever the edit session is now; a result for an edit no longer open
+        // is dropped (no change published).
+        fullSaveJob = session.write(
+            change = { result -> DiaryChange.EntryEdited.takeIf { result is ReplacementResult.Success && editSession == edit && editingEntryId == id } },
+            nonCancellable = true,
+            onSuccess = { result ->
+                if (editSession == edit && editingEntryId == id) when (result) {
+                    is ReplacementResult.Success -> { fullSaveJob = null; cancelEdit() }
+                    is ReplacementResult.Failure -> markEditInvalid(result.reason)
                 }
-            }
-        }
+            },
+            onFailure = { error -> if (editSession == edit && editingEntryId == id) markEditInvalid(error.message ?: "Could not save this entry.") },
+        ) { engine.replaceEntryDraft(id, foodId, parsedAmount, unit, meal, dayKey) }
     }
     fun openContributionForFood(food: FoodRecord?) {
         contributionPreflightToken++
@@ -931,7 +912,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (draft == null) {
             contributionPreflightBusy = false
             contributionPreflightComplete = false
-            notice = "Open Food Facts submission is available only for foods with a barcode."
+            session.show("Open Food Facts submission is available only for foods with a barcode.")
             return
         }
         contributionPreflightComplete = false
@@ -957,11 +938,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                     }
                     is OffPreflightResult.Ineligible -> {
                         pendingContribution = null
-                        notice = result.message
+                        session.show(result.message)
                     }
                     OffPreflightResult.Unavailable -> {
                         pendingContribution = null
-                        notice = "Open Food Facts was unavailable. Retry when you have a connection."
+                        session.show("Open Food Facts was unavailable. Retry when you have a connection.")
                     }
                 }
                 if (pendingContribution != null) contributionReviewOpen = true
@@ -1032,20 +1013,19 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val food = selectedProduct ?: return
         if (!ready || busy) return
         val draft = productDraft(food) ?: run {
-            notice = "Enter a positive amount, a supported unit, and valid calories."
+            session.show("Enter a positive amount, a supported unit, and valid calories.")
             return
         }
         val fromScan = selectedProductFromScan
-        launchBusy {
-            suspendRunCatching { engine.cacheFood(draft.food) }
-                .onSuccess { stored ->
-                    pendingContribution = contributionDraftAfterLocalSave(draft.food, fromScan)
-                    selectedProductFromScan = false
-                    refresh(); refreshLibrary()
-                    finishResolve(stored)
-                }
-                .onFailure { notice = it.message ?: "Could not save this food." }
-        }
+        session.write(
+            change = { _: FoodRecord -> DiaryChange.FoodsChanged },
+            onSuccess = { stored ->
+                pendingContribution = contributionDraftAfterLocalSave(draft.food, fromScan)
+                selectedProductFromScan = false
+                finishResolve(stored)
+            },
+            onFailure = { session.show(it.message ?: "Could not save this food.") },
+        ) { engine.cacheFood(draft.food) }
     }
 
     fun openLibraryFoodDetail(entry: MealEntry) {
@@ -1133,7 +1113,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         // While a part is being resolved, Done searches; it never logs.
         if (logResolve != null) { onLibraryQuery(raw); return }
         val markers = mealMarkers(raw)
-        if (markers.size > 1) { notice = "Choose one meal marker."; return }
+        if (markers.size > 1) { session.show("Choose one meal marker."); return }
         val target = markers.singleOrNull()
         val effectiveTarget = target ?: slot
         val segments = libraryInputSegments(raw, engine.planner())
@@ -1145,7 +1125,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (segments.any { it.amount == null }) {
             if (effectiveTarget == null) {
                 libraryPendingBatch = emptyList()
-                notice = "Choose a meal before adding a mixed batch with an unquantified food."
+                session.show("Choose a meal before adding a mixed batch with an unquantified food.")
                 mixedMealPickerOpen = true
                 return
             }
@@ -1161,7 +1141,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             withContext(Dispatchers.Main) {
                 if (drafts.size != segments.size) {
                     onLibraryQuery(segments.joinToString(", ") { it.foodPhrase })
-                    notice = "One or more foods are not in your local library."
+                    session.show("One or more foods are not in your local library.")
                     return@withContext
                 }
                 if (effectiveTarget != null) logLibraryBatch(drafts, effectiveTarget) else {
@@ -1176,10 +1156,9 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private fun submitLibraryMixedInput(cleaned: String, target: MealSlot) {
         val capturedInput = input
         val capturedDayKey = selectedDayKey
-        launchBusy {
-            suspendRunCatching { engine.save(cleaned, mealSlot = target, dayKey = capturedDayKey) }
-                .onSuccess { saved ->
-                    refresh()
+        session.write(
+            change = { saved -> DiaryChange.BatchLogged(loggedOffer("${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} logged to ${target.label()}", saved.entries)) },
+            onSuccess = { saved ->
                     if (input == capturedInput) input = saved.unresolvedSegments.joinToString(", ")
                     unknownQueue = saved.unresolvedSegments
                     unknownQueueTotal = saved.unresolvedSegments.size
@@ -1190,10 +1169,9 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                     feedbackIds = saved.entries.filter { it.approximateConversion }.mapTo(mutableSetOf()) { it.id }
                     feedbackUntil = if (feedbackIds.isEmpty()) 0L else System.currentTimeMillis() + 30_000L
                     loggedBatchIds = saved.entries.map { it.id }
-                    offerLoggedUndo("${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} logged to ${target.label()}", saved.entries)
-                }
-                .onFailure { notice = it.message ?: "Could not save this batch." }
-        }
+            },
+            onFailure = { session.show(it.message ?: "Could not save this batch.") },
+        ) { engine.save(cleaned, mealSlot = target, dayKey = capturedDayKey) }
     }
     fun beginQuickEdit(entry: MealEntry) {
         if (busy) return
@@ -1328,22 +1306,21 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val editing = editingEntryId
         val mode = entryEditMode
         if (editing != null && mode != EntryEditMode.NONE) {
-            val session = editSession
-            launchBusy {
-                suspendRunCatching {
-                    if (mode == EntryEditMode.QUICK) engine.replaceEntryAmountUnit(editing, input)
-                    else engine.replaceEntryFromText(editing, input)
-                }.onSuccess { result ->
-                    if (entryEditMode != mode || editingEntryId != editing || editSession != session) return@onSuccess
-                    when (result) {
-                        is ReplacementResult.Success -> { offerUndo(null); refresh(); cancelEdit() }
+            val edit = editSession
+            fun stillEditing() = entryEditMode == mode && editingEntryId == editing && editSession == edit
+            // A result for an edit no longer open is dropped (no change published).
+            session.write(
+                change = { result -> DiaryChange.EntryEdited.takeIf { result is ReplacementResult.Success && stillEditing() } },
+                onSuccess = { result ->
+                    if (stillEditing()) when (result) {
+                        is ReplacementResult.Success -> cancelEdit()
                         is ReplacementResult.Failure -> markEditInvalid(result.reason)
                     }
-                }.onFailure {
-                    if (entryEditMode == mode && editingEntryId == editing && editSession == session) {
-                        markEditInvalid(it.message ?: "Could not edit this entry.")
-                    }
-                }
+                },
+                onFailure = { if (stillEditing()) markEditInvalid(it.message ?: "Could not edit this entry.") },
+            ) {
+                if (mode == EntryEditMode.QUICK) engine.replaceEntryAmountUnit(editing, input)
+                else engine.replaceEntryFromText(editing, input)
             }
             return
         }
@@ -1354,38 +1331,29 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             mealDraftError = "Add at least one food."
             return
         }
-        launchBusy {
-            suspendRunCatching { engine.save(captured, mealSlot = target, dayKey = selectedDayKey, pins = capturedPins) }.onSuccess { saved ->
-                // Nothing resolved: nothing was saved, so the Log stays open with the typed text and says what to fix.
-                if (saved.entries.isEmpty() && saved.unresolvedSegments.isNotEmpty()) {
+        // Nothing resolved: nothing was saved, so the Log stays open with the typed text and says what to fix.
+        fun nothingSaved(saved: SavedMeal) = saved.entries.isEmpty() && saved.unresolvedSegments.isNotEmpty()
+        session.write(
+            change = { saved ->
+                if (nothingSaved(saved)) null
+                else DiaryChange.BatchLogged(loggedOffer("${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} added to ${target.label()}", saved.entries))
+            },
+            onSuccess = { saved ->
+                if (nothingSaved(saved)) {
                     mealDraftError = "Some foods need a match."
-                    return@onSuccess
+                    return@write
                 }
                 // Only the pins this save used: one added while it planned off the main thread belongs to the new text.
                 capturedPins.forEach { (part, food) -> if (logPins[part] == food) logPins.remove(part) }
                 closeLog()
-                refresh(); if (logDraft == captured) logDraft = saved.unresolvedSegments.joinToString(", "); unknownQueue = saved.unresolvedSegments; unknownQueueTotal = saved.unresolvedSegments.size; unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }; resolutionContinuation = saved.unresolvedSegments.isNotEmpty(); resolverOpen = saved.unresolvedSegments.isNotEmpty(); mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
+                if (logDraft == captured) logDraft = saved.unresolvedSegments.joinToString(", "); unknownQueue = saved.unresolvedSegments; unknownQueueTotal = saved.unresolvedSegments.size; unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }; resolutionContinuation = saved.unresolvedSegments.isNotEmpty(); resolverOpen = saved.unresolvedSegments.isNotEmpty(); mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
                 feedbackIds = saved.entries.filter { it.approximateConversion }.mapTo(mutableSetOf()) { it.id }; feedbackUntil = if (feedbackIds.isEmpty()) 0L else System.currentTimeMillis() + 30_000L
                 loggedBatchIds = saved.entries.map { it.id }
-                offerLoggedUndo("${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} added to ${target.label()}", saved.entries)
-            }.onFailure { mealDraftError = it.message ?: "Could not save this meal." }
-        }
+            },
+            onFailure = { mealDraftError = it.message ?: "Could not save this meal." },
+        ) { engine.save(captured, mealSlot = target, dayKey = selectedDayKey, pins = capturedPins) }
     }
     private fun mealMarkers(value: String): List<MealSlot> = mealMarkerSlots(value)
-    /**
-     * Runs [block] as the one write that owns [busy]: set now, before the launch, and cleared in finally when the
-     * write ends, so a throwing success or failure handler cannot leave the app stuck busy.
-     */
-    private fun launchBusy(block: suspend () -> Unit) {
-        busy = true
-        viewModelScope.launch {
-            try {
-                block()
-            } finally {
-                busy = false
-            }
-        }
-    }
     /** Replaces the Undo offer; null clears it. An offer clears itself when its window ends. */
     private fun offerUndo(offer: UndoOffer?) {
         undoExpiryJob?.cancel()
@@ -1403,10 +1371,14 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             if (undoOffer === offer) undoOffer = null
         }
     }
-    /** A batch that saved nothing leaves the current offer alone. */
-    private fun offerLoggedUndo(message: String, entries: List<MealEntry>) {
-        val next = undoAfterLog(undoOffer, if (entries.isEmpty()) null else UndoOffer.Logged(message, entries, clock()))
+    /** A logged batch's own Undo; null when it saved nothing, which leaves the current offer alone ([undoAfterLog]). */
+    private fun loggedOffer(message: String, entries: List<MealEntry>): UndoOffer.Logged? =
+        if (entries.isEmpty()) null else UndoOffer.Logged(message, entries, clock())
+    /** Every committed write: the pending Undo follows [undoAfterChange], and the Library list is recomputed when asked. */
+    private fun onDiaryChange(change: DiaryChange) {
+        val next = undoAfterChange(undoOffer, change)
         if (next !== undoOffer) offerUndo(next)
+        if (change.refreshesLibrary) refreshLibrary()
     }
     /** The offer, while its window is open; an expired one is cleared. */
     private fun liveUndoOffer(): UndoOffer? {
@@ -1417,31 +1389,29 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     fun delete(entry: MealEntry) {
         if (!ready || busy) return
-        launchBusy {
-            suspendRunCatching { engine.deleteEntry(entry.id) }
-                .onSuccess { offerUndo(UndoOffer.Deleted(entry, clock())); refresh() }
-                .onFailure { notice = "Could not edit this entry." }
-        }
+        session.write(
+            change = { _: Unit -> DiaryChange.EntryDeleted(UndoOffer.Deleted(entry, clock())) },
+            onFailure = { session.show("Could not edit this entry.") },
+        ) { engine.deleteEntry(entry.id) }
     }
     /** Puts the deleted entry back with its own id and snapshot. */
     fun undo() {
         val offer = liveUndoOffer() as? UndoOffer.Deleted ?: return
         if (!ready || busy) return
-        launchBusy {
-            suspendRunCatching { engine.restoreEntry(offer.entry) }
-                .onSuccess { offerUndo(null); refresh() }
-                .onFailure { notice = UNDO_FAILED }
-        }
+        session.write(
+            change = { _: Unit -> DiaryChange.UndoApplied },
+            onFailure = { session.show(UNDO_FAILED) },
+        ) { engine.restoreEntry(offer.entry) }
     }
     /** Deletes the logged batch in one transaction; an entry edited since it was logged stays. */
     fun undoLoggedBatch() {
         val offer = liveUndoOffer() as? UndoOffer.Logged ?: return
         if (!ready || busy) return
-        launchBusy {
-            suspendRunCatching { engine.deleteEntries(offer.entries) }
-                .onSuccess { loggedBatchIds = emptyList(); offerUndo(null); refresh() }
-                .onFailure { notice = UNDO_FAILED }
-        }
+        session.write(
+            change = { _: Unit -> DiaryChange.UndoApplied },
+            onSuccess = { loggedBatchIds = emptyList() },
+            onFailure = { session.show(UNDO_FAILED) },
+        ) { engine.deleteEntries(offer.entries) }
     }
     fun openCustom(name: String = "", brand: String = "", barcode: String = "", fromResolver: Boolean = false, fromOff: Boolean = false) {
         if (!fromResolver && unknownQueue.isNotEmpty()) abandonUnknownResolution()
@@ -1490,7 +1460,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (resolverQuery.isBlank()) resolverQuery = currentUnknownName()
         onResolverQuery(resolverQuery)
     }
-    fun dismissNotice() { notice = null }
+    fun dismissNotice() = session.dismissNotice()
     fun reviewContribution() {
         val draft = pendingContribution ?: return
         if (contributionPreflightBusy) return
@@ -1501,13 +1471,13 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun confirmContribution() {
         val draft = pendingContribution
         if (draft != null && draft.createNewProduct && draft.languageCode.trim().lowercase() !in setOf("en", "mk")) {
-            notice = "Choose en (English) or mk (Macedonian) for the new product."
+            session.show("Choose en (English) or mk (Macedonian) for the new product.")
             return
         }
         if (draft != null && draft.createNewProduct && draft.basisUnit == MeasureUnit.MILLILITER &&
             (draft.packageQuantityMl == null || !draft.packageQuantityMl.isFinite() || draft.packageQuantityMl <= 0.0)
         ) {
-            notice = "Enter a positive package quantity in ml before continuing."
+            session.show("Enter a positive package quantity in ml before continuing.")
             return
         }
         if (draft != null) {
@@ -1561,7 +1531,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                         pendingContribution = null
                         contributionAuthOpen = false
                         contributionFailure = null
-                        notice = "Contribution sent to Open Food Facts."
+                        session.show("Contribution sent to Open Food Facts.")
                     }
                     OffContributionResult.AuthFailed -> { contributionAuthOpen = false; contributionFailure = "Open Food Facts could not authenticate that account. Check the username and password, then retry." }
                     is OffContributionResult.Ineligible -> { contributionAuthOpen = false; contributionFailure = result.message }
@@ -1639,11 +1609,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val unit = typed.unit ?: food.defaultUnit
         if (!ready || busy) return
         val capturedDayKey = selectedDayKey
-        launchBusy {
-            suspendRunCatching { engine.cacheFoodAndLog(food, amount, unit, target, capturedDayKey) }
-                .onSuccess { offerUndo(null); advanceUnknownQueue(); refresh() }
-                .onFailure { notice = it.message ?: "Could not resolve this food." }
-        }
+        session.write(
+            change = { _: Unit -> DiaryChange.QueuedPartLogged },
+            onSuccess = { advanceUnknownQueue() },
+            onFailure = { session.show(it.message ?: "Could not resolve this food.") },
+        ) { engine.cacheFoodAndLog(food, amount, unit, target, capturedDayKey) }
     }
     /** Leaves the current unresolved food unlogged and moves to the next one. */
     fun skipCurrentUnknown() { if (unknownQueue.isNotEmpty()) advanceUnknownQueue() }
@@ -1652,24 +1622,28 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun feedbackOpen(entry: MealEntry): Boolean = entry.id in feedbackIds && System.currentTimeMillis() < feedbackUntil
     fun feedbackCount(): Int = feedbackIds.count { id -> entries.any { it.id == id } && System.currentTimeMillis() < feedbackUntil }
     fun alternatives(entry: MealEntry): List<RankedFood> = if (feedbackOpen(entry)) engine.alternativesFor(entry) else emptyList()
-    fun confirm(entry: MealEntry) { if (!ready || busy || !feedbackOpen(entry)) return; launchBusy { suspendRunCatching { engine.reinforce(entry.foodId) }.onSuccess { feedbackIds = feedbackIds - entry.id } } }
+    fun confirm(entry: MealEntry) {
+        if (!ready || busy || !feedbackOpen(entry)) return
+        session.write(
+            change = { _: Unit -> DiaryChange.MatchConfirmed },
+            onSuccess = { feedbackIds = feedbackIds - entry.id },
+            onFailure = {},
+        ) { engine.reinforce(entry.foodId) }
+    }
     /** A "Not right?" pick: the entry becomes [food], which is reinforced. A refused replacement says why and reinforces nothing. */
     fun chooseAlternative(entry: MealEntry, food: FoodRecord) {
         if (!ready || busy || !feedbackOpen(entry)) return
-        launchBusy {
-            suspendRunCatching {
-                engine.replaceEntry(entry.id, food.id).also { if (it is ReplacementResult.Success) engine.reinforce(food.id) }
-            }.onSuccess { result ->
+        session.write(
+            // The pending Undo stays (see [undoEndsAt]); it ends at the next log, edit or delete.
+            change = { result -> DiaryChange.MatchCorrected.takeIf { result is ReplacementResult.Success } },
+            onSuccess = { result ->
                 when (result) {
-                    is ReplacementResult.Success -> {
-                        // The pending Undo stays (see [undoEndsAt]); it ends at the next log, edit or delete.
-                        if (undoEndsAt(DiaryChange.NOT_RIGHT_PICK)) offerUndo(null)
-                        feedbackIds = feedbackIds - entry.id; refresh()
-                    }
-                    is ReplacementResult.Failure -> notice = result.reason
+                    is ReplacementResult.Success -> feedbackIds = feedbackIds - entry.id
+                    is ReplacementResult.Failure -> session.show(result.reason)
                 }
-            }
-        }
+            },
+            onFailure = {},
+        ) { engine.replaceEntry(entry.id, food.id).also { if (it is ReplacementResult.Success) engine.reinforce(food.id) } }
     }
     fun expireFeedback() { feedbackUntil = 0L; feedbackIds = emptySet() }
     fun holdFeedback() { if (resolverOpen && feedbackUntil > 0L) feedbackUntil += 1000L }
@@ -1729,7 +1703,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (!ready || busy) return
         if (logResolve != null) { resolveWithProduct(); return }
         val draft = productDraft(food) ?: run {
-            notice = "Enter a positive amount, a supported unit, and valid calories."
+            session.show("Enter a positive amount, a supported unit, and valid calories.")
             return
         }
         val plan = reviewLogPlan(resolutionContinuation, unknownQueue.isNotEmpty(), unknownQueueTarget, chosen)
@@ -1737,20 +1711,18 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val resolvesQueue = plan.advancesQueue
         val fromScan = selectedProductFromScan
         val capturedDayKey = selectedDayKey
-        launchBusy {
-            suspendRunCatching { engine.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, capturedDayKey) }
-                .onSuccess {
-                    offerUndo(null)
-                    selectedProduct = null
-                    pendingContribution = contributionDraftAfterLocalSave(draft.food, fromScan)
-                    selectedProductFromScan = false
-                    selectedProductOrigin = ProductReviewOrigin.LIBRARY
-                    if (resolvesQueue) advanceUnknownQueue() else resolutionContinuation = false
-                    refresh(); refreshLibrary()
-                    notice = "Added to ${target.label()}"
-                }
-                .onFailure { notice = it.message ?: "This amount cannot be logged." }
-        }
+        session.write(
+            change = { _: Unit -> DiaryChange.FoodsLogged },
+            onSuccess = {
+                selectedProduct = null
+                pendingContribution = contributionDraftAfterLocalSave(draft.food, fromScan)
+                selectedProductFromScan = false
+                selectedProductOrigin = ProductReviewOrigin.LIBRARY
+                if (resolvesQueue) advanceUnknownQueue() else resolutionContinuation = false
+                session.show("Added to ${target.label()}")
+            },
+            onFailure = { session.show(it.message ?: "This amount cannot be logged.") },
+        ) { engine.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, capturedDayKey) }
     }
 
     fun saveSelectedToLibrary() {
@@ -1758,19 +1730,17 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (logResolve != null) { resolveWithProduct(); return }
         if (!canSaveProductToLibrary(slot, resolutionContinuation, unknownQueue.isNotEmpty())) return
         if (!ready || busy) return
-        val draft = productDraft(food) ?: run { notice = "Enter a positive amount, a supported unit, and valid calories."; return }
-        launchBusy {
-            suspendRunCatching { engine.updateFood(draft.food) }
-                .onSuccess {
-                    selectedProduct = null
-                    selectedProductFromScan = false
-                    selectedProductOrigin = ProductReviewOrigin.LIBRARY
-                    refresh()
-                    refreshLibrary()
-                    notice = "Saved ${draft.food.name} to your food library."
-                }
-                .onFailure { notice = it.message ?: "Could not save this food." }
-        }
+        val draft = productDraft(food) ?: run { session.show("Enter a positive amount, a supported unit, and valid calories."); return }
+        session.write(
+            change = { _: Unit -> DiaryChange.FoodsChanged },
+            onSuccess = {
+                selectedProduct = null
+                selectedProductFromScan = false
+                selectedProductOrigin = ProductReviewOrigin.LIBRARY
+                session.show("Saved ${draft.food.name} to your food library.")
+            },
+            onFailure = { session.show(it.message ?: "Could not save this food.") },
+        ) { engine.updateFood(draft.food) }
     }
 
     private fun productDraft(food: FoodRecord): ProductDraft? {
@@ -1843,10 +1813,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             }
             when (val result = off.barcode(barcode)) {
                 is OffResult.Found -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { scannerOpen = false; scannerLookupBusy = false; chooseProduct(result.food, fromScan = true, origin = reviewOrigin) } }
-                is OffResult.Ineligible -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { scannerOpen = false; scannerLookupBusy = false; notice = "Nutrition is incomplete. Review it as a personal food."; openCustom(result.name.orEmpty(), result.brand.orEmpty(), result.barcode, fromOff = true) } }
-                OffResult.Missing -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { scannerOpen = false; scannerLookupBusy = false; notice = "Product not found. Add it manually with barcode $barcode"; openCustom(barcode = barcode) } }
-                OffResult.Unavailable -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { scannerOpen = false; scannerLookupBusy = false; notice = "No connection. Add the product manually."; openCustom(barcode = barcode) } }
-                is OffResult.Error -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { scannerOpen = false; scannerLookupBusy = false; notice = result.message; openCustom(barcode = barcode) } }
+                is OffResult.Ineligible -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { scannerOpen = false; scannerLookupBusy = false; session.show("Nutrition is incomplete. Review it as a personal food."); openCustom(result.name.orEmpty(), result.brand.orEmpty(), result.barcode, fromOff = true) } }
+                OffResult.Missing -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { scannerOpen = false; scannerLookupBusy = false; session.show("Product not found. Add it manually with barcode $barcode"); openCustom(barcode = barcode) } }
+                OffResult.Unavailable -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { scannerOpen = false; scannerLookupBusy = false; session.show("No connection. Add the product manually."); openCustom(barcode = barcode) } }
+                is OffResult.Error -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { scannerOpen = false; scannerLookupBusy = false; session.show(result.message); openCustom(barcode = barcode) } }
             }
         }
     }
@@ -1863,7 +1833,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val barcodeError = if (barcodeUnchanged) null else validateBarcodeInput(barcode, foods, editingId)
         // A refused save names the problem and moves focus to the field to fix (New food reads the request).
         foodSaveRefusal(name, input, resolved, barcodeError)?.let { refusal ->
-            notice = refusal.message
+            session.show(refusal.message)
             if (editingId == null) foodFormFocus = FoodFormFocus(refusal.field, ++foodFormFocusSerial)
             return
         }
@@ -1877,7 +1847,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val saveTarget = resolutionPlan?.meal
         val resolvesQueue = resolutionPlan?.advancesQueue == true
         if (resolutionContinuation && unknownQueue.isNotEmpty() && saveTarget == null) {
-            notice = "Choose a meal before saving this food."
+            session.show("Choose a meal before saving this food.")
             return
         }
         val fromOff = draft.fromOff
@@ -1891,7 +1861,25 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val offSource = fromOff.takeIf { it }?.let { "Open Food Facts" }
         val aliasText = aliasList.joinToString(", ")
         val capturedDayKey = selectedDayKey
-        launchBusy { suspendRunCatching {
+        session.write(
+            // A new food saved with a meal is a log (it ends Undo); a food saved or edited alone is not.
+            change = { _: FoodRecord -> if (editingId == null && saveTarget != null) DiaryChange.FoodsLogged else DiaryChange.FoodsChanged },
+            onSuccess = { saved ->
+                customOpen = false
+                discardFoodOpen = false
+                editingLibraryFoodId = null
+                draft.reset()
+                pendingContribution = contribution?.copy(
+                    languageCode = contributionLanguageFor(name),
+                    packageQuantityMl = null
+                )
+                contributionPreflightComplete = false
+                if (resolvesQueue && unknownQueue.isNotEmpty()) advanceUnknownQueue() else resolutionContinuation = false
+                session.show(if (editingId != null) "Personal food updated for future logs." else if (saveTarget != null) "Saved to ${saveTarget.label()} and your food library." else "Saved to your food library.")
+                if (logResolve != null && editingId == null) finishResolve(saved)
+            },
+            onFailure = { session.show(it.message ?: "Could not save this food.") },
+        ) {
             if (editingId != null) {
                 val original = foods.firstOrNull { it.id == editingId } ?: error("That personal food is no longer available.")
                 engine.updateFood(editedCustomFoodRecord(original, name, brand, storedBarcode, aliasText, nutrition, basisAmount, basisUnit, aliases = aliasList, servings = servingList))
@@ -1903,23 +1891,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                     engine.foodById(entry.foodId) ?: error("Saved food could not be reloaded.")
                 } else engine.saveCustomFood(name, brand, storedBarcode, aliasText, nutrition, basisAmount, basisUnit, sourceName = offSource, sourceDescription = "Saved from an incomplete Open Food Facts barcode result")
             }
-        }.onSuccess { saved ->
-            if (editingId == null && saveTarget != null) offerUndo(null)
-            refresh()
-            customOpen = false
-            discardFoodOpen = false
-            editingLibraryFoodId = null
-            draft.reset()
-            pendingContribution = contribution?.copy(
-                languageCode = contributionLanguageFor(name),
-                packageQuantityMl = null
-            )
-            contributionPreflightComplete = false
-            refreshLibrary()
-            if (resolvesQueue && unknownQueue.isNotEmpty()) advanceUnknownQueue() else resolutionContinuation = false
-            notice = if (editingId != null) "Personal food updated for future logs." else if (saveTarget != null) "Saved to ${saveTarget.label()} and your food library." else "Saved to your food library."
-            if (logResolve != null && editingId == null) finishResolve(saved)
-        }.onFailure { notice = it.message ?: "Could not save this food." } }
+        }
     }
 }
 

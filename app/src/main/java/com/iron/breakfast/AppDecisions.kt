@@ -241,8 +241,11 @@ internal fun resolveSelectedDay(
     }
 }
 
-/** A change to the diary, for [undoEndsAt]. */
-internal enum class DiaryChange { LOG, EDIT, DELETE, NOT_RIGHT_PICK, CONFIRM_MATCH }
+/**
+ * The kind of a diary change, for [undoEndsAt]. [FOOD_EDIT] is a food saved, edited, archived or restored without a log;
+ * [UNDO] an Undo applied; [REPLACE] the whole diary replaced (import) or deleted.
+ */
+internal enum class DiaryChangeKind { LOG, EDIT, DELETE, NOT_RIGHT_PICK, CONFIRM_MATCH, FOOD_EDIT, UNDO, REPLACE }
 
 /**
  * Whether [change] ends a pending Undo offer, in every Undo mode ("Until next action" included): the next log, edit
@@ -250,9 +253,9 @@ internal enum class DiaryChange { LOG, EDIT, DELETE, NOT_RIGHT_PICK, CONFIRM_MAT
  * corrected entry is then left by Undo, which skips entries changed since), so an "Until next action" offer still ends
  * at the next log, edit or delete and never stays for good.
  */
-internal fun undoEndsAt(change: DiaryChange): Boolean = when (change) {
-    DiaryChange.LOG, DiaryChange.EDIT, DiaryChange.DELETE -> true
-    DiaryChange.NOT_RIGHT_PICK, DiaryChange.CONFIRM_MATCH -> false
+internal fun undoEndsAt(change: DiaryChangeKind): Boolean = when (change) {
+    DiaryChangeKind.LOG, DiaryChangeKind.EDIT, DiaryChangeKind.DELETE, DiaryChangeKind.UNDO, DiaryChangeKind.REPLACE -> true
+    DiaryChangeKind.NOT_RIGHT_PICK, DiaryChangeKind.CONFIRM_MATCH, DiaryChangeKind.FOOD_EDIT -> false
 }
 
 /** A logged batch replaces the offer; a batch that saved nothing ([logged] null) keeps [current]. */

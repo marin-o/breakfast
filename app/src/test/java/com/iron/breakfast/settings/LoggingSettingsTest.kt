@@ -21,7 +21,7 @@ import com.iron.breakfast.LogSubmitPlan
 import com.iron.breakfast.logSubmitPlan
 import com.iron.breakfast.undoOpen
 import com.iron.breakfast.undoEndsAt
-import com.iron.breakfast.DiaryChange
+import com.iron.breakfast.DiaryChangeKind
 import com.iron.breakfast.lastUsedMeal
 import com.iron.breakfast.logTargetMealOf
 
@@ -84,12 +84,12 @@ class LoggingSettingsTest {
     }
 
     @Test fun onlyALogEditOrDeleteEndsAnUndoOffer() {
-        assertTrue(undoEndsAt(DiaryChange.LOG))
-        assertTrue(undoEndsAt(DiaryChange.EDIT))
-        assertTrue(undoEndsAt(DiaryChange.DELETE))
+        assertTrue(undoEndsAt(DiaryChangeKind.LOG))
+        assertTrue(undoEndsAt(DiaryChangeKind.EDIT))
+        assertTrue(undoEndsAt(DiaryChangeKind.DELETE))
         // B4: a "Not right?" pick keeps the batch Undo, in every Undo mode.
-        assertFalse(undoEndsAt(DiaryChange.NOT_RIGHT_PICK))
-        assertFalse(undoEndsAt(DiaryChange.CONFIRM_MATCH))
+        assertFalse(undoEndsAt(DiaryChangeKind.NOT_RIGHT_PICK))
+        assertFalse(undoEndsAt(DiaryChangeKind.CONFIRM_MATCH))
     }
 
     @Test fun byTimeUsesTheBoundaries() {

@@ -1,6 +1,6 @@
 package com.iron.breakfast.app
 
-import com.iron.breakfast.DiaryChange
+import com.iron.breakfast.DiaryChangeKind
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionValues
@@ -12,8 +12,8 @@ import org.junit.Test
 
 /**
  * What each diary write does after it succeeds, as `BreakfastViewModel` does it at 8673e52 (read from the code; the
- * view model cannot be built on the JVM). B11 moves this fan-out into `DiarySession`; this table is the reference
- * the new path must reproduce.
+ * view model cannot be built on the JVM). B11 moved this fan-out into `DiarySession`: each path now publishes a
+ * [DiaryChange], and [eachPublishedChangeDoesWhatTheCallSiteDidBefore] checks it reproduces this table.
  */
 class WritePathCharacterisationTest {
     /** What a write does to the pending Undo offer. */
@@ -59,11 +59,11 @@ class WritePathCharacterisationTest {
 
     @Test fun theUndoRuleAgreesWithTheHandWrittenCallSites() {
         // The call sites that end Undo by hand are the log, edit and delete kinds of the rule; the others keep it.
-        assertEquals(true, undoEndsAt(DiaryChange.LOG))
-        assertEquals(true, undoEndsAt(DiaryChange.EDIT))
-        assertEquals(true, undoEndsAt(DiaryChange.DELETE))
-        assertEquals(false, undoEndsAt(DiaryChange.NOT_RIGHT_PICK))
-        assertEquals(false, undoEndsAt(DiaryChange.CONFIRM_MATCH))
+        assertEquals(true, undoEndsAt(DiaryChangeKind.LOG))
+        assertEquals(true, undoEndsAt(DiaryChangeKind.EDIT))
+        assertEquals(true, undoEndsAt(DiaryChangeKind.DELETE))
+        assertEquals(false, undoEndsAt(DiaryChangeKind.NOT_RIGHT_PICK))
+        assertEquals(false, undoEndsAt(DiaryChangeKind.CONFIRM_MATCH))
         assertEquals(Undo.KEEP, PATHS.single { it.name == "Not right? pick" }.undo)
         assertEquals(Undo.KEEP, PATHS.single { it.name == "Confirm match" }.undo)
     }
@@ -72,6 +72,41 @@ class WritePathCharacterisationTest {
         val logged = UndoOffer.Logged("1 food added to Breakfast", listOf(entry), 2_000L)
         assertEquals(logged, undoAfterLog(pending, logged))
         assertEquals(pending, undoAfterLog(pending, null))
+    }
+
+    /** The change each path publishes since B11, as `BreakfastViewModel` builds it at that call site. */
+    private fun published(path: String, logged: UndoOffer.Logged?, deleted: UndoOffer.Deleted): DiaryChange = when (path) {
+        "Log Add", "Library mixed batch" -> DiaryChange.BatchLogged(logged)
+        "Library log (single or batch)", "Product review Add", "New food saved and logged" -> DiaryChange.FoodsLogged
+        "New food saved / food edited", "Food archived, restored, saved or cached" -> DiaryChange.FoodsChanged
+        "Resolver pick" -> DiaryChange.QueuedPartLogged
+        "Entry quick or full edit" -> DiaryChange.EntryEdited
+        "Delete entry" -> DiaryChange.EntryDeleted(deleted)
+        "Undo (restore or batch)" -> DiaryChange.UndoApplied
+        "Not right? pick" -> DiaryChange.MatchCorrected
+        "Confirm match" -> DiaryChange.MatchConfirmed
+        "Replace diary / Delete all" -> DiaryChange.DiaryReplaced
+        else -> error("no change for $path")
+    }
+
+    @Test fun eachPublishedChangeDoesWhatTheCallSiteDidBefore() {
+        val logged = UndoOffer.Logged("1 food added to Breakfast", listOf(entry), 2_000L)
+        val deleted = UndoOffer.Deleted(entry, 3_000L)
+        for (path in PATHS) {
+            val change = published(path.name, logged, deleted)
+            val expectedUndo = when (path.undo) {
+                Undo.END -> null
+                Undo.KEEP -> pending
+                Undo.REPLACE_WITH_ITS_OWN -> deleted
+                Undo.AFTER_LOG -> logged
+            }
+            assertEquals(path.name, expectedUndo, undoAfterChange(pending, change))
+            assertEquals(path.name, path.refreshesDiary, change.rowsChanged)
+            assertEquals(path.name, path.refreshesLibrary, change.refreshesLibrary)
+        }
+        // A batch that saved nothing keeps the pending Undo, as offerLoggedUndo did.
+        assertEquals(pending, undoAfterChange(pending, DiaryChange.BatchLogged(null)))
+        assertEquals(null, undoAfterChange(null, DiaryChange.BatchLogged(null)))
     }
 
     @Test fun everyWritePathIsListedOnce() {
