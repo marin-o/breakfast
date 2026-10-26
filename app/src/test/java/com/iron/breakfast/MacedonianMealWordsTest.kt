@@ -8,6 +8,7 @@ import com.iron.breakfast.domain.ShorthandLexicon
 import com.iron.breakfast.domain.ShorthandParser
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import com.iron.breakfast.domain.mealMarkerSlots
 
 /** Meal words in Macedonian, Cyrillic and Latin, select the meal the way the English ones do. */
 class MacedonianMealWordsTest {

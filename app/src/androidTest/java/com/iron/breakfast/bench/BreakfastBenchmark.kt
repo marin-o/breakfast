@@ -20,7 +20,7 @@ import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.foodsAvailableForLogging
-import com.iron.breakfast.libraryRecencyOrder
+import com.iron.breakfast.domain.libraryRecencyOrder
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals

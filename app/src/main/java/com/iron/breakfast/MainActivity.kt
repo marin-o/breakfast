@@ -168,6 +168,13 @@ import com.iron.breakfast.domain.splitAliases
 import com.iron.breakfast.domain.validateBarcodeInput
 import com.iron.breakfast.domain.ReplacementResult
 import com.iron.breakfast.domain.LogPlan
+import com.iron.breakfast.domain.defaultServingCalculation
+import com.iron.breakfast.domain.draftLogPlan
+import com.iron.breakfast.domain.editedCustomFoodRecord
+import com.iron.breakfast.domain.libraryRecencyOrder
+import com.iron.breakfast.domain.mealMarkerSlots
+import com.iron.breakfast.domain.removeAllMealMarkerTokens
+import com.iron.breakfast.domain.removeMealMarkerToken
 import com.iron.breakfast.domain.LogPlanner
 import com.iron.breakfast.domain.SegmentResolution
 import com.iron.breakfast.domain.DraftRow
@@ -2134,55 +2141,6 @@ internal data class FoodFormFocus(val field: FoodFormField, val serial: Long)
 
 internal data class ProductPrefill(val amount: Double, val unit: MeasureUnit)
 
-internal fun libraryRecencyOrder(foods: List<FoodRecord>, entries: List<MealEntry>): List<FoodRecord> {
-    val latestByFood = entries.groupBy { it.foodId }.mapValues { (_, values) -> values.maxOfOrNull { it.savedAtEpochMs } ?: Long.MIN_VALUE }
-    return foods.sortedWith(compareByDescending<FoodRecord> { latestByFood[it.id] ?: Long.MIN_VALUE }.thenBy { it.name.lowercase(Locale.ROOT) })
-}
-
-/**
- * Applies form edits to a stored food. [aliases] and [servings], when given, replace the stored lists
- * outright (so the last alias or serving can be removed); otherwise [aliasText] keeps its older
- * "blank leaves aliases alone" meaning and imported servings are preserved.
- * `sourceId` stays untouched for non-custom foods so an Open Food Facts food keeps its original code.
- */
-internal fun editedCustomFoodRecord(
-    original: FoodRecord,
-    name: String,
-    brand: String,
-    barcode: String,
-    aliasText: String,
-    nutrition: NutritionValues,
-    basisAmount: Double,
-    basisUnit: MeasureUnit,
-    aliases: List<String>? = null,
-    servings: List<com.iron.breakfast.domain.ServingConversion>? = null,
-): FoodRecord {
-    val editedAliases = aliases ?: aliasText.trim().takeIf { it.isNotBlank() }
-        ?.let(::splitAliases)
-        ?: original.aliases
-    val isCustom = original.origin == com.iron.breakfast.domain.FoodOrigin.CUSTOM
-    val preserveImportedServings = !isCustom && original.nutrition.unit == basisUnit
-    val basisConversion = com.iron.breakfast.domain.ServingConversion(basisUnit, basisAmount, "custom basis")
-    val extraServings = servings.orEmpty().filterNot { it.unit == basisUnit && it.label.isNullOrBlank() }
-    val importedBasis = original.conversions.filter { it.unit == basisUnit && it.label.isNullOrBlank() }
-    val conversions = when {
-        servings == null -> if (preserveImportedServings) original.conversions else listOf(basisConversion)
-        preserveImportedServings -> importedBasis + extraServings
-        else -> listOf(basisConversion) + extraServings
-    }
-    val keepDefault = preserveImportedServings && (servings == null || original.defaultUnit == basisUnit || extraServings.any { it.unit == original.defaultUnit })
-    return original.copy(
-        name = name.trim(), brand = brand.trim().ifBlank { null }, barcode = barcode.trim().ifBlank { null },
-        sourceId = if (isCustom) barcode.trim().ifBlank { null } else original.sourceId,
-        aliases = editedAliases,
-        nutrition = NutritionBasis(basisAmount, basisUnit, nutrition),
-        conversions = conversions,
-        defaultAmount = if (keepDefault) original.defaultAmount else basisAmount,
-        defaultUnit = if (keepDefault) original.defaultUnit else basisUnit,
-        personalOverride = true
-    )
-}
-
 private fun contributionLanguageFor(name: String): String =
     if (name.any { it in '\u0400'..'\u04ff' }) "mk" else "en"
 
@@ -2237,18 +2195,6 @@ internal fun libraryInputSegments(value: String, planner: LogPlanner? = null): L
         }
 }
 
-internal fun defaultServingCalculation(food: FoodRecord): Calculation =
-    NutritionCalculator().calculate(food, food.defaultAmount, food.defaultUnit)
-
-internal fun mealMarkerSlots(value: String): List<MealSlot> = ShorthandParser().split(value).mapNotNull(ShorthandLexicon::mealSlotOf)
-
-internal fun removeMealMarkerToken(value: String, target: MealSlot): String =
-    ShorthandParser().removingParts(value) { ShorthandLexicon.mealSlotOf(it.text) == target }
-
-/** Drops every meal-word part; the Log page's chosen meal then wins over a typed one. */
-internal fun removeAllMealMarkerTokens(value: String): String =
-    ShorthandParser().removingParts(value) { ShorthandLexicon.mealSlotOf(it.text) != null }
-
 /**
  * What Add logs for a Log draft: the input with meal words removed, as submit() sends it to save().
  * An amountless draft opens the Library search instead, so it logs nothing.
@@ -2268,9 +2214,6 @@ internal data class LogDraftView(
     /** The kcal each of [choices] would log, in the same order. */
     val choiceCalculations: List<Calculation> = emptyList(),
 )
-
-/** What Add saves for the Log's [input]: the same plan the draft's sum uses. Done and Add never open library search. */
-internal fun draftLogPlan(input: String, planner: LogPlanner): LogPlan = planner.plan(input)
 
 internal fun MealSlot.label() = name.lowercase().replaceFirstChar { it.titlecase() }
 /** A number for a field the user edits: whole without ".0", else one decimal, always with a point (input reads both marks). */

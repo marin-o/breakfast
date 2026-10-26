@@ -19,6 +19,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import com.iron.breakfast.domain.libraryRecencyOrder
+import com.iron.breakfast.domain.editedCustomFoodRecord
 
 class MainActivityTest {
     @Test

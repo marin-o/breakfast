@@ -202,7 +202,7 @@ private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boole
     }
 }
 
-private fun defaultServingCalories(food: FoodRecord): String = formatKcal(com.iron.breakfast.defaultServingCalculation(food).nutrition.calories)
+private fun defaultServingCalories(food: FoodRecord): String = formatKcal(com.iron.breakfast.domain.defaultServingCalculation(food).nutrition.calories)
 
 /**
  * The Library's bottom bar: the Composer look (ink bar, "Search foods") over the existing text field.

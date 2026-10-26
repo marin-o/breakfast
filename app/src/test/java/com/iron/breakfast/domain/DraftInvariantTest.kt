@@ -1,6 +1,5 @@
 package com.iron.breakfast.domain
 
-import com.iron.breakfast.draftLogPlan
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

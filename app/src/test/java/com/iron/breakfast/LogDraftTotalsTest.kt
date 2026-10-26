@@ -13,6 +13,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.iron.breakfast.domain.draftLogPlan
 
 /** The Log draft sum and the entries Add saves are both [draftLogPlan]; these tests pin that for each draft shape. */
 class LogDraftTotalsTest {

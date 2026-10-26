@@ -13,6 +13,11 @@ import com.iron.breakfast.domain.ServingConversion
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.iron.breakfast.domain.removeMealMarkerToken
+import com.iron.breakfast.domain.removeAllMealMarkerTokens
+import com.iron.breakfast.domain.mealMarkerSlots
+import com.iron.breakfast.domain.draftLogPlan
+import com.iron.breakfast.domain.defaultServingCalculation
 
 class MainActivityRoutingTest {
     @Test fun contributionAuthCannotDismissWhileSubmitting() {

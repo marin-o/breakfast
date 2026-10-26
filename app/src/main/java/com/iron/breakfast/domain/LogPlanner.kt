@@ -368,3 +368,6 @@ internal fun joinDraft(left: String, right: String): String = when {
     left.lastOrNull()?.isDigit() == true && right.startsWith(',') && right.getOrNull(1)?.isDigit() == true -> "$left, ${right.drop(1)}"
     else -> left + right
 }
+
+/** What Add saves for the Log's [input]: the same plan the draft's sum uses. Done and Add never open library search. */
+internal fun draftLogPlan(input: String, planner: LogPlanner): LogPlan = planner.plan(input)
