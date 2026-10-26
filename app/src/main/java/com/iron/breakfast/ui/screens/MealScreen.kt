@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.BreakfastViewModel
 import com.iron.breakfast.ContributionAction
+import com.iron.breakfast.contributionShown
 import com.iron.breakfast.EntryEditMode
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
@@ -111,7 +112,7 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
                         SecondaryButton("Scan", vm::beginScan, scanModifier, fillWidth = false)
                     }
                 }
-                vm.pendingContribution?.let { ContributionAction(vm) }
+                if (contributionShown(vm.showContribute, vm.pendingContribution != null)) ContributionAction(vm)
             }
         }
         // Hidden during an entry edit, which owns the input and its own sheet.

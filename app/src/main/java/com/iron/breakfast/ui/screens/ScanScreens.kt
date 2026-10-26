@@ -142,7 +142,8 @@ import java.util.concurrent.atomic.AtomicBoolean
     var hasPermission by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     val lifecycleOwner = LocalLifecycleOwner.current
     var torchAvailable by remember { mutableStateOf(false) }
-    var torchOn by remember { mutableStateOf(false) }
+    // "Flashlight at start": the torch comes on as soon as the camera reports a flash unit.
+    var torchOn by remember { mutableStateOf(vm.flashlightAtStart) }
     var manualOpen by rememberSaveable { mutableStateOf(false) }
     // Asked once per scan session: a configuration change after a denial must not bring the system dialog back.
     var permissionAsked by rememberSaveable { mutableStateOf(false) }

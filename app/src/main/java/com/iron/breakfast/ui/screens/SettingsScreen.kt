@@ -73,7 +73,7 @@ internal fun SettingsScreen(vm: BreakfastViewModel) {
                 SettingsPage.LOGGING -> LoggingPage(vm)
                 SettingsPage.DISPLAY -> DisplayPage(vm)
                 SettingsPage.ACCESSIBILITY -> AccessibilityPage(vm)
-                SettingsPage.SCANNER -> Unit
+                SettingsPage.SCANNER -> ScannerPage(vm)
                 SettingsPage.DATA -> DataPage(vm)
                 SettingsPage.ABOUT -> Unit
                 SettingsPage.LICENCES -> Unit
@@ -128,6 +128,16 @@ private fun ColumnScope.AccessibilityPage(vm: BreakfastViewModel) {
     ChoiceRow("Text size", TEXT_SIZE_CHOICES, vm.textSize, vm::chooseTextSize)
     Hairline()
     ChoiceRow("Haptics", ON_OFF, vm.haptics, vm::chooseHaptics)
+    Hairline()
+}
+
+@Composable
+private fun ColumnScope.ScannerPage(vm: BreakfastViewModel) {
+    ChoiceRow("Flashlight at start", ON_OFF, vm.flashlightAtStart, vm::chooseFlashlightAtStart)
+    Hairline()
+    ChoiceRow("Look up unknown barcodes", ON_OFF, vm.lookUpBarcodes, vm::chooseLookUpBarcodes)
+    Hairline()
+    ChoiceRow("Contribute", SHOW_HIDE, vm.showContribute, vm::chooseShowContribute)
     Hairline()
 }
 

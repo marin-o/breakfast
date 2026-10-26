@@ -91,7 +91,25 @@ internal class AppSettings(context: Context) {
         get() = prefs.getBoolean(HAPTICS_KEY, false)
         set(value) = prefs.edit { putBoolean(HAPTICS_KEY, value) }
 
+    /** "Flashlight at start": the scanner opens with the torch on; off by default. */
+    var flashlightAtStart: Boolean
+        get() = prefs.getBoolean(FLASHLIGHT_AT_START_KEY, false)
+        set(value) = prefs.edit { putBoolean(FLASHLIGHT_AT_START_KEY, value) }
+
+    /** "Look up unknown barcodes": ask Open Food Facts for a barcode not in the Library; on by default. */
+    var lookUpBarcodes: Boolean
+        get() = prefs.getBoolean(LOOK_UP_BARCODES_KEY, true)
+        set(value) = prefs.edit { putBoolean(LOOK_UP_BARCODES_KEY, value) }
+
+    /** "Contribute": the Contribute to Open Food Facts action is offered; shown by default. */
+    var showContribute: Boolean
+        get() = prefs.getBoolean(SHOW_CONTRIBUTE_KEY, true)
+        set(value) = prefs.edit { putBoolean(SHOW_CONTRIBUTE_KEY, value) }
+
     private companion object {
+        const val FLASHLIGHT_AT_START_KEY = "flashlight_at_start"
+        const val LOOK_UP_BARCODES_KEY = "look_up_barcodes"
+        const val SHOW_CONTRIBUTE_KEY = "show_contribute"
         const val MOTION_KEY = "motion"
         const val TEXT_SIZE_KEY = "text_size"
         const val HAPTICS_KEY = "haptics"
@@ -270,3 +288,12 @@ internal fun tickHapticFor(enabled: Boolean, sdk: Int): Int? = when {
     sdk >= 30 -> HapticFeedbackConstants.CONFIRM
     else -> HapticFeedbackConstants.VIRTUAL_KEY
 }
+
+/** What a scanned or typed barcode that is not in the Library leads to. */
+internal enum class UnknownBarcodeStep { LOOK_UP, MANUAL_FORM }
+
+/** "Look up unknown barcodes" On asks Open Food Facts; Off opens the manual product form with no network request. */
+internal fun unknownBarcodeStep(lookUp: Boolean): UnknownBarcodeStep = if (lookUp) UnknownBarcodeStep.LOOK_UP else UnknownBarcodeStep.MANUAL_FORM
+
+/** The Contribute to Open Food Facts action shows where it is [available], unless "Contribute" is Hide. */
+internal fun contributionShown(show: Boolean, available: Boolean): Boolean = show && available

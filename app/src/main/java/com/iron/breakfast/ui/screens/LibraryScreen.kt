@@ -83,6 +83,7 @@ import com.iron.breakfast.domain.asciiDigits
 import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.label
+import com.iron.breakfast.contributionShown
 import com.iron.breakfast.plain
 import com.iron.breakfast.pretty
 import com.iron.breakfast.ui.components.isLargeFont
@@ -326,7 +327,7 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
                 }
             }
             if (mealMenuOpen) MealChoices(selected = targetMeal, onSelect = { targetMeal = it; mealMenuOpen = false }, modifier = Modifier.padding(top = 8.dp))
-            if (contributionAvailable(food)) SecondaryButton("Contribute to Open Food Facts", { vm.closeLibraryFood(); vm.openContributionForFood(food) }, Modifier.padding(top = 16.dp))
+            if (contributionShown(vm.showContribute, contributionAvailable(food))) SecondaryButton("Contribute to Open Food Facts", { vm.closeLibraryFood(); vm.openContributionForFood(food) }, Modifier.padding(top = 16.dp))
             if (food.origin == FoodOrigin.CUSTOM) DestructiveButton("Archive food", { vm.archiveLibraryFood(food) }, Modifier.fillMaxWidth().padding(top = 8.dp), outlined = true)
         }
     }

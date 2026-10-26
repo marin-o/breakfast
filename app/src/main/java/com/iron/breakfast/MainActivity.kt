@@ -362,6 +362,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     internal var motion by mutableStateOf(settings.motion); private set
     internal var textSize by mutableStateOf(settings.textSize); private set
     var haptics by mutableStateOf(settings.haptics); private set
+    /** Settings, Scanner. */
+    var flashlightAtStart by mutableStateOf(settings.flashlightAtStart); private set
+    var lookUpBarcodes by mutableStateOf(settings.lookUpBarcodes); private set
+    var showContribute by mutableStateOf(settings.showContribute); private set
     /** Settings, Logging: how long Undo stays, the meal a log without one goes to, and the ranking switches. */
     internal var undoWindow by mutableStateOf(settings.undoWindow); private set
     internal var mealMode by mutableStateOf(settings.mealMode); private set
@@ -624,6 +628,18 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         dayStartHour = hour
         settings.dayStartHour = hour
         checkDay(returning = true)
+    }
+    fun chooseFlashlightAtStart(on: Boolean) {
+        flashlightAtStart = on
+        settings.flashlightAtStart = on
+    }
+    fun chooseLookUpBarcodes(on: Boolean) {
+        lookUpBarcodes = on
+        settings.lookUpBarcodes = on
+    }
+    fun chooseShowContribute(show: Boolean) {
+        showContribute = show
+        settings.showContribute = show
     }
     internal fun chooseMotion(choice: MotionChoice) {
         motion = choice
@@ -1887,12 +1903,18 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val originDay = barcodeOriginDay
         val originMeal = barcodeOriginMeal
         val reviewOrigin = productReviewOrigin(originMeal, resolutionContinuation, unknownQueue.isNotEmpty())
+        val step = unknownBarcodeStep(lookUpBarcodes)
         scannerLookupCode = barcode
         scannerLookupBusy = true
         barcodeLookupJob = viewModelScope.launch(Dispatchers.IO) {
             val local = engine.foodByBarcode(barcode)
             if (local != null) {
                 withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { scannerOpen = false; scannerLookupBusy = false; chooseProduct(local, fromScan = true, origin = reviewOrigin) } }
+                return@launch
+            }
+            // "Look up unknown barcodes" Off: straight to the manual product form, no network request.
+            if (step == UnknownBarcodeStep.MANUAL_FORM) {
+                withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { scannerOpen = false; scannerLookupBusy = false; openCustom(barcode = barcode) } }
                 return@launch
             }
             when (val result = off.barcode(barcode)) {
