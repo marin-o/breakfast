@@ -360,3 +360,9 @@ internal fun safetyCopyStep(keep: Boolean, deletingAll: Boolean): SafetyCopyStep
 
 /** Delete all data runs only from its confirm dialog, once storage is open and no other write runs. */
 internal fun deleteAllAllowed(dialogOpen: Boolean, ready: Boolean, busy: Boolean): Boolean = dialogOpen && ready && !busy
+
+/** About, Version: "0.1 (10)", the versionName then the versionCode. */
+internal fun versionLabel(versionName: String, versionCode: Int): String = "$versionName ($versionCode)"
+
+/** About, Licences: the bundled font licence, shown as plain text. */
+internal const val LICENCES_ASSET = "OFL.txt"

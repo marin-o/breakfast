@@ -30,7 +30,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.semantics
 import com.iron.breakfast.BreakfastViewModel
+import com.iron.breakfast.BuildConfig
+import com.iron.breakfast.LICENCES_ASSET
+import com.iron.breakfast.versionLabel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.iron.breakfast.DiaryPicker
 import com.iron.breakfast.SETTINGS_GROUPS
 import com.iron.breakfast.SettingsPage
@@ -76,8 +88,8 @@ internal fun SettingsScreen(vm: BreakfastViewModel) {
                 SettingsPage.ACCESSIBILITY -> AccessibilityPage(vm)
                 SettingsPage.SCANNER -> ScannerPage(vm)
                 SettingsPage.DATA -> DataPage(vm)
-                SettingsPage.ABOUT -> Unit
-                SettingsPage.LICENCES -> Unit
+                SettingsPage.ABOUT -> AboutPage(vm)
+                SettingsPage.LICENCES -> LicencesPage()
             }
         }
     }
@@ -154,6 +166,36 @@ private fun ColumnScope.DataPage(vm: BreakfastViewModel) {
     Hairline()
     SettingsAction("Delete all data", enabled = vm.ready && !vm.busy, destructive = true, onClick = vm::openDeleteAll)
     Hairline()
+}
+
+@Composable
+private fun ColumnScope.AboutPage(vm: BreakfastViewModel) {
+    ValueRow("Version", versionLabel(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE))
+    Hairline()
+    SettingsAction("Licences") { vm.openSettingsPage(SettingsPage.LICENCES) }
+    Hairline()
+}
+
+/** The bundled licence as plain scrolling text, read off the main thread. */
+@Composable
+private fun LicencesPage() {
+    val colors = LocalBreakfastColors.current
+    val assets = LocalContext.current.assets
+    var text by remember { mutableStateOf("") }
+    LaunchedEffect(assets) {
+        text = withContext(Dispatchers.IO) { runCatching { assets.open(LICENCES_ASSET).bufferedReader().use { it.readText() } }.getOrDefault("") }
+    }
+    Text(text, Modifier.fillMaxWidth().padding(vertical = 16.dp), color = colors.ink, style = BreakfastType.Body)
+}
+
+/** The 64dp row with a value on the right instead of a control, as About, Version. */
+@Composable
+private fun ValueRow(label: String, value: String) {
+    val colors = LocalBreakfastColors.current
+    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f), color = colors.ink, style = BreakfastType.Body)
+        Text(value, color = colors.soft, style = BreakfastType.Body)
+    }
 }
 
 /** A row that does one thing when tapped, as tall as the other rows. [destructive] draws the label in `bad`. */
