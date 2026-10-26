@@ -3,6 +3,7 @@ package com.iron.breakfast
 import android.app.UiModeManager
 import android.content.Context
 import android.content.res.Configuration
+import android.view.HapticFeedbackConstants
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -75,7 +76,25 @@ internal class AppSettings(context: Context) {
         get() = enumOf(prefs.getString(DECIMAL_MARK_KEY, null), DecimalMark.POINT)
         set(value) = prefs.edit { putString(DECIMAL_MARK_KEY, value.name) }
 
+    /** Motion: System (the phone's "Remove animations") by default. */
+    var motion: MotionChoice
+        get() = enumOf(prefs.getString(MOTION_KEY, null), MotionChoice.SYSTEM)
+        set(value) = prefs.edit { putString(MOTION_KEY, value.name) }
+
+    /** Text size: System (the phone's font size) by default. */
+    var textSize: TextSizeChoice
+        get() = enumOf(prefs.getString(TEXT_SIZE_KEY, null), TextSizeChoice.SYSTEM)
+        set(value) = prefs.edit { putString(TEXT_SIZE_KEY, value.name) }
+
+    /** Haptics: a tick on Add and Undo; off by default. */
+    var haptics: Boolean
+        get() = prefs.getBoolean(HAPTICS_KEY, false)
+        set(value) = prefs.edit { putBoolean(HAPTICS_KEY, value) }
+
     private companion object {
+        const val MOTION_KEY = "motion"
+        const val TEXT_SIZE_KEY = "text_size"
+        const val HAPTICS_KEY = "haptics"
         const val THEME_KEY = "theme"
         const val SHOW_MACROS_KEY = "show_macros"
         const val SHOW_MISSING_NOTE_KEY = "show_missing_note"
@@ -215,3 +234,39 @@ internal fun markDecimals(text: String, mark: DecimalMark): String =
     if (mark == DecimalMark.POINT) text else DECIMAL_POINT.replace(text, ",")
 
 private val DECIMAL_POINT = Regex("""(?<=\d)\.(?=\d)""")
+
+/** The "Motion" choice: Reduced turns motion off as the phone's "Remove animations" does. */
+internal enum class MotionChoice { SYSTEM, REDUCED }
+
+/** The "Text size" choice: Larger is one step above the phone's font size, inside the app only. */
+internal enum class TextSizeChoice { SYSTEM, LARGER }
+
+/** The step "Larger" adds on top of the phone's font scale. */
+internal const val LARGER_TEXT_STEP = 1.15f
+
+/** The font scale the app uses over the phone's [systemFontScale]; null for System (no override). */
+internal fun appFontScale(systemFontScale: Float, choice: TextSizeChoice): Float? = when (choice) {
+    TextSizeChoice.SYSTEM -> null
+    TextSizeChoice.LARGER -> systemFontScale * LARGER_TEXT_STEP
+}
+
+/**
+ * What the activity overrides in its configuration, in `attachBaseContext` before its window exists, so every window it
+ * opens (dialogs and sheets too) and Compose's `LocalDensity` follow: the forced night bits below API 31 (see
+ * [forcedUiMode]; from 31 the per-app night mode does it) and the Larger font scale ([appFontScale]).
+ */
+internal data class ActivityOverride(val uiMode: Int?, val fontScale: Float?)
+
+/** The [ActivityOverride] for these settings; null when nothing is overridden (both System). */
+internal fun activityOverrideOf(baseUiMode: Int, systemFontScale: Float, sdk: Int, theme: ThemeChoice, textSize: TextSizeChoice): ActivityOverride? {
+    val uiMode = if (sdk < 31) forcedUiMode(baseUiMode, theme) else null
+    val fontScale = appFontScale(systemFontScale, textSize)
+    return if (uiMode == null && fontScale == null) null else ActivityOverride(uiMode, fontScale)
+}
+
+/** The standard haptic for the tick on Add and Undo: CONFIRM from API 30, VIRTUAL_KEY before; null when Haptics is off. */
+internal fun tickHapticFor(enabled: Boolean, sdk: Int): Int? = when {
+    !enabled -> null
+    sdk >= 30 -> HapticFeedbackConstants.CONFIRM
+    else -> HapticFeedbackConstants.VIRTUAL_KEY
+}

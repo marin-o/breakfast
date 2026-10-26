@@ -198,7 +198,10 @@ import com.iron.breakfast.ui.screens.ProductReviewSheet
 import com.iron.breakfast.ui.screens.ResolveUnknownScreen
 import com.iron.breakfast.ui.screens.ScanReviewBackdrop
 import com.iron.breakfast.ui.screens.ScannerScreen
+import androidx.compose.runtime.CompositionLocalProvider
 import com.iron.breakfast.ui.components.ButtonKind
+import com.iron.breakfast.ui.components.LocalHaptics
+import com.iron.breakfast.ui.components.LocalMotionForcedReduced
 import com.iron.breakfast.ui.components.LongDraft
 import com.iron.breakfast.ui.components.Field
 import com.iron.breakfast.ui.components.isLargeFont
@@ -235,18 +238,23 @@ import kotlin.math.abs
 import kotlin.math.hypot
 
 class MainActivity : ComponentActivity() {
-    /** The Theme setting this activity was created with; a different one is applied by [applyTheme]. */
+    /** The Theme and Text size this activity was created with; a new one is applied by [applyTheme] or [applyTextSize]. */
     private var appliedTheme = ThemeChoice.SYSTEM
+    private var appliedTextSize = TextSizeChoice.SYSTEM
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(newBase)
-        appliedTheme = AppSettings(newBase).theme
-        // Below API 31 there is no per-app night mode: the activity's own configuration is overridden before its window
-        // and theme exist, so the window background (values-night) and Compose both follow the setting.
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            forcedUiMode(newBase.resources.configuration.uiMode, appliedTheme)?.let { uiMode ->
-                applyOverrideConfiguration(Configuration().apply { this.uiMode = uiMode })
-            }
+        val settings = AppSettings(newBase)
+        appliedTheme = settings.theme
+        appliedTextSize = settings.textSize
+        // Overridden before the window and its theme exist, so the window background (values-night) and the density of
+        // every window follow: below API 31 the forced night mode (there is no per-app one), and the Larger font scale.
+        val base = newBase.resources.configuration
+        activityOverrideOf(base.uiMode, base.fontScale, Build.VERSION.SDK_INT, appliedTheme, appliedTextSize)?.let { override ->
+            applyOverrideConfiguration(Configuration().apply {
+                override.uiMode?.let { uiMode = it }
+                override.fontScale?.let { fontScale = it }
+            })
         }
     }
 
@@ -267,7 +275,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             val vm: BreakfastViewModel = viewModel()
             LaunchedEffect(vm.theme) { applyTheme(vm.theme) }
-            BreakfastTheme(dark = darkThemeOf(vm.theme, isSystemInDarkTheme())) { IronApp(vm) }
+            LaunchedEffect(vm.textSize) { applyTextSize(vm.textSize) }
+            CompositionLocalProvider(LocalMotionForcedReduced provides (vm.motion == MotionChoice.REDUCED), LocalHaptics provides vm.haptics) {
+                BreakfastTheme(dark = darkThemeOf(vm.theme, isSystemInDarkTheme())) { IronApp(vm) }
+            }
         }
     }
 
@@ -275,6 +286,13 @@ class MainActivity : ComponentActivity() {
      * A new Theme setting: API 31+ sets the per-app night mode (the system recreates the activity with it and uses it
      * for the launch window); below that the activity is recreated so [attachBaseContext] applies it.
      */
+    /** A new Text size: the activity is recreated, so [attachBaseContext] gives every window the new font scale. */
+    private fun applyTextSize(textSize: TextSizeChoice) {
+        if (textSize == appliedTextSize) return
+        appliedTextSize = textSize
+        recreate()
+    }
+
     private fun applyTheme(theme: ThemeChoice) {
         if (theme == appliedTheme) return
         appliedTheme = theme
@@ -340,6 +358,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var showMacros by mutableStateOf(settings.showMacros); private set
     var showMissingNote by mutableStateOf(settings.showMissingNote); private set
     internal var decimalMark by mutableStateOf(settings.decimalMark.also { DisplayDecimal.mark = it }); private set
+    /** Settings, Accessibility; the activity applies them. */
+    internal var motion by mutableStateOf(settings.motion); private set
+    internal var textSize by mutableStateOf(settings.textSize); private set
+    var haptics by mutableStateOf(settings.haptics); private set
     /** Settings, Logging: how long Undo stays, the meal a log without one goes to, and the ranking switches. */
     internal var undoWindow by mutableStateOf(settings.undoWindow); private set
     internal var mealMode by mutableStateOf(settings.mealMode); private set
@@ -602,6 +624,18 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         dayStartHour = hour
         settings.dayStartHour = hour
         checkDay(returning = true)
+    }
+    internal fun chooseMotion(choice: MotionChoice) {
+        motion = choice
+        settings.motion = choice
+    }
+    internal fun chooseTextSize(choice: TextSizeChoice) {
+        textSize = choice
+        settings.textSize = choice
+    }
+    fun chooseHaptics(on: Boolean) {
+        haptics = on
+        settings.haptics = on
     }
     internal fun chooseTheme(choice: ThemeChoice) {
         theme = choice

@@ -53,6 +53,7 @@ import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.SecondaryButton
 import com.iron.breakfast.ui.components.Snackbar
+import com.iron.breakfast.ui.components.rememberTick
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.theme.BreakfastType
 import com.iron.breakfast.ui.theme.Gutter
@@ -122,9 +123,10 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
 @Composable
 internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot, modifier: Modifier = Modifier) {
     val draft = vm.logDraft.isNotBlank()
+    val tick = rememberTick()
     ComposerFade(modifier) {
-        vm.loggedBatchMessage?.let { Snackbar(it, "Undo", vm::undoLoggedBatch, Modifier.padding(bottom = 8.dp)) }
-        vm.undoEntry?.let { deleted -> Snackbar("${deleted.foodName} deleted", "Undo", vm::undo, Modifier.padding(bottom = 8.dp)) }
+        vm.loggedBatchMessage?.let { Snackbar(it, "Undo", { tick(); vm.undoLoggedBatch() }, Modifier.padding(bottom = 8.dp)) }
+        vm.undoEntry?.let { deleted -> Snackbar("${deleted.foodName} deleted", "Undo", { tick(); vm.undo() }, Modifier.padding(bottom = 8.dp)) }
         Composer(
             placeholder = if (draft) vm.logDraft else "Add to ${target.label()}",
             onClick = { vm.openLog(target) },

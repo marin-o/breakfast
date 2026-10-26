@@ -65,6 +65,7 @@ import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.MacroStat
 import com.iron.breakfast.ui.components.MealHeader
 import com.iron.breakfast.ui.components.Snackbar
+import com.iron.breakfast.ui.components.rememberTick
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import java.time.Instant
 import java.time.LocalDate
@@ -236,9 +237,10 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
  */
 @Composable
 internal fun DailyComposer(vm: BreakfastViewModel, modifier: Modifier = Modifier) {
+    val tick = rememberTick()
     ComposerFade(modifier) {
-        vm.loggedBatchMessage?.let { Snackbar(it, "Undo", vm::undoLoggedBatch, Modifier.padding(bottom = 8.dp)) }
-        vm.undoEntry?.let { Snackbar("${it.foodName} deleted", "Undo", vm::undo, Modifier.padding(bottom = 8.dp)) }
+        vm.loggedBatchMessage?.let { Snackbar(it, "Undo", { tick(); vm.undoLoggedBatch() }, Modifier.padding(bottom = 8.dp)) }
+        vm.undoEntry?.let { Snackbar("${it.foodName} deleted", "Undo", { tick(); vm.undo() }, Modifier.padding(bottom = 8.dp)) }
         val draft = vm.logDraft.isNotBlank()
         Composer(
             placeholder = if (draft) vm.logDraft else "Log food",

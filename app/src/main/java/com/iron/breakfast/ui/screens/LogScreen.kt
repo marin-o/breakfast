@@ -72,6 +72,7 @@ import com.iron.breakfast.ui.components.isLargeFont
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.components.foodText
+import com.iron.breakfast.ui.components.rememberTick
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 
 /**
@@ -101,6 +102,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
     val placeholder = if (vm.selectedDayKey == vm.todayKey) "2 eggs, 1 banana" else "Add to ${shortDateLabel(vm.selectedDayKey)}"
     val requester = remember { FocusRequester() }
     LaunchedEffect(Unit) { requester.requestFocus() }
+    val tick = rememberTick()
 
     Column(
         Modifier
@@ -133,7 +135,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
                 keyboardActions = KeyboardActions(onDone = {
                     // Done commits the text: the last word is no longer being typed.
                     vm.commitLogDraft()
-                    if (canAdd) vm.submit()
+                    if (canAdd) { tick(); vm.submit() }
                 }),
                 textStyle = BreakfastType.LargeInput.copy(color = colors.ink),
                 cursorBrush = SolidColor(colors.ink),
@@ -197,7 +199,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
         val addButton: @Composable (Boolean) -> Unit = { fill ->
             PrimaryButton(
                 text = if (target != null) "Add to ${target.label()}" else "Add",
-                onClick = vm::submit,
+                onClick = { tick(); vm.submit() },
                 enabled = canAdd,
                 fillWidth = fill,
             )

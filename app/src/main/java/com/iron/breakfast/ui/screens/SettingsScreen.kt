@@ -36,6 +36,8 @@ import com.iron.breakfast.SETTINGS_GROUPS
 import com.iron.breakfast.SettingsPage
 import com.iron.breakfast.DecimalMark
 import com.iron.breakfast.MealMode
+import com.iron.breakfast.MotionChoice
+import com.iron.breakfast.TextSizeChoice
 import com.iron.breakfast.ThemeChoice
 import com.iron.breakfast.UndoWindow
 import com.iron.breakfast.canShiftMealBound
@@ -70,7 +72,7 @@ internal fun SettingsScreen(vm: BreakfastViewModel) {
                 null -> SETTINGS_GROUPS.forEach { group -> SettingsAction(group.title) { vm.openSettingsPage(group) }; Hairline() }
                 SettingsPage.LOGGING -> LoggingPage(vm)
                 SettingsPage.DISPLAY -> DisplayPage(vm)
-                SettingsPage.ACCESSIBILITY -> Unit
+                SettingsPage.ACCESSIBILITY -> AccessibilityPage(vm)
                 SettingsPage.SCANNER -> Unit
                 SettingsPage.DATA -> DataPage(vm)
                 SettingsPage.ABOUT -> Unit
@@ -116,6 +118,16 @@ private fun ColumnScope.DisplayPage(vm: BreakfastViewModel) {
     ChoiceRow("Missing values note", SHOW_HIDE, vm.showMissingNote, vm::chooseShowMissingNote)
     Hairline()
     ChoiceRow("Decimal mark", DECIMAL_MARK_CHOICES, vm.decimalMark, vm::chooseDecimalMark)
+    Hairline()
+}
+
+@Composable
+private fun ColumnScope.AccessibilityPage(vm: BreakfastViewModel) {
+    ChoiceRow("Motion", MOTION_CHOICES, vm.motion, vm::chooseMotion)
+    Hairline()
+    ChoiceRow("Text size", TEXT_SIZE_CHOICES, vm.textSize, vm::chooseTextSize)
+    Hairline()
+    ChoiceRow("Haptics", ON_OFF, vm.haptics, vm::chooseHaptics)
     Hairline()
 }
 
@@ -181,6 +193,8 @@ private val MEAL_MODE_CHOICES = listOf(MealMode.ASK to "Ask", MealMode.BY_TIME t
 private val MEAL_BOUND_ROWS = listOf(MealSlot.BREAKFAST to "Breakfast until", MealSlot.LUNCH to "Lunch until", MealSlot.DINNER to "Dinner until")
 private val ON_OFF = listOf(true to "On", false to "Off")
 private val SHOW_HIDE = listOf(true to "Show", false to "Hide")
+private val MOTION_CHOICES = listOf(MotionChoice.SYSTEM to "System", MotionChoice.REDUCED to "Reduced")
+private val TEXT_SIZE_CHOICES = listOf(TextSizeChoice.SYSTEM to "System", TextSizeChoice.LARGER to "Larger")
 private val THEME_CHOICES = listOf(ThemeChoice.SYSTEM to "System", ThemeChoice.LIGHT to "Light", ThemeChoice.DARK to "Dark")
 private val DECIMAL_MARK_CHOICES = listOf(DecimalMark.POINT to "Point", DecimalMark.COMMA to "Comma")
 private val LONG_DRAFT_CHOICES = listOf(LongDraft.END to "End", LongDraft.START to "Start", LongDraft.TWO_LINES to "Two lines")
