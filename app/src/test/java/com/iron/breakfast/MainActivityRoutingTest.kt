@@ -18,6 +18,9 @@ import com.iron.breakfast.domain.removeAllMealMarkerTokens
 import com.iron.breakfast.domain.mealMarkerSlots
 import com.iron.breakfast.domain.draftLogPlan
 import com.iron.breakfast.domain.defaultServingCalculation
+import com.iron.breakfast.scan.ProductReviewOrigin
+import com.iron.breakfast.library.libraryLogDraft
+import com.iron.breakfast.library.libraryInputSegments
 
 class MainActivityRoutingTest {
     @Test fun contributionAuthCannotDismissWhileSubmitting() {

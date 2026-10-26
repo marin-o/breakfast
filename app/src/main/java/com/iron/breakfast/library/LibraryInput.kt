@@ -1,0 +1,43 @@
+package com.iron.breakfast.library
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import com.iron.breakfast.domain.ShorthandParser
+import com.iron.breakfast.domain.FoodRecord
+import com.iron.breakfast.domain.MeasureUnit
+import com.iron.breakfast.domain.MealSlot
+import com.iron.breakfast.domain.LogPlanner
+import com.iron.breakfast.domain.ShorthandLexicon
+import com.iron.breakfast.domain.TypedPart
+
+/** The library list's query for what the bar shows: a typed amount is not part of the food name the list filters by. */
+internal fun librarySearchText(text: String, parser: ShorthandParser): String =
+    parser.parse(text).let { if (it.amount == null) text else it.foodPhrase }
+
+internal data class LibraryLogDraft(
+    val food: FoodRecord,
+    val amount: Double,
+    val unit: MeasureUnit,
+    val target: MealSlot? = null
+)
+
+internal fun libraryLogDraft(food: FoodRecord, target: MealSlot, amount: Double, unit: MeasureUnit): LibraryLogDraft =
+    LibraryLogDraft(food, amount, unit, target)
+
+internal data class LibraryInputSegment(
+    val raw: String,
+    val foodPhrase: String,
+    val amount: Double?,
+    val unit: MeasureUnit?
+)
+
+/** The library's view of a draft: the parts without meal words, each with the amount and unit it types. */
+internal fun libraryInputSegments(value: String, planner: LogPlanner? = null): List<LibraryInputSegment> {
+    val parser = ShorthandParser()
+    return (planner?.segments(value)?.map { it.text } ?: parser.split(value))
+        .filter { ShorthandLexicon.mealSlotOf(it) == null }
+        .map { raw ->
+            val typed = planner?.typed(raw) ?: parser.parse(raw).let { TypedPart(it.foodPhrase, it.amount, it.unit) }
+            LibraryInputSegment(raw, typed.foodPhrase, typed.amount, typed.unit)
+        }
+}

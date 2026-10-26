@@ -82,7 +82,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.decimalInput
-import com.iron.breakfast.label
+import com.iron.breakfast.ui.label
 import com.iron.breakfast.ui.theme.AddCircleSize
 import com.iron.breakfast.ui.theme.BreakfastType
 import com.iron.breakfast.ui.theme.ChoiceMinHeight

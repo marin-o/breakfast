@@ -21,6 +21,11 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import com.iron.breakfast.domain.libraryRecencyOrder
 import com.iron.breakfast.domain.editedCustomFoodRecord
+import com.iron.breakfast.scan.productPrefill
+import com.iron.breakfast.scan.parseProductUnit
+import com.iron.breakfast.contribution.contributionDraftAfterLocalSave
+import com.iron.breakfast.scan.productNutritionBasisLabel
+import com.iron.breakfast.food.FoodDraft
 
 class MainActivityTest {
     @Test

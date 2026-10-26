@@ -1,6 +1,5 @@
 package com.iron.breakfast.ui.screens
 
-
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.FoodRecord
@@ -17,9 +16,9 @@ import com.iron.breakfast.domain.parseStrictAmountUnit
 import com.iron.breakfast.domain.parseDecimal
 import com.iron.breakfast.domain.resolveNutrition
 import com.iron.breakfast.domain.displayLabel
-import com.iron.breakfast.DisplayDecimal
-import com.iron.breakfast.markDecimals
-import com.iron.breakfast.pretty
+import com.iron.breakfast.settings.DisplayDecimal
+import com.iron.breakfast.settings.markDecimals
+import com.iron.breakfast.ui.pretty
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter

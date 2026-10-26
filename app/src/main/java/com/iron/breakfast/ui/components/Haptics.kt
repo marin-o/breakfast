@@ -4,7 +4,7 @@ import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.platform.LocalView
-import com.iron.breakfast.tickHapticFor
+import com.iron.breakfast.settings.tickHapticFor
 
 /** True when Settings, Haptics is On; provided at the root of the app. */
 internal val LocalHaptics = compositionLocalOf { false }

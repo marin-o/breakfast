@@ -7,6 +7,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.iron.breakfast.search.OffSearchStatus
+import com.iron.breakfast.search.offSearchStatus
+import com.iron.breakfast.library.servingRowName
+import com.iron.breakfast.scan.nutrientFieldsFitRow
 
 class SlicePolishLayoutTest {
     @Test fun offlineWinsOverMessage() {
