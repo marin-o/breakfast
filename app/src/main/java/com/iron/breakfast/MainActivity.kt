@@ -1258,18 +1258,20 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }
         // Save takes the draft as typed: the planner skips meal words by span, so save and the rows share one segmentation.
         val captured = logDraft
-        if (engine.planner(logPins.toMap()).segments(captured).none { ShorthandLexicon.mealSlotOf(it.text) == null }) {
+        val capturedPins = logPins.toMap()
+        if (engine.planner(capturedPins).segments(captured).none { ShorthandLexicon.mealSlotOf(it.text) == null }) {
             mealDraftError = "Add at least one food."
             return
         }
         launchBusy {
-            suspendRunCatching { engine.save(captured, mealSlot = target, dayKey = selectedDayKey, pins = logPins.toMap()) }.onSuccess { saved ->
+            suspendRunCatching { engine.save(captured, mealSlot = target, dayKey = selectedDayKey, pins = capturedPins) }.onSuccess { saved ->
                 // Nothing resolved: nothing was saved, so the Log stays open with the typed text and says what to fix.
                 if (saved.entries.isEmpty() && saved.unresolvedSegments.isNotEmpty()) {
                     mealDraftError = "Some foods need a match."
                     return@onSuccess
                 }
-                logPins.clear()
+                // Only the pins this save used: one added while it planned off the main thread belongs to the new text.
+                capturedPins.forEach { (part, food) -> if (logPins[part] == food) logPins.remove(part) }
                 closeLog()
                 refresh(); if (logDraft == captured) logDraft = saved.unresolvedSegments.joinToString(", "); unknownQueue = saved.unresolvedSegments; unknownQueueTotal = saved.unresolvedSegments.size; unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }; resolutionContinuation = saved.unresolvedSegments.isNotEmpty(); resolverOpen = saved.unresolvedSegments.isNotEmpty(); mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
                 feedbackIds = saved.entries.filter { it.approximateConversion }.mapTo(mutableSetOf()) { it.id }; feedbackUntil = if (feedbackIds.isEmpty()) 0L else System.currentTimeMillis() + 30_000L
@@ -1389,7 +1391,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         discardFoodOpen = false
         customOpen = true; selectedLibraryFood = null
     }
-    fun closeResolver() { abandonUnknownResolution(); resolverSearchOpen = false }
+    fun closeResolver() { resolverSearchJob?.cancel(); abandonUnknownResolution(); resolverSearchOpen = false }
     fun beginResolverSearch() {
         resolverSearchOpen = true
         if (resolverQuery.isBlank()) resolverQuery = currentUnknownName()
@@ -1511,13 +1513,17 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun onResolverQuery(v: String) {
         resolverQuery = v
         resolverSearchJob?.cancel()
-        if (v.isBlank()) { resolverResults = emptyList(); return }
+        // The previous query's rows go at once, so none can be tapped for the new text while it is ranked.
+        resolverResults = emptyList()
+        if (v.isBlank()) return
         resolverSearchJob = viewModelScope.launch {
             val results = withContext(Dispatchers.Default) { engine.search(v) }
             if (resolverQuery == v) resolverResults = results
         }
     }
     private fun advanceUnknownQueue() {
+        // A search still running was ranked before this food was added; it must not fill the next unknown's list.
+        resolverSearchJob?.cancel()
         unknownQueue = unknownQueue.drop(1)
         // What is left to resolve stays where it was typed: the Library bar, or the log draft.
         if (libraryOpen) input = unknownQueue.joinToString(", ") else logDraft = unknownQueue.joinToString(", ")

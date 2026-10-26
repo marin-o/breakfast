@@ -48,6 +48,10 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
     @Volatile
     private var snapshotStale = false
 
+    /** Tests only: the reload after the next commit fails once, as a full cursor or disk error would. */
+    @Volatile
+    internal var failNextRefreshForTesting = false
+
     suspend fun initialize() {
         if (initialized) return
         writeMutex.withLock {
@@ -259,7 +263,11 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
         withContext(NonCancellable + Dispatchers.IO) {
             commitThenRefresh(
                 commit = { database.withTransaction { block() } },
-                refresh = { model = reload(model, tablesToReload(touched, snapshotStale)); snapshotStale = false },
+                refresh = {
+                    if (failNextRefreshForTesting) { failNextRefreshForTesting = false; error("injected refresh failure") }
+                    model = reload(model, tablesToReload(touched, snapshotStale))
+                    snapshotStale = false
+                },
             ) { error ->
                 snapshotStale = true
                 Log.w("Breakfast", "Saved, but the diary could not be reloaded; it reloads later", error)

@@ -163,7 +163,42 @@ class BreakfastStoreTest {
         store.editEntry("full-a") { it.copy(enteredAmount = 4.0) }
         store.deleteEntry("full-b")
         store.archiveFood(food.id)
+        assertEqualsFullRead()
 
+        store.restoreFood(food.id)
+        val second = food.copy(id = "custom-reload-2", name = "Second bar", aliases = listOf("sb"))
+        store.addFood(second)
+        store.addFoodAndEntry(food.copy(id = "custom-reload-3", name = "Third bar"), entry("full-c").copy(foodId = "custom-reload-3"))
+        store.saveEntries(listOf(entry("full-d"), entry("full-e")))
+        store.deleteEntries(listOf(entry("full-d")))
+        assertEqualsFullRead()
+
+        // Import: every table replaced at once, from the rows as they are now plus one more entry.
+        val rows = store.exportRows()
+        store.replaceDiary(rows.copy(entries = rows.entries + entry("full-f").toEntity()))
+        assertEqualsFullRead()
+    }
+
+    /** MOB-028 with MOB-025: after a failed reload, the next write (entry-only) reloads every table, foods too. */
+    @Test
+    fun aStaleSnapshotIsReloadedInFullByTheNextWrite() = runBlocking {
+        val food = FoodRecord(
+            id = "custom-stale", name = "Stale bar", aliases = emptyList(), category = "Personal food", origin = FoodOrigin.CUSTOM,
+            nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(250.0, 5.0, 30.0, 8.0)),
+            defaultAmount = 40.0, defaultUnit = MeasureUnit.GRAM, personalOverride = true,
+        )
+        store.failNextRefreshForTesting = true
+        store.upsertFood(food)
+        // Committed, but the snapshot still lacks the food.
+        assertTrue(database.foodDao().byId(food.id) != null)
+        assertTrue(store.foods().none { it.id == food.id })
+
+        store.saveEntries(listOf(entry("stale-a")))
+        assertTrue(store.foods().any { it.id == food.id })
+        assertEqualsFullRead()
+    }
+
+    private suspend fun assertEqualsFullRead() {
         val fresh = BreakfastStore(database).apply { initialize() }
         assertEquals(fresh.foods(), store.foods())
         assertEquals(fresh.entries(), store.entries())
