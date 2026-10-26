@@ -1,26 +1,55 @@
 package com.iron.breakfast.settings
 
-import android.annotation.SuppressLint
-import android.app.UiModeManager
 import android.content.Context
-import android.content.res.Configuration
-import android.view.HapticFeedbackConstants
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import android.content.SharedPreferences
 import androidx.core.content.edit
-import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.ui.components.LongDraft
-import java.util.Locale
-import com.iron.breakfast.UNDO_WINDOW_MS
-import com.iron.breakfast.Overlay
+
+/** The few reads and writes [AppSettings] makes; SharedPreferences in the app ([SharedPreferencesStore]), a map in tests. */
+internal interface SettingsStore {
+    fun getInt(key: String, default: Int): Int
+    fun getLong(key: String, default: Long): Long
+    fun getBoolean(key: String, default: Boolean): Boolean
+    fun getString(key: String, default: String?): String?
+    /** Applies the writes [block] makes, as one SharedPreferences edit. */
+    fun edit(block: Editor.() -> Unit)
+
+    interface Editor {
+        fun putInt(key: String, value: Int)
+        fun putLong(key: String, value: Long)
+        fun putBoolean(key: String, value: Boolean)
+        fun putString(key: String, value: String)
+        fun clear()
+    }
+}
+
+/** [SettingsStore] over SharedPreferences; each [edit] is applied asynchronously, as `SharedPreferences.edit {}` does. */
+internal class SharedPreferencesStore(private val prefs: SharedPreferences) : SettingsStore {
+    override fun getInt(key: String, default: Int) = prefs.getInt(key, default)
+    override fun getLong(key: String, default: Long) = prefs.getLong(key, default)
+    override fun getBoolean(key: String, default: Boolean) = prefs.getBoolean(key, default)
+    override fun getString(key: String, default: String?) = prefs.getString(key, default)
+    override fun edit(block: SettingsStore.Editor.() -> Unit) = prefs.edit {
+        val editor = this
+        object : SettingsStore.Editor {
+            override fun putInt(key: String, value: Int) { editor.putInt(key, value) }
+            override fun putLong(key: String, value: Long) { editor.putLong(key, value) }
+            override fun putBoolean(key: String, value: Boolean) { editor.putBoolean(key, value) }
+            override fun putString(key: String, value: String) { editor.putString(key, value) }
+            override fun clear() { editor.clear() }
+        }.block()
+    }
+}
 
 /**
- * The user's settings, in plain SharedPreferences (`settings`). The view model reads them once and writes each change
- * straight back. Every default is the app's behaviour before the setting existed, so nothing changes until one is set.
+ * The user's settings, in plain SharedPreferences (`settings`): one typed property per stored value. [SettingsState]
+ * reads them once and writes each change straight back; `MainActivity` reads Theme and Text size before its window
+ * exists. Every default is the app's behaviour before the setting existed, so nothing changes until one is set.
  */
-internal class AppSettings(context: Context) {
-    private val prefs = (context.applicationContext ?: context).getSharedPreferences("settings", Context.MODE_PRIVATE)
+internal class AppSettings(private val prefs: SettingsStore) {
+    constructor(context: Context) : this(
+        SharedPreferencesStore((context.applicationContext ?: context).getSharedPreferences("settings", Context.MODE_PRIVATE)),
+    )
 
     /** The hour (0 to 23) a diary day starts at; 0 is midnight. */
     var dayStartHour: Int
@@ -176,235 +205,3 @@ internal inline fun <reified T : Enum<T>> enumOf(name: String?, default: T): T =
 
 /** The stored "Long draft" choice; nothing stored, or an unknown name, is End. */
 internal fun longDraftOf(name: String?): LongDraft = enumOf(name, LongDraft.END)
-
-/** The day start one step from [hour]; it wraps 23 to 00 and 00 to 23. */
-internal fun shiftDayStartHour(hour: Int, delta: Int): Int = Math.floorMod(hour + delta, 24)
-
-/** "04:00". */
-internal fun dayStartLabel(hour: Int): String = String.format(Locale.ROOT, "%02d:00", hour)
-
-/** The "Undo" choice. */
-internal enum class UndoWindow { FIFTEEN_SECONDS, FIVE_SECONDS, THIRTY_SECONDS, UNTIL_NEXT_ACTION }
-
-/** How long an offer of [window] stays, in ms; null until the next log, edit or delete replaces it. */
-internal fun undoWindowMs(window: UndoWindow): Long? = when (window) {
-    UndoWindow.FIVE_SECONDS -> 5_000L
-    UndoWindow.FIFTEEN_SECONDS -> UNDO_WINDOW_MS
-    UndoWindow.THIRTY_SECONDS -> 30_000L
-    UndoWindow.UNTIL_NEXT_ACTION -> null
-}
-
-/** The "Meal" choice: what a log with no chosen, typed or preset meal goes to. */
-internal enum class MealMode { ASK, BY_TIME, LAST_USED }
-
-/** "By time": before [breakfastUntil] o'clock is Breakfast, then Lunch, then Dinner, then Snacks. Each is later than the one before. */
-internal data class MealBounds(val breakfastUntil: Int = 12, val lunchUntil: Int = 17, val dinnerUntil: Int = 22) {
-    /** True when every boundary is a whole hour from 01:00 to 23:00 and later than the one above it. */
-    val valid: Boolean get() = breakfastUntil in 1..23 && lunchUntil in 1..23 && dinnerUntil in 1..23 && breakfastUntil < lunchUntil && lunchUntil < dinnerUntil
-}
-
-/** Stored boundaries, or the defaults when any is missing or they are not in order. */
-internal fun mealBoundsOf(breakfastUntil: Int, lunchUntil: Int, dinnerUntil: Int): MealBounds =
-    MealBounds(breakfastUntil, lunchUntil, dinnerUntil).takeIf { it.valid } ?: MealBounds()
-
-/** The boundary that ends [meal]'s time; Snacks has none. */
-internal fun MealBounds.untilOf(meal: MealSlot): Int? = when (meal) {
-    MealSlot.BREAKFAST -> breakfastUntil
-    MealSlot.LUNCH -> lunchUntil
-    MealSlot.DINNER -> dinnerUntil
-    MealSlot.SNACKS -> null
-}
-
-/** [bounds] with [meal]'s boundary moved [delta] hours; unchanged when that would break the order or leave 01:00 to 23:00. */
-internal fun shiftMealBound(bounds: MealBounds, meal: MealSlot, delta: Int): MealBounds {
-    val shifted = when (meal) {
-        MealSlot.BREAKFAST -> bounds.copy(breakfastUntil = bounds.breakfastUntil + delta)
-        MealSlot.LUNCH -> bounds.copy(lunchUntil = bounds.lunchUntil + delta)
-        MealSlot.DINNER -> bounds.copy(dinnerUntil = bounds.dinnerUntil + delta)
-        MealSlot.SNACKS -> bounds
-    }
-    return if (shifted.valid) shifted else bounds
-}
-
-/** True when [meal]'s boundary can move [delta] hours. */
-internal fun canShiftMealBound(bounds: MealBounds, meal: MealSlot, delta: Int): Boolean = shiftMealBound(bounds, meal, delta) != bounds
-
-/** "Before day start": the meal for a log made before "Day starts at" (it belongs to the previous diary day). */
-internal enum class BeforeDayStart { SNACKS, DINNER, ASK }
-
-/**
- * The meal By time gives the wall-clock [hour] (0 to 23). From [dayStartHour] on: before [MealBounds.breakfastUntil]
- * Breakfast, then Lunch, then Dinner, then Snacks. Before [dayStartHour] (the previous diary day's late hours): the
- * [before] choice, null for Ask (the meal menu opens). With the day starting at 00:00 no hour is before it.
- */
-internal fun mealByTime(hour: Int, bounds: MealBounds, dayStartHour: Int = 0, before: BeforeDayStart = BeforeDayStart.SNACKS): MealSlot? = when {
-    hour < dayStartHour -> when (before) {
-        BeforeDayStart.SNACKS -> MealSlot.SNACKS
-        BeforeDayStart.DINNER -> MealSlot.DINNER
-        BeforeDayStart.ASK -> null
-    }
-    hour < bounds.breakfastUntil -> MealSlot.BREAKFAST
-    hour < bounds.lunchUntil -> MealSlot.LUNCH
-    hour < bounds.dinnerUntil -> MealSlot.DINNER
-    else -> MealSlot.SNACKS
-}
-
-/**
- * The meal a log goes to when none is chosen, typed or preset: null for Ask (the meal menu opens), [mealByTime] for
- * By time, and [lastUsed] (the meal of the latest logged entry, null when there is none) for Last used.
- */
-internal fun automaticMeal(
-    mode: MealMode, hour: Int, bounds: MealBounds, lastUsed: MealSlot?,
-    dayStartHour: Int = 0, before: BeforeDayStart = BeforeDayStart.SNACKS,
-): MealSlot? = when (mode) {
-    MealMode.ASK -> null
-    MealMode.BY_TIME -> mealByTime(hour, bounds, dayStartHour, before)
-    MealMode.LAST_USED -> lastUsed
-}
-
-/**
- * The Library food page's meal when it opens: the meal it was opened from, else the Meal setting's [automatic] meal,
- * else Lunch (today's preselection; Ask). The page's meal menu still changes it.
- */
-internal fun libraryPresetMeal(openedFrom: MealSlot?, automatic: MealSlot?): MealSlot = openedFrom ?: automatic ?: MealSlot.LUNCH
-
-/** The "Theme" choice. */
-internal enum class ThemeChoice { SYSTEM, LIGHT, DARK }
-
-/** Whether the app draws dark: the phone's mode ([systemDark]) for System, else the forced one. */
-internal fun darkThemeOf(choice: ThemeChoice, systemDark: Boolean): Boolean = when (choice) {
-    ThemeChoice.SYSTEM -> systemDark
-    ThemeChoice.LIGHT -> false
-    ThemeChoice.DARK -> true
-}
-
-/**
- * The per-app night mode for `UiModeManager.setApplicationNightMode` (API 31+): the system then applies it to the
- * app's configuration and to its launch window. AUTO removes the override, so the app follows the phone.
- */
-internal fun applicationNightModeOf(choice: ThemeChoice): Int = when (choice) {
-    ThemeChoice.SYSTEM -> UiModeManager.MODE_NIGHT_AUTO
-    ThemeChoice.LIGHT -> UiModeManager.MODE_NIGHT_NO
-    ThemeChoice.DARK -> UiModeManager.MODE_NIGHT_YES
-}
-
-/**
- * Below API 31: the activity's own uiMode with its night bits forced by [choice], applied as an override configuration
- * before the window exists, so its theme (the `values-night` window background) and Compose both follow. Null for
- * System. The system's launch window cannot be changed there; it keeps the phone's mode.
- */
-internal fun forcedUiMode(baseUiMode: Int, choice: ThemeChoice): Int? {
-    val night = when (choice) {
-        ThemeChoice.SYSTEM -> return null
-        ThemeChoice.LIGHT -> Configuration.UI_MODE_NIGHT_NO
-        ThemeChoice.DARK -> Configuration.UI_MODE_NIGHT_YES
-    }
-    return (baseUiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or night
-}
-
-/** The "Decimal mark" choice: how numbers are shown. Input reads both marks whatever it is. */
-internal enum class DecimalMark { POINT, COMMA }
-
-/** The decimal mark shown now. Snapshot state, so a composition that formatted a number reads it again on a change. */
-internal object DisplayDecimal {
-    var mark by mutableStateOf(DecimalMark.POINT)
-}
-
-/** [text] with every decimal point between two digits shown as [mark]. */
-internal fun markDecimals(text: String, mark: DecimalMark): String =
-    if (mark == DecimalMark.POINT) text else DECIMAL_POINT.replace(text, ",")
-
-private val DECIMAL_POINT = Regex("""(?<=\d)\.(?=\d)""")
-
-/** The "Motion" choice: Reduced turns motion off as the phone's "Remove animations" does. */
-internal enum class MotionChoice { SYSTEM, REDUCED }
-
-/** The "Text size" choice: Larger is one step above the phone's font size, inside the app only. */
-internal enum class TextSizeChoice { SYSTEM, LARGER }
-
-/** The step "Larger" adds on top of the phone's font scale. */
-internal const val LARGER_TEXT_STEP = 1.15f
-
-/** The font scale the app uses over the phone's [systemFontScale]; null for System (no override). */
-internal fun appFontScale(systemFontScale: Float, choice: TextSizeChoice): Float? = when (choice) {
-    TextSizeChoice.SYSTEM -> null
-    TextSizeChoice.LARGER -> systemFontScale * LARGER_TEXT_STEP
-}
-
-/**
- * What the activity overrides in its configuration, in `attachBaseContext` before its window exists, so every window it
- * opens (dialogs and sheets too) and Compose's `LocalDensity` follow: the forced night bits below API 31 (see
- * [forcedUiMode]; from 31 the per-app night mode does it) and the Larger font scale ([appFontScale]).
- */
-internal data class ActivityOverride(val uiMode: Int?, val fontScale: Float?)
-
-/** The [ActivityOverride] for these settings; null when nothing is overridden (both System). */
-internal fun activityOverrideOf(baseUiMode: Int, systemFontScale: Float, sdk: Int, theme: ThemeChoice, textSize: TextSizeChoice): ActivityOverride? {
-    val uiMode = if (sdk < 31) forcedUiMode(baseUiMode, theme) else null
-    val fontScale = appFontScale(systemFontScale, textSize)
-    return if (uiMode == null && fontScale == null) null else ActivityOverride(uiMode, fontScale)
-}
-
-/** The standard haptic for the tick on Add and Undo: CONFIRM from API 30, VIRTUAL_KEY before; null when Haptics is off. */
-// CONFIRM is only returned for [sdk] 30 and up, which the caller passes as Build.VERSION.SDK_INT.
-@SuppressLint("InlinedApi")
-internal fun tickHapticFor(enabled: Boolean, sdk: Int): Int? = when {
-    !enabled -> null
-    sdk >= 30 -> HapticFeedbackConstants.CONFIRM
-    else -> HapticFeedbackConstants.VIRTUAL_KEY
-}
-
-/** What a scanned or typed barcode that is not in the Library leads to. */
-internal enum class UnknownBarcodeStep { LOOK_UP, MANUAL_FORM }
-
-/** "Look up unknown barcodes" On asks Open Food Facts; Off opens the manual product form with no network request. */
-internal fun unknownBarcodeStep(lookUp: Boolean): UnknownBarcodeStep = if (lookUp) UnknownBarcodeStep.LOOK_UP else UnknownBarcodeStep.MANUAL_FORM
-
-/** The Contribute to Open Food Facts action shows where it is [available], unless "Contribute" is Hide. */
-internal fun contributionShown(show: Boolean, available: Boolean): Boolean = show && available
-
-/** The "Export reminder" choice. */
-internal enum class ExportReminder { NEVER, WEEKLY, MONTHLY }
-
-/** The time between reminders: 7 days, 30 days, or none for Never. */
-internal fun exportReminderIntervalMs(reminder: ExportReminder): Long? = when (reminder) {
-    ExportReminder.NEVER -> null
-    ExportReminder.WEEKLY -> 7L * DAY_MS
-    ExportReminder.MONTHLY -> 30L * DAY_MS
-}
-
-private const val DAY_MS = 86_400_000L
-
-/**
- * True when "Export your diary." is due: a whole interval has passed since the latest of the last export, the last
- * time the reminder was on screen, and the moment it was turned on ([enabledMs]). So the first one comes one interval
- * after it is turned on, it shows once, and again one interval later if no export was made. With no baseline at all
- * it is not due; a clock set back before the baseline is not due either.
- */
-internal fun exportReminderDue(reminder: ExportReminder, lastExportMs: Long?, lastShownMs: Long?, enabledMs: Long?, nowMs: Long): Boolean {
-    val interval = exportReminderIntervalMs(reminder) ?: return false
-    val since = listOfNotNull(lastExportMs, lastShownMs, enabledMs).maxOrNull() ?: return false
-    return nowMs >= since && nowMs - since >= interval
-}
-
-/** The export reminder is drawn only on Daily itself: not under the Log page or any screen or sheet over Daily. */
-internal fun exportReminderOnScreen(due: Boolean, logOpen: Boolean, overlay: Overlay?): Boolean = due && !logOpen && overlay == null
-
-/** What happens to the safety copy before the diary is replaced or deleted. */
-internal enum class SafetyCopyStep { WRITE, DELETE }
-
-/**
- * Import with "Safety copy" Keep writes it, with Don't keep removes any old one and writes none. Delete all data always
- * writes it first, whatever the setting.
- */
-internal fun safetyCopyStep(keep: Boolean, deletingAll: Boolean): SafetyCopyStep =
-    if (keep || deletingAll) SafetyCopyStep.WRITE else SafetyCopyStep.DELETE
-
-/** Delete all data runs only from its confirm dialog, once storage is open and no other write runs. */
-internal fun deleteAllAllowed(dialogOpen: Boolean, ready: Boolean, busy: Boolean): Boolean = dialogOpen && ready && !busy
-
-/** About, Version: "0.1 (10)", the versionName then the versionCode. */
-internal fun versionLabel(versionName: String, versionCode: Int): String = "$versionName ($versionCode)"
-
-/** About, Licences: the bundled font licence, shown as plain text. */
-internal const val LICENCES_ASSET = "OFL.txt"

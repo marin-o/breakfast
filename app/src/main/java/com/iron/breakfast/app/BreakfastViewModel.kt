@@ -23,7 +23,6 @@ import java.time.LocalDate
 import java.time.ZoneId
 import com.iron.breakfast.settings.AppSettings
 import com.iron.breakfast.domain.dayKeyFor
-import com.iron.breakfast.settings.DisplayDecimal
 import com.iron.breakfast.domain.BreakfastEngine
 import com.iron.breakfast.data.BreakfastStore
 import com.iron.breakfast.data.OpenFoodFactsClient
@@ -46,31 +45,19 @@ import com.iron.breakfast.library.LibraryLogDraft
 import com.iron.breakfast.data.DiaryImport
 import com.iron.breakfast.entry.EntryEditMode
 import com.iron.breakfast.domain.RankedFood
-import com.iron.breakfast.SettingsPage
-import com.iron.breakfast.settingsPageBack
-import com.iron.breakfast.ui.components.LongDraft
-import com.iron.breakfast.settings.shiftDayStartHour
 import com.iron.breakfast.settings.ExportReminder
-import com.iron.breakfast.settings.exportReminderDue
-import com.iron.breakfast.settings.exportReminderOnScreen
+import com.iron.breakfast.transfer.exportReminderDue
+import com.iron.breakfast.transfer.exportReminderOnScreen
 import com.iron.breakfast.transfer.DiaryPicker
 import com.iron.breakfast.data.deleteSafetyCopy
-import com.iron.breakfast.settings.deleteAllAllowed
-import com.iron.breakfast.settings.safetyCopyStep
-import com.iron.breakfast.settings.SafetyCopyStep
+import com.iron.breakfast.transfer.deleteAllAllowed
+import com.iron.breakfast.transfer.safetyCopyStep
+import com.iron.breakfast.transfer.SafetyCopyStep
 import com.iron.breakfast.data.diaryFileOf
 import com.iron.breakfast.data.DiarySettings
 import com.iron.breakfast.data.writeSafetyCopy
 import com.iron.breakfast.transfer.DIARY_DELETE_FAILED
-import com.iron.breakfast.settings.MotionChoice
-import com.iron.breakfast.settings.TextSizeChoice
-import com.iron.breakfast.settings.ThemeChoice
-import com.iron.breakfast.settings.DecimalMark
-import com.iron.breakfast.settings.UndoWindow
-import com.iron.breakfast.settings.MealMode
-import com.iron.breakfast.settings.shiftMealBound
-import com.iron.breakfast.settings.BeforeDayStart
-import com.iron.breakfast.settings.automaticMeal
+import com.iron.breakfast.log.automaticMeal
 import com.iron.breakfast.lastUsedMeal
 import com.iron.breakfast.data.writeDiaryChecked
 import com.iron.breakfast.data.readDiaryText
@@ -130,8 +117,8 @@ import com.iron.breakfast.scan.parseProductUnit
 import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.scannerUnavailableTransition
-import com.iron.breakfast.settings.unknownBarcodeStep
-import com.iron.breakfast.settings.UnknownBarcodeStep
+import com.iron.breakfast.scan.unknownBarcodeStep
+import com.iron.breakfast.scan.UnknownBarcodeStep
 import com.iron.breakfast.data.OffResult
 import com.iron.breakfast.domain.resolveNutrition
 import com.iron.breakfast.domain.sameBarcode
@@ -142,34 +129,17 @@ import com.iron.breakfast.resolverLogPlan
 import com.iron.breakfast.data.plausibleNutrition
 import com.iron.breakfast.domain.editedCustomFoodRecord
 import com.iron.breakfast.domain.TypedPart
+import com.iron.breakfast.settings.SettingsState
 
 class BreakfastViewModel(application: Application, private val savedState: SavedStateHandle) : AndroidViewModel(application) {
     private val clock: () -> Long = System::currentTimeMillis
-    private val settings = AppSettings(application)
+    /** Every user setting and the open Settings page; the effects that are not settings are wired in [init]. */
+    internal val settings = SettingsState(AppSettings(application), clock)
     private val zone: ZoneId get() = ZoneId.systemDefault()
-    /** The hour a diary day starts at, from Settings. */
-    var dayStartHour by mutableStateOf(settings.dayStartHour); private set
-    /** Today's day by the clock and [dayStartHour]. The 60-second loop and every return keep it current. */
-    var todayKey by mutableStateOf(dayKeyFor(clock(), zone, dayStartHour)); private set
+    /** Today's day by the clock and the day start setting. The 60-second loop and every return keep it current. */
+    var todayKey by mutableStateOf(dayKeyFor(clock(), zone, settings.dayStartHour)); private set
+    /** Settings is open over the Library (its page is [SettingsState.page]). A surface of the app, so it stays here. */
     var settingsOpen by mutableStateOf(false); private set
-    /** How the composer shows a long draft, from Settings. */
-    var longDraft by mutableStateOf(settings.longDraft); private set
-    /** Settings, Display. The activity applies [theme]; the decimal mark is read through [DisplayDecimal]. */
-    internal var theme by mutableStateOf(settings.theme); private set
-    var showMacros by mutableStateOf(settings.showMacros); private set
-    var showMissingNote by mutableStateOf(settings.showMissingNote); private set
-    internal var decimalMark by mutableStateOf(settings.decimalMark.also { DisplayDecimal.mark = it }); private set
-    /** Settings, Accessibility; the activity applies them. */
-    internal var motion by mutableStateOf(settings.motion); private set
-    internal var textSize by mutableStateOf(settings.textSize); private set
-    var haptics by mutableStateOf(settings.haptics); private set
-    /** Settings, Scanner. */
-    var flashlightAtStart by mutableStateOf(settings.flashlightAtStart); private set
-    var lookUpBarcodes by mutableStateOf(settings.lookUpBarcodes); private set
-    var showContribute by mutableStateOf(settings.showContribute); private set
-    /** Settings, Data. */
-    internal var exportReminder by mutableStateOf(settings.exportReminder); private set
-    var keepSafetyCopy by mutableStateOf(settings.keepSafetyCopy); private set
     /**
      * "Export your diary." is due: Daily draws it, and it counts as shown once it is on screen
      * ([exportReminderOnScreenNow]). Cleared by Export, a successful export, or leaving the app.
@@ -179,17 +149,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     /** The Delete all data dialog, and its "Also settings and learned picks" chip (off each time it opens). */
     var deleteAllOpen by mutableStateOf(false); private set
     var deleteAllAlsoSettings by mutableStateOf(false); private set
-    /** Settings, Logging: how long Undo stays, the meal a log without one goes to, and the ranking switches. */
-    internal var undoWindow by mutableStateOf(settings.undoWindow); private set
-    internal var mealMode by mutableStateOf(settings.mealMode); private set
-    internal var mealBounds by mutableStateOf(settings.mealBounds); private set
-    internal var beforeDayStart by mutableStateOf(settings.beforeDayStart); private set
-    var countTyping by mutableStateOf(settings.countTyping); private set
-    var learnFromPicks by mutableStateOf(settings.learnFromPicks); private set
-    private val engine = BreakfastEngine(BreakfastStore(application)).also {
-        it.countTyping = countTyping
-        it.learnFromPicks = learnFromPicks
-    }
+    private val engine = BreakfastEngine(
+        BreakfastStore(application),
+        countTypingSetting = { settings.countTyping },
+        learnFromPicksSetting = { settings.learnFromPicks },
+    )
     /** The read model, the write gate and the notice channel (see [DiarySession]). */
     private val session = DiarySession(
         source = object : DiarySource {
@@ -217,7 +181,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private var followingToday = restoreSelectedDay(savedState).followingToday
     /** Opened or restored after being closed: a user following today lands on today; a past day they picked stays. */
     var selectedDayKey by mutableStateOf(
-        restoreSelectedDay(savedState).let { resolveSelectedDay(it.dayKey, it.followingToday, returning = true, clock(), zone, dayStartHour) }
+        restoreSelectedDay(savedState).let { resolveSelectedDay(it.dayKey, it.followingToday, returning = true, clock(), zone, settings.dayStartHour) }
     ); private set
     var slot by mutableStateOf(savedState.get<String>("meal_slot")?.let { runCatching { MealSlot.valueOf(it) }.getOrNull() }); private set
     var customOpen by mutableStateOf(false); private set
@@ -361,6 +325,13 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         viewModelScope.launch { snapshotFlow { SavedLogDraft(logDraft, logDraftCommitted) }.collect { saveLogDraft(savedState, it) } }
         viewModelScope.launch { snapshotFlow { foodFormToSave() }.collect { saveFoodForm(savedState, it) } }
         session.onChange(::onDiaryChange)
+        // A new day start: today follows it at once, and a user on today stays on today (it counts as a return).
+        settings.dayStartHourSetting.observe { checkDay(returning = true) }
+        // An Undo offer showing now follows the new window from the moment it was made.
+        settings.undoWindowSetting.observe { undoOffer?.let { offerUndo(it); liveUndoOffer() } }
+        settings.exportReminderSetting.observe { if (it == ExportReminder.NEVER) exportReminderVisible = false else checkExportReminder() }
+        // "Safety copy" Don't keep also removes the copy kept so far.
+        settings.keepSafetyCopySetting.observe { keep -> if (!keep) removeSafetyCopy() }
         openStore()
     }
     /** Opens storage; on failure the "Storage unavailable" dialog offers [retryStorage]. The cause goes to the log only. */
@@ -394,11 +365,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     /** Recomputes today and applies [resolveSelectedDay]; the selection moves only when [returning]. */
     private fun checkDay(returning: Boolean) {
         val now = clock()
-        todayKey = dayKeyFor(now, zone, dayStartHour)
-        val day = resolveSelectedDay(selectedDayKey, followingToday, returning, now, zone, dayStartHour)
+        todayKey = dayKeyFor(now, zone, settings.dayStartHour)
+        val day = resolveSelectedDay(selectedDayKey, followingToday, returning, now, zone, settings.dayStartHour)
         if (day != selectedDayKey) selectDay(day, following = true)
     }
-    private fun todayNow(): String = dayKeyFor(clock(), zone, dayStartHour).also { todayKey = it }
+    private fun todayNow(): String = dayKeyFor(clock(), zone, settings.dayStartHour).also { todayKey = it }
     private fun selectDay(value: String, following: Boolean) {
         selectedDayKey = value
         followingToday = following
@@ -414,43 +385,16 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (dayKey > today) return
         selectDay(dayKey, following = dayKey == today)
     }
-    /**
-     * The Settings page open over the list of groups; null is the list. Kept in the view model only, so it survives a
-     * recreation (a theme change); after the process was killed Settings is closed anyway.
-     */
-    internal var settingsPage by mutableStateOf<SettingsPage?>(null); private set
     /** Settings, over the Library, on the list of groups; its arrow and Back return there. */
-    fun openSettings() { settingsPage = null; settingsOpen = true }
-    fun closeSettings() { settingsOpen = false; settingsPage = null }
-    internal fun openSettingsPage(page: SettingsPage) { settingsPage = page }
-    /** Back or the arrow in Settings: a page goes back by [settingsPageBack], the list closes Settings. */
-    fun settingsBack() {
-        val page = settingsPage ?: return closeSettings()
-        settingsPage = settingsPageBack(page)
-    }
-    fun chooseLongDraft(mode: LongDraft) {
-        longDraft = mode
-        settings.longDraft = mode
-    }
-    /** The "Day starts at" stepper. Today follows the new start at once; a user on today stays on today. */
-    fun shiftDayStart(delta: Int) {
-        val hour = shiftDayStartHour(dayStartHour, delta)
-        dayStartHour = hour
-        settings.dayStartHour = hour
-        checkDay(returning = true)
-    }
-    internal fun chooseExportReminder(reminder: ExportReminder) {
-        // Turned on from Never: the first reminder comes one interval from now.
-        if (exportReminder == ExportReminder.NEVER && reminder != ExportReminder.NEVER) settings.exportReminderEnabledMs = clock()
-        exportReminder = reminder
-        settings.exportReminder = reminder
-        if (reminder == ExportReminder.NEVER) exportReminderVisible = false else checkExportReminder()
-    }
+    fun openSettings() { settings.showList(); settingsOpen = true }
+    fun closeSettings() { settingsOpen = false; settings.showList() }
+    /** Back or the arrow in Settings: a page goes back ([SettingsState.back]), the list closes Settings. */
+    fun settingsBack() { if (!settings.back()) closeSettings() }
     /** Marks the export reminder due when [exportReminderDue]; it is recorded as shown only once Daily draws it. */
     private fun checkExportReminder() {
         if (exportReminderVisible || !ready) return
-        if (exportReminder != ExportReminder.NEVER && settings.exportReminderEnabledMs == null) settings.exportReminderEnabledMs = clock()
-        if (!exportReminderDue(exportReminder, settings.lastExportMs, settings.exportReminderShownMs, settings.exportReminderEnabledMs, clock())) return
+        if (settings.exportReminder != ExportReminder.NEVER && settings.exportReminderEnabledMs == null) settings.exportReminderEnabledMs = clock()
+        if (!exportReminderDue(settings.exportReminder, settings.lastExportMs, settings.exportReminderShownMs, settings.exportReminderEnabledMs, clock())) return
         exportReminderRecorded = false
         exportReminderVisible = true
     }
@@ -467,12 +411,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (!ready || busy) return
         exportReminderVisible = false
         requestDiaryPicker(DiaryPicker.EXPORT)
-    }
-    /** "Safety copy" Don't keep also removes the copy kept so far. */
-    fun chooseKeepSafetyCopy(keep: Boolean) {
-        keepSafetyCopy = keep
-        settings.keepSafetyCopy = keep
-        if (!keep) removeSafetyCopy()
     }
     private fun removeSafetyCopy() {
         val dir = getApplication<Application>().noBackupFilesDir
@@ -498,13 +436,13 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 // Nothing deleted may be undone (the change ended it), pinned, confirmed or resolved into the empty diary.
                 loggedBatchIds = emptyList(); logPins.clear(); feedbackIds = emptySet(); pendingContribution = null
                 abandonUnknownResolution(); closeEntryDetail()
-                if (alsoSettings) resetSettings()
+                if (alsoSettings) settings.resetToDefaults()
             },
         ) {
             withContext(NonCancellable) {
                 try {
-                    if (safetyCopyStep(keepSafetyCopy, deletingAll = true) == SafetyCopyStep.WRITE) {
-                        val current = diaryFileOf(engine.exportRows(), DiarySettings(dayStartHour, longDraft), clock())
+                    if (safetyCopyStep(settings.keepSafetyCopy, deletingAll = true) == SafetyCopyStep.WRITE) {
+                        val current = diaryFileOf(engine.exportRows(), DiarySettings(settings.dayStartHour, settings.longDraft), clock())
                         withContext(Dispatchers.IO) { writeSafetyCopy(safetyDir, current) }
                     }
                     engine.deleteAllData(alsoPreferences = alsoSettings)
@@ -516,97 +454,12 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             }
         }
     }
-    /** Every setting back to its default, on the phone and on screen. */
-    private fun resetSettings() {
-        settings.clear()
-        dayStartHour = settings.dayStartHour; longDraft = settings.longDraft
-        undoWindow = settings.undoWindow; mealMode = settings.mealMode; mealBounds = settings.mealBounds; beforeDayStart = settings.beforeDayStart
-        countTyping = settings.countTyping; engine.countTyping = countTyping
-        learnFromPicks = settings.learnFromPicks; engine.learnFromPicks = learnFromPicks
-        theme = settings.theme; showMacros = settings.showMacros; showMissingNote = settings.showMissingNote
-        decimalMark = settings.decimalMark; DisplayDecimal.mark = decimalMark
-        motion = settings.motion; textSize = settings.textSize; haptics = settings.haptics
-        flashlightAtStart = settings.flashlightAtStart; lookUpBarcodes = settings.lookUpBarcodes; showContribute = settings.showContribute
-        exportReminder = settings.exportReminder; keepSafetyCopy = settings.keepSafetyCopy; exportReminderVisible = false
-        checkDay(returning = true)
-    }
-    fun chooseFlashlightAtStart(on: Boolean) {
-        flashlightAtStart = on
-        settings.flashlightAtStart = on
-    }
-    fun chooseLookUpBarcodes(on: Boolean) {
-        lookUpBarcodes = on
-        settings.lookUpBarcodes = on
-    }
-    fun chooseShowContribute(show: Boolean) {
-        showContribute = show
-        settings.showContribute = show
-    }
-    internal fun chooseMotion(choice: MotionChoice) {
-        motion = choice
-        settings.motion = choice
-    }
-    internal fun chooseTextSize(choice: TextSizeChoice) {
-        textSize = choice
-        settings.textSize = choice
-    }
-    fun chooseHaptics(on: Boolean) {
-        haptics = on
-        settings.haptics = on
-    }
-    internal fun chooseTheme(choice: ThemeChoice) {
-        theme = choice
-        settings.theme = choice
-    }
-    fun chooseShowMacros(show: Boolean) {
-        showMacros = show
-        settings.showMacros = show
-    }
-    fun chooseShowMissingNote(show: Boolean) {
-        showMissingNote = show
-        settings.showMissingNote = show
-    }
-    internal fun chooseDecimalMark(mark: DecimalMark) {
-        decimalMark = mark
-        settings.decimalMark = mark
-        DisplayDecimal.mark = mark
-    }
-    internal fun chooseUndoWindow(window: UndoWindow) {
-        undoWindow = window
-        settings.undoWindow = window
-        // An offer showing now follows the new window from the moment it was made.
-        undoOffer?.let { offerUndo(it); liveUndoOffer() }
-    }
-    internal fun chooseMealMode(mode: MealMode) {
-        mealMode = mode
-        settings.mealMode = mode
-    }
-    /** A "By time" stepper; a step that would break the order is refused (the stepper shows it disabled). */
-    internal fun stepMealBound(meal: MealSlot, delta: Int) {
-        val bounds = shiftMealBound(mealBounds, meal, delta)
-        mealBounds = bounds
-        settings.mealBounds = bounds
-    }
-    internal fun chooseBeforeDayStart(choice: BeforeDayStart) {
-        beforeDayStart = choice
-        settings.beforeDayStart = choice
-    }
-    fun chooseCountTyping(on: Boolean) {
-        countTyping = on
-        settings.countTyping = on
-        engine.countTyping = on
-    }
-    fun chooseLearnFromPicks(on: Boolean) {
-        learnFromPicks = on
-        settings.learnFromPicks = on
-        engine.learnFromPicks = on
-    }
     /**
      * The meal the "Meal" setting gives a log with no chosen, typed or preset meal, at this moment; null for Ask. The
      * Log page falls back to it, and the Library preselects it (see [libraryPresetMeal]).
      */
     internal fun automaticMealNow(): MealSlot? = automaticMeal(
-        mealMode, java.time.Instant.ofEpochMilli(clock()).atZone(zone).hour, mealBounds, lastUsedMeal(entries), dayStartHour, beforeDayStart,
+        settings.mealMode, java.time.Instant.ofEpochMilli(clock()).atZone(zone).hour, settings.mealBounds, lastUsedMeal(entries), settings.dayStartHour, settings.beforeDayStart,
     )
     /** The picker Settings asked for; IronApp, always composed, launches it so a result after recreation still lands. */
     var diaryPickerRequest by mutableStateOf<DiaryPicker?>(null); private set
@@ -630,7 +483,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         ) {
             withContext(NonCancellable) {
                 val problem = try {
-                    val file = diaryFileOf(engine.exportRows(), DiarySettings(dayStartHour, longDraft), clock())
+                    val file = diaryFileOf(engine.exportRows(), DiarySettings(settings.dayStartHour, settings.longDraft), clock())
                     withContext(Dispatchers.IO) {
                         writeDiaryChecked(
                             file,
@@ -702,9 +555,9 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         ) {
                 withContext(NonCancellable) {
                     try {
-                        when (safetyCopyStep(keepSafetyCopy, deletingAll = false)) {
+                        when (safetyCopyStep(settings.keepSafetyCopy, deletingAll = false)) {
                             SafetyCopyStep.WRITE -> {
-                                val current = diaryFileOf(engine.exportRows(), DiarySettings(dayStartHour, longDraft), clock())
+                                val current = diaryFileOf(engine.exportRows(), DiarySettings(settings.dayStartHour, settings.longDraft), clock())
                                 withContext(Dispatchers.IO) { writeSafetyCopy(safetyDir, current) }
                             }
                             // "Safety copy" Don't keep: no copy, and an old one is removed.
@@ -739,7 +592,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     private fun leaveLibrary(returnTo: MealSlot?) {
         logResolve?.let { endResolve(it, it.draftText); return }
-        libraryRefreshJob?.cancel(); libraryRefreshGeneration++; libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null; expandedLibraryFoodId = null; libraryPendingAmount = null; libraryPendingUnit = null; libraryPendingBatch = emptyList(); libraryBatchMealPickerOpen = false; libraryArchivedOnly = false; settingsOpen = false; settingsPage = null; selectMeal(returnTo)
+        libraryRefreshJob?.cancel(); libraryRefreshGeneration++; libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null; expandedLibraryFoodId = null; libraryPendingAmount = null; libraryPendingUnit = null; libraryPendingBatch = emptyList(); libraryBatchMealPickerOpen = false; libraryArchivedOnly = false; settingsOpen = false; settings.showList(); selectMeal(returnTo)
         libraryQuery = ""
         libraryResultsQuery = null
         input = ""
@@ -1363,7 +1216,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         undoExpiryJob = viewModelScope.launch {
             while (true) {
                 // "Until next action": no timer, the next log, edit or delete replaces the offer.
-                val window = undoWindowMs(undoWindow) ?: return@launch
+                val window = undoWindowMs(settings.undoWindow) ?: return@launch
                 val left = undoRemainingMs(offer.offeredAtMs, clock(), window)
                 if (left <= 0L) break
                 delay(left)
@@ -1383,7 +1236,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     /** The offer, while its window is open; an expired one is cleared. */
     private fun liveUndoOffer(): UndoOffer? {
         val offer = undoOffer ?: return null
-        if (undoOpen(offer.offeredAtMs, clock(), undoWindowMs(undoWindow))) return offer
+        if (undoOpen(offer.offeredAtMs, clock(), undoWindowMs(settings.undoWindow))) return offer
         offerUndo(null)
         return null
     }
@@ -1797,7 +1650,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val originDay = barcodeOriginDay
         val originMeal = barcodeOriginMeal
         val reviewOrigin = productReviewOrigin(originMeal, resolutionContinuation, unknownQueue.isNotEmpty())
-        val step = unknownBarcodeStep(lookUpBarcodes)
+        val step = unknownBarcodeStep(settings.lookUpBarcodes)
         scannerLookupCode = barcode
         scannerLookupBusy = true
         barcodeLookupJob = viewModelScope.launch(Dispatchers.IO) {

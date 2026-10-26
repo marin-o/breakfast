@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.dp
 import com.iron.breakfast.app.BreakfastViewModel
 import com.iron.breakfast.entry.EntryEditMode
 import com.iron.breakfast.contribution.ContributionAction
-import com.iron.breakfast.settings.contributionShown
+import com.iron.breakfast.contribution.contributionShown
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MacroTotal
 import com.iron.breakfast.domain.MacroTotals
@@ -131,9 +131,9 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 val macros = macroTotalsOf(selected.map { it.nutritionSnapshot })
                 DayTotal(
                     formatKcal(total.calories),
-                    if (vm.showMacros) dailyMacroStats(total.calories, macros) else emptyList(),
+                    if (vm.settings.showMacros) dailyMacroStats(total.calories, macros) else emptyList(),
                     Modifier.padding(top = 18.dp),
-                    note = dailyMacroNote(macros, showMacros = vm.showMacros, showNote = vm.showMissingNote),
+                    note = dailyMacroNote(macros, showMacros = vm.settings.showMacros, showNote = vm.settings.showMissingNote),
                 )
             }
             vm.mealDraftError?.let { message -> item { Text(message, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(vertical = 6.dp)) } }
@@ -141,7 +141,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 DailyMealSection(slot, selected.filter { it.mealSlot == slot }, foods, vm)
             }
             item {
-                if (contributionShown(vm.showContribute, vm.pendingContribution != null)) ContributionAction(vm)
+                if (contributionShown(vm.settings.showContribute, vm.pendingContribution != null)) ContributionAction(vm)
             }
         }
         // Hidden during an entry edit, which owns the input and its own sheet.
@@ -257,7 +257,7 @@ internal fun DailyComposer(vm: BreakfastViewModel, modifier: Modifier = Modifier
             onClick = { vm.openLog(null) },
             onScan = vm::beginScan,
             draft = draft,
-            longDraft = vm.longDraft,
+            longDraft = vm.settings.longDraft,
         )
         BottomNav(selectedToday = true, onToday = { vm.closeMeal(); vm.closeLibrary() }, onLibrary = { vm.closeMeal(); vm.openLibrary() })
     }

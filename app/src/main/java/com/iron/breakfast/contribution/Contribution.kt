@@ -11,3 +11,6 @@ internal fun contributionLanguageFor(name: String): String =
 
 internal fun contributionDraftAfterLocalSave(food: FoodRecord, fromScan: Boolean): OffContributionDraft? =
     if (fromScan) OffContributionDraft.fromFood(food) else null
+
+/** The Contribute to Open Food Facts action shows where it is [available], unless "Contribute" is Hide. */
+internal fun contributionShown(show: Boolean, available: Boolean): Boolean = show && available

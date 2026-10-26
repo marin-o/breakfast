@@ -42,8 +42,6 @@ import com.iron.breakfast.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.iron.breakfast.transfer.DiaryPicker
-import com.iron.breakfast.SETTINGS_GROUPS
-import com.iron.breakfast.SettingsPage
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.ui.components.AddCircle
 import com.iron.breakfast.ui.components.ChoiceOption
@@ -61,7 +59,7 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
 @Composable
 internal fun SettingsScreen(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
-    val page = vm.settingsPage
+    val page = vm.settings.page
     BackHandler { vm.settingsBack() }
     // Each page starts at its top.
     key(page) {
@@ -70,7 +68,7 @@ internal fun SettingsScreen(vm: BreakfastViewModel) {
             TopBar(page?.title ?: "Settings", vm::settingsBack, Modifier.padding(top = 8.dp))
             Hairline(Modifier.padding(top = 8.dp))
             when (page) {
-                null -> SETTINGS_GROUPS.forEach { group -> SettingsAction(group.title) { vm.openSettingsPage(group) }; Hairline() }
+                null -> SETTINGS_GROUPS.forEach { group -> SettingsAction(group.title) { vm.settings.openPage(group) }; Hairline() }
                 SettingsPage.LOGGING -> LoggingPage(vm)
                 SettingsPage.DISPLAY -> DisplayPage(vm)
                 SettingsPage.ACCESSIBILITY -> AccessibilityPage(vm)
@@ -86,61 +84,61 @@ internal fun SettingsScreen(vm: BreakfastViewModel) {
 
 @Composable
 private fun ColumnScope.LoggingPage(vm: BreakfastViewModel) {
-    StepperRow("Day starts at", dayStartLabel(vm.dayStartHour), { vm.shiftDayStart(-1) }, { vm.shiftDayStart(1) })
+    StepperRow("Day starts at", dayStartLabel(vm.settings.dayStartHour), { vm.settings.shiftDayStart(-1) }, { vm.settings.shiftDayStart(1) })
     Hairline()
-    ChoiceRow("Undo", UNDO_CHOICES, vm.undoWindow, vm::chooseUndoWindow)
+    ChoiceRow("Undo", UNDO_CHOICES, vm.settings.undoWindow, vm.settings::chooseUndoWindow)
     Hairline()
-    ChoiceRow("Meal", MEAL_MODE_CHOICES, vm.mealMode, vm::chooseMealMode)
+    ChoiceRow("Meal", MEAL_MODE_CHOICES, vm.settings.mealMode, vm.settings::chooseMealMode)
     Hairline()
-    if (vm.mealMode == MealMode.BY_TIME) {
+    if (vm.settings.mealMode == MealMode.BY_TIME) {
         MEAL_BOUND_ROWS.forEach { (meal, label) ->
-            val bounds = vm.mealBounds
+            val bounds = vm.settings.mealBounds
             StepperRow(
-                label, dayStartLabel(bounds.untilOf(meal) ?: 0), { vm.stepMealBound(meal, -1) }, { vm.stepMealBound(meal, 1) },
+                label, dayStartLabel(bounds.untilOf(meal) ?: 0), { vm.settings.stepMealBound(meal, -1) }, { vm.settings.stepMealBound(meal, 1) },
                 decreaseEnabled = canShiftMealBound(bounds, meal, -1), increaseEnabled = canShiftMealBound(bounds, meal, 1),
             )
             Hairline()
         }
-        ChoiceRow("Before day start", BEFORE_DAY_START_CHOICES, vm.beforeDayStart, vm::chooseBeforeDayStart)
+        ChoiceRow("Before day start", BEFORE_DAY_START_CHOICES, vm.settings.beforeDayStart, vm.settings::chooseBeforeDayStart)
         Hairline()
     }
-    ChoiceRow("Count what I'm typing", ON_OFF, vm.countTyping, vm::chooseCountTyping)
+    ChoiceRow("Count what I'm typing", ON_OFF, vm.settings.countTyping, vm.settings::chooseCountTyping)
     Hairline()
-    ChoiceRow("Learn from my picks", ON_OFF, vm.learnFromPicks, vm::chooseLearnFromPicks)
+    ChoiceRow("Learn from my picks", ON_OFF, vm.settings.learnFromPicks, vm.settings::chooseLearnFromPicks)
     Hairline()
 }
 
 @Composable
 private fun ColumnScope.DisplayPage(vm: BreakfastViewModel) {
-    ChoiceRow("Theme", THEME_CHOICES, vm.theme, vm::chooseTheme)
+    ChoiceRow("Theme", THEME_CHOICES, vm.settings.theme, vm.settings::chooseTheme)
     Hairline()
-    ChoiceRow("Long draft", LONG_DRAFT_CHOICES, vm.longDraft, vm::chooseLongDraft)
+    ChoiceRow("Long draft", LONG_DRAFT_CHOICES, vm.settings.longDraft, vm.settings::chooseLongDraft)
     Hairline()
-    ChoiceRow("Macros on today", SHOW_HIDE, vm.showMacros, vm::chooseShowMacros)
+    ChoiceRow("Macros on today", SHOW_HIDE, vm.settings.showMacros, vm.settings::chooseShowMacros)
     Hairline()
-    ChoiceRow("Missing values note", SHOW_HIDE, vm.showMissingNote, vm::chooseShowMissingNote)
+    ChoiceRow("Missing values note", SHOW_HIDE, vm.settings.showMissingNote, vm.settings::chooseShowMissingNote)
     Hairline()
-    ChoiceRow("Decimal mark", DECIMAL_MARK_CHOICES, vm.decimalMark, vm::chooseDecimalMark)
+    ChoiceRow("Decimal mark", DECIMAL_MARK_CHOICES, vm.settings.decimalMark, vm.settings::chooseDecimalMark)
     Hairline()
 }
 
 @Composable
 private fun ColumnScope.AccessibilityPage(vm: BreakfastViewModel) {
-    ChoiceRow("Motion", MOTION_CHOICES, vm.motion, vm::chooseMotion)
+    ChoiceRow("Motion", MOTION_CHOICES, vm.settings.motion, vm.settings::chooseMotion)
     Hairline()
-    ChoiceRow("Text size", TEXT_SIZE_CHOICES, vm.textSize, vm::chooseTextSize)
+    ChoiceRow("Text size", TEXT_SIZE_CHOICES, vm.settings.textSize, vm.settings::chooseTextSize)
     Hairline()
-    ChoiceRow("Haptics", ON_OFF, vm.haptics, vm::chooseHaptics)
+    ChoiceRow("Haptics", ON_OFF, vm.settings.haptics, vm.settings::chooseHaptics)
     Hairline()
 }
 
 @Composable
 private fun ColumnScope.ScannerPage(vm: BreakfastViewModel) {
-    ChoiceRow("Flashlight at start", ON_OFF, vm.flashlightAtStart, vm::chooseFlashlightAtStart)
+    ChoiceRow("Flashlight at start", ON_OFF, vm.settings.flashlightAtStart, vm.settings::chooseFlashlightAtStart)
     Hairline()
-    ChoiceRow("Look up unknown barcodes", ON_OFF, vm.lookUpBarcodes, vm::chooseLookUpBarcodes)
+    ChoiceRow("Look up unknown barcodes", ON_OFF, vm.settings.lookUpBarcodes, vm.settings::chooseLookUpBarcodes)
     Hairline()
-    ChoiceRow("Contribute", SHOW_HIDE, vm.showContribute, vm::chooseShowContribute)
+    ChoiceRow("Contribute", SHOW_HIDE, vm.settings.showContribute, vm.settings::chooseShowContribute)
     Hairline()
 }
 
@@ -150,9 +148,9 @@ private fun ColumnScope.DataPage(vm: BreakfastViewModel) {
     Hairline()
     SettingsAction("Import diary", enabled = vm.ready && !vm.busy) { vm.requestDiaryPicker(DiaryPicker.IMPORT) }
     Hairline()
-    ChoiceRow("Export reminder", EXPORT_REMINDER_CHOICES, vm.exportReminder, vm::chooseExportReminder)
+    ChoiceRow("Export reminder", EXPORT_REMINDER_CHOICES, vm.settings.exportReminder, vm.settings::chooseExportReminder)
     Hairline()
-    ChoiceRow("Safety copy", SAFETY_COPY_CHOICES, vm.keepSafetyCopy, vm::chooseKeepSafetyCopy)
+    ChoiceRow("Safety copy", SAFETY_COPY_CHOICES, vm.settings.keepSafetyCopy, vm.settings::chooseKeepSafetyCopy)
     Hairline()
     SettingsAction("Delete all data", enabled = vm.ready && !vm.busy, destructive = true, onClick = vm::openDeleteAll)
     Hairline()
@@ -162,7 +160,7 @@ private fun ColumnScope.DataPage(vm: BreakfastViewModel) {
 private fun ColumnScope.AboutPage(vm: BreakfastViewModel) {
     ValueRow("Version", versionLabel(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE))
     Hairline()
-    SettingsAction("Licences") { vm.openSettingsPage(SettingsPage.LICENCES) }
+    SettingsAction("Licences") { vm.settings.openPage(SettingsPage.LICENCES) }
     Hairline()
 }
 

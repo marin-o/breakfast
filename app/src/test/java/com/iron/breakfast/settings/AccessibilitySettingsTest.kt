@@ -1,7 +1,6 @@
 package com.iron.breakfast.settings
 
 import android.content.res.Configuration
-import android.view.HapticFeedbackConstants
 import com.iron.breakfast.ui.components.isLargeFont
 import com.iron.breakfast.ui.components.motionReduced
 import org.junit.Assert.assertEquals
@@ -41,13 +40,6 @@ class AccessibilitySettingsTest {
         val larger = activityOverrideOf(light, 1.3f, 34, ThemeChoice.SYSTEM, TextSizeChoice.LARGER)!!
         assertNull(larger.uiMode)
         assertEquals(1.3f * LARGER_TEXT_STEP, larger.fontScale!!, 1e-6f)
-    }
-
-    @Test fun hapticsOffByDefaultAndAStandardTickWhenOn() {
-        assertNull(tickHapticFor(enabled = false, sdk = 34))
-        assertEquals(HapticFeedbackConstants.CONFIRM, tickHapticFor(enabled = true, sdk = 34))
-        assertEquals(HapticFeedbackConstants.CONFIRM, tickHapticFor(enabled = true, sdk = 30))
-        assertEquals(HapticFeedbackConstants.VIRTUAL_KEY, tickHapticFor(enabled = true, sdk = 29))
     }
 
     @Test fun accessibilityDefaultsAreTodays() {

@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.app.BreakfastViewModel
 import com.iron.breakfast.contribution.ContributionAction
-import com.iron.breakfast.settings.contributionShown
+import com.iron.breakfast.contribution.contributionShown
 import com.iron.breakfast.entry.EntryEditMode
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
@@ -113,7 +113,7 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
                         SecondaryButton("Scan", vm::beginScan, scanModifier, fillWidth = false)
                     }
                 }
-                if (contributionShown(vm.showContribute, vm.pendingContribution != null)) ContributionAction(vm)
+                if (contributionShown(vm.settings.showContribute, vm.pendingContribution != null)) ContributionAction(vm)
             }
         }
         // Hidden during an entry edit, which owns the input and its own sheet.
@@ -134,7 +134,7 @@ internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot, modifier: Mo
             onClick = { vm.openLog(target) },
             onScan = vm::beginScan,
             draft = draft,
-            longDraft = vm.longDraft,
+            longDraft = vm.settings.longDraft,
         )
     }
 }

@@ -1,4 +1,4 @@
-package com.iron.breakfast.settings
+package com.iron.breakfast.transfer
 
 import com.iron.breakfast.data.SAFETY_COPY_NAME
 import com.iron.breakfast.data.deleteSafetyCopy
@@ -10,6 +10,8 @@ import org.junit.Test
 import java.io.File
 import java.nio.file.Files
 import com.iron.breakfast.Overlay
+import com.iron.breakfast.settings.enumOf
+import com.iron.breakfast.settings.ExportReminder
 
 /** B9 Data group: Export reminder, Safety copy, Delete all data. */
 class DataSettingsTest {

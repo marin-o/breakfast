@@ -66,10 +66,10 @@ class MainActivity : ComponentActivity() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) window.isNavigationBarContrastEnforced = false
         setContent {
             val vm: BreakfastViewModel = viewModel()
-            LaunchedEffect(vm.theme) { applyTheme(vm.theme) }
-            LaunchedEffect(vm.textSize) { applyTextSize(vm.textSize) }
-            CompositionLocalProvider(LocalMotionForcedReduced provides (vm.motion == MotionChoice.REDUCED), LocalHaptics provides vm.haptics) {
-                BreakfastTheme(dark = darkThemeOf(vm.theme, isSystemInDarkTheme())) { IronApp(vm) }
+            LaunchedEffect(vm.settings.theme) { applyTheme(vm.settings.theme) }
+            LaunchedEffect(vm.settings.textSize) { applyTextSize(vm.settings.textSize) }
+            CompositionLocalProvider(LocalMotionForcedReduced provides (vm.settings.motion == MotionChoice.REDUCED), LocalHaptics provides vm.settings.haptics) {
+                BreakfastTheme(dark = darkThemeOf(vm.settings.theme, isSystemInDarkTheme())) { IronApp(vm) }
             }
         }
     }

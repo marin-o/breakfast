@@ -6,7 +6,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
-class BreakfastEngine(private val store: BreakfastStore) {
+class BreakfastEngine(
+    private val store: BreakfastStore,
+    /** Settings, "Count what I'm typing", read at each use (the planner is called off the main thread). */
+    private val countTypingSetting: () -> Boolean = { true },
+    /** Settings, "Learn from my picks", read at each use. */
+    private val learnFromPicksSetting: () -> Boolean = { true },
+) {
     private val parser = ShorthandParser()
     private val calculator = NutritionCalculator()
     private val matchers = MatcherCache()
@@ -29,13 +35,13 @@ class BreakfastEngine(private val store: BreakfastStore) {
     private var plannerCountsTyping: Boolean? = null
 
     /** "Count what I'm typing" (Settings): passed to every planner; see [LogPlanner]. */
-    @Volatile var countTyping: Boolean = true
+    val countTyping: Boolean get() = countTypingSetting()
 
     /**
      * "Learn from my picks" (Settings). Off: ranking ignores the learned preferences and a pick is not learned; the
      * stored preferences stay as they are.
      */
-    @Volatile var learnFromPicks: Boolean = true
+    val learnFromPicks: Boolean get() = learnFromPicksSetting()
 
     /** The learned preferences ranking uses: none while [learnFromPicks] is off. */
     private fun preferences(): Map<String, Preference> = rankingPreferences(learnFromPicks, store.preferenceMap())

@@ -180,20 +180,6 @@ internal fun topOverlay(
     else -> null
 }
 
-/** A page of Settings: one of the six groups, or Licences under About. The list of groups is no page (null). */
-internal enum class SettingsPage(val title: String) {
-    LOGGING("Logging"), DISPLAY("Display"), ACCESSIBILITY("Accessibility"), SCANNER("Scanner"), DATA("Data"), ABOUT("About"),
-    LICENCES("Licences"),
-}
-
-/** The groups the Settings list shows, in this order. */
-internal val SETTINGS_GROUPS: List<SettingsPage> = listOf(
-    SettingsPage.LOGGING, SettingsPage.DISPLAY, SettingsPage.ACCESSIBILITY, SettingsPage.SCANNER, SettingsPage.DATA, SettingsPage.ABOUT,
-)
-
-/** Back or the arrow on a Settings page: Licences returns to About, a group page to the list (null). */
-internal fun settingsPageBack(page: SettingsPage): SettingsPage? = if (page == SettingsPage.LICENCES) SettingsPage.ABOUT else null
-
 /** Where leaving the Library goes. */
 internal enum class LibraryExit { LOG, LIBRARY, MEAL, DAILY }
 

@@ -138,7 +138,7 @@ import com.iron.breakfast.ui.screens.sourceLabel
     val lifecycleOwner = LocalLifecycleOwner.current
     var torchAvailable by remember { mutableStateOf(false) }
     // "Flashlight at start": the torch comes on as soon as the camera reports a flash unit.
-    var torchOn by remember { mutableStateOf(vm.flashlightAtStart) }
+    var torchOn by remember { mutableStateOf(vm.settings.flashlightAtStart) }
     var manualOpen by rememberSaveable { mutableStateOf(false) }
     // Asked once per scan session: a configuration change after a denial must not bring the system dialog back.
     var permissionAsked by rememberSaveable { mutableStateOf(false) }

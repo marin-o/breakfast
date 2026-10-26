@@ -21,16 +21,16 @@ Packages under `com.iron.breakfast`. Feature packages hold that feature's screen
 | `data/DiaryExport.kt` | The diary file for Export diary and Import diary: DTOs, Room rows to file and back, and the import checks. Pure, unit-tested (see Export and import). |
 | `data/OpenFoodFactsClient.kt` | The only network code (see OFF boundary). |
 | `today/` | Daily (the Today tab) and Meal screens (`DailyScreen.kt`, `MealScreen.kt`) and `UndoOffer`. |
-| `log/` | The Log page (`LogScreen.kt`) and `LogDraftView`, what it shows for one draft. |
-| `library/` | The Library list, food detail and amount sheet, and the Edit-food screen with `FoodBarcodeField` (`LibraryScreen.kt`); the meal pickers (`LibraryMealPickers.kt`); the Library bar's reading of a draft (`LibraryInput.kt`). |
+| `log/` | The Log page (`LogScreen.kt`), `LogDraftView`, what it shows for one draft, and the Meal setting's policy (`MealPolicy.kt`: `mealByTime`, `automaticMeal`). |
+| `library/` | The Library list, food detail and amount sheet, and the Edit-food screen with `FoodBarcodeField` (`LibraryScreen.kt`); the meal pickers (`LibraryMealPickers.kt`); the Library bar's reading of a draft (`LibraryInput.kt`); the food page's preselected meal (`LibraryPresetMeal.kt`). |
 | `food/` | New food (`CreateFoodScreen.kt`), the food form state `FoodDraft` with its typed values (`FoodDraftFields`) and dirty check (`FoodDraft.kt`), and `FoodFormFocus`. |
 | `entry/` | Entry detail, quick edit, full edit and the replacement food picker (`EntryScreens.kt`), and `EntryEditMode`. |
-| `scan/` | The scanner, manual barcode and product review sheet (`ScanScreens.kt`), the product review values (`ProductReview.kt`) and `ScannerUnavailableReason`. |
+| `scan/` | The scanner, manual barcode and product review sheet (`ScanScreens.kt`), the product review values (`ProductReview.kt`), `ScannerUnavailableReason`, and what an unknown barcode leads to (`UnknownBarcodeStep.kt`). |
 | `search/` | Open Food Facts search and the Library's "No local match" screen (`SearchScreens.kt`). |
 | `resolve/` | The unknown-food resolver (`ResolveUnknownScreen.kt`) and `LogResolveRequest`, a "Not in your foods" part sent to the Library. |
-| `contribution/` | The Open Food Facts contribution screens (`ContributionScreens.kt`) and their pure helpers (`Contribution.kt`). |
-| `settings/` | User settings in plain `SharedPreferences` (`settings`; `AppSettings.kt`: one typed field per setting, see Settings, with the pure decision for each) and the Settings list and pages (`SettingsScreen.kt`). |
-| `transfer/` | `DiaryPicker` and the export and import messages (`DiaryTransfer.kt`). |
+| `contribution/` | The Open Food Facts contribution screens (`ContributionScreens.kt`) and their pure helpers (`Contribution.kt`, with `contributionShown` for the Contribute setting). |
+| `settings/` | `SettingsState` (every setting as state, its setter, the reset, the open page); `AppSettings.kt` (the `SharedPreferences` file `settings` behind a small `SettingsStore`, one typed property per stored value); the setting types and their pure rules by page (`LoggingSettings.kt`, `DisplaySettings.kt` with `DisplayDecimal`, `DataSettings.kt`); the pages and their order (`SettingsNavigation.kt`); the Settings list and pages (`SettingsScreen.kt`). |
+| `transfer/` | `DiaryPicker`, the export and import messages, the safety copy step and when Delete all may run (`DiaryTransfer.kt`); when the export reminder is due and drawn (`ExportReminder.kt`). |
 | `ui/Format.kt` | Shared display formatting: `MealSlot.label()`, `Double.plain()`, `Double.pretty()`. |
 | `ui/screens/ScreenData.kt` | Pure UI mapping used by several features, unit-tested. |
 | `ui/components/`, `ui/theme/` | Shared Compose components; Monochrome tokens (`Color.kt` mirrors DESIGN.md), type, shape, dimens. |
@@ -49,8 +49,8 @@ All state lives in `BreakfastViewModel` and the owners it builds (`DiarySession`
 | State | Owner | Survives process death |
 | --- | --- | --- |
 | Selected day | VM `selectedDayKey` and `followingToday` + `SavedStateHandle` (`following_today`; `selected_day` only for a picked past day) | Yes; a user following today reopens on the new today |
-| Settings (every setting in the six groups, plus the last export time and when the export reminder last showed) | `AppSettings` (`SharedPreferences`), read once into the VM, written on each change; Theme and Text size are also read by `MainActivity` before its window exists | Yes |
-| Open Settings page (a group, or Licences) | VM `settingsPage`, so a recreation (Theme, Text size) keeps it | No; Settings itself is not reopened after process death |
+| Settings (every setting in the six groups, plus the last export time and when the export reminder last showed) | `SettingsState` (`settings/`), built by the VM over `AppSettings` (`SharedPreferences`): read once, each setter writes the state and the phone; `resetToDefaults()` clears the file and reloads every declared setting. Effects that are not settings observe one setting each (`Setting.observe`, wired in the VM: the day start moves today, the Undo window re-times a showing offer, the export reminder shows or hides, Safety copy Don't keep removes the copy). `BreakfastEngine` reads Count what I'm typing and Learn from my picks through lambdas; `MainActivity` and the root CompositionLocals read Theme, Text size, Motion and Haptics from it; `SettingsState` is the only writer of `DisplayDecimal.mark`. Theme and Text size are also read by `MainActivity` before its window exists | Yes |
+| Open Settings page (a group, or Licences) | `SettingsState.page`, owned by the VM, so a recreation (Theme, Text size) keeps it; whether Settings is open at all is the VM's `settingsOpen` (an app surface) | No; Settings itself is not reopened after process death |
 | Export reminder on Daily | VM `exportReminderVisible`: shown when due, hidden by Export, a successful export or leaving the app | No; it counts as shown when it appears |
 | Open meal, selected entry | VM + `SavedStateHandle` (`meal_slot`, `entry_id`) | Yes |
 | Route and overlay flags (Library, Log, scanner, sheets) | VM | No; the app reopens on the diary, with an open food form over it |
@@ -84,7 +84,7 @@ When the schema changes, bump `DIARY_SCHEMA_VERSION` with it (a unit test fails 
 
 ## Settings
 
-Library ⋮ → Settings is a list of six groups; each opens its own page (TopBar with the group name; Back and the arrow return to the list, the list's Back to the Library). Every default is the behaviour before the setting existed, and the stored day start and long draft keep their keys. Keys in `settings`:
+Library ⋮ → Settings is a list of six groups; each opens its own page (TopBar with the group name; Back and the arrow return to the list, the list's Back to the Library). Every default is the behaviour before the setting existed, and the stored day start and long draft keep their keys. To add a setting: a property in `AppSettings`, one `setting(AppSettings::x)` line and a setter in `SettingsState` (the reset and its test follow from the declaration), its row on the page in `SettingsScreen.kt`, and the feature that reads it. Keys in `settings`:
 
 | Group | Setting (key) | Default | Effect |
 | --- | --- | --- | --- |

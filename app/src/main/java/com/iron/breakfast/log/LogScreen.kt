@@ -90,7 +90,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
     // It runs off the main thread so typing never waits on matching; the last draft shows until the next is ready.
     var draft by remember { mutableStateOf(vm.logDraftView()) }
     val pins = vm.logPinsSnapshot()
-    LaunchedEffect(vm.logDraft, vm.logDraftCommitted, pins, vm.foods, vm.ready, vm.countTyping, vm.learnFromPicks) {
+    LaunchedEffect(vm.logDraft, vm.logDraftCommitted, pins, vm.foods, vm.ready, vm.settings.countTyping, vm.settings.learnFromPicks) {
         val input = vm.logDraft
         val committed = vm.logDraftCommitted
         draft = withContext(Dispatchers.Default) { vm.logDraftView(input, committed, pins) }

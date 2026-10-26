@@ -4,9 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import com.iron.breakfast.SETTINGS_GROUPS
-import com.iron.breakfast.settingsPageBack
-import com.iron.breakfast.SettingsPage
 
 /** B9: Settings is a list of six groups, each its own page; Back goes from a page to the list, Licences to About. */
 class SettingsPagesTest {
