@@ -47,7 +47,12 @@ internal class AppSettings(context: Context) {
             putInt(BREAKFAST_UNTIL_KEY, value.breakfastUntil); putInt(LUNCH_UNTIL_KEY, value.lunchUntil); putInt(DINNER_UNTIL_KEY, value.dinnerUntil)
         }
 
-    /** "Count what I'm typing": the word being typed counts and saves (P9); on by default. */
+    /** "Before day start": where By time puts a log made before "Day starts at"; Snacks by default. */
+    var beforeDayStart: BeforeDayStart
+        get() = enumOf(prefs.getString(BEFORE_DAY_START_KEY, null), BeforeDayStart.SNACKS)
+        set(value) = prefs.edit { putString(BEFORE_DAY_START_KEY, value.name) }
+
+    /** "Count what I'm typing": the word being typed counts (P9); on by default. */
     var countTyping: Boolean
         get() = prefs.getBoolean(COUNT_TYPING_KEY, true)
         set(value) = prefs.edit { putBoolean(COUNT_TYPING_KEY, value) }
@@ -117,7 +122,12 @@ internal class AppSettings(context: Context) {
         get() = prefs.getLong(LAST_EXPORT_KEY, -1L).takeIf { it >= 0L }
         set(value) = prefs.edit { putLong(LAST_EXPORT_KEY, value ?: -1L) }
 
-    /** When the export reminder was last shown, or null when it never was. */
+    /** When the export reminder was turned on (from Never), or null: the first reminder comes one interval after it. */
+    var exportReminderEnabledMs: Long?
+        get() = prefs.getLong(EXPORT_REMINDER_ENABLED_KEY, -1L).takeIf { it >= 0L }
+        set(value) = prefs.edit { putLong(EXPORT_REMINDER_ENABLED_KEY, value ?: -1L) }
+
+    /** When the export reminder was last on screen, or null when it never was. */
     var exportReminderShownMs: Long?
         get() = prefs.getLong(EXPORT_REMINDER_SHOWN_KEY, -1L).takeIf { it >= 0L }
         set(value) = prefs.edit { putLong(EXPORT_REMINDER_SHOWN_KEY, value ?: -1L) }
@@ -134,6 +144,7 @@ internal class AppSettings(context: Context) {
         const val EXPORT_REMINDER_KEY = "export_reminder"
         const val LAST_EXPORT_KEY = "last_export_ms"
         const val EXPORT_REMINDER_SHOWN_KEY = "export_reminder_shown_ms"
+        const val EXPORT_REMINDER_ENABLED_KEY = "export_reminder_enabled_ms"
         const val KEEP_SAFETY_COPY_KEY = "keep_safety_copy"
         const val FLASHLIGHT_AT_START_KEY = "flashlight_at_start"
         const val LOOK_UP_BARCODES_KEY = "look_up_barcodes"
@@ -153,6 +164,7 @@ internal class AppSettings(context: Context) {
         const val LUNCH_UNTIL_KEY = "lunch_until"
         const val DINNER_UNTIL_KEY = "dinner_until"
         const val COUNT_TYPING_KEY = "count_typing"
+        const val BEFORE_DAY_START_KEY = "before_day_start"
         const val LEARN_FROM_PICKS_KEY = "learn_from_picks"
     }
 }
@@ -215,8 +227,20 @@ internal fun shiftMealBound(bounds: MealBounds, meal: MealSlot, delta: Int): Mea
 /** True when [meal]'s boundary can move [delta] hours. */
 internal fun canShiftMealBound(bounds: MealBounds, meal: MealSlot, delta: Int): Boolean = shiftMealBound(bounds, meal, delta) != bounds
 
-/** The meal for the wall-clock [hour] (0 to 23) by [bounds]. */
-internal fun mealByTime(hour: Int, bounds: MealBounds): MealSlot = when {
+/** "Before day start": the meal for a log made before "Day starts at" (it belongs to the previous diary day). */
+internal enum class BeforeDayStart { SNACKS, DINNER, ASK }
+
+/**
+ * The meal By time gives the wall-clock [hour] (0 to 23). From [dayStartHour] on: before [MealBounds.breakfastUntil]
+ * Breakfast, then Lunch, then Dinner, then Snacks. Before [dayStartHour] (the previous diary day's late hours): the
+ * [before] choice, null for Ask (the meal menu opens). With the day starting at 00:00 no hour is before it.
+ */
+internal fun mealByTime(hour: Int, bounds: MealBounds, dayStartHour: Int = 0, before: BeforeDayStart = BeforeDayStart.SNACKS): MealSlot? = when {
+    hour < dayStartHour -> when (before) {
+        BeforeDayStart.SNACKS -> MealSlot.SNACKS
+        BeforeDayStart.DINNER -> MealSlot.DINNER
+        BeforeDayStart.ASK -> null
+    }
     hour < bounds.breakfastUntil -> MealSlot.BREAKFAST
     hour < bounds.lunchUntil -> MealSlot.LUNCH
     hour < bounds.dinnerUntil -> MealSlot.DINNER
@@ -224,14 +248,23 @@ internal fun mealByTime(hour: Int, bounds: MealBounds): MealSlot = when {
 }
 
 /**
- * The meal a log goes to when none is chosen, typed or preset: null for Ask (the meal menu opens), the meal for
- * [hour] for By time, and [lastUsed] (the meal of the latest logged entry, null when there is none) for Last used.
+ * The meal a log goes to when none is chosen, typed or preset: null for Ask (the meal menu opens), [mealByTime] for
+ * By time, and [lastUsed] (the meal of the latest logged entry, null when there is none) for Last used.
  */
-internal fun automaticMeal(mode: MealMode, hour: Int, bounds: MealBounds, lastUsed: MealSlot?): MealSlot? = when (mode) {
+internal fun automaticMeal(
+    mode: MealMode, hour: Int, bounds: MealBounds, lastUsed: MealSlot?,
+    dayStartHour: Int = 0, before: BeforeDayStart = BeforeDayStart.SNACKS,
+): MealSlot? = when (mode) {
     MealMode.ASK -> null
-    MealMode.BY_TIME -> mealByTime(hour, bounds)
+    MealMode.BY_TIME -> mealByTime(hour, bounds, dayStartHour, before)
     MealMode.LAST_USED -> lastUsed
 }
+
+/**
+ * The Library food page's meal when it opens: the meal it was opened from, else the Meal setting's [automatic] meal,
+ * else Lunch (today's preselection; Ask). The page's meal menu still changes it.
+ */
+internal fun libraryPresetMeal(openedFrom: MealSlot?, automatic: MealSlot?): MealSlot = openedFrom ?: automatic ?: MealSlot.LUNCH
 
 /** The "Theme" choice. */
 internal enum class ThemeChoice { SYSTEM, LIGHT, DARK }
@@ -341,15 +374,19 @@ internal fun exportReminderIntervalMs(reminder: ExportReminder): Long? = when (r
 private const val DAY_MS = 86_400_000L
 
 /**
- * True when Daily should show "Export your diary." now: a whole interval has passed since the later of the last export
- * and the last time the reminder was shown (so it shows once, and again one interval later if no export was made).
- * Never exported and never shown: due at once. A clock set back before either is not due.
+ * True when "Export your diary." is due: a whole interval has passed since the latest of the last export, the last
+ * time the reminder was on screen, and the moment it was turned on ([enabledMs]). So the first one comes one interval
+ * after it is turned on, it shows once, and again one interval later if no export was made. With no baseline at all
+ * it is not due; a clock set back before the baseline is not due either.
  */
-internal fun exportReminderDue(reminder: ExportReminder, lastExportMs: Long?, lastShownMs: Long?, nowMs: Long): Boolean {
+internal fun exportReminderDue(reminder: ExportReminder, lastExportMs: Long?, lastShownMs: Long?, enabledMs: Long?, nowMs: Long): Boolean {
     val interval = exportReminderIntervalMs(reminder) ?: return false
-    val since = listOfNotNull(lastExportMs, lastShownMs).maxOrNull() ?: return true
+    val since = listOfNotNull(lastExportMs, lastShownMs, enabledMs).maxOrNull() ?: return false
     return nowMs >= since && nowMs - since >= interval
 }
+
+/** The export reminder is drawn only on Daily itself: not under the Log page or any screen or sheet over Daily. */
+internal fun exportReminderOnScreen(due: Boolean, logOpen: Boolean, overlay: Overlay?): Boolean = due && !logOpen && overlay == null
 
 /** What happens to the safety copy before the diary is replaced or deleted. */
 internal enum class SafetyCopyStep { WRITE, DELETE }

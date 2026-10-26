@@ -238,6 +238,20 @@ internal fun resolveSelectedDay(
     }
 }
 
+/** A change to the diary, for [undoEndsAt]. */
+internal enum class DiaryChange { LOG, EDIT, DELETE, NOT_RIGHT_PICK, CONFIRM_MATCH }
+
+/**
+ * Whether [change] ends a pending Undo offer, in every Undo mode ("Until next action" included): the next log, edit
+ * or delete does. A "Not right?" pick or a confirmed match keeps it (B4: the batch Undo survives a correction; the
+ * corrected entry is then left by Undo, which skips entries changed since), so an "Until next action" offer still ends
+ * at the next log, edit or delete and never stays for good.
+ */
+internal fun undoEndsAt(change: DiaryChange): Boolean = when (change) {
+    DiaryChange.LOG, DiaryChange.EDIT, DiaryChange.DELETE -> true
+    DiaryChange.NOT_RIGHT_PICK, DiaryChange.CONFIRM_MATCH -> false
+}
+
 /** A logged batch replaces the offer; a batch that saved nothing ([logged] null) keeps [current]. */
 internal fun undoAfterLog(current: UndoOffer?, logged: UndoOffer.Logged?): UndoOffer? = logged ?: current
 

@@ -46,6 +46,7 @@ import kotlinx.coroutines.withContext
 import com.iron.breakfast.DiaryPicker
 import com.iron.breakfast.SETTINGS_GROUPS
 import com.iron.breakfast.SettingsPage
+import com.iron.breakfast.BeforeDayStart
 import com.iron.breakfast.DecimalMark
 import com.iron.breakfast.ExportReminder
 import com.iron.breakfast.MealMode
@@ -113,6 +114,8 @@ private fun ColumnScope.LoggingPage(vm: BreakfastViewModel) {
             )
             Hairline()
         }
+        ChoiceRow("Before day start", BEFORE_DAY_START_CHOICES, vm.beforeDayStart, vm::chooseBeforeDayStart)
+        Hairline()
     }
     ChoiceRow("Count what I'm typing", ON_OFF, vm.countTyping, vm::chooseCountTyping)
     Hairline()
@@ -250,6 +253,7 @@ private val UNDO_CHOICES = listOf(
 )
 private val MEAL_MODE_CHOICES = listOf(MealMode.ASK to "Ask", MealMode.BY_TIME to "By time", MealMode.LAST_USED to "Last used")
 private val MEAL_BOUND_ROWS = listOf(MealSlot.BREAKFAST to "Breakfast until", MealSlot.LUNCH to "Lunch until", MealSlot.DINNER to "Dinner until")
+private val BEFORE_DAY_START_CHOICES = listOf(BeforeDayStart.SNACKS to "Snacks", BeforeDayStart.DINNER to "Dinner", BeforeDayStart.ASK to "Ask")
 private val ON_OFF = listOf(true to "On", false to "Off")
 private val SHOW_HIDE = listOf(true to "Show", false to "Hide")
 private val EXPORT_REMINDER_CHOICES = listOf(ExportReminder.NEVER to "Never", ExportReminder.WEEKLY to "Weekly", ExportReminder.MONTHLY to "Monthly")

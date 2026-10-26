@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -242,7 +243,10 @@ internal fun DailyComposer(vm: BreakfastViewModel, modifier: Modifier = Modifier
     ComposerFade(modifier) {
         vm.loggedBatchMessage?.let { Snackbar(it, "Undo", { tick(); vm.undoLoggedBatch() }, Modifier.padding(bottom = 8.dp)) }
         vm.undoEntry?.let { Snackbar("${it.foodName} deleted", "Undo", { tick(); vm.undo() }, Modifier.padding(bottom = 8.dp)) }
-        if (vm.exportReminderVisible) Snackbar("Export your diary.", "Export", vm::exportFromReminder, Modifier.padding(bottom = 8.dp))
+        if (vm.exportReminderShownOnDaily()) {
+            LaunchedEffect(Unit) { vm.exportReminderOnScreenNow() }
+            Snackbar("Export your diary.", "Export", vm::exportFromReminder, Modifier.padding(bottom = 8.dp))
+        }
         val draft = vm.logDraft.isNotBlank()
         Composer(
             placeholder = if (draft) vm.logDraft else "Log food",

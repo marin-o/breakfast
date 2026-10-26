@@ -91,8 +91,9 @@ class LogPlanner(
     /** Parts the user picked in the library, by the part text they now read as. Each one resolves to its food. */
     private val pins: Map<String, FoodRecord> = emptyMap(),
     /**
-     * "Count what I'm typing" (P9). True: the part being typed counts and saves like a finished one. False: it counts
-     * and saves only once it is finished (a separator after it, or Done) or picked (a pinned choice).
+     * "Count what I'm typing" (P9). True: the part being typed counts like a finished one. False: the add bar counts it
+     * only once it is finished (a separator after it, Done or Add) or picked (a pinned choice). Add always finishes the
+     * draft first, so it saves [plan] of the whole input in both modes.
      */
     private val countTyping: Boolean = true,
 ) {
@@ -244,8 +245,8 @@ class LogPlanner(
     fun plan(input: String): LogPlan = planOf(parser.split(input, probe))
 
     /**
-     * What Add saves for [input] while it is [typing]: [plan] of [countedParts]. With [countTyping] on this is [plan];
-     * off, a part still being typed is left out (see [heldPart]).
+     * What the add bar counts for [input] while it is [typing]: [plan] of [countedParts]. With [countTyping] on this is
+     * [plan]; off, a part still being typed is left out (see [heldPart]). Not typing, it is [plan]: what Add saves.
      */
     fun plan(input: String, typing: Boolean): LogPlan = planOf(countedParts(input, typing))
 
@@ -255,7 +256,7 @@ class LogPlanner(
         return if (heldPartOf(input, typing, parts) != null) parts.dropLast(1) else parts
     }
 
-    /** The part still being typed that Add leaves in the draft ([countTyping] off and neither finished nor picked); else null. */
+    /** The part still being typed that the add bar leaves out ([countTyping] off and neither finished nor picked); else null. */
     fun heldPart(input: String, typing: Boolean): String? = heldPartOf(input, typing, null)
 
     private fun heldPartOf(input: String, typing: Boolean, known: List<String>?): String? {

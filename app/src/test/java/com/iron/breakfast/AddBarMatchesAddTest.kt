@@ -12,8 +12,8 @@ import org.junit.Test
 /**
  * What the add bar totals is exactly what Add saves (MOB-015). While the last word is typed, Add saves its best-ranked
  * food, so the bar counts it too, and that food shows selected. Checked for every input and every prefix of it, so
- * each state a draft passes through while it is typed is covered. With "Count what I'm typing" off (B9) the word being
- * typed is neither counted nor saved, and the invariant holds the same way.
+ * each state a draft passes through while it is typed is covered. With "Count what I'm typing" off (B9) the bar leaves
+ * out the word being typed; Add finishes the draft first, so the finished draft's bar is exactly what Add saves.
  */
 class AddBarMatchesAddTest {
     private data class Saved(val foodId: String, val amount: Double, val unit: MeasureUnit, val kcal: Double)
@@ -38,18 +38,19 @@ class AddBarMatchesAddTest {
     /** Every input as it is typed, letter by letter, then whole. */
     private fun typedStates(input: String) = (1..input.length).map { input.substring(0, it) }
 
-    @Test fun theBarCountsExactlyTheEntriesAddSaves() = assertBarMatchesAdd(cases)
+    @Test fun theBarCountsExactlyTheEntriesAddSaves() = assertBarMatchesAdd(cases, typingStates = listOf(true, false))
 
-    @Test fun withCountOffTheBarStillCountsExactlyTheEntriesAddSaves() = assertBarMatchesAdd(casesCountOff)
+    /** Count off: Add finishes the draft, so the committed draft's bar is what Add saves. */
+    @Test fun withCountOffTheFinishedDraftCountsExactlyTheEntriesAddSaves() = assertBarMatchesAdd(casesCountOff, typingStates = listOf(false))
 
-    private fun assertBarMatchesAdd(cases: List<Triple<LogPlanner, () -> LogPlanner, String>>) {
+    private fun assertBarMatchesAdd(cases: List<Triple<LogPlanner, () -> LogPlanner, String>>, typingStates: List<Boolean>) {
         val failures = cases.flatMap { (planner, fresh, input) ->
             typedStates(input).flatMap { text ->
-                listOf(true, false).mapNotNull { typing ->
+                typingStates.mapNotNull { typing ->
                     val logged = planner.draft(text, typing).logged
                     // Add's save() plans the committed text with a planner of its own: a fresh one, so no cached
                     // resolution is shared with the draft. Compared by value.
-                    val saved = fresh().plan(text, typing).entries
+                    val saved = fresh().plan(text).entries
                     val barKcal = logged.sumOf { it.calculation.nutrition.calories }
                     // save() snapshots each entry's calculation; this is the total it stores.
                     val savedKcal = saved.sumOf { it.calculation.nutrition.calories }

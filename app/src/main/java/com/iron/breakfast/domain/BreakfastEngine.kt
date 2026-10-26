@@ -70,12 +70,10 @@ class BreakfastEngine(private val store: BreakfastStore) {
         mealSlot: MealSlot = MealSlot.BREAKFAST,
         dayKey: String,
         pins: Map<String, FoodRecord> = emptyMap(),
-        /** True when the last part is still being typed: with [countTyping] off it is then not saved. */
-        typing: Boolean = false,
     ): SavedMeal {
         // Planning is CPU work (tens of ms on a phone with a year of foods): off the caller's (main) thread, before
         // the store's lock is taken.
-        val plan = withContext(Dispatchers.Default) { planner(pins).plan(input, typing) }
+        val plan = withContext(Dispatchers.Default) { planner(pins).plan(input) }
         val entries = plan.entries.mapIndexed { index, resolved ->
             MealEntry(
                 id = UUID.randomUUID().toString(),

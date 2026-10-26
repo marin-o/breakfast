@@ -370,8 +370,12 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     /** Settings, Data. */
     internal var exportReminder by mutableStateOf(settings.exportReminder); private set
     var keepSafetyCopy by mutableStateOf(settings.keepSafetyCopy); private set
-    /** "Export your diary." on Daily: shown once when due, until Export is tapped or the app is left. */
+    /**
+     * "Export your diary." is due: Daily draws it, and it counts as shown once it is on screen
+     * ([exportReminderOnScreenNow]). Cleared by Export, a successful export, or leaving the app.
+     */
     var exportReminderVisible by mutableStateOf(false); private set
+    private var exportReminderRecorded = false
     /** The Delete all data dialog, and its "Also settings and learned picks" chip (off each time it opens). */
     var deleteAllOpen by mutableStateOf(false); private set
     var deleteAllAlsoSettings by mutableStateOf(false); private set
@@ -379,6 +383,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     internal var undoWindow by mutableStateOf(settings.undoWindow); private set
     internal var mealMode by mutableStateOf(settings.mealMode); private set
     internal var mealBounds by mutableStateOf(settings.mealBounds); private set
+    internal var beforeDayStart by mutableStateOf(settings.beforeDayStart); private set
     var countTyping by mutableStateOf(settings.countTyping); private set
     var learnFromPicks by mutableStateOf(settings.learnFromPicks); private set
     private val engine = BreakfastEngine(BreakfastStore(application)).also {
@@ -525,8 +530,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var resolverResults by mutableStateOf<List<RankedFood>>(emptyList()); private set
     var feedbackUntil by mutableStateOf(0L); private set
     var feedbackIds by mutableStateOf<Set<String>>(emptySet()); private set
-    /** A word still being typed that Add held back (Count off) while a resolve queue rewrites the draft; it stays last. */
-    private var logHeldPart: String? = null
     /** The entries the last batch saved, for the resolve header. Not the Undo, which expires. */
     private var loggedBatchIds: List<String> = emptyList()
 
@@ -641,18 +644,28 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         checkDay(returning = true)
     }
     internal fun chooseExportReminder(reminder: ExportReminder) {
+        // Turned on from Never: the first reminder comes one interval from now.
+        if (exportReminder == ExportReminder.NEVER && reminder != ExportReminder.NEVER) settings.exportReminderEnabledMs = clock()
         exportReminder = reminder
         settings.exportReminder = reminder
         if (reminder == ExportReminder.NEVER) exportReminderVisible = false else checkExportReminder()
     }
-    /** Shows the export reminder when [exportReminderDue]; it counts as shown from now. */
+    /** Marks the export reminder due when [exportReminderDue]; it is recorded as shown only once Daily draws it. */
     private fun checkExportReminder() {
         if (exportReminderVisible || !ready) return
-        val now = clock()
-        if (!exportReminderDue(exportReminder, settings.lastExportMs, settings.exportReminderShownMs, now)) return
+        if (exportReminder != ExportReminder.NEVER && settings.exportReminderEnabledMs == null) settings.exportReminderEnabledMs = clock()
+        if (!exportReminderDue(exportReminder, settings.lastExportMs, settings.exportReminderShownMs, settings.exportReminderEnabledMs, clock())) return
+        exportReminderRecorded = false
         exportReminderVisible = true
-        settings.exportReminderShownMs = now
     }
+    /** Daily draws the export reminder now ([exportReminderOnScreen]); the first time, it counts as shown. */
+    fun exportReminderOnScreenNow() {
+        if (!exportReminderVisible || exportReminderRecorded) return
+        exportReminderRecorded = true
+        settings.exportReminderShownMs = clock()
+    }
+    /** True when Daily should draw the export reminder now. */
+    fun exportReminderShownOnDaily(): Boolean = exportReminderOnScreen(exportReminderVisible, logOpen, topOverlay())
     /** The reminder's Export: the same save picker as Settings, Export diary. */
     fun exportFromReminder() {
         if (!ready || busy) return
@@ -696,7 +709,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                     false
                 }
             }
-            if (!deleted) return@launchBusy
+            if (!deleted) { notice = DIARY_DELETE_FAILED; return@launchBusy }
             // Nothing deleted may be undone, pinned, confirmed or resolved into the empty diary.
             offerUndo(null); loggedBatchIds = emptyList(); logPins.clear(); feedbackIds = emptySet(); pendingContribution = null
             abandonUnknownResolution(); closeEntryDetail()
@@ -709,7 +722,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private fun resetSettings() {
         settings.clear()
         dayStartHour = settings.dayStartHour; longDraft = settings.longDraft
-        undoWindow = settings.undoWindow; mealMode = settings.mealMode; mealBounds = settings.mealBounds
+        undoWindow = settings.undoWindow; mealMode = settings.mealMode; mealBounds = settings.mealBounds; beforeDayStart = settings.beforeDayStart
         countTyping = settings.countTyping; engine.countTyping = countTyping
         learnFromPicks = settings.learnFromPicks; engine.learnFromPicks = learnFromPicks
         theme = settings.theme; showMacros = settings.showMacros; showMissingNote = settings.showMissingNote
@@ -776,6 +789,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         mealBounds = bounds
         settings.mealBounds = bounds
     }
+    internal fun chooseBeforeDayStart(choice: BeforeDayStart) {
+        beforeDayStart = choice
+        settings.beforeDayStart = choice
+    }
     fun chooseCountTyping(on: Boolean) {
         countTyping = on
         settings.countTyping = on
@@ -786,9 +803,13 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         settings.learnFromPicks = on
         engine.learnFromPicks = on
     }
-    /** The meal the "Meal" setting gives a log with no chosen, typed or preset meal, at this moment; null for Ask. */
-    private fun automaticMealNow(): MealSlot? =
-        automaticMeal(mealMode, java.time.Instant.ofEpochMilli(clock()).atZone(zone).hour, mealBounds, lastUsedMeal(entries))
+    /**
+     * The meal the "Meal" setting gives a log with no chosen, typed or preset meal, at this moment; null for Ask. The
+     * Log page falls back to it, and the Library preselects it (see [libraryPresetMeal]).
+     */
+    internal fun automaticMealNow(): MealSlot? = automaticMeal(
+        mealMode, java.time.Instant.ofEpochMilli(clock()).atZone(zone).hour, mealBounds, lastUsedMeal(entries), dayStartHour, beforeDayStart,
+    )
     /** The picker Settings asked for; IronApp, always composed, launches it so a result after recreation still lands. */
     var diaryPickerRequest by mutableStateOf<DiaryPicker?>(null); private set
     fun requestDiaryPicker(picker: DiaryPicker) { if (ready && !busy) diaryPickerRequest = picker }
@@ -1143,7 +1164,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }
     }
     private fun abandonUnknownResolution() {
-        logHeldPart = null
         unknownQueue = emptyList()
         unknownQueueTarget = null
         unknownQueueTotal = 0
@@ -1433,8 +1453,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     /** Add on the Log page, or Save in quick edit, which reads [input] and never the draft. */
     fun submit() {
-        // Add finishes the draft, unless a word still being typed waits until it is finished or picked (Count off).
-        if (entryEditMode == EntryEditMode.NONE && countTyping) logDraftCommitted = true
+        // Add finishes the draft in both "Count what I'm typing" modes: it saves what the finished draft counts.
+        if (entryEditMode == EntryEditMode.NONE) logDraftCommitted = true
         if (!ready || busy) return
         if (entryEditMode != EntryEditMode.NONE) {
             if (input.isBlank()) {
@@ -1525,16 +1545,12 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         // Save takes the draft as typed: the planner skips meal words by span, so save and the rows share one segmentation.
         val captured = logDraft
         val capturedPins = logPins.toMap()
-        // Add saves what the add bar counts: with Count off, a word still being typed is held in the draft.
-        val typing = !logDraftCommitted
-        val planner = engine.planner(capturedPins)
-        val held = planner.heldPart(captured, typing)
-        if (planner.countedParts(captured, typing).none { ShorthandLexicon.mealSlotOf(it) == null }) {
+        if (engine.planner(capturedPins).segments(captured).none { ShorthandLexicon.mealSlotOf(it.text) == null }) {
             mealDraftError = "Add at least one food."
             return
         }
         launchBusy {
-            suspendRunCatching { engine.save(captured, mealSlot = target, dayKey = selectedDayKey, pins = capturedPins, typing = typing) }.onSuccess { saved ->
+            suspendRunCatching { engine.save(captured, mealSlot = target, dayKey = selectedDayKey, pins = capturedPins) }.onSuccess { saved ->
                 // Nothing resolved: nothing was saved, so the Log stays open with the typed text and says what to fix.
                 if (saved.entries.isEmpty() && saved.unresolvedSegments.isNotEmpty()) {
                     mealDraftError = "Some foods need a match."
@@ -1543,7 +1559,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 // Only the pins this save used: one added while it planned off the main thread belongs to the new text.
                 capturedPins.forEach { (part, food) -> if (logPins[part] == food) logPins.remove(part) }
                 closeLog()
-                refresh(); if (logDraft == captured) logDraft = (saved.unresolvedSegments + listOfNotNull(held)).joinToString(", "); logHeldPart = held.takeIf { saved.unresolvedSegments.isNotEmpty() }; unknownQueue = saved.unresolvedSegments; unknownQueueTotal = saved.unresolvedSegments.size; unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }; resolutionContinuation = saved.unresolvedSegments.isNotEmpty(); resolverOpen = saved.unresolvedSegments.isNotEmpty(); mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
+                refresh(); if (logDraft == captured) logDraft = saved.unresolvedSegments.joinToString(", "); unknownQueue = saved.unresolvedSegments; unknownQueueTotal = saved.unresolvedSegments.size; unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }; resolutionContinuation = saved.unresolvedSegments.isNotEmpty(); resolverOpen = saved.unresolvedSegments.isNotEmpty(); mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
                 feedbackIds = saved.entries.filter { it.approximateConversion }.mapTo(mutableSetOf()) { it.id }; feedbackUntil = if (feedbackIds.isEmpty()) 0L else System.currentTimeMillis() + 30_000L
                 loggedBatchIds = saved.entries.map { it.id }
                 offerLoggedUndo("${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} added to ${target.label()}", saved.entries)
@@ -1798,7 +1814,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         resolverSearchJob?.cancel()
         unknownQueue = unknownQueue.drop(1)
         // What is left to resolve stays where it was typed: the Library bar, or the log draft.
-        if (libraryOpen) input = unknownQueue.joinToString(", ") else logDraft = (unknownQueue + listOfNotNull(logHeldPart)).joinToString(", ")
+        if (libraryOpen) input = unknownQueue.joinToString(", ") else logDraft = unknownQueue.joinToString(", ")
         resolverQuery = ""
         resolverResults = emptyList()
         resolverSearchOpen = false
@@ -1806,7 +1822,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (unknownQueue.isEmpty()) {
             unknownQueueTarget = null
             resolutionContinuation = false
-            logHeldPart = null
         }
     }
     fun resolveUnknown(food: FoodRecord) {
@@ -1839,7 +1854,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 engine.replaceEntry(entry.id, food.id).also { if (it is ReplacementResult.Success) engine.reinforce(food.id) }
             }.onSuccess { result ->
                 when (result) {
-                    is ReplacementResult.Success -> { feedbackIds = feedbackIds - entry.id; refresh() }
+                    is ReplacementResult.Success -> {
+                        // The pending Undo stays (see [undoEndsAt]); it ends at the next log, edit or delete.
+                        if (undoEndsAt(DiaryChange.NOT_RIGHT_PICK)) offerUndo(null)
+                        feedbackIds = feedbackIds - entry.id; refresh()
+                    }
                     is ReplacementResult.Failure -> notice = result.reason
                 }
             }
@@ -2108,6 +2127,7 @@ private val DIARY_FILE_TYPES = arrayOf("application/json", "application/octet-st
 private const val DIARY_EXPORTED = "Diary exported."
 private const val DIARY_EXPORT_FAILED = "Could not export the diary."
 private const val DIARY_IMPORT_REFUSED = "That file can't be imported."
+private const val DIARY_DELETE_FAILED = "Could not delete the diary."
 
 /** A request to focus [field]; [serial] makes a repeated refusal of the same field a new request. */
 internal data class FoodFormFocus(val field: FoodFormField, val serial: Long)

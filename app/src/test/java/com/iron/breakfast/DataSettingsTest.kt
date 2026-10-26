@@ -18,8 +18,8 @@ class DataSettingsTest {
     @Test fun neverIsTheDefaultAndNeverReminds() {
         assertEquals(ExportReminder.NEVER, enumOf(null, ExportReminder.NEVER))
         assertNull(exportReminderIntervalMs(ExportReminder.NEVER))
-        assertFalse(exportReminderDue(ExportReminder.NEVER, null, null, now))
-        assertFalse(exportReminderDue(ExportReminder.NEVER, now - 400 * day, null, now))
+        assertFalse(exportReminderDue(ExportReminder.NEVER, null, null, null, now))
+        assertFalse(exportReminderDue(ExportReminder.NEVER, now - 400 * day, null, now - 400 * day, now))
     }
 
     @Test fun weeklyAndMonthlyAreSevenAndThirtyDays() {
@@ -27,27 +27,40 @@ class DataSettingsTest {
         assertEquals(30 * day, exportReminderIntervalMs(ExportReminder.MONTHLY))
     }
 
-    @Test fun aDiaryNeverExportedIsRemindedAtOnce() {
-        assertTrue(exportReminderDue(ExportReminder.WEEKLY, null, null, now))
+    @Test fun theFirstReminderComesOneIntervalAfterItIsTurnedOn() {
+        assertFalse(exportReminderDue(ExportReminder.WEEKLY, null, null, now, now))
+        assertFalse(exportReminderDue(ExportReminder.WEEKLY, null, null, now - 7 * day + 1, now))
+        assertTrue(exportReminderDue(ExportReminder.WEEKLY, null, null, now - 7 * day, now))
+        // An export long before it was turned on does not make it due at once.
+        assertFalse(exportReminderDue(ExportReminder.MONTHLY, now - 90 * day, null, now - day, now))
+        // No baseline at all: not due.
+        assertFalse(exportReminderDue(ExportReminder.WEEKLY, null, null, null, now))
+    }
+
+    @Test fun itIsDrawnOnlyOnDailyItself() {
+        assertTrue(exportReminderOnScreen(due = true, logOpen = false, overlay = null))
+        assertFalse(exportReminderOnScreen(due = false, logOpen = false, overlay = null))
+        assertFalse(exportReminderOnScreen(due = true, logOpen = true, overlay = null))
+        assertFalse(exportReminderOnScreen(due = true, logOpen = false, overlay = Overlay.ENTRY_EDIT))
     }
 
     @Test fun theReminderComesOneIntervalAfterTheLastExport() {
-        assertFalse(exportReminderDue(ExportReminder.WEEKLY, now - 7 * day + 1, null, now))
-        assertTrue(exportReminderDue(ExportReminder.WEEKLY, now - 7 * day, null, now))
-        assertFalse(exportReminderDue(ExportReminder.MONTHLY, now - 29 * day, null, now))
-        assertTrue(exportReminderDue(ExportReminder.MONTHLY, now - 30 * day, null, now))
+        assertFalse(exportReminderDue(ExportReminder.WEEKLY, now - 7 * day + 1, null, null, now))
+        assertTrue(exportReminderDue(ExportReminder.WEEKLY, now - 7 * day, null, null, now))
+        assertFalse(exportReminderDue(ExportReminder.MONTHLY, now - 29 * day, null, null, now))
+        assertTrue(exportReminderDue(ExportReminder.MONTHLY, now - 30 * day, null, null, now))
     }
 
     @Test fun shownOnceThenAgainOnlyAfterTheNextInterval() {
         // Shown a day ago, no export since: not again until a week after it was shown.
-        assertFalse(exportReminderDue(ExportReminder.WEEKLY, now - 20 * day, now - day, now))
-        assertTrue(exportReminderDue(ExportReminder.WEEKLY, now - 20 * day, now - 7 * day, now))
+        assertFalse(exportReminderDue(ExportReminder.WEEKLY, now - 20 * day, now - day, null, now))
+        assertTrue(exportReminderDue(ExportReminder.WEEKLY, now - 20 * day, now - 7 * day, null, now))
         // An export after it was shown restarts the interval from the export.
-        assertFalse(exportReminderDue(ExportReminder.WEEKLY, now - 2 * day, now - 9 * day, now))
+        assertFalse(exportReminderDue(ExportReminder.WEEKLY, now - 2 * day, now - 9 * day, null, now))
     }
 
     @Test fun aClockSetBackIsNotDue() {
-        assertFalse(exportReminderDue(ExportReminder.WEEKLY, now + day, null, now))
+        assertFalse(exportReminderDue(ExportReminder.WEEKLY, now + day, null, null, now))
     }
 
     @Test fun importWritesTheSafetyCopyOnlyWithKeep() {

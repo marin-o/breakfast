@@ -42,6 +42,48 @@ class LoggingSettingsTest {
         assertFalse(undoOpen(offered, offered - 1L, null))
     }
 
+    @Test fun byTimeCountsFromTheDayStart() {
+        val bounds = MealBounds()
+        // Day start 00:00: no hour is before it, so "Before day start" has no effect.
+        BeforeDayStart.entries.forEach { before ->
+            assertEquals(MealSlot.BREAKFAST, mealByTime(0, bounds, 0, before))
+            assertEquals(MealSlot.SNACKS, mealByTime(23, bounds, 0, before))
+        }
+        // Day start 04:00: 00:30 and 02:00 belong to the previous diary day.
+        assertEquals(MealSlot.SNACKS, mealByTime(0, bounds, 4, BeforeDayStart.SNACKS))
+        assertEquals(MealSlot.DINNER, mealByTime(2, bounds, 4, BeforeDayStart.DINNER))
+        assertNull(mealByTime(2, bounds, 4, BeforeDayStart.ASK))
+        assertEquals(MealSlot.SNACKS, mealByTime(3, bounds, 4, BeforeDayStart.SNACKS))
+        // From the day start on, the boundaries as usual.
+        assertEquals(MealSlot.BREAKFAST, mealByTime(4, bounds, 4, BeforeDayStart.ASK))
+        assertEquals(MealSlot.BREAKFAST, mealByTime(11, bounds, 4, BeforeDayStart.ASK))
+        assertEquals(MealSlot.LUNCH, mealByTime(12, bounds, 4, BeforeDayStart.ASK))
+        assertEquals(MealSlot.DINNER, mealByTime(17, bounds, 4, BeforeDayStart.ASK))
+        assertEquals(MealSlot.SNACKS, mealByTime(22, bounds, 4, BeforeDayStart.ASK))
+        // 23:30 is after the day start: Snacks, whatever "Before day start" says.
+        assertEquals(MealSlot.SNACKS, mealByTime(23, bounds, 4, BeforeDayStart.DINNER))
+        // The Meal setting passes them through; Ask before the day start opens the menu.
+        assertNull(automaticMeal(MealMode.BY_TIME, 2, bounds, MealSlot.LUNCH, dayStartHour = 4, before = BeforeDayStart.ASK))
+        assertEquals(LogSubmitPlan.OpenMenu, logSubmitPlan(true, false, "2 eggs", emptyList(), null, null, mealByTime(2, bounds, 4, BeforeDayStart.ASK)))
+        assertEquals(BeforeDayStart.SNACKS, enumOf(null, BeforeDayStart.SNACKS))
+    }
+
+    @Test fun theLibraryPreselectsTheSettingsMealAndStaysChangeable() {
+        assertEquals(MealSlot.DINNER, libraryPresetMeal(MealSlot.DINNER, MealSlot.BREAKFAST))
+        assertEquals(MealSlot.BREAKFAST, libraryPresetMeal(null, MealSlot.BREAKFAST))
+        // Ask: today's preselection.
+        assertEquals(MealSlot.LUNCH, libraryPresetMeal(null, null))
+    }
+
+    @Test fun onlyALogEditOrDeleteEndsAnUndoOffer() {
+        assertTrue(undoEndsAt(DiaryChange.LOG))
+        assertTrue(undoEndsAt(DiaryChange.EDIT))
+        assertTrue(undoEndsAt(DiaryChange.DELETE))
+        // B4: a "Not right?" pick keeps the batch Undo, in every Undo mode.
+        assertFalse(undoEndsAt(DiaryChange.NOT_RIGHT_PICK))
+        assertFalse(undoEndsAt(DiaryChange.CONFIRM_MATCH))
+    }
+
     @Test fun byTimeUsesTheBoundaries() {
         val bounds = MealBounds()
         assertEquals(MealSlot.BREAKFAST, mealByTime(0, bounds))
@@ -110,6 +152,13 @@ class LoggingSettingsTest {
     @Test fun countOnSavesTheWordBeingTyped() {
         assertEquals(listOf("egg", "banana"), on.plan("2 eggs, ban", typing = true).entries.map { it.food.id })
         assertNull(on.heldPart("2 eggs, ban", typing = true))
+    }
+
+    @Test fun countOffAddSavesWhatTheFinishedDraftCounts() {
+        val planner = off()
+        // Add finishes the draft: the committed bar and the save both include the word that was being typed.
+        assertEquals(listOf("egg", "banana"), planner.draft("2 eggs, ban", typing = false).logged.map { it.food.id })
+        assertEquals(listOf("egg", "banana"), planner.plan("2 eggs, ban").entries.map { it.food.id })
     }
 
     @Test fun countOffHoldsTheWordBeingTypedUntilItIsFinished() {

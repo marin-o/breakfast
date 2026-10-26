@@ -84,6 +84,7 @@ import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.label
 import com.iron.breakfast.contributionShown
+import com.iron.breakfast.libraryPresetMeal
 import com.iron.breakfast.plain
 import com.iron.breakfast.pretty
 import com.iron.breakfast.ui.components.isLargeFont
@@ -194,7 +195,8 @@ private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boole
         if (expanded) {
             Column(Modifier.padding(bottom = 8.dp)) {
                 Text("Add ${repeatAmount.pretty()} ${repeatUnit.displayLabel()} to", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(bottom = 6.dp))
-                MealChoices(selected = null, onSelect = { meal -> vm.logLibraryFood(food, meal, repeatAmount, repeatUnit); vm.collapseLibraryFoodPicker() }, singleRow = true)
+                // The Meal setting's meal shows selected (none for Ask): one tap logs it, or another meal is tapped.
+                MealChoices(selected = vm.automaticMealNow(), onSelect = { meal -> vm.logLibraryFood(food, meal, repeatAmount, repeatUnit); vm.collapseLibraryFoodPicker() }, singleRow = true)
             }
         }
     }
@@ -267,7 +269,8 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
     // Saveable, with the amount sheet's own values, so a configuration change keeps the open sheet as it was.
     var amountSheetOpen by rememberSaveable(food.id) { mutableStateOf(false) }
     var mealMenuOpen by rememberSaveable(food.id) { mutableStateOf(false) }
-    var targetMeal by rememberSaveable(food.id) { mutableStateOf(vm.slot ?: MealSlot.LUNCH) }
+    // Starts on the meal it was opened from, else the Meal setting's meal (By time, Last used), else Lunch.
+    var targetMeal by rememberSaveable(food.id) { mutableStateOf(libraryPresetMeal(vm.slot, vm.automaticMealNow())) }
     val servings = food.householdServings()
     BackHandler { vm.closeLibraryFood() }
     Column(Modifier.fillMaxSize().background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter, vertical = 4.dp)) {
