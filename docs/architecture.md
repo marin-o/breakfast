@@ -15,8 +15,8 @@ A single-module Android app (`app/`, package `com.iron.breakfast`): Kotlin, Jetp
 | `FoodDraft.kt` | New food / edit food form state, its typed values (`FoodDraftFields`) and the dirty check. |
 | `AppDecisions.kt` | Pure routing decisions the VM makes (`topOverlay`, `exitLibraryTarget`, submit and review plans, the Undo window, `resolveSelectedDay`), unit-tested. |
 | `SavedDrafts.kt` | Save and restore of the log draft, an open food form and the selected day in `SavedStateHandle`. |
-| `AppSettings.kt` | User settings in plain `SharedPreferences` (`settings`): the day start hour and the composer's "Long draft" mode, with their pure helpers. |
-| `ui/screens/` | One file per surface: Daily (the Today tab), Log, Meal, Library, Entry, Search, Scan, CreateFood, Settings, plus `ScreenData.kt` (pure UI mapping, unit-tested). |
+| `AppSettings.kt` | User settings in plain `SharedPreferences` (`settings`), one typed field per setting (see Settings), with the pure decision for each. |
+| `ui/screens/` | One file per surface: Daily (the Today tab), Log, Meal, Library, Entry, Search, Scan, CreateFood, Settings (the list of groups and one page per group), plus `ScreenData.kt` (pure UI mapping, unit-tested). |
 | `ui/components/`, `ui/theme/` | Shared Compose components; Monochrome tokens (`Color.kt` mirrors DESIGN.md), type, shape, dimens. |
 
 ## State owners
@@ -26,14 +26,16 @@ All state lives in `BreakfastViewModel`, so it survives configuration changes (t
 | State | Owner | Survives process death |
 | --- | --- | --- |
 | Selected day | VM `selectedDayKey` and `followingToday` + `SavedStateHandle` (`following_today`; `selected_day` only for a picked past day) | Yes; a user following today reopens on the new today |
-| Settings (day start, long draft) | `AppSettings` (`SharedPreferences`), read once into the VM, written on each change | Yes |
+| Settings (every setting in the six groups, plus the last export time and when the export reminder last showed) | `AppSettings` (`SharedPreferences`), read once into the VM, written on each change; Theme and Text size are also read by `MainActivity` before its window exists | Yes |
+| Open Settings page (a group, or Licences) | VM `settingsPage`, so a recreation (Theme, Text size) keeps it | No; Settings itself is not reopened after process death |
+| Export reminder on Daily | VM `exportReminderVisible`: shown when due, hidden by Export, a successful export or leaving the app | No; it counts as shown when it appears |
 | Open meal, selected entry | VM + `SavedStateHandle` (`meal_slot`, `entry_id`) | Yes |
 | Route and overlay flags (Library, Log, scanner, sheets) | VM | No; the app reopens on the diary, with an open food form over it |
 | Log draft text and committed flag | VM `logDraft`, one draft for Daily and Meal, separate from `input` (the Library bar and edit amount); only Add or clearing it removes it | Yes (`log_draft`, `log_draft_committed`; removed once the draft is empty) |
 | Log pins, resolve queue | VM | No |
 | New / edit food form (`FoodDraft`) | VM + `SavedStateHandle` (`food_form`, one JSON string) | Yes, the form reopens; not while resolving a part or a queue |
 | Edit-sheet typed values (entry quick and full edit, Library amount sheet, manual barcode, scan review) and the scanner's "camera permission asked" flag | Composition `rememberSaveable`, so a configuration change (dark mode, font size) keeps them; a save error (`mealDraftError`) stays until one of them changes | No; these sheets do not reopen after process death |
-| Pending Undo (`UndoOffer`) | VM; expires 15 s after the log or delete, or at the next log, edit or delete | No |
+| Pending Undo (`UndoOffer`) | VM; expires after the Undo setting's window (15 s by default; 5 s, 30 s, or none: "Until next action") from the log or delete, and always at the next log, edit or delete | No |
 | OFF search query and results, scan review fields | VM | No |
 | OFF username and password | VM memory only | No, by design |
 | Diary, foods, aliases, conversions, preferences | Room | Yes |
@@ -52,7 +54,36 @@ Settings has Export diary and Import diary. Both use the system document picker 
 
 Catalogue rows are included as stored rather than re-derived, so a built-in food the user edited or archived comes back exactly. Import reads the whole file (at most 32 MB) and checks all of it before anything is written: the format and its version, a schema version no newer than the app's, settings in range, every enum name known, every number finite and not negative (a nutrition basis and a serving size above zero), day keys real dates, ids unique (per table key), and each alias, conversion and preference naming a food in the file. An entry's food id need not name a food: the entry keeps its own name and snapshot. A file that fails any check changes nothing and shows "That file can't be imported."; the reason goes to logcat (tag `Breakfast`). A file that passes asks, in a dialog with one line ("This replaces entries and foods, not settings."), Cancel or Replace diary. Replace diary first writes the current diary, in the same format, to the safety copy `no_backup/diary-before-import.json` (see Recovery); if that fails, nothing is replaced and "That file can't be imported." shows. It then runs `BreakfastStore.replaceDiary`: one Room transaction deletes every table, inserts the file's rows (a clash aborts), then seeds and syncs the catalogue as at start, so a file from an older build gets the current catalogue. A failure rolls everything back. The settings in the file are checked but never applied: day start and long draft stay as they are on the phone. Undo, log pins and pending confirmations from the old diary are dropped. `DiaryImportTest` (androidTest) covers export, wipe, import with equal counts and checksum, and a failing insert that leaves the previous diary.
 
+Settings, Data has two more switches and an action. **Safety copy** Keep (default) is the behaviour above; Don't keep writes no copy before Replace diary and deletes an existing one (also at once when chosen). **Export reminder** Weekly or Monthly shows "Export your diary." with Export on Daily when 7 or 30 days have passed since the later of the last successful export (`last_export_ms`) and the last time it showed (`export_reminder_shown_ms`); never exported counts as due. **Delete all data** opens a dialog ("This deletes all entries and foods.", the chip "Also settings and learned picks", off, then Cancel or Delete all). Delete all always writes the safety copy first, whatever Safety copy says (no copy, no delete), then runs `BreakfastStore.deleteAllData`: one Room transaction deletes every entry, food, alias and conversion and seeds and syncs the catalogue as at a first start; with the chip it also deletes the preferences, and every setting is cleared to its default. A failure rolls everything back (`BreakfastStoreTest`, androidTest).
+
 When the schema changes, bump `DIARY_SCHEMA_VERSION` with it (a unit test fails until it matches `app/schemas` and covers every table), and keep reading files from older schema versions.
+
+## Settings
+
+Library ⋮ → Settings is a list of six groups; each opens its own page (TopBar with the group name; Back and the arrow return to the list, the list's Back to the Library). Every default is the behaviour before the setting existed, and the stored day start and long draft keep their keys. Keys in `settings`:
+
+| Group | Setting (key) | Default | Effect |
+| --- | --- | --- | --- |
+| Logging | Day starts at (`day_start_hour`) | 00:00 | See Day boundary. |
+| Logging | Undo (`undo_window`) | 15 s | 5 s, 30 s or Until next action; `undoOpen` with `undoWindowMs`. |
+| Logging | Meal (`meal_mode`), Breakfast/Lunch/Dinner until (`breakfast_until`, `lunch_until`, `dinner_until`) | Ask; 12, 17, 22 | `automaticMeal` is the last fallback of `logTargetMealOf` on the Log page: Ask opens the meal menu, By time takes the meal for the hour (each boundary later than the one above), Last used the meal of the latest saved entry. |
+| Logging | Count what I'm typing (`count_typing`) | On | Off: `LogPlanner(countTyping = false)` neither counts nor saves the part being typed until it is finished (separator or Done) or picked (pinned); Add leaves it in the draft. The add bar still equals Add. |
+| Logging | Learn from my picks (`learn_from_picks`) | On | Off: `BreakfastEngine` ranks with no preferences and `reinforce` records nothing; stored preferences stay. |
+| Display | Theme (`theme`) | System | API 31+: `UiModeManager.setApplicationNightMode` (the system applies it to the app and its launch window). Below 31: the activity's uiMode is overridden in `attachBaseContext` and the activity recreated on a change; the system launch window there keeps the phone's mode. |
+| Display | Long draft (`long_draft`) | End | The composer's long draft. |
+| Display | Macros on today (`show_macros`), Missing values note (`show_missing_note`) | Show | Hide drops Daily's macro block (and its note), or only the "?" note. |
+| Display | Decimal mark (`decimal_mark`) | Point | Comma shows decimals with a comma (`DisplayDecimal`, `pretty()`); fields keep a point (`plain()`), input reads both. |
+| Accessibility | Motion (`motion`) | System | Reduced makes `rememberMotionReduced` true, as "Remove animations" does. |
+| Accessibility | Text size (`text_size`) | System | Larger overrides the activity's font scale with 1.15 × the phone's (`attachBaseContext`, recreated on a change), so `LocalDensity`, dialogs and sheets follow and `isLargeFont` applies as before. |
+| Accessibility | Haptics (`haptics`) | Off | On: the standard CONFIRM (VIRTUAL_KEY below API 30) on Add and Undo; no permission. |
+| Scanner | Flashlight at start (`flashlight_at_start`) | Off | On: the torch starts on when the camera has a flash unit. |
+| Scanner | Look up unknown barcodes (`look_up_barcodes`) | On | Off: a barcode not in the Library opens New food with it; no network request. |
+| Scanner | Contribute (`show_contribute`) | Show | Hide: no Contribute to Open Food Facts on food detail or after a scanned product. |
+| Data | Export reminder (`export_reminder`; `last_export_ms`, `export_reminder_shown_ms`) | Never | See Export and import. |
+| Data | Safety copy (`keep_safety_copy`) | Keep | See Export and import. |
+| About | Version, Licences | — | "0.1 (10)" from `BuildConfig`; Licences shows `assets/OFL.txt`. |
+
+The diary file still carries only `dayStartHour` and `longDraft`, and Import still applies no settings.
 
 ## Day boundary
 
@@ -99,7 +130,7 @@ Bump `versionCode` by 1 for every build installed on the phone. `versionName` st
 
 ## Recovery and testing on the phone
 
-- Safety copy: every Replace diary first saves the diary as it was to `/data/user/0/com.iron.breakfast/no_backup/diary-before-import.json` (`noBackupFilesDir`; only the latest, written to a temp file and renamed). It is never backed up and has no UI. On the non-debuggable perf build it cannot be read without root. To get it: install the debug build over perf (`adb install -r app-debug.apk`, same key and data), then `adb exec-out run-as com.iron.breakfast cat no_backup/diary-before-import.json > diary-before-import.json`, then put perf back. That file can be imported with Import diary.
+- Safety copy: every Replace diary (unless Settings, Safety copy is Don't keep) and every Delete all data first saves the diary as it was to `/data/user/0/com.iron.breakfast/no_backup/diary-before-import.json` (`noBackupFilesDir`; only the latest, written to a temp file and renamed). It is never backed up and has no UI. On the non-debuggable perf build it cannot be read without root. To get it: install the debug build over perf (`adb install -r app-debug.apk`, same key and data), then `adb exec-out run-as com.iron.breakfast cat no_backup/diary-before-import.json > diary-before-import.json`, then put perf back. That file can be imported with Import diary.
 - Update in place only: `adb install -r app/build/outputs/apk/perf/app-perf.apk`. `-r` keeps the app's data. Never uninstall; never install a build signed with another key.
 - **Never run `connectedDebugAndroidTest` against the owner's phone.** AGP uninstalls the app under test afterwards, and `debug` shares the `com.iron.breakfast` applicationId with `perf`, so it would wipe the diary.
 - Safe manual run of the instrumented tests (`BreakfastDatabaseTest`; it uses its own throwaway databases):
