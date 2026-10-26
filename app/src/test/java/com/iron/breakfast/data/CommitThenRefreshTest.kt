@@ -9,7 +9,7 @@ import org.junit.Test
 /** MOB-025 (A1-06): a write that committed is reported as saved even when the reload after it fails. */
 class CommitThenRefreshTest {
     @Test fun aRefreshFailureAfterTheCommitIsSavedAndReloadsLater() = runBlocking {
-        val failures = mutableListOf<Exception>()
+        val failures = mutableListOf<Throwable>()
         var committed = 0
         val result = commitThenRefresh(
             commit = { committed++; "saved" },
@@ -18,6 +18,13 @@ class CommitThenRefreshTest {
         assertEquals("saved", result)
         assertEquals(1, committed)
         assertEquals("cursor window full", failures.single().message)
+    }
+
+    /** An Error from the reload (not just an Exception) still leaves the committed write saved. */
+    @Test fun anErrorFromTheRefreshIsStillReloadLater() = runBlocking {
+        val failures = mutableListOf<Throwable>()
+        assertEquals("saved", commitThenRefresh(commit = { "saved" }, refresh = { throw StackOverflowError("deep") }) { failures += it })
+        assertTrue(failures.single() is StackOverflowError)
     }
 
     @Test fun aFailedCommitIsAFailureAndRefreshesNothing() = runBlocking {

@@ -745,12 +745,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private fun logLibraryBatch(drafts: List<LibraryLogDraft>, target: MealSlot) {
         if (!ready || busy || drafts.isEmpty()) return
         val capturedDayKey = selectedDayKey
-        busy = true
-        viewModelScope.launch {
+        launchBusy {
             suspendRunCatching { drafts.forEach { draft -> engine.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, capturedDayKey) } }
                 .onSuccess { offerUndo(null); refresh(); refreshLibrary(); notice = "Added ${drafts.size} food${if (drafts.size == 1) "" else "s"} to ${target.label()} on $capturedDayKey" }
                 .onFailure { notice = it.message ?: "Could not log this food." }
-                .also { busy = false }
         }
     }
 
@@ -776,22 +774,18 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     fun archiveLibraryFood(food: FoodRecord) {
         if (!ready || busy || food.archived || food.origin != com.iron.breakfast.domain.FoodOrigin.CUSTOM) return
-        busy = true
-        viewModelScope.launch {
+        launchBusy {
             suspendRunCatching { engine.archiveFood(food.id) }
                 .onSuccess { selectedLibraryFood = null; if (editingLibraryFoodId == food.id) closeCustom(); refresh(); refreshLibrary(); notice = "Food archived; saved diary entries remain readable." }
                 .onFailure { notice = it.message ?: "Could not archive this food." }
-                .also { busy = false }
         }
     }
     fun restoreLibraryFood(food: FoodRecord) {
         if (!ready || busy || !food.archived) return
-        busy = true
-        viewModelScope.launch {
+        launchBusy {
             suspendRunCatching { engine.restoreFood(food.id) }
                 .onSuccess { refresh(); selectedLibraryFood = foods.firstOrNull { it.id == food.id }; refreshLibrary(); notice = "Food restored to your library." }
                 .onFailure { notice = it.message ?: "Could not restore this food." }
-                .also { busy = false }
         }
     }
     fun openEntryDetail(entry: MealEntry) {
@@ -952,8 +946,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             return
         }
         val fromScan = selectedProductFromScan
-        busy = true
-        viewModelScope.launch {
+        launchBusy {
             suspendRunCatching { engine.cacheFood(draft.food) }
                 .onSuccess { stored ->
                     pendingContribution = contributionDraftAfterLocalSave(draft.food, fromScan)
@@ -962,7 +955,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                     finishResolve(stored)
                 }
                 .onFailure { notice = it.message ?: "Could not save this food." }
-                .also { busy = false }
         }
     }
 
@@ -1094,8 +1086,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private fun submitLibraryMixedInput(cleaned: String, target: MealSlot) {
         val capturedInput = input
         val capturedDayKey = selectedDayKey
-        busy = true
-        viewModelScope.launch {
+        launchBusy {
             suspendRunCatching { engine.save(cleaned, mealSlot = target, dayKey = capturedDayKey) }
                 .onSuccess { saved ->
                     refresh()
@@ -1112,7 +1103,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                     offerLoggedUndo("${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} logged to ${target.label()}", saved.entries)
                 }
                 .onFailure { notice = it.message ?: "Could not save this batch." }
-                .also { busy = false }
         }
     }
     fun beginQuickEdit(entry: MealEntry) {
@@ -1248,8 +1238,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val mode = entryEditMode
         if (editing != null && mode != EntryEditMode.NONE) {
             val session = editSession
-            busy = true
-            viewModelScope.launch {
+            launchBusy {
                 suspendRunCatching {
                     if (mode == EntryEditMode.QUICK) engine.replaceEntryAmountUnit(editing, input)
                     else engine.replaceEntryFromText(editing, input)
@@ -1264,7 +1253,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                         markEditInvalid(it.message ?: "Could not edit this entry.")
                     }
                 }
-                    .also { busy = false }
             }
             return
         }
@@ -1274,8 +1262,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             mealDraftError = "Add at least one food."
             return
         }
-        busy = true
-        viewModelScope.launch {
+        launchBusy {
             suspendRunCatching { engine.save(captured, mealSlot = target, dayKey = selectedDayKey, pins = logPins.toMap()) }.onSuccess { saved ->
                 // Nothing resolved: nothing was saved, so the Log stays open with the typed text and says what to fix.
                 if (saved.entries.isEmpty() && saved.unresolvedSegments.isNotEmpty()) {
@@ -1288,10 +1275,24 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 feedbackIds = saved.entries.filter { it.approximateConversion }.mapTo(mutableSetOf()) { it.id }; feedbackUntil = if (feedbackIds.isEmpty()) 0L else System.currentTimeMillis() + 30_000L
                 loggedBatchIds = saved.entries.map { it.id }
                 offerLoggedUndo("${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} added to ${target.label()}", saved.entries)
-            }.onFailure { mealDraftError = it.message ?: "Could not save this meal." }.also { busy = false }
+            }.onFailure { mealDraftError = it.message ?: "Could not save this meal." }
         }
     }
     private fun mealMarkers(value: String): List<MealSlot> = mealMarkerSlots(value)
+    /**
+     * Runs [block] as the one write that owns [busy]: set now, before the launch, and cleared in finally when the
+     * write ends, so a throwing success or failure handler cannot leave the app stuck busy.
+     */
+    private fun launchBusy(block: suspend () -> Unit) {
+        busy = true
+        viewModelScope.launch {
+            try {
+                block()
+            } finally {
+                busy = false
+            }
+        }
+    }
     /** Replaces the Undo offer; null clears it. An offer clears itself when its window ends. */
     private fun offerUndo(offer: UndoOffer?) {
         undoExpiryJob?.cancel()
@@ -1321,36 +1322,30 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     fun delete(entry: MealEntry) {
         if (!ready || busy) return
-        busy = true
-        viewModelScope.launch {
+        launchBusy {
             suspendRunCatching { engine.deleteEntry(entry.id) }
                 .onSuccess { offerUndo(UndoOffer.Deleted(entry, clock())); refresh() }
                 .onFailure { notice = "Could not edit this entry." }
-                .also { busy = false }
         }
     }
     /** Puts the deleted entry back with its own id and snapshot. */
     fun undo() {
         val offer = liveUndoOffer() as? UndoOffer.Deleted ?: return
         if (!ready || busy) return
-        busy = true
-        viewModelScope.launch {
+        launchBusy {
             suspendRunCatching { engine.restoreEntry(offer.entry) }
                 .onSuccess { offerUndo(null); refresh() }
                 .onFailure { notice = UNDO_FAILED }
-                .also { busy = false }
         }
     }
     /** Deletes the logged batch in one transaction; an entry edited since it was logged stays. */
     fun undoLoggedBatch() {
         val offer = liveUndoOffer() as? UndoOffer.Logged ?: return
         if (!ready || busy) return
-        busy = true
-        viewModelScope.launch {
+        launchBusy {
             suspendRunCatching { engine.deleteEntries(offer.entries) }
                 .onSuccess { loggedBatchIds = emptyList(); offerUndo(null); refresh() }
                 .onFailure { notice = UNDO_FAILED }
-                .also { busy = false }
         }
     }
     fun openCustom(name: String = "", brand: String = "", barcode: String = "", fromResolver: Boolean = false, fromOff: Boolean = false) {
@@ -1533,12 +1528,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val unit = parsed.unit ?: food.defaultUnit
         if (!ready || busy) return
         val capturedDayKey = selectedDayKey
-        busy = true
-        viewModelScope.launch {
+        launchBusy {
             suspendRunCatching { engine.cacheFoodAndLog(food, amount, unit, target, capturedDayKey) }
                 .onSuccess { offerUndo(null); advanceUnknownQueue(); refresh() }
                 .onFailure { notice = it.message ?: "Could not resolve this food." }
-                .also { busy = false }
         }
     }
     /** Leaves the current unresolved food unlogged and moves to the next one. */
@@ -1548,8 +1541,21 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun feedbackOpen(entry: MealEntry): Boolean = entry.id in feedbackIds && System.currentTimeMillis() < feedbackUntil
     fun feedbackCount(): Int = feedbackIds.count { id -> entries.any { it.id == id } && System.currentTimeMillis() < feedbackUntil }
     fun alternatives(entry: MealEntry): List<RankedFood> = if (feedbackOpen(entry)) engine.alternativesFor(entry) else emptyList()
-    fun confirm(entry: MealEntry) { if (!ready || busy || !feedbackOpen(entry)) return; busy = true; viewModelScope.launch { suspendRunCatching { engine.reinforce(entry.foodId) }.onSuccess { feedbackIds = feedbackIds - entry.id }.also { busy = false } } }
-    fun chooseAlternative(entry: MealEntry, food: FoodRecord) { if (!ready || busy || !feedbackOpen(entry)) return; busy = true; viewModelScope.launch { suspendRunCatching { engine.replaceEntry(entry.id, food.id); engine.reinforce(food.id) }.onSuccess { feedbackIds = feedbackIds - entry.id; refresh() }.also { busy = false } } }
+    fun confirm(entry: MealEntry) { if (!ready || busy || !feedbackOpen(entry)) return; launchBusy { suspendRunCatching { engine.reinforce(entry.foodId) }.onSuccess { feedbackIds = feedbackIds - entry.id } } }
+    /** A "Not right?" pick: the entry becomes [food], which is reinforced. A refused replacement says why and reinforces nothing. */
+    fun chooseAlternative(entry: MealEntry, food: FoodRecord) {
+        if (!ready || busy || !feedbackOpen(entry)) return
+        launchBusy {
+            suspendRunCatching {
+                engine.replaceEntry(entry.id, food.id).also { if (it is ReplacementResult.Success) engine.reinforce(food.id) }
+            }.onSuccess { result ->
+                when (result) {
+                    is ReplacementResult.Success -> { feedbackIds = feedbackIds - entry.id; refresh() }
+                    is ReplacementResult.Failure -> notice = result.reason
+                }
+            }
+        }
+    }
     fun expireFeedback() { feedbackUntil = 0L; feedbackIds = emptySet() }
     fun holdFeedback() { if (resolverOpen && feedbackUntil > 0L) feedbackUntil += 1000L }
     fun submitSearch() {
@@ -1616,8 +1622,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val resolvesQueue = plan.advancesQueue
         val fromScan = selectedProductFromScan
         val capturedDayKey = selectedDayKey
-        busy = true
-        viewModelScope.launch {
+        launchBusy {
             suspendRunCatching { engine.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, capturedDayKey) }
                 .onSuccess {
                     offerUndo(null)
@@ -1630,7 +1635,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                     notice = "Added to ${target.label()}"
                 }
                 .onFailure { notice = it.message ?: "This amount cannot be logged." }
-                .also { busy = false }
         }
     }
 
@@ -1640,8 +1644,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (!canSaveProductToLibrary(slot, resolutionContinuation, unknownQueue.isNotEmpty())) return
         if (!ready || busy) return
         val draft = productDraft(food) ?: run { notice = "Enter a positive amount, a supported unit, and valid calories."; return }
-        busy = true
-        viewModelScope.launch {
+        launchBusy {
             suspendRunCatching { engine.updateFood(draft.food) }
                 .onSuccess {
                     selectedProduct = null
@@ -1652,7 +1655,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                     notice = "Saved ${draft.food.name} to your food library."
                 }
                 .onFailure { notice = it.message ?: "Could not save this food." }
-                .also { busy = false }
         }
     }
 
@@ -1768,7 +1770,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val offSource = fromOff.takeIf { it }?.let { "Open Food Facts" }
         val aliasText = aliasList.joinToString(", ")
         val capturedDayKey = selectedDayKey
-        busy = true; viewModelScope.launch { suspendRunCatching {
+        launchBusy { suspendRunCatching {
             if (editingId != null) {
                 val original = foods.firstOrNull { it.id == editingId } ?: error("That personal food is no longer available.")
                 engine.updateFood(editedCustomFoodRecord(original, name, brand, storedBarcode, aliasText, nutrition, basisAmount, basisUnit, aliases = aliasList, servings = servingList))
@@ -1796,7 +1798,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             if (resolvesQueue && unknownQueue.isNotEmpty()) advanceUnknownQueue() else resolutionContinuation = false
             notice = if (editingId != null) "Personal food updated for future logs." else if (saveTarget != null) "Saved to ${saveTarget.label()} and your food library." else "Saved to your food library."
             if (logResolve != null && editingId == null) finishResolve(saved)
-        }.onFailure { notice = it.message ?: "Could not save this food." }.also { busy = false } }
+        }.onFailure { notice = it.message ?: "Could not save this food." } }
     }
 }
 

@@ -520,6 +520,14 @@ class OpenFoodFactsClientTest {
         assertEquals(listOf("world.openfoodfacts.org"), opened.map { it.host })
     }
 
+    /** A lookup that ends on its own disconnects once, from its own read; the cancel hook stays out of it. */
+    @Test fun aFinishedLookupDisconnectsOnce() = runBlocking {
+        val connections = Collections.synchronizedList(mutableListOf<FakeConnection>())
+        val client = OpenFoodFactsClient { url -> FakeConnection(url, 404, "{}", null).also { connections += it } }
+        assertEquals(OffResult.Missing, client.barcode("3017620422003"))
+        assertEquals(1, connections.single().disconnects)
+    }
+
     /** MOB-027: cancelling a lookup whose request is blocked on the network disconnects it, so it ends at once. */
     @Test fun cancellingABlockedLookupDisconnectsItsConnection() = runBlocking {
         val requested = CompletableDeferred<Unit>()
@@ -674,7 +682,9 @@ private class FakeConnection(
     private val closed = CountDownLatch(1)
 
     override fun connect() = Unit
-    override fun disconnect() { disconnected = true; closed.countDown() }
+    @Volatile var disconnects = 0
+        private set
+    override fun disconnect() { disconnects++; disconnected = true; closed.countDown() }
     override fun usingProxy(): Boolean = false
     override fun getResponseCode(): Int {
         onResponse()

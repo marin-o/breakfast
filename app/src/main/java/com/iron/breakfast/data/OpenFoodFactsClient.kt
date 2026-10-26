@@ -544,15 +544,17 @@ class OpenFoodFactsClient(
  * cancellation, never the result.
  */
 internal suspend fun <T> disconnectOnCancel(connection: HttpURLConnection, read: () -> T): T = coroutineScope {
+    // A read that ended on its own has already disconnected in its finally; only a cancel disconnects from here.
+    val readEnded = java.util.concurrent.atomic.AtomicBoolean(false)
     val watcher = launch(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
         try {
             awaitCancellation()
         } finally {
-            connection.disconnect()
+            if (!readEnded.get()) connection.disconnect()
         }
     }
     try {
-        withContext(Dispatchers.IO) { read() }
+        withContext(Dispatchers.IO) { read().also { readEnded.set(true) } }
     } finally {
         watcher.cancel()
     }

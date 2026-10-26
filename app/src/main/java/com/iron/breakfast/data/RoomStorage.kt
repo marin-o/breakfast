@@ -169,6 +169,9 @@ interface PreferenceDao {
     @Query("SELECT * FROM preferences")
     suspend fun all(): List<PreferenceEntity>
 
+    @Query("SELECT * FROM preferences WHERE foodId = :foodId")
+    suspend fun byFood(foodId: String): PreferenceEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(preference: PreferenceEntity)
 

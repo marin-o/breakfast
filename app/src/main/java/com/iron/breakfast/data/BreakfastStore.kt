@@ -104,7 +104,8 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
     suspend fun reinforce(foodId: String) {
         requireReady()
         write {
-            val existing = preferenceMap()[foodId] ?: Preference(foodId)
+            // The stored row, read under the lock: the in-memory snapshot may be older than the database.
+            val existing = database.preferenceDao().byFood(foodId)?.toDomain() ?: Preference(foodId)
             val updated = existing.copy(
                 explicitCount = existing.explicitCount + 1,
                 lastReinforcedEpochMs = System.currentTimeMillis()
@@ -340,14 +341,14 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
 internal suspend fun <T> commitThenRefresh(
     commit: suspend () -> T,
     refresh: suspend () -> Unit,
-    onRefreshFailed: (Exception) -> Unit,
+    onRefreshFailed: (Throwable) -> Unit,
 ): T {
     val result = commit()
     try {
         refresh()
     } catch (cancelled: CancellationException) {
         throw cancelled
-    } catch (error: Exception) {
+    } catch (error: Throwable) {
         onRefreshFailed(error)
     }
     return result
