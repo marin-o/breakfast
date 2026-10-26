@@ -129,4 +129,44 @@ class BreakfastStoreTest {
         assertEquals("Old bar 2", stored?.name)
         assertEquals(true, stored?.archived)
     }
+
+    /** MOB-028: an entry write keeps the very same foods list and preference map; a food write replaces the list. */
+    @Test
+    fun anEntryWriteKeepsTheFoodsListAndAFoodWriteReplacesIt() = runBlocking {
+        val foods = store.foods()
+        val preferences = store.preferenceMap()
+        store.saveEntries(listOf(entry("keep-a")))
+        store.editEntry("keep-a") { it.copy(enteredAmount = 2.0) }
+        store.deleteEntry("keep-a")
+        assertTrue(foods === store.foods())
+        assertTrue(preferences === store.preferenceMap())
+
+        store.reinforce(FoodCatalog.fixtures.first().id)
+        assertTrue(foods === store.foods())
+        assertTrue(preferences !== store.preferenceMap())
+
+        store.archiveFood(FoodCatalog.fixtures.first().id)
+        assertTrue(foods !== store.foods())
+    }
+
+    /** MOB-028: the per-table reloads add up to what a full read of the database gives. */
+    @Test
+    fun perTableReloadsEqualAFullReload() = runBlocking {
+        val food = FoodRecord(
+            id = "custom-reload", name = "Reload bar", aliases = listOf("rb"), category = "Personal food", origin = FoodOrigin.CUSTOM,
+            nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(300.0, 10.0, 40.0, 9.0)),
+            defaultAmount = 50.0, defaultUnit = MeasureUnit.GRAM, personalOverride = true,
+        )
+        store.saveEntries(listOf(entry("full-a"), entry("full-b")))
+        store.upsertFood(food)
+        store.reinforce(food.id)
+        store.editEntry("full-a") { it.copy(enteredAmount = 4.0) }
+        store.deleteEntry("full-b")
+        store.archiveFood(food.id)
+
+        val fresh = BreakfastStore(database).apply { initialize() }
+        assertEquals(fresh.foods(), store.foods())
+        assertEquals(fresh.entries(), store.entries())
+        assertEquals(fresh.preferenceMap(), store.preferenceMap())
+    }
 }

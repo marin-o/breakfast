@@ -67,16 +67,19 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
 
     fun entries(): List<MealEntry> = model.entries
 
-    private var preferenceMapModel: StoreSnapshot? = null
+    private var preferenceMapSource: List<Preference>? = null
     private var cachedPreferenceMap: Map<String, Preference> = emptyMap()
 
-    /** Built once per snapshot: the Log page asks for it on every keystroke. */
+    /**
+     * Built once per preferences list: the Log page asks for it on every keystroke. A write that did not touch the
+     * preferences keeps the same list, so the same map, so the engine keeps its planner and its per-part cache.
+     */
     @Synchronized
     fun preferenceMap(): Map<String, Preference> {
-        val current = model
-        if (current !== preferenceMapModel) {
-            cachedPreferenceMap = current.preferences.associateBy { it.foodId }
-            preferenceMapModel = current
+        val current = model.preferences
+        if (current !== preferenceMapSource) {
+            cachedPreferenceMap = current.associateBy { it.foodId }
+            preferenceMapSource = current
         }
         return cachedPreferenceMap
     }
@@ -84,7 +87,7 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
     suspend fun saveEntries(entries: List<MealEntry>) {
         requireReady()
         if (entries.isEmpty()) return
-        write { database.mealEntryDao().insertAll(entries.map { it.toEntity() }) }
+        write(ENTRIES) { database.mealEntryDao().insertAll(entries.map { it.toEntity() }) }
     }
 
     /**
@@ -94,7 +97,7 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
      */
     suspend fun editEntry(id: String, edit: (MealEntry) -> MealEntry?): Boolean {
         requireReady()
-        return write {
+        return write(ENTRIES) {
             val stored = database.mealEntryDao().byIds(listOf(id)).firstOrNull()?.toDomain() ?: return@write false
             edit(stored)?.let { database.mealEntryDao().update(it.copy(id = id).toEntity()) }
             true
@@ -103,7 +106,7 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
 
     suspend fun reinforce(foodId: String) {
         requireReady()
-        write {
+        write(PREFERENCES) {
             // The stored row, read under the lock: the in-memory snapshot may be older than the database.
             val existing = database.preferenceDao().byFood(foodId)?.toDomain() ?: Preference(foodId)
             val updated = existing.copy(
@@ -117,7 +120,7 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
     /** Saves an edited or new food. A stored food keeps its archived state: only [archiveFood] and [restoreFood] change it. */
     suspend fun upsertFood(food: FoodRecord) {
         requireReady()
-        write {
+        write(FOODS) {
             val storedArchived = database.foodDao().byId(food.id)?.archived
             insertFoodRows(if (storedArchived == null) food else food.copy(archived = storedArchived))
         }
@@ -154,7 +157,7 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
 
     suspend fun archiveFood(id: String) {
         requireReady()
-        write {
+        write(FOODS) {
             val current = database.foodDao().all().firstOrNull { it.id == id } ?: return@write
             database.foodDao().upsert(current.copy(archived = true))
         }
@@ -162,7 +165,7 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
 
     suspend fun restoreFood(id: String) {
         requireReady()
-        write {
+        write(FOODS) {
             val current = database.foodDao().all().firstOrNull { it.id == id } ?: return@write
             database.foodDao().upsert(current.copy(archived = false))
         }
@@ -170,7 +173,7 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
 
     suspend fun deleteEntry(id: String) {
         requireReady()
-        write { database.openHelper.writableDatabase.execSQL("DELETE FROM meal_entries WHERE id = ?", arrayOf(id)) }
+        write(ENTRIES) { database.openHelper.writableDatabase.execSQL("DELETE FROM meal_entries WHERE id = ?", arrayOf(id)) }
     }
 
     /**
@@ -180,7 +183,7 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
     suspend fun deleteEntries(expected: List<MealEntry>): List<String> {
         requireReady()
         if (expected.isEmpty()) return emptyList()
-        return write {
+        return write(ENTRIES) {
             val ids = unchangedEntryIds(expected, database.mealEntryDao().byIds(expected.map { it.id }))
             if (ids.isNotEmpty()) database.mealEntryDao().deleteByIds(ids)
             ids
@@ -190,14 +193,14 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
     /** Stores [food] without an entry. An archived food stays as it is. */
     suspend fun addFood(food: FoodRecord) {
         requireReady()
-        write {
+        write(FOODS) {
             if (database.foodDao().all().firstOrNull { it.id == food.id }?.archived != true) insertFoodRows(food)
         }
     }
 
     suspend fun addFoodAndEntry(food: FoodRecord, entry: MealEntry) {
         requireReady()
-        write {
+        write(FOODS + ENTRIES) {
             val current = database.foodDao().all().firstOrNull { it.id == food.id }
             if (current?.archived != true) insertFoodRows(food)
             database.mealEntryDao().replace(entry.toEntity())
@@ -229,7 +232,7 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
      */
     internal suspend fun replaceDiary(rows: DiaryRows) {
         requireReady()
-        write {
+        write(ALL_TABLES) {
             database.mealEntryDao().deleteAll()
             database.preferenceDao().deleteAll()
             database.servingConversionDao().deleteAll()
@@ -246,15 +249,17 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
     }
 
     /**
-     * Every user-confirmed write: under [writeMutex], on IO, one transaction for [block], then the snapshot reload. It is
-     * NonCancellable once it holds the lock, so a write the user confirmed is never rolled back by a cancel (MOB-027);
-     * a cancel while waiting for the lock writes nothing.
+     * Every user-confirmed write: under [writeMutex], on IO, one transaction for [block], then a reload of the [touched]
+     * tables only (MOB-028); the snapshot keeps the very same lists for the others, so a cache keyed on them (the
+     * matcher on [foods], the planner on [preferenceMap]) survives. It is NonCancellable once it holds the lock, so a
+     * write the user confirmed is never rolled back by a cancel (MOB-027); a cancel while waiting for the lock writes
+     * nothing.
      */
-    private suspend fun <T> write(block: suspend () -> T): T = writeMutex.withLock {
+    private suspend fun <T> write(touched: Set<StoreTable>, block: suspend () -> T): T = writeMutex.withLock {
         withContext(NonCancellable + Dispatchers.IO) {
             commitThenRefresh(
                 commit = { database.withTransaction { block() } },
-                refresh = { model = readSnapshot(); snapshotStale = false },
+                refresh = { model = reload(model, tablesToReload(touched, snapshotStale)); snapshotStale = false },
             ) { error ->
                 snapshotStale = true
                 Log.w("Breakfast", "Saved, but the diary could not be reloaded; it reloads later", error)
@@ -286,7 +291,7 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
 
     /** Rewrites the stored built-in foods whose catalogue content changed; see [BuiltInCatalogSync]. */
     private suspend fun syncBuiltInFoods() {
-        val changed = BuiltInCatalogSync.changedRows(readSnapshot().foods, FoodCatalog.fixtures)
+        val changed = BuiltInCatalogSync.changedRows(readFoods(), FoodCatalog.fixtures)
         changed.forEach { food ->
             database.foodDao().upsert(food.toEntity())
             database.foodAliasDao().deleteForFood(food.id)
@@ -305,7 +310,17 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
         database.servingConversionDao().insertAll(missing.flatMap { it.toConversionEntities() })
     }
 
-    private suspend fun readSnapshot(): StoreSnapshot {
+    private suspend fun readSnapshot(): StoreSnapshot = reload(StoreSnapshot(), ALL_TABLES)
+
+    /** [current] with the [tables] read again from the database; every other list is kept as the same object. */
+    private suspend fun reload(current: StoreSnapshot, tables: Set<StoreTable>): StoreSnapshot = StoreSnapshot(
+        foods = if (StoreTable.FOODS in tables) readFoods() else current.foods,
+        entries = if (StoreTable.ENTRIES in tables) database.mealEntryDao().all().map { it.toDomain() } else current.entries,
+        preferences = if (StoreTable.PREFERENCES in tables) database.preferenceDao().all().map { it.toDomain() } else current.preferences,
+    )
+
+    /** The foods with their aliases and conversions. */
+    private suspend fun readFoods(): List<FoodRecord> {
         val aliases = database.foodAliasDao().all().groupBy { it.foodId }
         val conversions = database.servingConversionDao().all().groupBy { it.foodId }
         val foods = database.foodDao().all().map { entity ->
@@ -322,17 +337,27 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
                 }
             )
         }
-        return StoreSnapshot(
-            foods = foods,
-            entries = database.mealEntryDao().all().map { it.toDomain() },
-            preferences = database.preferenceDao().all().map { it.toDomain() }
-        )
+        return foods
     }
 
     private fun requireReady() {
         check(initialized) { "BreakfastStore.initialize() must complete before reading or writing" }
     }
 }
+
+/** The groups of tables a write can touch: foods (with aliases and conversions), entries, preferences. */
+internal enum class StoreTable { FOODS, ENTRIES, PREFERENCES }
+
+private val FOODS = setOf(StoreTable.FOODS)
+private val ENTRIES = setOf(StoreTable.ENTRIES)
+private val PREFERENCES = setOf(StoreTable.PREFERENCES)
+internal val ALL_TABLES: Set<StoreTable> = StoreTable.entries.toSet()
+
+/**
+ * What to read again after a commit: the tables it [touched], or everything when the snapshot is [stale] (an earlier
+ * reload failed, so tables this write did not touch may be older than the database too).
+ */
+internal fun tablesToReload(touched: Set<StoreTable>, stale: Boolean): Set<StoreTable> = if (stale) ALL_TABLES else touched
 
 /**
  * A write's outcome is its [commit] (MOB-025): once that returns, the write is saved. A [refresh] that fails after it is
