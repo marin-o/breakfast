@@ -38,12 +38,17 @@ Within each page, rows run top to bottom. `[A] [B]` are choice chips; the chip i
 | 4 | Undo | chips | **15 s**, 5 s, 30 s, Until next action | 15 s |
 | 5 | Meal | chips | **Ask**, By time, Last used | Ask |
 | 6 | Breakfast until / Lunch until / Dinner until | three steppers, shown only when Meal is "By time" | whole hours; each must be later than the one above | 12:00 / 17:00 / 22:00 (owner); Snacks after |
+| 6b | Before day start | chips, shown only when Meal is "By time", under the steppers | **Snacks**, Dinner, Ask | Snacks |
 | 7 | Count what I'm typing | chips | **On**, Off | On |
 | 8 | Learn from my picks | chips | **On**, Off | On |
 
-- **#5 "Last used":** the meal of the most recent Add. "Ask" is today's behaviour (the meal picker opens).
-- **#7 Off:** a word still being typed is only counted and saved once it is picked or finished. This changes P9's rule when switched.
-- **#8 Off:** learned preferences are ignored when ranking; stored preferences are kept, not deleted.
+- **#5 "Last used":** the meal of the most recent saved entry. "Ask" is today's behaviour (the meal picker opens).
+- **#5 everywhere, always overridable (owner):**
+  - On the Log page the setting supplies the default; the Meal chip and a typed meal word still win.
+  - In the Library, the food page's meal dropdown starts on that meal, and a list row's "+" still shows the four meal buttons with that meal marked, so one tap logs it.
+- **#6 / #6b By time:** the meal comes from the hour counted from "Day starts at": hours in [day start, Breakfast until) are Breakfast, and so on. Hours before the day start belong to the previous diary day and go to the "Before day start" choice; "Ask" opens the meal picker for those hours. With day start 00:00, #6b has no effect.
+- **#7 Off:** a word still being typed is only counted once it is picked or finished. Pressing Add counts as finishing it (owner), so Add saves what a finished draft would. This changes P9's rule when switched.
+- **#8 Off:** learned preferences are ignored when ranking, and new picks are not recorded (owner); stored preferences are kept, not deleted.
 
 ### Display
 
@@ -91,12 +96,13 @@ Within each page, rows run top to bottom. `[A] [B]` are choice chips; the chip i
 | 20 | Safety copy | chips | **Keep**, Don't keep | Keep |
 | 21 | Delete all data | action row (destructive red text, as "Archive food") | confirm dialog | — |
 
-- **#19:** when due, a one-line notice on Daily: proposed "Export your diary." with the action "Export". It shows once, and appears again after the next interval if no export was made. Owner to approve wording.
+- **#19:** when due, a one-line notice on Daily (Today) only: "Export your diary." with the action "Export". It counts as shown only once it was on screen, and appears again after the next interval if no export was made. The first reminder comes one interval after the setting is turned on (owner).
 - **#20 Don't keep:** Import no longer writes `no_backup/diary-before-import.json`, and an existing copy is deleted.
 - **#21 (owner: ask whether to delete settings and learned picks too):**
   - **Dialog:** no title; one line "This deletes all entries and foods.", then one `ChoiceOption` chip "Also settings and learned picks" (off by default, toggles), then [Cancel] [Delete all].
   - **Safety copy:** a safety copy is written first, as for Import, regardless of #20.
   - **What it deletes:** entries and personal foods (the built-in catalogue is re-seeded). With the chip on: also all settings (back to defaults) and learned preferences.
+  - **Failure:** nothing is deleted, and the notice "Could not delete the diary." shows (owner).
 
 ### About
 
@@ -110,7 +116,8 @@ Within each page, rows run top to bottom. `[A] [B]` are choice chips; the chip i
 - **Group titles:** Logging, Display, Accessibility, Scanner, Data, About.
 - **Row labels:** Undo, Meal, Breakfast until, Lunch until, Dinner until, Count what I'm typing, Learn from my picks, Theme, Macros on today, Missing values note, Decimal mark, Motion, Text size, Haptics, Flashlight at start, Look up unknown barcodes, Contribute, Export reminder, Safety copy, Delete all data, Version, Licences.
 - **Chip labels:** 5 s, 15 s, 30 s, Until next action, Ask, By time, Last used, On, Off, System, Light, Dark, Show, Hide, Point, Comma, Reduced, Larger, Never, Weekly, Monthly, Keep, Don't keep.
-- **Dialogs and notices:** "This deletes all entries and foods." / "Also settings and learned picks" / Delete all; "Export your diary." / Export.
+- **Dialogs and notices:** "This deletes all entries and foods." / "Also settings and learned picks" / Delete all; "Could not delete the diary."; "Export your diary." / Export.
+- **Added after implementation (owner-approved):** row "Before day start" with chips Snacks, Dinner, Ask.
 - **Already approved:** Settings, Day starts at, Long draft, End, Start, Two lines, Export diary, Import diary, Cancel, Replace diary.
 
 ## Owner answers (2026-10-26)
@@ -124,7 +131,11 @@ Within each page, rows run top to bottom. `[A] [B]` are choice chips; the chip i
 
 ## Approval
 
-All strings above approved as written (2026-10-26).
+All strings above approved as written (2026-10-26). Follow-up decisions after implementation (same day): Library preselection, "Before day start", Add finishes the word with #7 Off, reminder timing, Learn Off stops recording, "Could not delete the diary.", chips may wrap onto a second line.
+
+## Known platform limit
+
+- **#9 below Android 12:** the cold-start launch window can't follow a forced Light/Dark setting there; the app window does. The owner's phone is on Android 12+, where it follows.
 
 ## Implementation notes (for the batch)
 
