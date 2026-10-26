@@ -247,9 +247,9 @@ internal fun DailyComposer(vm: BreakfastViewModel, modifier: Modifier = Modifier
     ComposerFade(modifier) {
         vm.undo.loggedMessage?.let { Snackbar(it, "Undo", { tick(); vm.undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
         vm.undo.deletedEntry?.let { Snackbar("${it.foodName} deleted", "Undo", { tick(); vm.undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
-        if (vm.exportReminderShownOnDaily()) {
-            LaunchedEffect(Unit) { vm.exportReminderOnScreenNow() }
-            Snackbar("Export your diary.", "Export", vm::exportFromReminder, Modifier.padding(bottom = 8.dp))
+        if (vm.reminders.shownOnDaily(vm.logOpen, vm.topOverlay())) {
+            LaunchedEffect(Unit) { vm.reminders.onScreenNow() }
+            Snackbar("Export your diary.", "Export", vm.reminders::export, Modifier.padding(bottom = 8.dp))
         }
         val draft = vm.logDraft.isNotBlank()
         Composer(

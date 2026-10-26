@@ -70,11 +70,11 @@ import com.iron.breakfast.ui.components.ChoiceOption
 @Composable
 fun IronApp(vm: BreakfastViewModel = viewModel()) {
     // Registered first and always, so a picker result delivered after the activity was recreated still reaches the VM.
-    val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri -> uri?.let(vm::exportDiary) }
-    val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::importDiary) }
-    LaunchedEffect(vm.diaryPickerRequest) {
-        val picker = vm.diaryPickerRequest ?: return@LaunchedEffect
-        vm.diaryPickerLaunched()
+    val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri -> uri?.let(vm.transfer::export) }
+    val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm.transfer::import) }
+    LaunchedEffect(vm.transfer.pickerRequest) {
+        val picker = vm.transfer.pickerRequest ?: return@LaunchedEffect
+        vm.transfer.pickerLaunched()
         // No document app at all: nothing was created, so there is nothing to clean up.
         runCatching {
             when (picker) {
@@ -156,20 +156,20 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     if (vm.contribution.authOpen) ContributionSignInScreen(vm)
     vm.contribution.failure?.let { ContributionFailureScreen(vm, it) }
     vm.notices.message?.let { message -> AlertDialog(onDismissRequest = vm.notices::dismiss, confirmButton = { TextButton(vm.notices::dismiss) { Text("OK") } }, text = { Text(message) }) }
-    if (vm.pendingImport != null) AlertDialog(
-        onDismissRequest = vm::cancelImport,
-        confirmButton = { TextButton(vm::confirmImport) { Text("Replace diary") } },
-        dismissButton = { TextButton(vm::cancelImport) { Text("Cancel") } },
+    if (vm.transfer.pendingImport != null) AlertDialog(
+        onDismissRequest = vm.transfer::cancelImport,
+        confirmButton = { TextButton(vm.transfer::confirmImport) { Text("Replace diary") } },
+        dismissButton = { TextButton(vm.transfer::cancelImport) { Text("Cancel") } },
         text = { Text("This replaces entries and foods, not settings.") },
     )
-    if (vm.deleteAllOpen) AlertDialog(
-        onDismissRequest = vm::cancelDeleteAll,
-        confirmButton = { TextButton(vm::confirmDeleteAll) { Text("Delete all") } },
-        dismissButton = { TextButton(vm::cancelDeleteAll) { Text("Cancel") } },
+    if (vm.transfer.deleteAllOpen) AlertDialog(
+        onDismissRequest = vm.transfer::cancelDeleteAll,
+        confirmButton = { TextButton(vm.transfer::confirmDeleteAll) { Text("Delete all") } },
+        dismissButton = { TextButton(vm.transfer::cancelDeleteAll) { Text("Cancel") } },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text("This deletes all entries and foods.")
-                ChoiceOption("Also settings and learned picks", vm.deleteAllAlsoSettings, vm::toggleDeleteAllAlsoSettings)
+                ChoiceOption("Also settings and learned picks", vm.transfer.deleteAllAlsoSettings, vm.transfer::toggleDeleteAllAlsoSettings)
             }
         },
     )

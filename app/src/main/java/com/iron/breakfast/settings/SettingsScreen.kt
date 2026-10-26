@@ -144,15 +144,15 @@ private fun ColumnScope.ScannerPage(vm: BreakfastViewModel) {
 
 @Composable
 private fun ColumnScope.DataPage(vm: BreakfastViewModel) {
-    SettingsAction("Export diary", enabled = vm.ready && !vm.busy) { vm.requestDiaryPicker(DiaryPicker.EXPORT) }
+    SettingsAction("Export diary", enabled = vm.ready && !vm.busy) { vm.transfer.requestPicker(DiaryPicker.EXPORT) }
     Hairline()
-    SettingsAction("Import diary", enabled = vm.ready && !vm.busy) { vm.requestDiaryPicker(DiaryPicker.IMPORT) }
+    SettingsAction("Import diary", enabled = vm.ready && !vm.busy) { vm.transfer.requestPicker(DiaryPicker.IMPORT) }
     Hairline()
     ChoiceRow("Export reminder", EXPORT_REMINDER_CHOICES, vm.settings.exportReminder, vm.settings::chooseExportReminder)
     Hairline()
     ChoiceRow("Safety copy", SAFETY_COPY_CHOICES, vm.settings.keepSafetyCopy, vm.settings::chooseKeepSafetyCopy)
     Hairline()
-    SettingsAction("Delete all data", enabled = vm.ready && !vm.busy, destructive = true, onClick = vm::openDeleteAll)
+    SettingsAction("Delete all data", enabled = vm.ready && !vm.busy, destructive = true, onClick = vm.transfer::openDeleteAll)
     Hairline()
 }
 
