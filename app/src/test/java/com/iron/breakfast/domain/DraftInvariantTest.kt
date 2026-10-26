@@ -21,6 +21,8 @@ class DraftInvariantTest {
             "half a tbsp pb", "milk 3.2% 1 banana", "Protein 2 bar", "crunchy peanut butter 1 tbsp", "chicken and rice",
             "rice + beans", "egg & cheese", "kiselo mleko", "1 ban", "bread and butter", "2 ban", "xyzzy 2 qwerty",
             "nonsense and more nonsense", "Домашно млеко 200 ml", "kiselo mleko 2.8%, 1 banana", "   ", "",
+            "mleko200g", "banana2", "oats60g", "млеко200г", "банана2", "mleko0,5l", "млеко0,5л", "oats60g milk",
+            "oats60g banana2", "2 eggs, oats60g", "банана2g", "mleko200г", "Vitamin B12 tablet", "xyzzy200g",
         )
 
         /** The planner the messy inputs are read with: the fixtures plus two custom foods. */

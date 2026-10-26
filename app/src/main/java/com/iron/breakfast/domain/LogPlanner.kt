@@ -130,7 +130,7 @@ class LogPlanner(
     }
 
     private fun reading(raw: String): Reading {
-        val parsed = parser.parse(raw)
+        val parsed = parser.parse(raw, probe)
         // A part that is exactly a food's name carries no amount: "Protein 2 bar" is one bar, not two. A number word or
         // article is part of the name when a food covers the whole part: "Ten grain bread" is one food.
         val wholeName = matcher.isExactName(raw) || (parsed.wordQuantity && matcher.covers(raw))
@@ -342,7 +342,7 @@ class LogPlanner(
 
     /** One bare word with no quantity: the form a name is typed in, before it is finished. */
     private fun isBareWord(text: String): Boolean =
-        text.trim().split(WHITESPACE).size == 1 && text.any { it.isLetter() } && parser.parse(text).let { it.amount == null && !it.wordQuantity }
+        text.trim().split(WHITESPACE).size == 1 && text.any { it.isLetter() } && parser.parse(text, probe).let { it.amount == null && !it.wordQuantity }
 
     /** A leading "a" or "an" is not part of the food the user named: "a bananna" reads "bananna". */
     private fun stripArticle(text: String): String = text.replace(LEADING_ARTICLE, "")

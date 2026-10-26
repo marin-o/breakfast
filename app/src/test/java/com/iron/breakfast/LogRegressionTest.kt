@@ -69,6 +69,13 @@ class LogRegressionTest {
         "1 cabbage" to listOf(s("usda_2346407_cabbage_raw", 1.0, g)),
         "150g skinless chicken" to listOf(s("usda_2646170_chicken_breast_raw", 150.0, g)),
         "1 banana, lunch" to listOf(s("banana", 1.0, piece)),
+        // MOB-029(e): a quantity glued to a food word reads like the spaced form.
+        "banana2" to listOf(s("banana", 2.0, piece)),
+        "банана2" to listOf(s("banana", 2.0, piece)),
+        "oats60g" to listOf(s("rolled_oats", 60.0, g)),
+        "домашно млеко200мл" to listOf(s("custom_home_milk", 200.0, ml)),
+        "млеко0,5л" to listOf(s("custom_home_milk", 500.0, ml)),
+        "2 eggs, oats60g" to listOf(s("egg", 2.0, piece), s("rolled_oats", 60.0, g)),
     )
 
     /** The inputs alone, for invariants that hold for every input (see [AddBarMatchesAddTest]). */

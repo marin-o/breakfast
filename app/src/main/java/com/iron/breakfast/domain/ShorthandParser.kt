@@ -110,10 +110,16 @@ class ShorthandParser {
 
     /** True when [text], with or without its amount, is exactly one food's name or alias. */
     private fun isWholeFoodName(text: String, probe: FoodProbe): Boolean =
-        probe.isExactName(text) || probe.isExactName(parse(text).foodPhrase)
+        probe.isExactName(text) || probe.isExactName(parse(text, probe).foodPhrase)
 
     private fun partsOfSegment(input: String, from: Int, to: Int, probe: FoodProbe?): List<SegmentSpan> {
-        val words = WORD.findAll(input.substring(from, to)).map { from + it.range.first..from + it.range.last }.toList()
+        // A food word with its quantity glued on ("oats60g") is read as its two words ("oats 60g").
+        val words = WORD.findAll(input.substring(from, to)).flatMap { match ->
+            val first = from + match.range.first
+            val last = from + match.range.last
+            val at = gluedQuantityAt(match.value, probe)
+            if (at == null) sequenceOf(first..last) else sequenceOf(first until first + at, first + at..last)
+        }.toList()
         if (words.isEmpty()) return emptyList()
         val texts = words.map { input.substring(it.first, it.last + 1) }
         val groups = mutableListOf<List<Int>>()
@@ -228,7 +234,31 @@ class ShorthandParser {
         ShorthandLexicon.mealSlotOf(text) != null || isWholeFoodName(text, probe) || probe.isWholeFood(text)
 
     private fun coversText(text: String, probe: FoodProbe): Boolean =
-        probe.covers(text) || probe.covers(parse(text).foodPhrase)
+        probe.covers(text) || probe.covers(parse(text, probe).foodPhrase)
+
+    /**
+     * Where the quantity starts in a [word] that has one glued to its end ("mleko200g", "банана2", "mleko0,5l"), or null.
+     * Only with a [probe], and only when the word reads like its spaced form: the letters are a food word, the unit (if
+     * any) is in the letters' one script, no food names the whole word ("B12" in "Vitamin B12 tablet" stays), and the
+     * spaced form resolves to a food. A word that mixes scripts is never split, so it matches nothing.
+     */
+    private fun gluedQuantityAt(word: String, probe: FoodProbe?): Int? {
+        if (probe == null) return null
+        val match = GLUED_QUANTITY.matchEntire(word) ?: return null
+        val letters = match.groupValues[1]
+        val unit = match.groupValues[3]
+        val script = scriptOf(letters)
+        if (script != TextScript.LATIN && script != TextScript.CYRILLIC) return null
+        if (unit.isNotEmpty() && (unit.toMeasureUnit() == null || scriptOf(unit) != script)) return null
+        if (!isFoodWord(letters) || probe.matchesWholeWord(word)) return null
+        return letters.length.takeIf { probe.resolves("$letters ${word.substring(it)}") }
+    }
+
+    /** Where in [text] a space goes before each quantity glued to a food word ([gluedQuantityAt]), in order. */
+    private fun gluedSplits(text: String, probe: FoodProbe?): List<Int> {
+        if (probe == null || text.none(Char::isDigit)) return emptyList()
+        return WORD.findAll(text).mapNotNull { match -> gluedQuantityAt(match.value, probe)?.let { match.range.first + it } }.toList()
+    }
 
     private fun spanOf(input: String, start: Int, end: Int) = SegmentSpan(input.substring(start, end), start, end)
 
@@ -295,8 +325,20 @@ class ShorthandParser {
             ShorthandLexicon.wordAmount(lower) == null && !MULTIPLIER.matches(word)
     }
 
-    fun parse(input: String): ParsedSegment {
+    /**
+     * The amount, unit and food text of one part. With a [probe], a quantity glued to a food word reads as if it were
+     * spaced ("mleko200g" as "mleko 200g"); see [gluedQuantityAt]. The result keeps the typed text as its raw text.
+     */
+    fun parse(input: String, probe: FoodProbe? = null): ParsedSegment {
         val raw = input.trim()
+        val splits = gluedSplits(raw, probe)
+        if (splits.isNotEmpty()) {
+            val spaced = StringBuilder(raw).apply { splits.asReversed().forEach { insert(it, ' ') } }.toString()
+            val read = parse(spaced)
+            // Back onto the typed text: each space inserted before an index moved it one to the right.
+            fun typed(index: Int?) = index?.let { i -> i - splits.withIndex().count { (n, at) -> at + n < i } }
+            return read.copy(raw = raw, quantityStart = typed(read.quantityStart), quantityEnd = typed(read.quantityEnd))
+        }
         if (raw.isEmpty()) return ParsedSegment(raw, "", null, null, null, null)
 
         val quantity = findQuantity(raw) ?: return ParsedSegment(raw, raw, null, null, null, null)
@@ -394,8 +436,10 @@ class ShorthandParser {
         )
         /** "2x egg" and "egg x2". */
         val multiplierPattern = Regex("(?iu)(?<![\\p{L}\\p{N}])(?:(\\d+)\\s*x|x(\\d+))(?![\\p{L}\\p{N}.,])")
+        // Not \b: the JVM's \b sees no word before a digit after a Cyrillic letter, Android's does. A number glued to
+        // a word is read only by [gluedQuantityAt], the same way on both.
         val numberPattern = Regex(
-            "(?iu)\\b(\\d+\\s+\\d+/\\d+|\\d+/\\d+|\\d+(?:[.,]\\d+)?)(?![.,\\d]|\\s*%)\\s*" +
+            "(?iu)(?<![\\p{L}\\p{N}])(\\d+\\s+\\d+/\\d+|\\d+/\\d+|\\d+(?:[.,]\\d+)?)(?![.,\\d]|\\s*%)\\s*" +
                 "($unit)?(?![\\p{L}\\p{N}])"
         )
         val COMPOSITION_TAIL = Regex("(?iu)^(?:raw|cooked|roasted|grilled|boneless|skinless|lean|fat)\\b.*")
@@ -409,6 +453,8 @@ class ShorthandParser {
         val FRACTION = Regex("\\d+/\\d+")
         val MULTIPLIER = Regex("(?iu)\\d+x|x\\d+")
         val ATTACHED_QUANTITY = Regex("(\\d+(?:[.,]\\d+)?)(\\p{L}+)")
+        /** A food word with its quantity glued to its end: letters, a number, an optional unit ("mleko200g", "banana2"). */
+        val GLUED_QUANTITY = Regex("(\\p{L}+)(\\d+(?:[.,]\\d+)?)(\\p{L}*)")
         val ARTICLES = setOf("a", "an")
         val COMPOSITION_WORDS = setOf("raw", "cooked", "roasted", "grilled", "boneless", "skinless", "lean", "fat")
         // The tail rules come from the break characters and the lexicon's separators, so the sets cannot drift apart.
