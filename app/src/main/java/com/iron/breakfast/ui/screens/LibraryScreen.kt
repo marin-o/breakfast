@@ -83,6 +83,7 @@ import com.iron.breakfast.domain.asciiDigits
 import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.label
+import com.iron.breakfast.plain
 import com.iron.breakfast.pretty
 import com.iron.breakfast.ui.components.isLargeFont
 import com.iron.breakfast.ui.components.foodText
@@ -457,7 +458,7 @@ internal fun LibraryFoodEditScreen(vm: BreakfastViewModel) {
 @Composable
 private fun LibraryAmountSheet(vm: BreakfastViewModel, food: FoodRecord, target: MealSlot, onDismiss: () -> Unit) {
     val colors = LocalBreakfastColors.current
-    var amountText by rememberSaveable(food.id, target) { mutableStateOf((vm.lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount).pretty()) }
+    var amountText by rememberSaveable(food.id, target) { mutableStateOf((vm.lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount).plain()) }
     var unit by rememberSaveable(food.id, target) { mutableStateOf(vm.lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit) }
     var chosenMeal by rememberSaveable(food.id, target) { mutableStateOf(target) }
     val units = (listOf(food.defaultUnit, food.nutrition.unit) + food.conversions.map { it.unit }).filter { it != MeasureUnit.UNKNOWN }.distinct()

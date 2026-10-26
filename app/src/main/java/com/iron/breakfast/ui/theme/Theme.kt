@@ -29,8 +29,7 @@ private fun BreakfastColors.toMaterial(dark: Boolean): ColorScheme {
 }
 
 @Composable
-fun BreakfastTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
+fun BreakfastTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     val colors = if (dark) DarkBreakfastColors else LightBreakfastColors
     CompositionLocalProvider(LocalBreakfastColors provides colors) {
         MaterialTheme(colorScheme = colors.toMaterial(dark), typography = BreakfastTypography, shapes = BreakfastShapes) {

@@ -4,6 +4,11 @@ package com.iron.breakfast
 
 import android.Manifest
 import android.app.Application
+import android.app.UiModeManager
+import android.content.Context
+import android.content.res.Configuration
+import android.os.Build
+import androidx.compose.foundation.isSystemInDarkTheme
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -230,7 +235,27 @@ import kotlin.math.abs
 import kotlin.math.hypot
 
 class MainActivity : ComponentActivity() {
+    /** The Theme setting this activity was created with; a different one is applied by [applyTheme]. */
+    private var appliedTheme = ThemeChoice.SYSTEM
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(newBase)
+        appliedTheme = AppSettings(newBase).theme
+        // Below API 31 there is no per-app night mode: the activity's own configuration is overridden before its window
+        // and theme exist, so the window background (values-night) and Compose both follow the setting.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            forcedUiMode(newBase.resources.configuration.uiMode, appliedTheme)?.let { uiMode ->
+                applyOverrideConfiguration(Configuration().apply { this.uiMode = uiMode })
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        // API 31+: the system's per-app night mode, which also colours the launch window on the next cold start. The
+        // same value again changes nothing; a different one (the setting reset elsewhere) recreates the activity once.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            getSystemService(UiModeManager::class.java)?.setApplicationNightMode(applicationNightModeOf(appliedTheme))
+        }
         super.onCreate(savedInstanceState)
         // Keep system bars aligned with the light/dark background token.
         enableEdgeToEdge(
@@ -239,7 +264,25 @@ class MainActivity : ComponentActivity() {
         )
         // The system's contrast scrim is a white veil in light mode, which showed as a white nav bar under `bg`.
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) window.isNavigationBarContrastEnforced = false
-        setContent { BreakfastTheme { IronApp() } }
+        setContent {
+            val vm: BreakfastViewModel = viewModel()
+            LaunchedEffect(vm.theme) { applyTheme(vm.theme) }
+            BreakfastTheme(dark = darkThemeOf(vm.theme, isSystemInDarkTheme())) { IronApp(vm) }
+        }
+    }
+
+    /**
+     * A new Theme setting: API 31+ sets the per-app night mode (the system recreates the activity with it and uses it
+     * for the launch window); below that the activity is recreated so [attachBaseContext] applies it.
+     */
+    private fun applyTheme(theme: ThemeChoice) {
+        if (theme == appliedTheme) return
+        appliedTheme = theme
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            getSystemService(UiModeManager::class.java)?.setApplicationNightMode(applicationNightModeOf(theme))
+        } else {
+            recreate()
+        }
     }
 }
 
@@ -292,6 +335,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var settingsOpen by mutableStateOf(false); private set
     /** How the composer shows a long draft, from Settings. */
     var longDraft by mutableStateOf(settings.longDraft); private set
+    /** Settings, Display. The activity applies [theme]; the decimal mark is read through [DisplayDecimal]. */
+    internal var theme by mutableStateOf(settings.theme); private set
+    var showMacros by mutableStateOf(settings.showMacros); private set
+    var showMissingNote by mutableStateOf(settings.showMissingNote); private set
+    internal var decimalMark by mutableStateOf(settings.decimalMark.also { DisplayDecimal.mark = it }); private set
     /** Settings, Logging: how long Undo stays, the meal a log without one goes to, and the ranking switches. */
     internal var undoWindow by mutableStateOf(settings.undoWindow); private set
     internal var mealMode by mutableStateOf(settings.mealMode); private set
@@ -554,6 +602,23 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         dayStartHour = hour
         settings.dayStartHour = hour
         checkDay(returning = true)
+    }
+    internal fun chooseTheme(choice: ThemeChoice) {
+        theme = choice
+        settings.theme = choice
+    }
+    fun chooseShowMacros(show: Boolean) {
+        showMacros = show
+        settings.showMacros = show
+    }
+    fun chooseShowMissingNote(show: Boolean) {
+        showMissingNote = show
+        settings.showMissingNote = show
+    }
+    internal fun chooseDecimalMark(mark: DecimalMark) {
+        decimalMark = mark
+        settings.decimalMark = mark
+        DisplayDecimal.mark = mark
     }
     internal fun chooseUndoWindow(window: UndoWindow) {
         undoWindow = window
@@ -1167,7 +1232,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         editingFoodId = entry.foodId
         editingFoodName = entry.foodName
         entryEditMode = EntryEditMode.QUICK
-        input = "${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}"
+        input = "${entry.enteredAmount.plain()} ${entry.enteredUnit.displayLabel()}"
         mealDraftError = null
         quickEditHintVisible = true
         val hintSession = ++quickHintSession
@@ -1187,7 +1252,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         editingFoodName = entry.foodName
         editingFoodPickerOpen = false
         entryEditMode = EntryEditMode.FULL
-        input = "${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()} ${entry.foodName}"
+        input = "${entry.enteredAmount.plain()} ${entry.enteredUnit.displayLabel()} ${entry.foodName}"
         mealDraftError = null
         quickHintSession += 1
         quickEditHintVisible = false
@@ -2034,7 +2099,10 @@ internal data class LogDraftView(
 internal fun draftLogPlan(input: String, planner: LogPlanner): LogPlan = planner.plan(input)
 
 internal fun MealSlot.label() = name.lowercase().replaceFirstChar { it.titlecase() }
-internal fun Double.pretty() = if (this % 1 == 0.0) "%.0f".format(Locale.ROOT, this) else "%.1f".format(Locale.ROOT, this)
+/** A number for a field the user edits: whole without ".0", else one decimal, always with a point (input reads both marks). */
+internal fun Double.plain() = if (this % 1 == 0.0) "%.0f".format(Locale.ROOT, this) else "%.1f".format(Locale.ROOT, this)
+/** [plain] as shown on screen: with the "Decimal mark" setting's mark. */
+internal fun Double.pretty() = markDecimals(plain(), DisplayDecimal.mark)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

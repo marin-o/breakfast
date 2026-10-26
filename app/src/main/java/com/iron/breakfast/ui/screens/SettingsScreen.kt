@@ -34,7 +34,9 @@ import com.iron.breakfast.BreakfastViewModel
 import com.iron.breakfast.DiaryPicker
 import com.iron.breakfast.SETTINGS_GROUPS
 import com.iron.breakfast.SettingsPage
+import com.iron.breakfast.DecimalMark
 import com.iron.breakfast.MealMode
+import com.iron.breakfast.ThemeChoice
 import com.iron.breakfast.UndoWindow
 import com.iron.breakfast.canShiftMealBound
 import com.iron.breakfast.dayStartLabel
@@ -105,7 +107,15 @@ private fun ColumnScope.LoggingPage(vm: BreakfastViewModel) {
 
 @Composable
 private fun ColumnScope.DisplayPage(vm: BreakfastViewModel) {
+    ChoiceRow("Theme", THEME_CHOICES, vm.theme, vm::chooseTheme)
+    Hairline()
     ChoiceRow("Long draft", LONG_DRAFT_CHOICES, vm.longDraft, vm::chooseLongDraft)
+    Hairline()
+    ChoiceRow("Macros on today", SHOW_HIDE, vm.showMacros, vm::chooseShowMacros)
+    Hairline()
+    ChoiceRow("Missing values note", SHOW_HIDE, vm.showMissingNote, vm::chooseShowMissingNote)
+    Hairline()
+    ChoiceRow("Decimal mark", DECIMAL_MARK_CHOICES, vm.decimalMark, vm::chooseDecimalMark)
     Hairline()
 }
 
@@ -170,4 +180,7 @@ private val UNDO_CHOICES = listOf(
 private val MEAL_MODE_CHOICES = listOf(MealMode.ASK to "Ask", MealMode.BY_TIME to "By time", MealMode.LAST_USED to "Last used")
 private val MEAL_BOUND_ROWS = listOf(MealSlot.BREAKFAST to "Breakfast until", MealSlot.LUNCH to "Lunch until", MealSlot.DINNER to "Dinner until")
 private val ON_OFF = listOf(true to "On", false to "Off")
+private val SHOW_HIDE = listOf(true to "Show", false to "Hide")
+private val THEME_CHOICES = listOf(ThemeChoice.SYSTEM to "System", ThemeChoice.LIGHT to "Light", ThemeChoice.DARK to "Dark")
+private val DECIMAL_MARK_CHOICES = listOf(DecimalMark.POINT to "Point", DecimalMark.COMMA to "Comma")
 private val LONG_DRAFT_CHOICES = listOf(LongDraft.END to "End", LongDraft.START to "Start", LongDraft.TWO_LINES to "Two lines")

@@ -16,6 +16,8 @@ import com.iron.breakfast.domain.parseStrictAmountUnit
 import com.iron.breakfast.domain.parseDecimal
 import com.iron.breakfast.domain.resolveNutrition
 import com.iron.breakfast.domain.displayLabel
+import com.iron.breakfast.DisplayDecimal
+import com.iron.breakfast.markDecimals
 import com.iron.breakfast.pretty
 import java.time.Instant
 import java.time.ZoneId
@@ -86,8 +88,9 @@ internal fun quantityRateDisplay(
         converted -> "$base $multiply ${printed.rateText}"
         else -> "${printed.amountText} ${entry.enteredUnit.displayLabel()} $multiply ${printed.rateText}".trim()
     }
+    val mark = DisplayDecimal.mark
     return QuantityDisplay(
-        line = if (includeRateUnit) withRateUnit(line, rateUnit, approximate) else line,
+        line = markDecimals(if (includeRateUnit) withRateUnit(line, rateUnit, approximate) else line, mark),
         approximateLabel = entered.takeIf { approximate },
     )
 }

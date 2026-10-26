@@ -569,7 +569,7 @@ fun DayHeader(
 /** One macro column: [share] is its fraction of the 2dp track; [value] is ink and [unit] soft. */
 data class MacroStat(val label: String, val value: String, val unit: String, val share: Float)
 
-/** The one big figure of a screen: 72sp kcal, its caption, and three macro columns. */
+/** The one big figure of a screen: 72sp kcal, its caption, and three macro columns (none when [macros] is empty). */
 @Composable
 fun DayTotal(
     kilocalories: String,
@@ -584,7 +584,9 @@ fun DayTotal(
     Column(modifier.fillMaxWidth()) {
         Text(kilocalories, color = colors.ink, style = BreakfastType.Hero)
         Text(caption, color = colors.soft, style = BreakfastType.Secondary)
-        if (stacked) {
+        if (macros.isEmpty()) {
+            // Only the kcal: "Macros on today" is hidden.
+        } else if (stacked) {
             // Large font: one macro per row, value, unit and label on one line, each with its own bar above.
             Column(Modifier.fillMaxWidth().padding(top = 22.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 macros.forEach { macro ->

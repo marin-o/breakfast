@@ -124,9 +124,9 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 val macros = macroTotalsOf(selected.map { it.nutritionSnapshot })
                 DayTotal(
                     formatKcal(total.calories),
-                    dailyMacroStats(total.calories, macros),
+                    if (vm.showMacros) dailyMacroStats(total.calories, macros) else emptyList(),
                     Modifier.padding(top = 18.dp),
-                    note = dailyMacroNote(macros),
+                    note = dailyMacroNote(macros, showMacros = vm.showMacros, showNote = vm.showMissingNote),
                 )
             }
             vm.mealDraftError?.let { message -> item { Text(message, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(vertical = 6.dp)) } }
@@ -191,9 +191,12 @@ internal fun dailyMacroStats(kcal: Double, macros: MacroTotals): List<MacroStat>
     )
 }
 
-/** The one line under the macros when any of them shows "?". */
-internal fun dailyMacroNote(macros: MacroTotals): String? =
-    if (macros.anyPartial) "? some foods have no value" else null
+/**
+ * The one line under the macros when any of them shows "?". Never drawn when the macros are hidden ("Macros on today"
+ * Hide) or the note is ("Missing values note" Hide).
+ */
+internal fun dailyMacroNote(macros: MacroTotals, showMacros: Boolean = true, showNote: Boolean = true): String? =
+    if (showMacros && showNote && macros.anyPartial) "? some foods have no value" else null
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable

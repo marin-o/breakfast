@@ -1,6 +1,11 @@
 package com.iron.breakfast
 
+import android.app.UiModeManager
 import android.content.Context
+import android.content.res.Configuration
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.edit
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.ui.components.LongDraft
@@ -50,7 +55,31 @@ internal class AppSettings(context: Context) {
         get() = prefs.getBoolean(LEARN_FROM_PICKS_KEY, true)
         set(value) = prefs.edit { putBoolean(LEARN_FROM_PICKS_KEY, value) }
 
+    /** Theme: System (the phone's light or dark) by default. */
+    var theme: ThemeChoice
+        get() = enumOf(prefs.getString(THEME_KEY, null), ThemeChoice.SYSTEM)
+        set(value) = prefs.edit { putString(THEME_KEY, value.name) }
+
+    /** "Macros on today": the protein, carbs and fat block on Daily; shown by default. */
+    var showMacros: Boolean
+        get() = prefs.getBoolean(SHOW_MACROS_KEY, true)
+        set(value) = prefs.edit { putBoolean(SHOW_MACROS_KEY, value) }
+
+    /** "Missing values note": the line under the macros when one shows "?"; shown by default. */
+    var showMissingNote: Boolean
+        get() = prefs.getBoolean(SHOW_MISSING_NOTE_KEY, true)
+        set(value) = prefs.edit { putBoolean(SHOW_MISSING_NOTE_KEY, value) }
+
+    /** The decimal mark numbers are shown with; Point by default. Input accepts both either way. */
+    var decimalMark: DecimalMark
+        get() = enumOf(prefs.getString(DECIMAL_MARK_KEY, null), DecimalMark.POINT)
+        set(value) = prefs.edit { putString(DECIMAL_MARK_KEY, value.name) }
+
     private companion object {
+        const val THEME_KEY = "theme"
+        const val SHOW_MACROS_KEY = "show_macros"
+        const val SHOW_MISSING_NOTE_KEY = "show_missing_note"
+        const val DECIMAL_MARK_KEY = "decimal_mark"
         const val DAY_START_HOUR_KEY = "day_start_hour"
         const val LONG_DRAFT_KEY = "long_draft"
         const val UNDO_WINDOW_KEY = "undo_window"
@@ -138,3 +167,51 @@ internal fun automaticMeal(mode: MealMode, hour: Int, bounds: MealBounds, lastUs
     MealMode.BY_TIME -> mealByTime(hour, bounds)
     MealMode.LAST_USED -> lastUsed
 }
+
+/** The "Theme" choice. */
+internal enum class ThemeChoice { SYSTEM, LIGHT, DARK }
+
+/** Whether the app draws dark: the phone's mode ([systemDark]) for System, else the forced one. */
+internal fun darkThemeOf(choice: ThemeChoice, systemDark: Boolean): Boolean = when (choice) {
+    ThemeChoice.SYSTEM -> systemDark
+    ThemeChoice.LIGHT -> false
+    ThemeChoice.DARK -> true
+}
+
+/**
+ * The per-app night mode for `UiModeManager.setApplicationNightMode` (API 31+): the system then applies it to the
+ * app's configuration and to its launch window. AUTO removes the override, so the app follows the phone.
+ */
+internal fun applicationNightModeOf(choice: ThemeChoice): Int = when (choice) {
+    ThemeChoice.SYSTEM -> UiModeManager.MODE_NIGHT_AUTO
+    ThemeChoice.LIGHT -> UiModeManager.MODE_NIGHT_NO
+    ThemeChoice.DARK -> UiModeManager.MODE_NIGHT_YES
+}
+
+/**
+ * Below API 31: the activity's own uiMode with its night bits forced by [choice], applied as an override configuration
+ * before the window exists, so its theme (the `values-night` window background) and Compose both follow. Null for
+ * System. The system's launch window cannot be changed there; it keeps the phone's mode.
+ */
+internal fun forcedUiMode(baseUiMode: Int, choice: ThemeChoice): Int? {
+    val night = when (choice) {
+        ThemeChoice.SYSTEM -> return null
+        ThemeChoice.LIGHT -> Configuration.UI_MODE_NIGHT_NO
+        ThemeChoice.DARK -> Configuration.UI_MODE_NIGHT_YES
+    }
+    return (baseUiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or night
+}
+
+/** The "Decimal mark" choice: how numbers are shown. Input reads both marks whatever it is. */
+internal enum class DecimalMark { POINT, COMMA }
+
+/** The decimal mark shown now. Snapshot state, so a composition that formatted a number reads it again on a change. */
+internal object DisplayDecimal {
+    var mark by mutableStateOf(DecimalMark.POINT)
+}
+
+/** [text] with every decimal point between two digits shown as [mark]. */
+internal fun markDecimals(text: String, mark: DecimalMark): String =
+    if (mark == DecimalMark.POINT) text else DECIMAL_POINT.replace(text, ",")
+
+private val DECIMAL_POINT = Regex("""(?<=\d)\.(?=\d)""")
