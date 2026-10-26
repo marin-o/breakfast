@@ -1506,7 +1506,17 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     fun closeSearch() { offSearchJob?.cancel(); offSearchGeneration++; searchBusy = false; searchOpen = false; if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false }
     fun onSearch(v: String) { offSearchJob?.cancel(); offSearchGeneration++; searchBusy = false; searchQuery = v; offResults = emptyList(); offSearchMessage = null; offSearchUnavailable = false }
-    fun onResolverQuery(v: String) { resolverQuery = v; resolverResults = if (v.isBlank()) emptyList() else engine.search(v) }
+    private var resolverSearchJob: Job? = null
+    /** The resolver's search, ranked off the main thread; a result is shown only while its query is still the one typed. */
+    fun onResolverQuery(v: String) {
+        resolverQuery = v
+        resolverSearchJob?.cancel()
+        if (v.isBlank()) { resolverResults = emptyList(); return }
+        resolverSearchJob = viewModelScope.launch {
+            val results = withContext(Dispatchers.Default) { engine.search(v) }
+            if (resolverQuery == v) resolverResults = results
+        }
+    }
     private fun advanceUnknownQueue() {
         unknownQueue = unknownQueue.drop(1)
         // What is left to resolve stays where it was typed: the Library bar, or the log draft.

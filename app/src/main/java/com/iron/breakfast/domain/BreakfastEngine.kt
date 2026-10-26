@@ -2,6 +2,8 @@ package com.iron.breakfast.domain
 
 import com.iron.breakfast.data.BreakfastStore
 import com.iron.breakfast.data.DiaryRows
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 class BreakfastEngine(private val store: BreakfastStore) {
@@ -53,7 +55,9 @@ class BreakfastEngine(private val store: BreakfastStore) {
         dayKey: String,
         pins: Map<String, FoodRecord> = emptyMap(),
     ): SavedMeal {
-        val plan = planner(pins).plan(input)
+        // Planning is CPU work (tens of ms on a phone with a year of foods): off the caller's (main) thread, before
+        // the store's lock is taken.
+        val plan = withContext(Dispatchers.Default) { planner(pins).plan(input) }
         val entries = plan.entries.mapIndexed { index, resolved ->
             MealEntry(
                 id = UUID.randomUUID().toString(),
