@@ -4,19 +4,34 @@ A single-module Android app (`app/`, package `com.iron.breakfast`): Kotlin, Jetp
 
 ## Package map
 
+Packages under `com.iron.breakfast`. Feature packages hold that feature's screens and the types and pure helpers only it uses; its state still lives in `BreakfastViewModel` (see State owners).
+
 | Package / file | Responsibility |
 | --- | --- |
-| `MainActivity.kt` | Entry point. `MainActivity` sets edge-to-edge and hosts `IronApp` inside `BreakfastTheme`. `BreakfastViewModel` (`AndroidViewModel` + `SavedStateHandle`) owns all screen state and every user action. Routing is a set of VM flags, not a nav graph. |
+| `app/MainActivity.kt` | Entry point. `MainActivity` applies Theme and Text size before its window exists, sets edge-to-edge and hosts `IronApp` inside `BreakfastTheme`. |
+| `app/AppRoot.kt` | `IronApp`, the root composable: the diary pickers, the lifecycle hooks, which screen and overlays are drawn and in what order, and the root dialogs (discard food, notice, Replace diary, Delete all, Storage unavailable). Routing is a set of VM flags, not a nav graph. |
+| `app/BreakfastViewModel.kt` | `BreakfastViewModel` (`AndroidViewModel` + `SavedStateHandle`) owns all screen state and every user action. |
+| `app/SavedDrafts.kt` | Save and restore of the log draft, an open food form and the selected day in `SavedStateHandle`. |
+| `AppDecisions.kt` | Pure routing decisions the VM makes (`topOverlay`, `exitLibraryTarget`, submit and review plans, the Undo window, `resolveSelectedDay`), unit-tested. Not yet split by feature. |
+| `SuspendResult.kt` | `suspendRunCatching`, which rethrows `CancellationException`. |
 | `domain/` | Pure Kotlin rules with no Android types (except `BreakfastEngine`). `ShorthandParser`/`ShorthandLexicon` (text to segments), `FoodMatcher` (local ranking, script rule), `LogPlanner` (draft rows and totals), `NutritionCalculator`, `NutritionShorthand`, `Barcode`, `Models`, `FoodCatalog` (bundled USDA and generic fixtures), `BuiltInCatalogSync`, `MealMarkers` (meal words in a draft), `FoodRules` (Library order, applying a food edit, default serving kcal). `BreakfastEngine` is the facade the VM calls; it wraps `BreakfastStore`. |
 | `data/BreakfastStore.kt` | The only writer. Opens Room (`breakfast.db`), seeds and syncs the catalogue, holds the in-memory `StoreSnapshot` the UI reads. |
 | `data/RoomStorage.kt` | Entities, DAOs, `BreakfastDatabase` (schema v6), migrations 1 to 6. Exported schemas: `app/schemas/debug` (used by every variant). |
 | `data/DiaryExport.kt` | The diary file for Export diary and Import diary: DTOs, Room rows to file and back, and the import checks. Pure, unit-tested (see Export and import). |
 | `data/OpenFoodFactsClient.kt` | The only network code (see OFF boundary). |
-| `FoodDraft.kt` | New food / edit food form state, its typed values (`FoodDraftFields`) and the dirty check. |
-| `AppDecisions.kt` | Pure routing decisions the VM makes (`topOverlay`, `exitLibraryTarget`, submit and review plans, the Undo window, `resolveSelectedDay`), unit-tested. |
-| `SavedDrafts.kt` | Save and restore of the log draft, an open food form and the selected day in `SavedStateHandle`. |
-| `AppSettings.kt` | User settings in plain `SharedPreferences` (`settings`), one typed field per setting (see Settings), with the pure decision for each. |
-| `ui/screens/` | One file per surface: Daily (the Today tab), Log, Meal, Library, Entry, Search, Scan, CreateFood, Settings (the list of groups and one page per group), plus `ScreenData.kt` (pure UI mapping, unit-tested). |
+| `today/` | Daily (the Today tab) and Meal screens (`DailyScreen.kt`, `MealScreen.kt`) and `UndoOffer`. |
+| `log/` | The Log page (`LogScreen.kt`) and `LogDraftView`, what it shows for one draft. |
+| `library/` | The Library list, food detail and amount sheet, and the Edit-food screen with `FoodBarcodeField` (`LibraryScreen.kt`); the meal pickers (`LibraryMealPickers.kt`); the Library bar's reading of a draft (`LibraryInput.kt`). |
+| `food/` | New food (`CreateFoodScreen.kt`), the food form state `FoodDraft` with its typed values (`FoodDraftFields`) and dirty check (`FoodDraft.kt`), and `FoodFormFocus`. |
+| `entry/` | Entry detail, quick edit, full edit and the replacement food picker (`EntryScreens.kt`), and `EntryEditMode`. |
+| `scan/` | The scanner, manual barcode and product review sheet (`ScanScreens.kt`), the product review values (`ProductReview.kt`) and `ScannerUnavailableReason`. |
+| `search/` | Open Food Facts search and the Library's "No local match" screen (`SearchScreens.kt`). |
+| `resolve/` | The unknown-food resolver (`ResolveUnknownScreen.kt`) and `LogResolveRequest`, a "Not in your foods" part sent to the Library. |
+| `contribution/` | The Open Food Facts contribution screens (`ContributionScreens.kt`) and their pure helpers (`Contribution.kt`). |
+| `settings/` | User settings in plain `SharedPreferences` (`settings`; `AppSettings.kt`: one typed field per setting, see Settings, with the pure decision for each) and the Settings list and pages (`SettingsScreen.kt`). |
+| `transfer/` | `DiaryPicker` and the export and import messages (`DiaryTransfer.kt`). |
+| `ui/Format.kt` | Shared display formatting: `MealSlot.label()`, `Double.plain()`, `Double.pretty()`. |
+| `ui/screens/ScreenData.kt` | Pure UI mapping used by several features, unit-tested. |
 | `ui/components/`, `ui/theme/` | Shared Compose components; Monochrome tokens (`Color.kt` mirrors DESIGN.md), type, shape, dimens. |
 
 ## State owners
