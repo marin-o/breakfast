@@ -778,20 +778,25 @@ fun Snackbar(
     }
 }
 
-/** 2dp track with a 2dp ink bar sweeping across it, and a soft caption. No spinners. [onDark] draws it in white over the camera ground. */
+/**
+ * 2dp track with a 2dp ink bar sweeping across it, and a soft caption. No spinners. [onDark] draws it in white over the
+ * camera ground. With reduced motion the bar stays still in the middle of the track: the same look, no sweep.
+ */
 @Composable
 fun LinearProgress(caption: String, modifier: Modifier = Modifier, onDark: Boolean = false) {
     val colors = LocalBreakfastColors.current
     val track = if (onDark) colors.cameraMark.copy(alpha = 0.24f) else colors.line
     val bar = if (onDark) colors.cameraMark else colors.ink
     val captionColor = if (onDark) colors.cameraMark.copy(alpha = 0.7f) else colors.soft
-    val transition = rememberInfiniteTransition(label = "linear-progress")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(durationMillis = 1400, easing = LinearEasing)),
-        label = "linear-progress-phase",
-    )
+    val phase = if (rememberMotionReduced()) STILL_PROGRESS_PHASE else {
+        val transition = rememberInfiniteTransition(label = "linear-progress")
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(durationMillis = 1400, easing = LinearEasing)),
+            label = "linear-progress-phase",
+        ).value
+    }
     Column(modifier.fillMaxWidth().semantics { contentDescription = caption }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Canvas(Modifier.fillMaxWidth().height(2.dp)) {
             val mid = size.height / 2
@@ -803,6 +808,9 @@ fun LinearProgress(caption: String, modifier: Modifier = Modifier, onDark: Boole
         Text(caption, color = captionColor, style = BreakfastType.Secondary)
     }
 }
+
+/** The sweep's phase that puts the bar in the middle of the track, where it stays when motion is reduced. */
+private const val STILL_PROGRESS_PHASE = 0.5f
 
 /** Sub-screen header: back arrow, a title (optionally a soft second line) and a trailing slot. */
 @Composable

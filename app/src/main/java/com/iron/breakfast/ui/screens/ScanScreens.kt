@@ -121,6 +121,7 @@ import com.iron.breakfast.ui.components.ButtonKind
 import com.iron.breakfast.ui.components.Field
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.LinearProgress
+import com.iron.breakfast.ui.components.rememberMotionReduced
 import com.iron.breakfast.ui.components.MealChoices
 import com.iron.breakfast.ui.components.mealRowFits
 import com.iron.breakfast.ui.components.PrimaryButton
@@ -323,7 +324,11 @@ private fun LookupProgress(code: String, onCancel: () -> Unit, modifier: Modifie
     val target = with(LocalDensity.current) { ReviewViewfinderTop.toPx() }
     var start by remember { mutableStateOf<Float?>(null) }
     val slide = remember { Animatable(0f) }
-    LaunchedEffect(start != null) { if (start != null) slide.animateTo(1f, tween(durationMillis = 280)) }
+    // With reduced motion the brackets are simply in their place above the sheet.
+    val reduced = rememberMotionReduced()
+    LaunchedEffect(start != null) {
+        if (start != null) { if (reduced) slide.snapTo(1f) else slide.animateTo(1f, tween(durationMillis = 280)) }
+    }
     Box(Modifier.fillMaxSize().background(colors.cameraGround)) {
         ScannerFrame(
             top = {

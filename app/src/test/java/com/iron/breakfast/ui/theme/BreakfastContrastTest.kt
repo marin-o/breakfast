@@ -16,8 +16,9 @@ class BreakfastContrastTest {
         val l1 = luminance(a); val l2 = luminance(b)
         return (maxOf(l1, l2) + 0.05) / (minOf(l1, l2) + 0.05)
     }
-    private fun assertAa(name: String, fg: Color, bg: Color) {
-        assertTrue("$name contrast %.2f:1 is below 4.5:1".format(ratio(fg, bg)), ratio(fg, bg) >= 4.5)
+    private fun assertAa(name: String, fg: Color, bg: Color) = assertAtLeast(name, fg, bg, 4.5)
+    private fun assertAtLeast(name: String, fg: Color, bg: Color, minimum: Double) {
+        assertTrue("$name contrast %.2f:1 is below %.1f:1".format(ratio(fg, bg), minimum), ratio(fg, bg) >= minimum)
     }
     @Test fun lightTextPairsMeetAa() {
         assertAa("light ink", LightBreakfastColors.ink, LightBreakfastColors.bg)
@@ -28,5 +29,32 @@ class BreakfastContrastTest {
         assertAa("dark ink", DarkBreakfastColors.ink, DarkBreakfastColors.bg)
         assertAa("dark soft", DarkBreakfastColors.soft, DarkBreakfastColors.bg)
         assertAa("dark inverse", DarkBreakfastColors.bg, DarkBreakfastColors.ink)
+    }
+
+    /**
+     * MOB-035, semantic pairs. `bad` is text (field errors, "Could not ..." lines, destructive buttons), so 4.5:1.
+     * `ok` fills the constructive button: its label is text (4.5:1) and the fill against the page is a non-text
+     * boundary (3:1, WCAG 1.4.11).
+     */
+    @Test fun semanticPairsMeetTheirThresholds() {
+        for ((theme, c) in listOf("light" to LightBreakfastColors, "dark" to DarkBreakfastColors)) {
+            assertAa("$theme bad text", c.bad, c.bg)
+            assertAa("$theme onOk label", c.onOk, c.ok)
+            assertAtLeast("$theme ok fill", c.ok, c.bg, 3.0)
+        }
+    }
+
+    /**
+     * MOB-035, `line`. It is about 1.25:1 on `bg`, below the 3:1 a meaningful non-text indicator needs, so it may only
+     * separate or outline at rest (hairlines, tracks, unselected and unfocused borders). Every state is drawn in ink or
+     * bad over it (selected choice, focused field, error ring), and ink must stand 3:1 from line. The 1.2:1 floor only
+     * keeps the hairline visible; raising `line` to 3:1 would be a design change (owner).
+     */
+    @Test fun lineIsOnlyDecorativeAndStatesStandOutFromIt() {
+        for ((theme, c) in listOf("light" to LightBreakfastColors, "dark" to DarkBreakfastColors)) {
+            assertAtLeast("$theme line hairline", c.line, c.bg, 1.2)
+            assertAtLeast("$theme ink state over line", c.ink, c.line, 3.0)
+            assertAtLeast("$theme bad ring", c.bad, c.bg, 3.0)
+        }
     }
 }
