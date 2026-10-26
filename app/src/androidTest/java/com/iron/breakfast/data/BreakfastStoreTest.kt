@@ -169,4 +169,25 @@ class BreakfastStoreTest {
         assertEquals(fresh.entries(), store.entries())
         assertEquals(fresh.preferenceMap(), store.preferenceMap())
     }
+
+    /**
+     * MOB-028: an entry-only write keeps the engine's matcher instance, a preference write keeps it too (preferences
+     * reach ranking through a new planner), and a food write rebuilds it.
+     */
+    @Test
+    fun onlyAFoodWriteRebuildsTheMatcher() = runBlocking {
+        val engine = BreakfastEngine(store)
+        val matcher = engine.matcherForTesting()
+        val planner = engine.planner()
+        store.saveEntries(listOf(entry("matcher-a")))
+        assertTrue(matcher === engine.matcherForTesting())
+        assertTrue(planner === engine.planner())
+
+        engine.reinforce(FoodCatalog.fixtures.first().id)
+        assertTrue(matcher === engine.matcherForTesting())
+        assertTrue(planner !== engine.planner())
+
+        store.archiveFood(FoodCatalog.fixtures.first().id)
+        assertTrue(matcher !== engine.matcherForTesting())
+    }
 }

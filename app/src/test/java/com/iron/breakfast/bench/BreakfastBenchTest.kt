@@ -2,6 +2,7 @@ package com.iron.breakfast.bench
 
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.LogPlanner
+import com.iron.breakfast.domain.MatcherCache
 import com.iron.breakfast.domain.foodsAvailableForLogging
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -31,6 +32,25 @@ class BreakfastBenchTest {
         val stats = bench("matcher-build foods=${logging.size}", warmup = 3, iterations = 10) { FoodMatcher(logging) }
         report(stats)
         assertTrue("matcher build median ${stats.medianMs} ms", stats.medianMs < GENEROUS_BUILD_MS)
+    }
+
+    /**
+     * The first draft after a write, through [MatcherCache] as the engine does it: an entry write now keeps the foods
+     * list object (matcher kept); a food write hands over a new one (matcher rebuilt), as every write used to.
+     */
+    @Test fun firstDraftAfterAWrite() {
+        val foods = year.foods
+        val cache = MatcherCache()
+        var n = 0
+        val kept = bench("first-draft entry write (matcher kept)", warmup = 5, iterations = 20) {
+            logDraftWork(LogPlanner(cache.matcherFor(foods), preferences), "2 eggs, ${n++} g rolled oats")
+        }
+        val rebuilt = bench("first-draft food write (matcher rebuilt)", warmup = 5, iterations = 20) {
+            logDraftWork(LogPlanner(cache.matcherFor(foods.toList()), preferences), "2 eggs, ${n++} g rolled oats")
+        }
+        report(kept)
+        report(rebuilt)
+        assertTrue("first draft median ${kept.medianMs} ms", kept.medianMs < GENEROUS_BUILD_MS)
     }
 
     private companion object {

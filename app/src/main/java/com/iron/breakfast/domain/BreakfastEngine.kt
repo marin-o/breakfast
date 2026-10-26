@@ -7,8 +7,7 @@ import java.util.UUID
 class BreakfastEngine(private val store: BreakfastStore) {
     private val parser = ShorthandParser()
     private val calculator = NutritionCalculator()
-    private var matcherCatalog: List<FoodRecord>? = null
-    private var cachedMatcher: FoodMatcher? = null
+    private val matchers = MatcherCache()
 
     suspend fun initialize() = store.initialize()
 
@@ -24,23 +23,17 @@ class BreakfastEngine(private val store: BreakfastStore) {
     private var plannerPins: Map<String, FoodRecord>? = null
 
     /**
-     * Rebuilt whenever [BreakfastStore.foods] is a new list. Every store write reloads the whole snapshot, so any write,
-     * an entry-only one included, rebuilds it on the next call; indexing the catalog is the costly part of matching.
+     * The matcher for the stored foods, rebuilt only when [BreakfastStore.foods] is a new list: the store keeps the
+     * same list after an entry or preference write (MOB-028), so only a food write re-indexes the catalog, the costly
+     * part of matching. Preferences are not in the index; they are passed to each ranking call.
      */
-    @Synchronized
-    private fun matcher(): FoodMatcher {
-        val foods = store.foods()
-        if (cachedMatcher == null || foods !== matcherCatalog) {
-            matcherCatalog = foods
-            cachedMatcher = FoodMatcher(foodsAvailableForLogging(foods))
-        }
-        return cachedMatcher!!
-    }
+    private fun matcher(): FoodMatcher = matchers.matcherFor(store.foods())
+
+    /** The matcher in use now; tests check which writes keep it. */
+    internal fun matcherForTesting(): FoodMatcher = matcher()
 
     /** Called after every write to the foods, so the next [matcher] call indexes the stored foods again. */
-    private fun invalidateMatcher() {
-        matcherCatalog = null
-    }
+    private fun invalidateMatcher() = matchers.invalidate()
 
     fun parse(input: String): ParsedSegment = parser.parse(input)
 
@@ -371,3 +364,24 @@ fun parseStrictAmountUnit(text: String): ParsedAmountUnit? {
  * millisecond in typed order: the diary lists them by saved time, and the typed order is then kept.
  */
 internal fun orderedSavedAt(nowMs: Long, index: Int): Long = nowMs + index
+
+/** One [FoodMatcher] per foods list object, built by [build] the first time that list is asked for. */
+internal class MatcherCache(
+    private val build: (List<FoodRecord>) -> FoodMatcher = { FoodMatcher(foodsAvailableForLogging(it)) },
+) {
+    private var source: List<FoodRecord>? = null
+    private var matcher: FoodMatcher? = null
+
+    @Synchronized
+    fun matcherFor(foods: List<FoodRecord>): FoodMatcher {
+        val current = matcher
+        if (current != null && foods === source) return current
+        return build(foods).also { matcher = it; source = foods }
+    }
+
+    /** The next [matcherFor] builds again, whatever list it gets. */
+    @Synchronized
+    fun invalidate() {
+        source = null
+    }
+}

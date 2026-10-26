@@ -169,18 +169,18 @@ class BreakfastBenchmark {
         report(bench("d first draft, no write (new planner, matcher kept)", warmup = WARMUP, iterations = ITERATIONS) {
             logDraftWork(engine.planner(passPins("nowrite", pass++, pin)), "2 eggs")
         })
-        var rebuiltEveryTime = true
+        var rebuilds = 0
         var next = 1_000
         val samples = (0 until WARMUP + ITERATIONS).map {
-            val foodsBefore = store.foods()
-            val plannerBefore = engine.planner()
+            val matcherBefore = engine.matcherForTesting()
             store.saveEntries(listOf(benchEntry(next++)))
-            val (planner, ns) = timed { engine.planner().also { p -> logDraftWork(p, "2 eggs") } }
-            rebuiltEveryTime = rebuiltEveryTime && store.foods() !== foodsBefore && planner !== plannerBefore
+            // A new text each time, as the next draft after a log is: the planner's part cache cannot answer it.
+            val (_, ns) = timed { logDraftWork(engine.planner(), "2 eggs, $next g rolled oats") }
+            if (engine.matcherForTesting() !== matcherBefore) rebuilds++
             ns
         }.drop(WARMUP)
-        report(BenchStats("d first draft after an entry-only write (incl. matcher rebuild)", samples))
-        report("d entry-only write rebuilds the matcher: $rebuiltEveryTime")
+        report(BenchStats("d first draft after an entry-only write", samples))
+        report("d entry-only write rebuilds the matcher: ${rebuilds == WARMUP + ITERATIONS} (rebuilt $rebuilds of ${WARMUP + ITERATIONS})")
     }
 
     /** (e) The day-total fold for the busiest day, and everything Daily computes in composition for one day. */
