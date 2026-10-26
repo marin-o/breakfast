@@ -225,4 +225,13 @@ class BreakfastStoreTest {
         store.archiveFood(FoodCatalog.fixtures.first().id)
         assertTrue(matcher !== engine.matcherForTesting())
     }
+
+    /** A second start (initialize on the same database) rewrites no catalogue row, so the table order stays. */
+    @Test
+    fun aSecondStartRewritesNothing() = runBlocking {
+        val before = database.foodDao().all()
+        BreakfastStore(database).initialize()
+        assertEquals(before, database.foodDao().all())
+        assertEquals(store.foods(), BreakfastStore(database).apply { initialize() }.foods())
+    }
 }

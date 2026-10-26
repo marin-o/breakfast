@@ -334,15 +334,8 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
         val foods = database.foodDao().all().map { entity ->
             entity.toDomain(
                 aliases = aliases[entity.id].orEmpty().map { it.alias },
-                conversions = conversions[entity.id].orEmpty().map {
-                    ServingConversion(
-                        unit = MeasureUnit.valueOf(it.unit),
-                        baseUnitsPerServing = it.baseUnitsPerServing,
-                        provenance = it.provenance,
-                        approximate = it.approximate,
-                        label = it.label
-                    )
-                }
+                // The same mapping as every other read: a stored "" label is no label (null), as the catalogue has it.
+                conversions = conversions[entity.id].orEmpty().map { it.toDomain() }
             )
         }
         return foods

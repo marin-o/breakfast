@@ -105,7 +105,8 @@ interface FoodDao {
     @Query("SELECT id FROM foods")
     suspend fun ids(): List<String>
 
-    @Query("SELECT * FROM foods")
+    // Every query that feeds the snapshot has an explicit order; rowid is the table order a plain scan gave before.
+    @Query("SELECT * FROM foods ORDER BY rowid")
     suspend fun all(): List<FoodEntity>
 
     @Query("SELECT * FROM foods WHERE id = :id")
@@ -130,7 +131,7 @@ interface FoodDao {
 
 @Dao
 interface FoodAliasDao {
-    @Query("SELECT * FROM food_aliases")
+    @Query("SELECT * FROM food_aliases ORDER BY rowid")
     suspend fun all(): List<FoodAliasEntity>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -148,7 +149,7 @@ interface FoodAliasDao {
 
 @Dao
 interface ServingConversionDao {
-    @Query("SELECT * FROM serving_conversions")
+    @Query("SELECT * FROM serving_conversions ORDER BY rowid")
     suspend fun all(): List<ServingConversionEntity>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -166,7 +167,7 @@ interface ServingConversionDao {
 
 @Dao
 interface PreferenceDao {
-    @Query("SELECT * FROM preferences")
+    @Query("SELECT * FROM preferences ORDER BY rowid")
     suspend fun all(): List<PreferenceEntity>
 
     @Query("SELECT * FROM preferences WHERE foodId = :foodId")
@@ -184,7 +185,7 @@ interface PreferenceDao {
 
 @Dao
 interface MealEntryDao {
-    @Query("SELECT * FROM meal_entries ORDER BY saved_at_epoch_ms ASC")
+    @Query("SELECT * FROM meal_entries ORDER BY saved_at_epoch_ms ASC, rowid ASC")
     suspend fun all(): List<MealEntryEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

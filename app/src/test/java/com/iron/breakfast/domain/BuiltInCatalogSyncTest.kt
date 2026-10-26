@@ -22,6 +22,17 @@ class BuiltInCatalogSyncTest {
         assertFalse("domashno mleko" in changed.single().aliases)
     }
 
+    /**
+     * Every catalogue food as the database can hand it back (aliases in another order, a blank serving label) is the
+     * same food: the sync must not rewrite it at each start, which also moved it to the end of the table.
+     */
+    @Test fun aRowReadBackFromStorageIsNotRewritten() {
+        val readBack = FoodCatalog.fixtures.map { food ->
+            food.copy(aliases = food.aliases.reversed(), conversions = food.conversions.reversed().map { it.copy(label = it.label ?: "") })
+        }
+        assertTrue(BuiltInCatalogSync.changedRows(readBack, FoodCatalog.fixtures).isEmpty())
+    }
+
     @Test fun aRowThatMatchesTheCatalogueIsNotRewritten() {
         assertTrue(BuiltInCatalogSync.changedRows(listOf(homeMilk), FoodCatalog.fixtures).isEmpty())
     }

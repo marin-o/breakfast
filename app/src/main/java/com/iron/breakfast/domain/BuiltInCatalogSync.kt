@@ -24,7 +24,18 @@ object BuiltInCatalogSync {
                 defaultUnit = built.defaultUnit,
                 conversions = built.conversions,
             )
-            synced.takeIf { it != row }
+            synced.takeIf { storedForm(it) != storedForm(row) }
         }
     }
+
+    /**
+     * A food as storage keeps it: aliases are a set (read back in table order, not typed order) and a blank serving
+     * label is no label. Comparing in this form keeps a row that only came back from the database differently
+     * ordered from counting as changed, which rewrote (and moved to the end of the table) catalogue rows at every start.
+     */
+    private fun storedForm(food: FoodRecord): FoodRecord = food.copy(
+        aliases = food.aliases.distinct().sorted(),
+        conversions = food.conversions.map { it.copy(label = it.label?.ifBlank { null }) }
+            .sortedWith(compareBy({ it.unit }, { it.label.orEmpty() })),
+    )
 }
