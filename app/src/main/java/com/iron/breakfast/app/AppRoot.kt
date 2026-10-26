@@ -89,7 +89,6 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     // A recreation (dark mode, resize, locale) stops the old activity, but the user never left.
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { if (stopMeansLeaving(activity?.isChangingConfigurations == true)) vm.onAppStopped() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { vm.onAppStarted() }
-    LaunchedEffect(vm.feedbackUntil, vm.resolverOpen) { while (vm.feedbackUntil > 0L) { kotlinx.coroutines.delay(1000); if (vm.resolverOpen) vm.holdFeedback() else if (System.currentTimeMillis() >= vm.feedbackUntil) { vm.expireFeedback(); break } } }
     if (vm.scannerOpen) { ScannerScreen(vm); return }
     val scanReviewBackdropVisible = vm.selectedProduct != null && vm.selectedProductFromScan
     if (scanReviewBackdropVisible) ScanReviewBackdrop(vm::clearSelectedProduct)

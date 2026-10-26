@@ -1,13 +1,15 @@
 package com.iron.breakfast.app
 
 import com.iron.breakfast.DiaryChangeKind
+import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.today.UndoOffer
 import com.iron.breakfast.undoAfterLog
 import com.iron.breakfast.undoEndsAt
 
 /**
  * A committed diary write, published by [DiarySession] after it reloaded the diary. Listeners react to the kind, not
- * to the call site: Undo ends or keeps by [undoAfterChange], the Library list is recomputed when [refreshesLibrary].
+ * to the call site: Undo ends, keeps or replaces its offer by [undoAfterChange] (`today/UndoController`), "Not right?"
+ * feedback follows a logged batch (`today/MatchFeedback`), the Library list is recomputed when [refreshesLibrary].
  */
 internal sealed interface DiaryChange {
     /** The kind the Undo rule [undoEndsAt] reads. */
@@ -18,10 +20,11 @@ internal sealed interface DiaryChange {
     val refreshesLibrary: Boolean
 
     /**
-     * Add on the Log page, or a Library mixed batch. [offer] is the batch's own Undo, which replaces the pending one;
-     * null (the batch saved nothing) keeps it ([undoAfterLog]).
+     * Add on the Log page, or a Library mixed batch. [entries] are the rows it saved, as saved; they get their own Undo
+     * (with [message] as its text), which replaces the pending one. None (the batch saved nothing) keeps the pending
+     * one ([undoAfterLog]).
      */
-    data class BatchLogged(val offer: UndoOffer.Logged?) : DiaryChange {
+    data class BatchLogged(val message: String, val entries: List<MealEntry>) : DiaryChange {
         override val kind get() = DiaryChangeKind.LOG
         override val refreshesLibrary get() = false
     }
@@ -54,8 +57,8 @@ internal sealed interface DiaryChange {
         override val refreshesLibrary get() = false
     }
 
-    /** An entry deleted; [offer] is the Undo that puts it back, which replaces the pending one. */
-    data class EntryDeleted(val offer: UndoOffer.Deleted) : DiaryChange {
+    /** [entry] deleted; its Undo, which puts it back, replaces the pending one. */
+    data class EntryDeleted(val entry: MealEntry) : DiaryChange {
         override val kind get() = DiaryChangeKind.DELETE
         override val refreshesLibrary get() = false
     }
@@ -92,9 +95,13 @@ internal sealed interface DiaryChange {
     }
 }
 
-/** The Undo offer after [change]: a write with its own Undo replaces [current]; otherwise [undoEndsAt] decides. */
-internal fun undoAfterChange(current: UndoOffer?, change: DiaryChange): UndoOffer? = when (change) {
-    is DiaryChange.BatchLogged -> undoAfterLog(current, change.offer)
-    is DiaryChange.EntryDeleted -> change.offer
+/**
+ * The Undo offer after [change], published at [nowMs]: a write with its own Undo replaces [current] with an offer made
+ * now; otherwise [undoEndsAt] decides.
+ */
+internal fun undoAfterChange(current: UndoOffer?, change: DiaryChange, nowMs: Long): UndoOffer? = when (change) {
+    is DiaryChange.BatchLogged ->
+        undoAfterLog(current, change.entries.takeIf { it.isNotEmpty() }?.let { UndoOffer.Logged(change.message, it, nowMs) })
+    is DiaryChange.EntryDeleted -> UndoOffer.Deleted(change.entry, nowMs)
     else -> if (undoEndsAt(change.kind)) null else current
 }

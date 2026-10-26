@@ -43,7 +43,7 @@ import com.iron.breakfast.ui.screens.matchDisplay
     val raw = vm.unknownQueue.firstOrNull().orEmpty()
     val display = unknownDisplay(raw, vm.typedUnknown(raw))
     val (position, total) = resolvePosition(vm.unknownQueueTotal, vm.unknownQueue.size)
-    val saved = vm.savedBatchNames()
+    val saved = vm.undo.lastBatchNames()
     val context = listOfNotNull(
         vm.unknownQueueTarget?.label(),
         saved.takeIf { it.isNotEmpty() }?.joinToString(", ")?.let { "$it saved" },

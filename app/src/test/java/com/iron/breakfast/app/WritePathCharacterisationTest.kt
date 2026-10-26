@@ -77,15 +77,18 @@ class WritePathCharacterisationTest {
         assertEquals(pending, undoAfterLog(pending, null))
     }
 
-    /** The change each path publishes since B11, as `BreakfastViewModel` builds it at that call site. */
-    private fun published(path: String, logged: UndoOffer.Logged?, deleted: UndoOffer.Deleted): DiaryChange = when (path) {
-        "Log Add", "Library mixed batch" -> DiaryChange.BatchLogged(logged)
+    /**
+     * The change each path publishes since B11, as its call site builds it. Since B13 a batch and a delete carry their
+     * rows, and the Undo owner makes their offer when the change is published.
+     */
+    private fun published(path: String, logged: UndoOffer.Logged, deleted: UndoOffer.Deleted): DiaryChange = when (path) {
+        "Log Add", "Library mixed batch" -> DiaryChange.BatchLogged(logged.message, logged.entries)
         "Library log (single or batch)", "Product review Add", "New food saved and logged" -> DiaryChange.FoodsLogged
         "New food saved / food edited", "Food archived, restored, saved or cached" -> DiaryChange.FoodsChanged
         "Resolver pick" -> DiaryChange.QueuedPartLogged
         "Entry quick or full edit" -> DiaryChange.EntryEdited
         "Entry edit committed after its edit closed" -> DiaryChange.EntryEditedAfterClose
-        "Delete entry" -> DiaryChange.EntryDeleted(deleted)
+        "Delete entry" -> DiaryChange.EntryDeleted(deleted.entry)
         "Undo (restore or batch)" -> DiaryChange.UndoApplied
         "Not right? pick" -> DiaryChange.MatchCorrected
         "Confirm match" -> DiaryChange.MatchConfirmed
@@ -94,8 +97,10 @@ class WritePathCharacterisationTest {
     }
 
     @Test fun eachPublishedChangeDoesWhatTheCallSiteDidBefore() {
-        val logged = UndoOffer.Logged("1 food added to Breakfast", listOf(entry), 2_000L)
-        val deleted = UndoOffer.Deleted(entry, 3_000L)
+        // Both offers are made at the moment the change is published.
+        val now = 3_000L
+        val logged = UndoOffer.Logged("1 food added to Breakfast", listOf(entry), now)
+        val deleted = UndoOffer.Deleted(entry, now)
         for (path in PATHS) {
             val change = published(path.name, logged, deleted)
             val expectedUndo = when (path.undo) {
@@ -104,13 +109,13 @@ class WritePathCharacterisationTest {
                 Undo.REPLACE_WITH_ITS_OWN -> deleted
                 Undo.AFTER_LOG -> logged
             }
-            assertEquals(path.name, expectedUndo, undoAfterChange(pending, change))
+            assertEquals(path.name, expectedUndo, undoAfterChange(pending, change, now))
             assertEquals(path.name, path.refreshesDiary, change.rowsChanged)
             assertEquals(path.name, path.refreshesLibrary, change.refreshesLibrary)
         }
         // A batch that saved nothing keeps the pending Undo, as offerLoggedUndo did.
-        assertEquals(pending, undoAfterChange(pending, DiaryChange.BatchLogged(null)))
-        assertEquals(null, undoAfterChange(null, DiaryChange.BatchLogged(null)))
+        assertEquals(pending, undoAfterChange(pending, DiaryChange.BatchLogged("0 foods logged to Lunch", emptyList()), now))
+        assertEquals(null, undoAfterChange(null, DiaryChange.BatchLogged("0 foods logged to Lunch", emptyList()), now))
     }
 
     @Test fun everyWritePathIsListedOnce() {

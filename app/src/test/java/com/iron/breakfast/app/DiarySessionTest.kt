@@ -222,7 +222,7 @@ class DiarySessionTest {
         assertEquals(listOf(entry("edited")), session.entries)
         assertEquals(listOf<DiaryChange>(DiaryChange.EntryEditedAfterClose), published)
         val pending = com.iron.breakfast.today.UndoOffer.Deleted(entry("gone"), 1_000L)
-        assertEquals(pending, undoAfterChange(pending, DiaryChange.EntryEditedAfterClose))
+        assertEquals(pending, undoAfterChange(pending, DiaryChange.EntryEditedAfterClose, nowMs = 2_000L))
         assertFalse(DiaryChange.EntryEditedAfterClose.refreshesLibrary)
     }
 

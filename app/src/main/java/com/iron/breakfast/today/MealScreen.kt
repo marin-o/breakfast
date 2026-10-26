@@ -96,7 +96,7 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 Column(Modifier.fillMaxWidth()) {
                     EntryRow(entry, foods[entry.foodId], vm)
                     // Same correction block as Daily, for a doubtful match from the Log page.
-                    if (vm.feedbackOpen(entry)) CorrectionStrip(vm, entry)
+                    if (vm.feedback.isOpen(entry)) CorrectionStrip(vm, entry)
                 }
             }
             item {
@@ -127,8 +127,8 @@ internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot, modifier: Mo
     val draft = vm.logDraft.isNotBlank()
     val tick = rememberTick()
     ComposerFade(modifier) {
-        vm.loggedBatchMessage?.let { Snackbar(it, "Undo", { tick(); vm.undoLoggedBatch() }, Modifier.padding(bottom = 8.dp)) }
-        vm.undoEntry?.let { deleted -> Snackbar("${deleted.foodName} deleted", "Undo", { tick(); vm.undo() }, Modifier.padding(bottom = 8.dp)) }
+        vm.undo.loggedMessage?.let { Snackbar(it, "Undo", { tick(); vm.undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
+        vm.undo.deletedEntry?.let { deleted -> Snackbar("${deleted.foodName} deleted", "Undo", { tick(); vm.undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
         Composer(
             placeholder = if (draft) vm.logDraft else "Add to ${target.label()}",
             onClick = { vm.openLog(target) },
@@ -153,7 +153,7 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel
     Box(Modifier.fillMaxWidth().background(colors.bg).onSizeChanged { rowHeight = it.height }) {
         // Swipe reveals the delete panel; the panel is the only place `bad` fills a surface.
         if (revealOffset < 0f) Row(
-            Modifier.align(Alignment.CenterEnd).widthIn(min = 96.dp * fontScale).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).background(colors.bad).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { vm.delete(entry); revealOffset = 0f },
+            Modifier.align(Alignment.CenterEnd).widthIn(min = 96.dp * fontScale).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).background(colors.bad).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { vm.undo.delete(entry); revealOffset = 0f },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
@@ -168,7 +168,7 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel
                 customActions = listOf(
                     CustomAccessibilityAction("Quick edit amount") { vm.beginQuickEdit(entry); true },
                     CustomAccessibilityAction("Edit food and amount") { vm.beginFullEdit(entry); true },
-                    CustomAccessibilityAction("Delete ${entry.foodName}") { vm.delete(entry); true },
+                    CustomAccessibilityAction("Delete ${entry.foodName}") { vm.undo.delete(entry); true },
                 )
             }.combinedClickable(onClick = { vm.openEntryDetail(entry) }, onDoubleClick = { vm.beginQuickEdit(entry) }, onLongClick = { vm.beginFullEdit(entry) }).pointerInput(entry.id) {
                 awaitEachGesture {

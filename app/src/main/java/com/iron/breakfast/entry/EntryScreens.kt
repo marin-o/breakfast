@@ -109,7 +109,7 @@ internal fun EntryDetailScreen(vm: BreakfastViewModel, entry: MealEntry) {
                         SecondaryButton("Open in Library", { vm.openLibraryFoodDetail(entry) }, Modifier.weight(1f), fillWidth = false)
                     }
                 }
-                DestructiveButton("Delete entry", { vm.closeEntryDetail(); vm.delete(entry) }, Modifier.padding(top = 8.dp))
+                DestructiveButton("Delete entry", { vm.closeEntryDetail(); vm.undo.delete(entry) }, Modifier.padding(top = 8.dp))
             }
         }
     }

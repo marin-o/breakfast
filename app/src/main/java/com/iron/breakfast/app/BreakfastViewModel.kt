@@ -38,7 +38,6 @@ import com.iron.breakfast.scan.ScannerUnavailableReason
 import com.iron.breakfast.scan.ProductReviewOrigin
 import com.iron.breakfast.data.OffContributionDraft
 import com.iron.breakfast.food.FoodFormFocus
-import com.iron.breakfast.today.UndoOffer
 import com.iron.breakfast.resolve.LogResolveRequest
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.library.LibraryLogDraft
@@ -94,8 +93,6 @@ import com.iron.breakfast.LogSubmitPlan
 import com.iron.breakfast.domain.ShorthandLexicon
 import com.iron.breakfast.domain.mealMarkerSlots
 import com.iron.breakfast.settings.undoWindowMs
-import com.iron.breakfast.undoRemainingMs
-import com.iron.breakfast.undoOpen
 import com.iron.breakfast.domain.normalizeBarcode
 import com.iron.breakfast.foodFormBack
 import com.iron.breakfast.FoodFormBack
@@ -130,7 +127,10 @@ import com.iron.breakfast.data.plausibleNutrition
 import com.iron.breakfast.domain.editedCustomFoodRecord
 import com.iron.breakfast.domain.TypedPart
 import com.iron.breakfast.settings.SettingsState
-import com.iron.breakfast.suspendRunCatching
+import com.iron.breakfast.today.MatchFeedback
+import com.iron.breakfast.today.MatchStore
+import com.iron.breakfast.today.UndoController
+import com.iron.breakfast.today.UndoStore
 
 class BreakfastViewModel(application: Application, private val savedState: SavedStateHandle) : AndroidViewModel(application) {
     private val clock: () -> Long = System::currentTimeMillis
@@ -168,6 +168,32 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         scope = viewModelScope,
         onOpenFailed = { Log.e(LOG_TAG, "Storage could not be opened", it) },
         onRefreshed = { selectedEntry = selectedEntryId?.let { id -> entries.firstOrNull { it.id == id } } },
+    )
+    /** The pending Undo, its expiry and Delete (see [UndoController]); Daily and Meal talk to it. */
+    internal val undo = UndoController(
+        session = session,
+        store = object : UndoStore {
+            override suspend fun deleteEntry(id: String) = engine.deleteEntry(id)
+            override suspend fun restoreEntry(entry: MealEntry) { engine.restoreEntry(entry) }
+            override suspend fun deleteEntries(entries: List<MealEntry>) { engine.deleteEntries(entries) }
+        },
+        notices = notices,
+        windowMs = { undoWindowMs(settings.undoWindow) },
+        clock = clock,
+        scope = viewModelScope,
+    )
+    /** "Not right?" after a logged batch (see [MatchFeedback]); held while the resolver is open. */
+    internal val feedback = MatchFeedback(
+        session = session,
+        store = object : MatchStore {
+            override fun alternativesFor(entry: MealEntry) = engine.alternativesFor(entry)
+            override suspend fun replaceEntry(entryId: String, foodId: String) = engine.replaceEntry(entryId, foodId)
+            override suspend fun reinforce(foodId: String) = engine.reinforce(foodId)
+        },
+        notices = notices,
+        resolverOpen = { resolverOpen },
+        clock = clock,
+        scope = viewModelScope,
     )
     private val off = OpenFoodFactsClient()
     private val parser = ShorthandParser()
@@ -235,10 +261,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private var contributionPreflightToken = 0L
     var contributionLanguageCode by mutableStateOf("en"); private set
     var contributionPackageQuantityMl by mutableStateOf(""); private set
-    internal var undoOffer by mutableStateOf<UndoOffer?>(null); private set
-    private var undoExpiryJob: Job? = null
-    val undoEntry: MealEntry? get() = (undoOffer as? UndoOffer.Deleted)?.entry
-    val loggedBatchMessage: String? get() = (undoOffer as? UndoOffer.Logged)?.message
     var mealDraftError by mutableStateOf<String?>(null); private set
     /** The full-screen Log page. [logPreset] comes from the `+` or composer that opened it; [logChosen] from the Log's meal menu. */
     var logOpen by mutableStateOf(false); private set
@@ -307,10 +329,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var resolverQuery by mutableStateOf(""); private set
     var resolverSearchOpen by mutableStateOf(false); private set
     var resolverResults by mutableStateOf<List<RankedFood>>(emptyList()); private set
-    var feedbackUntil by mutableStateOf(0L); private set
-    var feedbackIds by mutableStateOf<Set<String>>(emptySet()); private set
-    /** The entries the last batch saved, for the resolve header. Not the Undo, which expires. */
-    private var loggedBatchIds: List<String> = emptyList()
 
     init {
         if (selectedDayKey == todayKey) followingToday = true
@@ -326,11 +344,14 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         // Every change is mirrored, so an added or cleared draft and a closed or saved form drop their keys.
         viewModelScope.launch { snapshotFlow { SavedLogDraft(logDraft, logDraftCommitted) }.collect { saveLogDraft(savedState, it) } }
         viewModelScope.launch { snapshotFlow { foodFormToSave() }.collect { saveFoodForm(savedState, it) } }
-        session.onChange(::onDiaryChange)
+        // After every committed write, in this order: Undo, "Not right?" feedback, the Library list.
+        session.onChange(undo::onChange)
+        session.onChange(feedback::onChange)
+        session.onChange { change -> if (change.refreshesLibrary) refreshLibrary() }
         // A new day start: today follows it at once, and a user on today stays on today (it counts as a return).
         settings.dayStartHourSetting.observe { checkDay(returning = true) }
         // An Undo offer showing now follows the new window from the moment it was made.
-        settings.undoWindowSetting.observe { undoOffer?.let { offerUndo(it); liveUndoOffer() } }
+        settings.undoWindowSetting.observe { undo.windowChanged() }
         settings.exportReminderSetting.observe { if (it == ExportReminder.NEVER) exportReminderVisible = false else checkExportReminder() }
         // "Safety copy" Don't keep also removes the copy kept so far.
         settings.keepSafetyCopySetting.observe { keep -> if (!keep) removeSafetyCopy() }
@@ -435,8 +456,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             change = { deleted -> DiaryChange.DiaryReplaced.takeIf { deleted } },
             onSuccess = { deleted ->
                 if (!deleted) { notices.show(DIARY_DELETE_FAILED); return@write }
-                // Nothing deleted may be undone (the change ended it), pinned, confirmed or resolved into the empty diary.
-                loggedBatchIds = emptyList(); logPins.clear(); feedbackIds = emptySet(); pendingContribution = null
+                // Nothing deleted may be pinned or resolved into the empty diary (Undo and feedback end with the change).
+                logPins.clear(); pendingContribution = null
                 abandonUnknownResolution(); closeEntryDetail()
                 if (alsoSettings) settings.resetToDefaults()
             },
@@ -547,8 +568,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                     notices.show(DIARY_IMPORT_REFUSED)
                     return@write
                 }
-                // Nothing from the old diary may be undone (the change ended it), pinned or confirmed into the new one.
-                loggedBatchIds = emptyList(); logPins.clear(); feedbackIds = emptySet()
+                // Nothing from the old diary may be pinned into the new one (Undo and feedback end with the change).
+                logPins.clear()
             },
         ) {
                 withContext(NonCancellable) {
@@ -1008,7 +1029,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val capturedInput = input
         val capturedDayKey = selectedDayKey
         session.write(
-            change = { saved -> DiaryChange.BatchLogged(loggedOffer("${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} logged to ${target.label()}", saved.entries)) },
+            change = { saved -> DiaryChange.BatchLogged("${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} logged to ${target.label()}", saved.entries) },
             onSuccess = { saved ->
                     if (input == capturedInput) input = saved.unresolvedSegments.joinToString(", ")
                     unknownQueue = saved.unresolvedSegments
@@ -1017,9 +1038,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                     resolutionContinuation = saved.unresolvedSegments.isNotEmpty()
                     resolverOpen = saved.unresolvedSegments.isNotEmpty()
                     mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
-                    feedbackIds = saved.entries.filter { it.approximateConversion }.mapTo(mutableSetOf()) { it.id }
-                    feedbackUntil = if (feedbackIds.isEmpty()) 0L else System.currentTimeMillis() + 30_000L
-                    loggedBatchIds = saved.entries.map { it.id }
             },
             onFailure = { notices.show(it.message ?: "Could not save this batch.") },
         ) { engine.save(cleaned, mealSlot = target, dayKey = capturedDayKey) }
@@ -1187,7 +1205,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         session.write(
             change = { saved ->
                 if (nothingSaved(saved)) null
-                else DiaryChange.BatchLogged(loggedOffer("${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} added to ${target.label()}", saved.entries))
+                else DiaryChange.BatchLogged("${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} added to ${target.label()}", saved.entries)
             },
             onSuccess = { saved ->
                 if (nothingSaved(saved)) {
@@ -1198,8 +1216,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 capturedPins.forEach { (part, food) -> if (logPins[part] == food) logPins.remove(part) }
                 closeLog()
                 if (logDraft == captured) logDraft = saved.unresolvedSegments.joinToString(", "); unknownQueue = saved.unresolvedSegments; unknownQueueTotal = saved.unresolvedSegments.size; unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }; resolutionContinuation = saved.unresolvedSegments.isNotEmpty(); resolverOpen = saved.unresolvedSegments.isNotEmpty(); mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
-                feedbackIds = saved.entries.filter { it.approximateConversion }.mapTo(mutableSetOf()) { it.id }; feedbackUntil = if (feedbackIds.isEmpty()) 0L else System.currentTimeMillis() + 30_000L
-                loggedBatchIds = saved.entries.map { it.id }
             },
             onFailure = { mealDraftError = it.message ?: "Could not save this meal." },
         ) { engine.save(captured, mealSlot = target, dayKey = selectedDayKey, pins = capturedPins) }
@@ -1210,65 +1226,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         result !is ReplacementResult.Success -> null
         stillOpen -> DiaryChange.EntryEdited
         else -> DiaryChange.EntryEditedAfterClose
-    }
-    /** Replaces the Undo offer; null clears it. An offer clears itself when its window ends. */
-    private fun offerUndo(offer: UndoOffer?) {
-        undoExpiryJob?.cancel()
-        undoExpiryJob = null
-        undoOffer = offer
-        if (offer == null) return
-        undoExpiryJob = viewModelScope.launch {
-            while (true) {
-                // "Until next action": no timer, the next log, edit or delete replaces the offer.
-                val window = undoWindowMs(settings.undoWindow) ?: return@launch
-                val left = undoRemainingMs(offer.offeredAtMs, clock(), window)
-                if (left <= 0L) break
-                delay(left)
-            }
-            if (undoOffer === offer) undoOffer = null
-        }
-    }
-    /** A logged batch's own Undo; null when it saved nothing, which leaves the current offer alone ([undoAfterLog]). */
-    private fun loggedOffer(message: String, entries: List<MealEntry>): UndoOffer.Logged? =
-        if (entries.isEmpty()) null else UndoOffer.Logged(message, entries, clock())
-    /** Every committed write: the pending Undo follows [undoAfterChange], and the Library list is recomputed when asked. */
-    private fun onDiaryChange(change: DiaryChange) {
-        val next = undoAfterChange(undoOffer, change)
-        if (next !== undoOffer) offerUndo(next)
-        if (change.refreshesLibrary) refreshLibrary()
-    }
-    /** The offer, while its window is open; an expired one is cleared. */
-    private fun liveUndoOffer(): UndoOffer? {
-        val offer = undoOffer ?: return null
-        if (undoOpen(offer.offeredAtMs, clock(), undoWindowMs(settings.undoWindow))) return offer
-        offerUndo(null)
-        return null
-    }
-    fun delete(entry: MealEntry) {
-        if (!ready || busy) return
-        session.write(
-            change = { _: Unit -> DiaryChange.EntryDeleted(UndoOffer.Deleted(entry, clock())) },
-            onFailure = { notices.show("Could not edit this entry.") },
-        ) { engine.deleteEntry(entry.id) }
-    }
-    /** Puts the deleted entry back with its own id and snapshot. */
-    fun undo() {
-        val offer = liveUndoOffer() as? UndoOffer.Deleted ?: return
-        if (!ready || busy) return
-        session.write(
-            change = DiaryChange.UndoApplied,
-            onFailure = { notices.show(UNDO_FAILED) },
-        ) { engine.restoreEntry(offer.entry) }
-    }
-    /** Deletes the logged batch in one transaction; an entry edited since it was logged stays. */
-    fun undoLoggedBatch() {
-        val offer = liveUndoOffer() as? UndoOffer.Logged ?: return
-        if (!ready || busy) return
-        session.write(
-            change = DiaryChange.UndoApplied,
-            onSuccess = { loggedBatchIds = emptyList() },
-            onFailure = { notices.show(UNDO_FAILED) },
-        ) { engine.deleteEntries(offer.entries) }
     }
     fun openCustom(name: String = "", brand: String = "", barcode: String = "", fromResolver: Boolean = false, fromOff: Boolean = false) {
         if (!fromResolver && unknownQueue.isNotEmpty()) abandonUnknownResolution()
@@ -1473,42 +1430,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     /** Leaves the current unresolved food unlogged and moves to the next one. */
     fun skipCurrentUnknown() { if (unknownQueue.isNotEmpty()) advanceUnknownQueue() }
-    /** Names of the foods the batch that produced this queue already saved, for the resolve header. */
-    fun savedBatchNames(): List<String> = loggedBatchIds.mapNotNull { id -> entries.firstOrNull { it.id == id }?.foodName }
-    fun feedbackOpen(entry: MealEntry): Boolean = entry.id in feedbackIds && System.currentTimeMillis() < feedbackUntil
-    fun feedbackCount(): Int = feedbackIds.count { id -> entries.any { it.id == id } && System.currentTimeMillis() < feedbackUntil }
-    fun alternatives(entry: MealEntry): List<RankedFood> = if (feedbackOpen(entry)) engine.alternativesFor(entry) else emptyList()
-    fun confirm(entry: MealEntry) {
-        if (!ready || busy || !feedbackOpen(entry)) return
-        session.write(
-            change = DiaryChange.MatchConfirmed,
-            onSuccess = { feedbackIds = feedbackIds - entry.id },
-            onFailure = {},
-        ) { engine.reinforce(entry.foodId) }
-    }
-    /** A "Not right?" pick: the entry becomes [food], which is reinforced. A refused replacement says why and reinforces nothing. */
-    fun chooseAlternative(entry: MealEntry, food: FoodRecord) {
-        if (!ready || busy || !feedbackOpen(entry)) return
-        session.write(
-            // The pending Undo stays (see [undoEndsAt]); it ends at the next log, edit or delete. A replaced entry is
-            // reloaded even when learning the pick then failed.
-            change = { pick: AlternativePick -> DiaryChange.MatchCorrected.takeIf { pick.result is ReplacementResult.Success } },
-            onSuccess = { pick ->
-                when (val result = pick.result) {
-                    is ReplacementResult.Success -> if (pick.learned) feedbackIds = feedbackIds - entry.id
-                    is ReplacementResult.Failure -> notices.show(result.reason)
-                }
-            },
-            onFailure = {},
-        ) {
-            val result = engine.replaceEntry(entry.id, food.id)
-            // A failure to learn the pick is silent, as before; the strip stays.
-            val learned = result is ReplacementResult.Success && suspendRunCatching { engine.reinforce(food.id) }.isSuccess
-            AlternativePick(result, learned)
-        }
-    }
-    fun expireFeedback() { feedbackUntil = 0L; feedbackIds = emptySet() }
-    fun holdFeedback() { if (resolverOpen && feedbackUntil > 0L) feedbackUntil += 1000L }
     fun submitSearch() {
         if (!ready || searchQuery.isBlank() || searchBusy) return
         val captured = searchQuery
@@ -1756,11 +1677,5 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }
     }
 }
-
-/** A "Not right?" pick as saved: the replacement, and whether the pick was then learned. */
-private data class AlternativePick(val result: ReplacementResult, val learned: Boolean)
-
-/** The notice when an Undo could not be applied. */
-private const val UNDO_FAILED = "Could not undo."
 
 internal const val LOG_TAG = "Breakfast"

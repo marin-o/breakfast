@@ -229,11 +229,11 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
                 customActions = listOf(
                     CustomAccessibilityAction("Quick edit amount") { vm.beginQuickEdit(entry); true },
                     CustomAccessibilityAction("Edit food and amount") { vm.beginFullEdit(entry); true },
-                    CustomAccessibilityAction("Delete ${entry.foodName}") { vm.delete(entry); true },
+                    CustomAccessibilityAction("Delete ${entry.foodName}") { vm.undo.delete(entry); true },
                 )
             }.combinedClickable(onClick = { vm.openEntryDetail(entry) }, onDoubleClick = { vm.beginQuickEdit(entry) }, onLongClick = { vm.beginFullEdit(entry) }),
         )
-        if (vm.feedbackOpen(entry)) CorrectionStrip(vm, entry)
+        if (vm.feedback.isOpen(entry)) CorrectionStrip(vm, entry)
     }
 }
 
@@ -245,8 +245,8 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
 internal fun DailyComposer(vm: BreakfastViewModel, modifier: Modifier = Modifier) {
     val tick = rememberTick()
     ComposerFade(modifier) {
-        vm.loggedBatchMessage?.let { Snackbar(it, "Undo", { tick(); vm.undoLoggedBatch() }, Modifier.padding(bottom = 8.dp)) }
-        vm.undoEntry?.let { Snackbar("${it.foodName} deleted", "Undo", { tick(); vm.undo() }, Modifier.padding(bottom = 8.dp)) }
+        vm.undo.loggedMessage?.let { Snackbar(it, "Undo", { tick(); vm.undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
+        vm.undo.deletedEntry?.let { Snackbar("${it.foodName} deleted", "Undo", { tick(); vm.undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
         if (vm.exportReminderShownOnDaily()) {
             LaunchedEffect(Unit) { vm.exportReminderOnScreenNow() }
             Snackbar("Export your diary.", "Export", vm::exportFromReminder, Modifier.padding(bottom = 8.dp))
@@ -287,9 +287,9 @@ internal fun CorrectionStrip(vm: BreakfastViewModel, entry: MealEntry) {
     Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
         Text("${entry.foodName} matched. Not right?", color = colors.soft, style = BreakfastType.Meta)
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ChoiceOption(entry.foodName, true, { vm.confirm(entry) })
+            ChoiceOption(entry.foodName, true, { vm.feedback.confirm(entry) })
             // The match shows as selected; the alternatives and Search are actions.
-            vm.alternatives(entry).forEach { alternative -> ChoiceOption(alternative.food.name, false, { vm.chooseAlternative(entry, alternative.food) }, selectable = false) }
+            vm.feedback.alternatives(entry).forEach { alternative -> ChoiceOption(alternative.food.name, false, { vm.feedback.chooseAlternative(entry, alternative.food) }, selectable = false) }
             ChoiceOption("Search", false, { vm.openSearch(entry.foodName) }, selectable = false)
         }
     }
