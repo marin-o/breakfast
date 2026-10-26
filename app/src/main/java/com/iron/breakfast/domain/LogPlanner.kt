@@ -90,6 +90,11 @@ class LogPlanner(
     private val parser: ShorthandParser = ShorthandParser(),
     /** Parts the user picked in the library, by the part text they now read as. Each one resolves to its food. */
     private val pins: Map<String, FoodRecord> = emptyMap(),
+    /**
+     * "Count what I'm typing" (P9). True: the part being typed counts and saves like a finished one. False: it counts
+     * and saves only once it is finished (a separator after it, or Done) or picked (a pinned choice).
+     */
+    private val countTyping: Boolean = true,
 ) {
     /** How one part reads: what the food is matched on, and whether the amount came from the food's own name. */
     private class Reading(val parsed: ParsedSegment, val wholeName: Boolean) {
@@ -236,10 +241,33 @@ class LogPlanner(
      * Every part of [input], resolved; parts that match nothing, have no conversion or need a choice are unresolved.
      * Meal words are not foods. Add saves exactly this plan, so the rows, the sum and the save always agree.
      */
-    fun plan(input: String): LogPlan {
+    fun plan(input: String): LogPlan = planOf(parser.split(input, probe))
+
+    /**
+     * What Add saves for [input] while it is [typing]: [plan] of [countedParts]. With [countTyping] on this is [plan];
+     * off, a part still being typed is left out (see [heldPart]).
+     */
+    fun plan(input: String, typing: Boolean): LogPlan = planOf(countedParts(input, typing))
+
+    /** The parts Add plans for [input] while [typing]: every part, except one still being typed when it does not count. */
+    fun countedParts(input: String, typing: Boolean): List<String> {
+        val parts = parser.split(input, probe)
+        return if (heldPartOf(input, typing, parts) != null) parts.dropLast(1) else parts
+    }
+
+    /** The part still being typed that Add leaves in the draft ([countTyping] off and neither finished nor picked); else null. */
+    fun heldPart(input: String, typing: Boolean): String? = heldPartOf(input, typing, null)
+
+    private fun heldPartOf(input: String, typing: Boolean, known: List<String>?): String? {
+        if (countTyping || !typing || input.isBlank() || endsOpen(input)) return null
+        val last = (known ?: parser.split(input, probe)).lastOrNull() ?: return null
+        return last.takeUnless { pins.containsKey(it) || ShorthandLexicon.mealSlotOf(it) != null }
+    }
+
+    private fun planOf(parts: List<String>): LogPlan {
         val entries = mutableListOf<SegmentResolution>()
         val unresolved = mutableListOf<String>()
-        parser.split(input, probe).forEach { raw ->
+        parts.forEach { raw ->
             if (ShorthandLexicon.mealSlotOf(raw) != null) return@forEach
             val resolution = resolve(raw)
             if (resolution != null && resolution.supported && !resolution.needsChoice) entries += resolution else unresolved += raw
@@ -265,8 +293,10 @@ class LogPlanner(
         var counted: SegmentResolution? = null
         if (activeText.isNotBlank() && ShorthandLexicon.mealSlotOf(activeText) == null) {
             val resolution = resolve(activeText)
-            // Add saves the part being typed by the same rule as every other part (see [plan]).
-            counted = resolution?.takeIf { it.supported && !it.needsChoice }
+            // Add saves the part being typed by the same rule as every other part (see [plan]), unless it is held back
+            // until it is finished or picked ("Count what I'm typing" off).
+            val counts = countTyping || pins.containsKey(activeText)
+            counted = resolution?.takeIf { counts && it.supported && !it.needsChoice }
             // Each outcome renders the part exactly once: a suggestion group, a choice group, an entry row, or a
             // Not-in-your-foods row.
             when {
@@ -282,6 +312,8 @@ class LogPlanner(
                 resolution.needsChoice -> active = resolution
                 // A part with no usable conversion is a Not-in-your-foods row.
                 !resolution.supported -> parts.last().let { rows += DraftRow.Unresolved(activeText, it.start, it.end) }
+                // Not counted yet: the clean single candidate is offered to pick, shown unselected, never as a row.
+                !counts && resolution.ranked.size == 1 -> suggestions = resolution.ranked
                 // A clean single candidate is an entry row, never a choice.
                 resolution.ranked.size == 1 -> {
                     rows += DraftRow.Entry(resolution)
@@ -294,7 +326,7 @@ class LogPlanner(
             rows = rows,
             activeText = activeText,
             active = active,
-            logged = plan(input).entries,
+            logged = plan(input, typing).entries,
             activePhrase = if (activeText.isBlank()) "" else stripArticle(phraseOf(activeText)),
             suggestions = suggestions,
             counted = counted,

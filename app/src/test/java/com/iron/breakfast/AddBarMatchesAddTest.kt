@@ -12,20 +12,25 @@ import org.junit.Test
 /**
  * What the add bar totals is exactly what Add saves (MOB-015). While the last word is typed, Add saves its best-ranked
  * food, so the bar counts it too, and that food shows selected. Checked for every input and every prefix of it, so
- * each state a draft passes through while it is typed is covered.
+ * each state a draft passes through while it is typed is covered. With "Count what I'm typing" off (B9) the word being
+ * typed is neither counted nor saved, and the invariant holds the same way.
  */
 class AddBarMatchesAddTest {
     private data class Saved(val foodId: String, val amount: Double, val unit: MeasureUnit, val kcal: Double)
 
-    private fun fixturesPlanner() = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+    private fun fixturesPlanner(countTyping: Boolean = true) = LogPlanner(FoodMatcher(FoodCatalog.fixtures), countTyping = countTyping)
     private val fixtures = fixturesPlanner()
-    private val messy = DraftInvariantTest.messyPlanner()
     private val extra = listOf("2 eggs, milk", "1 ban", "2 eggs, ban", "milk", "ban", "дом")
 
     /** Each input with the planner the Log page reads it with, and a factory for an independent planner. */
-    private val cases: List<Triple<LogPlanner, () -> LogPlanner, String>> =
-        (LogRegressionTest().inputs + extra).map { Triple(fixtures, ::fixturesPlanner, it) } +
-            (DraftInvariantTest.MESSY + extra).map { Triple(messy, DraftInvariantTest::messyPlanner, it) }
+    private fun casesFor(countTyping: Boolean): List<Triple<LogPlanner, () -> LogPlanner, String>> {
+        val fixtures = fixturesPlanner(countTyping)
+        val messy = DraftInvariantTest.messyPlanner(countTyping)
+        return (LogRegressionTest().inputs + extra).map { Triple(fixtures, { fixturesPlanner(countTyping) }, it) } +
+            (DraftInvariantTest.MESSY + extra).map { Triple(messy, { DraftInvariantTest.messyPlanner(countTyping) }, it) }
+    }
+    private val cases = casesFor(countTyping = true)
+    private val casesCountOff = casesFor(countTyping = false)
 
     private fun saved(entries: List<com.iron.breakfast.domain.SegmentResolution>) =
         entries.map { Saved(it.food.id, it.amount, it.unit, it.calculation.nutrition.calories) }
@@ -33,14 +38,18 @@ class AddBarMatchesAddTest {
     /** Every input as it is typed, letter by letter, then whole. */
     private fun typedStates(input: String) = (1..input.length).map { input.substring(0, it) }
 
-    @Test fun theBarCountsExactlyTheEntriesAddSaves() {
+    @Test fun theBarCountsExactlyTheEntriesAddSaves() = assertBarMatchesAdd(cases)
+
+    @Test fun withCountOffTheBarStillCountsExactlyTheEntriesAddSaves() = assertBarMatchesAdd(casesCountOff)
+
+    private fun assertBarMatchesAdd(cases: List<Triple<LogPlanner, () -> LogPlanner, String>>) {
         val failures = cases.flatMap { (planner, fresh, input) ->
             typedStates(input).flatMap { text ->
                 listOf(true, false).mapNotNull { typing ->
                     val logged = planner.draft(text, typing).logged
                     // Add's save() plans the committed text with a planner of its own: a fresh one, so no cached
                     // resolution is shared with the draft. Compared by value.
-                    val saved = fresh().plan(text).entries
+                    val saved = fresh().plan(text, typing).entries
                     val barKcal = logged.sumOf { it.calculation.nutrition.calories }
                     // save() snapshots each entry's calculation; this is the total it stores.
                     val savedKcal = saved.sumOf { it.calculation.nutrition.calories }
@@ -57,7 +66,27 @@ class AddBarMatchesAddTest {
     }
 
     /** The part being typed is counted exactly when it is shown as counted: an entry row or the selected first choice. */
-    @Test fun whatIsCountedShowsSelectedAndNothingElseDoes() {
+    @Test fun whatIsCountedShowsSelectedAndNothingElseDoes() = assertCountedShowsSelected(cases)
+
+    @Test fun withCountOffWhatIsCountedShowsSelectedAndNothingElseDoes() = assertCountedShowsSelected(casesCountOff)
+
+    /** With Count off and no pins, nothing being typed is ever counted, and every finished part still is. */
+    @Test fun withCountOffAWordBeingTypedIsNeverCounted() {
+        val failures = casesCountOff.flatMap { (planner, fresh, input) ->
+            typedStates(input).mapNotNull { text ->
+                val draft = planner.draft(text, typing = true)
+                val finished = fresh().plan(text, typing = false).entries.size
+                when {
+                    draft.counted != null -> "[$text] ${draft.counted.food.id} is counted while it is typed"
+                    planner.heldPart(text, typing = true) == null && draft.logged.size != finished -> "[$text] nothing held but the bar differs from Done"
+                    else -> null
+                }
+            }
+        }
+        assertEquals(emptyList<String>(), failures)
+    }
+
+    private fun assertCountedShowsSelected(cases: List<Triple<LogPlanner, () -> LogPlanner, String>>) {
         val failures = cases.flatMap { (planner, _, input) ->
             typedStates(input).mapNotNull { text ->
                 val draft = planner.draft(text, typing = true)

@@ -34,7 +34,12 @@ import com.iron.breakfast.BreakfastViewModel
 import com.iron.breakfast.DiaryPicker
 import com.iron.breakfast.SETTINGS_GROUPS
 import com.iron.breakfast.SettingsPage
+import com.iron.breakfast.MealMode
+import com.iron.breakfast.UndoWindow
+import com.iron.breakfast.canShiftMealBound
 import com.iron.breakfast.dayStartLabel
+import com.iron.breakfast.domain.MealSlot
+import com.iron.breakfast.untilOf
 import com.iron.breakfast.ui.components.AddCircle
 import com.iron.breakfast.ui.components.ChoiceOption
 import com.iron.breakfast.ui.components.Hairline
@@ -77,6 +82,24 @@ internal fun SettingsScreen(vm: BreakfastViewModel) {
 @Composable
 private fun ColumnScope.LoggingPage(vm: BreakfastViewModel) {
     StepperRow("Day starts at", dayStartLabel(vm.dayStartHour), { vm.shiftDayStart(-1) }, { vm.shiftDayStart(1) })
+    Hairline()
+    ChoiceRow("Undo", UNDO_CHOICES, vm.undoWindow, vm::chooseUndoWindow)
+    Hairline()
+    ChoiceRow("Meal", MEAL_MODE_CHOICES, vm.mealMode, vm::chooseMealMode)
+    Hairline()
+    if (vm.mealMode == MealMode.BY_TIME) {
+        MEAL_BOUND_ROWS.forEach { (meal, label) ->
+            val bounds = vm.mealBounds
+            StepperRow(
+                label, dayStartLabel(bounds.untilOf(meal) ?: 0), { vm.stepMealBound(meal, -1) }, { vm.stepMealBound(meal, 1) },
+                decreaseEnabled = canShiftMealBound(bounds, meal, -1), increaseEnabled = canShiftMealBound(bounds, meal, 1),
+            )
+            Hairline()
+        }
+    }
+    ChoiceRow("Count what I'm typing", ON_OFF, vm.countTyping, vm::chooseCountTyping)
+    Hairline()
+    ChoiceRow("Learn from my picks", ON_OFF, vm.learnFromPicks, vm::chooseLearnFromPicks)
     Hairline()
 }
 
@@ -140,4 +163,11 @@ private fun <T> ChoiceRow(label: String, choices: List<Pair<T, String>>, selecte
     }
 }
 
+private val UNDO_CHOICES = listOf(
+    UndoWindow.FIFTEEN_SECONDS to "15 s", UndoWindow.FIVE_SECONDS to "5 s", UndoWindow.THIRTY_SECONDS to "30 s",
+    UndoWindow.UNTIL_NEXT_ACTION to "Until next action",
+)
+private val MEAL_MODE_CHOICES = listOf(MealMode.ASK to "Ask", MealMode.BY_TIME to "By time", MealMode.LAST_USED to "Last used")
+private val MEAL_BOUND_ROWS = listOf(MealSlot.BREAKFAST to "Breakfast until", MealSlot.LUNCH to "Lunch until", MealSlot.DINNER to "Dinner until")
+private val ON_OFF = listOf(true to "On", false to "Off")
 private val LONG_DRAFT_CHOICES = listOf(LongDraft.END to "End", LongDraft.START to "Start", LongDraft.TWO_LINES to "Two lines")

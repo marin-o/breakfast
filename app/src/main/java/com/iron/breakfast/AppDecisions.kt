@@ -1,6 +1,7 @@
 package com.iron.breakfast
 
 import com.iron.breakfast.domain.DraftRow
+import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.NutritionInput
 import com.iron.breakfast.domain.ResolvedNutrition
@@ -49,10 +50,14 @@ internal fun productReviewOrigin(slot: MealSlot?, resolving: Boolean, queueNotEm
 
 /**
  * The Log page's target meal. Precedence: a meal picked from the Log menu, then a single typed meal word
- * (it beats a preset), then the preset. Two different typed words give no target; the plan reports the error.
+ * (it beats a preset), then the preset, then the "Meal" setting's [automatic] meal (null for Ask, see
+ * [automaticMeal]). Two different typed words give no target; the plan reports the error.
  */
-internal fun logTargetMealOf(chosen: MealSlot?, typedMarkers: List<MealSlot>, preset: MealSlot?): MealSlot? =
-    chosen ?: typedMarkers.singleOrNull() ?: preset
+internal fun logTargetMealOf(chosen: MealSlot?, typedMarkers: List<MealSlot>, preset: MealSlot?, automatic: MealSlot? = null): MealSlot? =
+    chosen ?: typedMarkers.singleOrNull() ?: preset ?: automatic
+
+/** The meal of the most recent log: the entry saved last. Null when nothing is logged. */
+internal fun lastUsedMeal(entries: List<MealEntry>): MealSlot? = entries.maxByOrNull { it.savedAtEpochMs }?.mealSlot
 
 /** The picker label: the target meal's name, or "Meal" when nothing is chosen, typed or preset. */
 internal fun logMealPickerLabel(target: MealSlot?): String = target?.label() ?: "Meal"
@@ -67,11 +72,14 @@ internal sealed interface LogSubmitPlan {
 }
 
 /** Decides what Add does with the Log input. Pure, so the no-meal path and the busy guard can be unit-tested. */
-internal fun logSubmitPlan(ready: Boolean, busy: Boolean, input: String, typedMarkers: List<MealSlot>, chosen: MealSlot?, preset: MealSlot?): LogSubmitPlan {
+internal fun logSubmitPlan(
+    ready: Boolean, busy: Boolean, input: String, typedMarkers: List<MealSlot>, chosen: MealSlot?, preset: MealSlot?,
+    automatic: MealSlot? = null,
+): LogSubmitPlan {
     if (!ready || busy) return LogSubmitPlan.Ignore
     if (input.isBlank()) return LogSubmitPlan.Error("Add at least one food.")
     if (typedMarkers.size > 1) return LogSubmitPlan.Error("Choose one meal marker, or remove the extra markers.")
-    val target = logTargetMealOf(chosen, typedMarkers, preset) ?: return LogSubmitPlan.OpenMenu
+    val target = logTargetMealOf(chosen, typedMarkers, preset, automatic) ?: return LogSubmitPlan.OpenMenu
     return LogSubmitPlan.Save(target)
 }
 
@@ -236,12 +244,15 @@ internal fun undoAfterLog(current: UndoOffer?, logged: UndoOffer.Logged?): UndoO
 /** An activity stop counts as leaving the app unless it is a recreation for a configuration change. */
 internal fun stopMeansLeaving(changingConfigurations: Boolean): Boolean = !changingConfigurations
 
-/** How long an Undo offer stays: from the log or delete it undoes. */
+/** How long an Undo offer stays by default: from the log or delete it undoes. */
 internal const val UNDO_WINDOW_MS = 15_000L
 
-/** True while an Undo offered at [offeredAtMs] can still be used. A clock set back before the offer closes it. */
-internal fun undoOpen(offeredAtMs: Long, nowMs: Long, windowMs: Long = UNDO_WINDOW_MS): Boolean =
-    nowMs >= offeredAtMs && nowMs - offeredAtMs < windowMs
+/**
+ * True while an Undo offered at [offeredAtMs] can still be used. A clock set back before the offer closes it. A null
+ * [windowMs] ("Until next action") never runs out: only the next log, edit or delete replaces the offer.
+ */
+internal fun undoOpen(offeredAtMs: Long, nowMs: Long, windowMs: Long? = UNDO_WINDOW_MS): Boolean =
+    nowMs >= offeredAtMs && (windowMs == null || nowMs - offeredAtMs < windowMs)
 
 /** What is left of an Undo offer's window at [nowMs]; 0 once it has closed. */
 internal fun undoRemainingMs(offeredAtMs: Long, nowMs: Long, windowMs: Long = UNDO_WINDOW_MS): Long =

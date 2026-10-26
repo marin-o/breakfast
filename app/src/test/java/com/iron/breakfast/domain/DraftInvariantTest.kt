@@ -24,7 +24,7 @@ class DraftInvariantTest {
         )
 
         /** The planner the messy inputs are read with: the fixtures plus two custom foods. */
-        internal fun messyPlanner() = LogPlanner(FoodMatcher(FoodCatalog.fixtures + listOf(
+        internal fun messyPlanner(countTyping: Boolean = true) = LogPlanner(FoodMatcher(FoodCatalog.fixtures + listOf(
             FoodRecord(
                 id = "bufu", name = "Buckwheat", aliases = emptyList(), category = "Grain", origin = FoodOrigin.CUSTOM,
                 nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(340.0, 12.0, 70.0, 3.0)),
@@ -35,7 +35,7 @@ class DraftInvariantTest {
                 nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(700.0, 8.0, 14.0, 75.0)),
                 defaultAmount = 30.0, defaultUnit = MeasureUnit.GRAM,
             ),
-        )))
+        )), countTyping = countTyping)
     }
 
     private val planner = messyPlanner()

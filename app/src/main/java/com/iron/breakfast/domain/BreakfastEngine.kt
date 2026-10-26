@@ -23,6 +23,19 @@ class BreakfastEngine(private val store: BreakfastStore) {
     private var plannerMatcher: FoodMatcher? = null
     private var plannerPreferences: Map<String, Preference>? = null
     private var plannerPins: Map<String, FoodRecord>? = null
+    private var plannerCountsTyping: Boolean? = null
+
+    /** "Count what I'm typing" (Settings): passed to every planner; see [LogPlanner]. */
+    @Volatile var countTyping: Boolean = true
+
+    /**
+     * "Learn from my picks" (Settings). Off: ranking ignores the learned preferences and a pick is not learned; the
+     * stored preferences stay as they are.
+     */
+    @Volatile var learnFromPicks: Boolean = true
+
+    /** The learned preferences ranking uses: none while [learnFromPicks] is off. */
+    private fun preferences(): Map<String, Preference> = rankingPreferences(learnFromPicks, store.preferenceMap())
 
     /**
      * The matcher for the stored foods, rebuilt only when [BreakfastStore.foods] is a new list: the store keeps the
@@ -39,11 +52,11 @@ class BreakfastEngine(private val store: BreakfastStore) {
 
     fun parse(input: String): ParsedSegment = parser.parse(input)
 
-    fun search(query: String): List<RankedFood> = matcher().suggestions(query, store.preferenceMap(), 20)
+    fun search(query: String): List<RankedFood> = matcher().suggestions(query, preferences(), 20)
 
     fun alternativesFor(entry: MealEntry): List<RankedFood> {
         val phrase = parser.parse(entry.sourcePhrase).foodPhrase.ifBlank { entry.foodName }
-        return matcher().suggestions(phrase, store.preferenceMap(), 3)
+        return matcher().suggestions(phrase, preferences(), 3)
             .filterNot { it.food.id == entry.foodId }
             .take(2)
     }
@@ -54,10 +67,12 @@ class BreakfastEngine(private val store: BreakfastStore) {
         mealSlot: MealSlot = MealSlot.BREAKFAST,
         dayKey: String,
         pins: Map<String, FoodRecord> = emptyMap(),
+        /** True when the last part is still being typed: with [countTyping] off it is then not saved. */
+        typing: Boolean = false,
     ): SavedMeal {
         // Planning is CPU work (tens of ms on a phone with a year of foods): off the caller's (main) thread, before
         // the store's lock is taken.
-        val plan = withContext(Dispatchers.Default) { planner(pins).plan(input) }
+        val plan = withContext(Dispatchers.Default) { planner(pins).plan(input, typing) }
         val entries = plan.entries.mapIndexed { index, resolved ->
             MealEntry(
                 id = UUID.randomUUID().toString(),
@@ -88,11 +103,12 @@ class BreakfastEngine(private val store: BreakfastStore) {
     @Synchronized
     fun planner(pins: Map<String, FoodRecord> = emptyMap()): LogPlanner {
         val matcher = matcher()
-        val preferences = store.preferenceMap()
-        // The same foods, preferences and pins give the same planner, so its per-part cache carries across keystrokes.
-        cachedPlanner?.let { if (matcher === plannerMatcher && preferences === plannerPreferences && pins == plannerPins) return it }
-        return LogPlanner(matcher, preferences, calculator, parser, pins).also {
-            cachedPlanner = it; plannerMatcher = matcher; plannerPreferences = preferences; plannerPins = pins
+        val preferences = preferences()
+        val counts = countTyping
+        // The same foods, preferences, pins and settings give the same planner, so its per-part cache carries across keystrokes.
+        cachedPlanner?.let { if (matcher === plannerMatcher && preferences === plannerPreferences && pins == plannerPins && counts == plannerCountsTyping) return it }
+        return LogPlanner(matcher, preferences, calculator, parser, pins, counts).also {
+            cachedPlanner = it; plannerMatcher = matcher; plannerPreferences = preferences; plannerPins = pins; plannerCountsTyping = counts
         }
     }
 
@@ -164,7 +180,7 @@ class BreakfastEngine(private val store: BreakfastStore) {
     suspend fun replaceEntryFromText(entryId: String, text: String): ReplacementResult {
         // Matched before the write: indexing never runs inside the store's transaction.
         val parsed = parser.parse(text)
-        val match = matcher().best(parsed.foodPhrase, store.preferenceMap())
+        val match = matcher().best(parsed.foodPhrase, preferences())
         return editEntry(entryId, "That entry is no longer available.") { old ->
             if (match == null) return@editEntry ReplacementResult.Failure("No matching food.")
             val amount = parsed.amount ?: old.enteredAmount
@@ -210,7 +226,8 @@ class BreakfastEngine(private val store: BreakfastStore) {
         )
     }
 
-    suspend fun reinforce(foodId: String) = store.reinforce(foodId)
+    /** Learns a pick; nothing while [learnFromPicks] is off. */
+    suspend fun reinforce(foodId: String) { if (learnFromPicks) store.reinforce(foodId) }
 
     /** Reloads the stored diary when the read after a committed write failed; true when it reloaded. */
     suspend fun reloadIfStale(): Boolean = store.reloadIfStale()
@@ -343,6 +360,12 @@ class BreakfastEngine(private val store: BreakfastStore) {
     fun totalsForToday(): NutritionValues = store.entries()
         .fold(NutritionValues.ZERO) { total, entry -> total + entry.nutritionSnapshot }
 }
+
+/** The preferences ranking reads: [stored] when picks are learned, else none (the same empty map every time). */
+internal fun rankingPreferences(learn: Boolean, stored: Map<String, Preference>): Map<String, Preference> =
+    if (learn) stored else NO_PREFERENCES
+
+private val NO_PREFERENCES: Map<String, Preference> = emptyMap()
 
 internal fun cachedFoodForLogging(candidate: FoodRecord, byId: FoodRecord?, byBarcode: FoodRecord?): FoodRecord =
     listOfNotNull(byId, byBarcode).firstOrNull { it.personalOverride && !it.archived } ?: candidate

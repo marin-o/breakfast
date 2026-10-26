@@ -292,7 +292,16 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var settingsOpen by mutableStateOf(false); private set
     /** How the composer shows a long draft, from Settings. */
     var longDraft by mutableStateOf(settings.longDraft); private set
-    private val engine = BreakfastEngine(BreakfastStore(application))
+    /** Settings, Logging: how long Undo stays, the meal a log without one goes to, and the ranking switches. */
+    internal var undoWindow by mutableStateOf(settings.undoWindow); private set
+    internal var mealMode by mutableStateOf(settings.mealMode); private set
+    internal var mealBounds by mutableStateOf(settings.mealBounds); private set
+    var countTyping by mutableStateOf(settings.countTyping); private set
+    var learnFromPicks by mutableStateOf(settings.learnFromPicks); private set
+    private val engine = BreakfastEngine(BreakfastStore(application)).also {
+        it.countTyping = countTyping
+        it.learnFromPicks = learnFromPicks
+    }
     private val off = OpenFoodFactsClient()
     private val parser = ShorthandParser()
     private val calculator = NutritionCalculator()
@@ -433,6 +442,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var resolverResults by mutableStateOf<List<RankedFood>>(emptyList()); private set
     var feedbackUntil by mutableStateOf(0L); private set
     var feedbackIds by mutableStateOf<Set<String>>(emptySet()); private set
+    /** A word still being typed that Add held back (Count off) while a resolve queue rewrites the draft; it stays last. */
+    private var logHeldPart: String? = null
     /** The entries the last batch saved, for the resolve header. Not the Undo, which expires. */
     private var loggedBatchIds: List<String> = emptyList()
 
@@ -544,6 +555,35 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         settings.dayStartHour = hour
         checkDay(returning = true)
     }
+    internal fun chooseUndoWindow(window: UndoWindow) {
+        undoWindow = window
+        settings.undoWindow = window
+        // An offer showing now follows the new window from the moment it was made.
+        undoOffer?.let { offerUndo(it); liveUndoOffer() }
+    }
+    internal fun chooseMealMode(mode: MealMode) {
+        mealMode = mode
+        settings.mealMode = mode
+    }
+    /** A "By time" stepper; a step that would break the order is refused (the stepper shows it disabled). */
+    internal fun stepMealBound(meal: MealSlot, delta: Int) {
+        val bounds = shiftMealBound(mealBounds, meal, delta)
+        mealBounds = bounds
+        settings.mealBounds = bounds
+    }
+    fun chooseCountTyping(on: Boolean) {
+        countTyping = on
+        settings.countTyping = on
+        engine.countTyping = on
+    }
+    fun chooseLearnFromPicks(on: Boolean) {
+        learnFromPicks = on
+        settings.learnFromPicks = on
+        engine.learnFromPicks = on
+    }
+    /** The meal the "Meal" setting gives a log with no chosen, typed or preset meal, at this moment; null for Ask. */
+    private fun automaticMealNow(): MealSlot? =
+        automaticMeal(mealMode, java.time.Instant.ofEpochMilli(clock()).atZone(zone).hour, mealBounds, lastUsedMeal(entries))
     /** The picker Settings asked for; IronApp, always composed, launches it so a result after recreation still lands. */
     var diaryPickerRequest by mutableStateOf<DiaryPicker?>(null); private set
     fun requestDiaryPicker(picker: DiaryPicker) { if (ready && !busy) diaryPickerRequest = picker }
@@ -890,6 +930,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }
     }
     private fun abandonUnknownResolution() {
+        logHeldPart = null
         unknownQueue = emptyList()
         unknownQueueTarget = null
         unknownQueueTotal = 0
@@ -1013,7 +1054,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }
     }
     /** The meal the Log page writes to, by [logTargetMealOf] precedence. Also drives the picker label. */
-    internal fun logTargetMeal(): MealSlot? = logTargetMealOf(logChosen, mealMarkers(logDraft), logPreset)
+    internal fun logTargetMeal(): MealSlot? = logTargetMealOf(logChosen, mealMarkers(logDraft), logPreset, automaticMealNow())
     /**
      * Everything the Log page shows for the current draft, computed in one pass from one planner, so the rows,
      * the choices and the add-bar sum all come from the same resolution.
@@ -1179,7 +1220,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     /** Add on the Log page, or Save in quick edit, which reads [input] and never the draft. */
     fun submit() {
-        if (entryEditMode == EntryEditMode.NONE) logDraftCommitted = true
+        // Add finishes the draft, unless a word still being typed waits until it is finished or picked (Count off).
+        if (entryEditMode == EntryEditMode.NONE && countTyping) logDraftCommitted = true
         if (!ready || busy) return
         if (entryEditMode != EntryEditMode.NONE) {
             if (input.isBlank()) {
@@ -1190,7 +1232,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             submitToMeal(target)
             return
         }
-        when (val plan = logSubmitPlan(ready, busy, logDraft, mealMarkers(logDraft), logChosen, logPreset)) {
+        when (val plan = logSubmitPlan(ready, busy, logDraft, mealMarkers(logDraft), logChosen, logPreset, automaticMealNow())) {
             LogSubmitPlan.Ignore -> Unit
             is LogSubmitPlan.Error -> mealDraftError = plan.message
             LogSubmitPlan.OpenMenu -> {
@@ -1270,12 +1312,16 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         // Save takes the draft as typed: the planner skips meal words by span, so save and the rows share one segmentation.
         val captured = logDraft
         val capturedPins = logPins.toMap()
-        if (engine.planner(capturedPins).segments(captured).none { ShorthandLexicon.mealSlotOf(it.text) == null }) {
+        // Add saves what the add bar counts: with Count off, a word still being typed is held in the draft.
+        val typing = !logDraftCommitted
+        val planner = engine.planner(capturedPins)
+        val held = planner.heldPart(captured, typing)
+        if (planner.countedParts(captured, typing).none { ShorthandLexicon.mealSlotOf(it) == null }) {
             mealDraftError = "Add at least one food."
             return
         }
         launchBusy {
-            suspendRunCatching { engine.save(captured, mealSlot = target, dayKey = selectedDayKey, pins = capturedPins) }.onSuccess { saved ->
+            suspendRunCatching { engine.save(captured, mealSlot = target, dayKey = selectedDayKey, pins = capturedPins, typing = typing) }.onSuccess { saved ->
                 // Nothing resolved: nothing was saved, so the Log stays open with the typed text and says what to fix.
                 if (saved.entries.isEmpty() && saved.unresolvedSegments.isNotEmpty()) {
                     mealDraftError = "Some foods need a match."
@@ -1284,7 +1330,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 // Only the pins this save used: one added while it planned off the main thread belongs to the new text.
                 capturedPins.forEach { (part, food) -> if (logPins[part] == food) logPins.remove(part) }
                 closeLog()
-                refresh(); if (logDraft == captured) logDraft = saved.unresolvedSegments.joinToString(", "); unknownQueue = saved.unresolvedSegments; unknownQueueTotal = saved.unresolvedSegments.size; unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }; resolutionContinuation = saved.unresolvedSegments.isNotEmpty(); resolverOpen = saved.unresolvedSegments.isNotEmpty(); mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
+                refresh(); if (logDraft == captured) logDraft = (saved.unresolvedSegments + listOfNotNull(held)).joinToString(", "); logHeldPart = held.takeIf { saved.unresolvedSegments.isNotEmpty() }; unknownQueue = saved.unresolvedSegments; unknownQueueTotal = saved.unresolvedSegments.size; unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }; resolutionContinuation = saved.unresolvedSegments.isNotEmpty(); resolverOpen = saved.unresolvedSegments.isNotEmpty(); mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
                 feedbackIds = saved.entries.filter { it.approximateConversion }.mapTo(mutableSetOf()) { it.id }; feedbackUntil = if (feedbackIds.isEmpty()) 0L else System.currentTimeMillis() + 30_000L
                 loggedBatchIds = saved.entries.map { it.id }
                 offerLoggedUndo("${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} added to ${target.label()}", saved.entries)
@@ -1314,7 +1360,9 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (offer == null) return
         undoExpiryJob = viewModelScope.launch {
             while (true) {
-                val left = undoRemainingMs(offer.offeredAtMs, clock())
+                // "Until next action": no timer, the next log, edit or delete replaces the offer.
+                val window = undoWindowMs(undoWindow) ?: return@launch
+                val left = undoRemainingMs(offer.offeredAtMs, clock(), window)
                 if (left <= 0L) break
                 delay(left)
             }
@@ -1329,7 +1377,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     /** The offer, while its window is open; an expired one is cleared. */
     private fun liveUndoOffer(): UndoOffer? {
         val offer = undoOffer ?: return null
-        if (undoOpen(offer.offeredAtMs, clock())) return offer
+        if (undoOpen(offer.offeredAtMs, clock(), undoWindowMs(undoWindow))) return offer
         offerUndo(null)
         return null
     }
@@ -1537,7 +1585,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         resolverSearchJob?.cancel()
         unknownQueue = unknownQueue.drop(1)
         // What is left to resolve stays where it was typed: the Library bar, or the log draft.
-        if (libraryOpen) input = unknownQueue.joinToString(", ") else logDraft = unknownQueue.joinToString(", ")
+        if (libraryOpen) input = unknownQueue.joinToString(", ") else logDraft = (unknownQueue + listOfNotNull(logHeldPart)).joinToString(", ")
         resolverQuery = ""
         resolverResults = emptyList()
         resolverSearchOpen = false
@@ -1545,6 +1593,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (unknownQueue.isEmpty()) {
             unknownQueueTarget = null
             resolutionContinuation = false
+            logHeldPart = null
         }
     }
     fun resolveUnknown(food: FoodRecord) {
