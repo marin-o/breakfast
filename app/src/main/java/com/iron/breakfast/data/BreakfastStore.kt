@@ -78,59 +78,29 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
     suspend fun saveEntries(entries: List<MealEntry>) {
         requireReady()
         if (entries.isEmpty()) return
-        writeMutex.withLock {
-            withContext(Dispatchers.IO) {
-                database.withTransaction {
-                    database.mealEntryDao().insertAll(entries.map { it.toEntity() })
-                }
-                model = readSnapshot()
-            }
-        }
+        write { database.mealEntryDao().insertAll(entries.map { it.toEntity() }) }
     }
 
     suspend fun replaceEntry(updated: MealEntry) {
         requireReady()
-        writeMutex.withLock {
-            withContext(NonCancellable + Dispatchers.IO) {
-                database.withTransaction {
-                    database.mealEntryDao().replace(updated.toEntity())
-                }
-                model = readSnapshot()
-            }
-        }
+        write { database.mealEntryDao().replace(updated.toEntity()) }
     }
 
     suspend fun reinforce(foodId: String) {
         requireReady()
-        writeMutex.withLock {
-            withContext(Dispatchers.IO) {
-                val existing = preferenceMap()[foodId] ?: Preference(foodId)
-                val updated = existing.copy(
-                    explicitCount = existing.explicitCount + 1,
-                    lastReinforcedEpochMs = System.currentTimeMillis()
-                )
-                database.withTransaction {
-                    database.preferenceDao().upsert(updated.toEntity())
-                }
-                model = readSnapshot()
-            }
+        write {
+            val existing = preferenceMap()[foodId] ?: Preference(foodId)
+            val updated = existing.copy(
+                explicitCount = existing.explicitCount + 1,
+                lastReinforcedEpochMs = System.currentTimeMillis()
+            )
+            database.preferenceDao().upsert(updated.toEntity())
         }
     }
 
     suspend fun upsertFood(food: FoodRecord) {
         requireReady()
-        writeMutex.withLock {
-            withContext(Dispatchers.IO) {
-                database.withTransaction {
-                    database.foodDao().upsert(food.toEntity())
-                    database.foodAliasDao().deleteForFood(food.id)
-                    database.servingConversionDao().deleteForFood(food.id)
-                    database.foodAliasDao().insertAll(food.toAliasEntities())
-                    database.servingConversionDao().insertAll(food.toConversionEntities())
-                }
-                model = readSnapshot()
-            }
-        }
+        write { insertFoodRows(food) }
     }
 
     suspend fun foodByBarcode(barcode: String): FoodRecord? {
@@ -164,34 +134,23 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
 
     suspend fun archiveFood(id: String) {
         requireReady()
-        writeMutex.withLock {
-            withContext(Dispatchers.IO) {
-                val current = database.foodDao().all().firstOrNull { it.id == id } ?: return@withContext
-                database.withTransaction { database.foodDao().upsert(current.copy(archived = true)) }
-                model = readSnapshot()
-            }
+        write {
+            val current = database.foodDao().all().firstOrNull { it.id == id } ?: return@write
+            database.foodDao().upsert(current.copy(archived = true))
         }
     }
 
     suspend fun restoreFood(id: String) {
         requireReady()
-        writeMutex.withLock {
-            withContext(Dispatchers.IO) {
-                val current = database.foodDao().all().firstOrNull { it.id == id } ?: return@withContext
-                database.withTransaction { database.foodDao().upsert(current.copy(archived = false)) }
-                model = readSnapshot()
-            }
+        write {
+            val current = database.foodDao().all().firstOrNull { it.id == id } ?: return@write
+            database.foodDao().upsert(current.copy(archived = false))
         }
     }
 
     suspend fun deleteEntry(id: String) {
         requireReady()
-        writeMutex.withLock {
-            withContext(Dispatchers.IO) {
-                database.withTransaction { database.openHelper.writableDatabase.execSQL("DELETE FROM meal_entries WHERE id = ?", arrayOf(id)) }
-                model = readSnapshot()
-            }
-        }
+        write { database.openHelper.writableDatabase.execSQL("DELETE FROM meal_entries WHERE id = ?", arrayOf(id)) }
     }
 
     /**
@@ -201,43 +160,27 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
     suspend fun deleteEntries(expected: List<MealEntry>): List<String> {
         requireReady()
         if (expected.isEmpty()) return emptyList()
-        return writeMutex.withLock {
-            withContext(NonCancellable + Dispatchers.IO) {
-                val deleted = database.withTransaction {
-                    val ids = unchangedEntryIds(expected, database.mealEntryDao().byIds(expected.map { it.id }))
-                    if (ids.isNotEmpty()) database.mealEntryDao().deleteByIds(ids)
-                    ids
-                }
-                model = readSnapshot()
-                deleted
-            }
+        return write {
+            val ids = unchangedEntryIds(expected, database.mealEntryDao().byIds(expected.map { it.id }))
+            if (ids.isNotEmpty()) database.mealEntryDao().deleteByIds(ids)
+            ids
         }
     }
 
     /** Stores [food] without an entry. An archived food stays as it is. */
     suspend fun addFood(food: FoodRecord) {
         requireReady()
-        writeMutex.withLock {
-            withContext(Dispatchers.IO) {
-                database.withTransaction {
-                    if (database.foodDao().all().firstOrNull { it.id == food.id }?.archived != true) insertFoodRows(food)
-                }
-                model = readSnapshot()
-            }
+        write {
+            if (database.foodDao().all().firstOrNull { it.id == food.id }?.archived != true) insertFoodRows(food)
         }
     }
 
     suspend fun addFoodAndEntry(food: FoodRecord, entry: MealEntry) {
         requireReady()
-        writeMutex.withLock {
-            withContext(Dispatchers.IO) {
-                database.withTransaction {
-                    val current = database.foodDao().all().firstOrNull { it.id == food.id }
-                    if (current?.archived != true) insertFoodRows(food)
-                    database.mealEntryDao().replace(entry.toEntity())
-                }
-                model = readSnapshot()
-            }
+        write {
+            val current = database.foodDao().all().firstOrNull { it.id == food.id }
+            if (current?.archived != true) insertFoodRows(food)
+            database.mealEntryDao().replace(entry.toEntity())
         }
     }
 
@@ -266,24 +209,32 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
      */
     internal suspend fun replaceDiary(rows: DiaryRows) {
         requireReady()
-        writeMutex.withLock {
-            withContext(NonCancellable + Dispatchers.IO) {
-                database.withTransaction {
-                    database.mealEntryDao().deleteAll()
-                    database.preferenceDao().deleteAll()
-                    database.servingConversionDao().deleteAll()
-                    database.foodAliasDao().deleteAll()
-                    database.foodDao().deleteAll()
-                    database.foodDao().insertAllOrAbort(rows.foods)
-                    database.foodAliasDao().insertAllOrAbort(rows.aliases)
-                    database.servingConversionDao().insertAllOrAbort(rows.conversions)
-                    database.preferenceDao().insertAllOrAbort(rows.preferences)
-                    database.mealEntryDao().insertAllOrAbort(rows.entries)
-                    seedMissingFixtures()
-                    syncBuiltInFoods()
-                }
-                model = readSnapshot()
-            }
+        write {
+            database.mealEntryDao().deleteAll()
+            database.preferenceDao().deleteAll()
+            database.servingConversionDao().deleteAll()
+            database.foodAliasDao().deleteAll()
+            database.foodDao().deleteAll()
+            database.foodDao().insertAllOrAbort(rows.foods)
+            database.foodAliasDao().insertAllOrAbort(rows.aliases)
+            database.servingConversionDao().insertAllOrAbort(rows.conversions)
+            database.preferenceDao().insertAllOrAbort(rows.preferences)
+            database.mealEntryDao().insertAllOrAbort(rows.entries)
+            seedMissingFixtures()
+            syncBuiltInFoods()
+        }
+    }
+
+    /**
+     * Every user-confirmed write: under [writeMutex], on IO, one transaction for [block], then the snapshot reload. It is
+     * NonCancellable once it holds the lock, so a write the user confirmed is never rolled back by a cancel (MOB-027);
+     * a cancel while waiting for the lock writes nothing.
+     */
+    private suspend fun <T> write(block: suspend () -> T): T = writeMutex.withLock {
+        withContext(NonCancellable + Dispatchers.IO) {
+            val result = database.withTransaction { block() }
+            model = readSnapshot()
+            result
         }
     }
 

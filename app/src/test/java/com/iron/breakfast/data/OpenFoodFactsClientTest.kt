@@ -5,6 +5,13 @@ import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.NutritionValues
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -13,6 +20,9 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class OpenFoodFactsClientTest {
     @Test fun contributionFormNormalizesBasisAndExcludesMealServingDetails() {
@@ -271,7 +281,7 @@ class OpenFoodFactsClientTest {
         assertTrue(client.parseSearchResponseForTesting("not-json") is OffSearchResult.Error)
     }
 
-    @Test fun legacySearchRequestsServingBasisFieldsAndParsesServingOnlyProducts() {
+    @Test fun legacySearchRequestsServingBasisFieldsAndParsesServingOnlyProducts() = runBlocking {
         val urls = mutableListOf<String>()
         val client = OpenFoodFactsClient { url ->
             urls += url.toExternalForm()
@@ -289,7 +299,7 @@ class OpenFoodFactsClientTest {
         assertTrue(urls.single().contains("serving_quantity_unit"))
     }
 
-    @Test fun searchFallbackRequestsServingBasisFieldsAndParsesServingOnlyProducts() {
+    @Test fun searchFallbackRequestsServingBasisFieldsAndParsesServingOnlyProducts() = runBlocking {
         val urls = mutableListOf<String>()
         val client = OpenFoodFactsClient { url ->
             urls += url.toExternalForm()
@@ -459,7 +469,7 @@ class OpenFoodFactsClientTest {
     }
 
     @Test fun barcodeServerErrorsAreErrorsAndOnlyNoConnectionIsUnavailable() {
-        fun lookup(connection: (URL) -> HttpURLConnection?) = OpenFoodFactsClient(connection).barcode("3017620422003")
+        fun lookup(connection: (URL) -> HttpURLConnection?) = runBlocking { OpenFoodFactsClient(connection).barcode("3017620422003") }
         listOf(503, 429, 500).forEach { status ->
             assertEquals(OffResult.Error(OFF_NOT_RESPONDING), lookup { url -> FakeConnection(url, status, "", null) })
         }
@@ -473,12 +483,12 @@ class OpenFoodFactsClientTest {
     @Test fun aCodeThatIsNotAProductBarcodeIsNeverSent() {
         val connections = mutableListOf<FakeConnection>()
         val client = OpenFoodFactsClient { url -> FakeConnection(url, 200, "{}", null).also { connections += it } }
-        assertEquals(OffResult.Missing, client.barcode("WIFI:S:x;;"))
+        assertEquals(OffResult.Missing, runBlocking { client.barcode("WIFI:S:x;;") })
         assertEquals(0, connections.size)
     }
 
     @Test fun searchServerErrorsAreErrorsAndOnlyNoConnectionIsUnavailable() {
-        fun search(connection: (URL) -> HttpURLConnection?) = OpenFoodFactsClient(connection).search("yogurt")
+        fun search(connection: (URL) -> HttpURLConnection?) = runBlocking { OpenFoodFactsClient(connection).search("yogurt") }
         listOf(503, 429).forEach { status ->
             assertTrue(search { url -> FakeConnection(url, status, "", null) } is OffSearchResult.Error)
         }
@@ -492,6 +502,38 @@ class OpenFoodFactsClientTest {
         assertTrue(search { url ->
             if (url.host == "world.openfoodfacts.org") FakeConnection(url, 200, "", null, failOnResponse = true) else FakeConnection(url, 429, "", null)
         } is OffSearchResult.Error)
+    }
+
+    /** MOB-027: a search cancelled while search.pl answers never asks the fallback service. */
+    @Test fun aSearchCancelledDuringTheFirstRequestSkipsTheFallback() = runBlocking {
+        val opened = Collections.synchronizedList(mutableListOf<URL>())
+        lateinit var job: Job
+        val client = OpenFoodFactsClient { url ->
+            opened += url
+            // search.pl fails, so the fallback would be next; the user cancels while it answers.
+            FakeConnection(url, 503, "", null, onResponse = { job.cancel() })
+        }
+        job = launch(Dispatchers.Default, start = CoroutineStart.LAZY) { client.search("yogurt") }
+        job.start()
+        withTimeout(5_000) { job.join() }
+        assertTrue(job.isCancelled)
+        assertEquals(listOf("world.openfoodfacts.org"), opened.map { it.host })
+    }
+
+    /** MOB-027: cancelling a lookup whose request is blocked on the network disconnects it, so it ends at once. */
+    @Test fun cancellingABlockedLookupDisconnectsItsConnection() = runBlocking {
+        val requested = CompletableDeferred<Unit>()
+        val connections = Collections.synchronizedList(mutableListOf<FakeConnection>())
+        val client = OpenFoodFactsClient { url ->
+            FakeConnection(url, 200, "{}", null, blockUntilDisconnected = true, onResponse = { requested.complete(Unit) }).also { connections += it }
+        }
+        val job = launch(Dispatchers.Default) { client.barcode("3017620422003") }
+        withTimeout(5_000) { requested.await() }
+        job.cancel()
+        // Without the disconnect the blocked read would wait out its latch and this join would time out.
+        withTimeout(2_000) { job.join() }
+        assertTrue(job.isCancelled)
+        assertTrue(connections.single().disconnected)
     }
 
     @Test fun aRecordWithNoUnitEvidenceKeepsTheLocalBasisInPreflight() {
@@ -620,14 +662,28 @@ private class FakeConnection(
     private val failOnOutput: Boolean = false,
     /** The request goes out, then reading the response fails: a connection lost before the answer arrived. */
     private val failOnResponse: Boolean = false,
+    /** Called when the response is asked for, before it is answered. */
+    private val onResponse: () -> Unit = {},
+    /** The response never comes on its own: the read waits until [disconnect], then fails as a closed socket does. */
+    private val blockUntilDisconnected: Boolean = false,
 ) : HttpURLConnection(url) {
     val written = ByteArrayOutputStream()
     val headersSeen = mutableMapOf<String, String>()
+    @Volatile var disconnected = false
+        private set
+    private val closed = CountDownLatch(1)
 
     override fun connect() = Unit
-    override fun disconnect() = Unit
+    override fun disconnect() { disconnected = true; closed.countDown() }
     override fun usingProxy(): Boolean = false
-    override fun getResponseCode(): Int = if (failOnResponse) throw java.io.IOException("connection reset") else status
+    override fun getResponseCode(): Int {
+        onResponse()
+        if (blockUntilDisconnected) {
+            closed.await(10, TimeUnit.SECONDS)
+            throw java.io.IOException("socket closed")
+        }
+        return if (failOnResponse) throw java.io.IOException("connection reset") else status
+    }
     override fun getInputStream() = if (failOnResponse) throw java.io.IOException("connection reset") else ByteArrayInputStream(body.toByteArray())
     override fun getErrorStream() = if (status in 200..299) null else ByteArrayInputStream(body.toByteArray())
     override fun getOutputStream() = if (failOnOutput) throw java.io.IOException("offline") else written

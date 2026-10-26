@@ -7,6 +7,14 @@ import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.normalizeBarcode
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -181,7 +189,14 @@ private val USER_AGENT = "Breakfast/${BuildConfig.VERSION_NAME} (daily food logg
 /** Open Food Facts answered, but with an HTTP error (a 503, a 429) or data that cannot be read. No connection is [OffResult.Unavailable]. */
 internal const val OFF_NOT_RESPONDING = "Open Food Facts is not responding. Add the product manually."
 
-/** Explicit-submit adapter. It is deliberately independent of matching and Room. */
+/**
+ * Explicit-submit adapter. It is deliberately independent of matching and Room.
+ *
+ * [search] and [barcode] are reads the user can abandon (a new query, leaving the scanner): they suspend, and a cancel
+ * disconnects the request in flight ([disconnectOnCancel]) and skips the fallback search. [preflight] and [contribute]
+ * stay blocking and run to the end: the contribution is a user-confirmed write, and cutting it off would not prove that
+ * Open Food Facts did nothing (its answer is classified instead, see [OffContributionResult.Uncertain]).
+ */
 class OpenFoodFactsClient(
     private val connectionFactory: (URL) -> HttpURLConnection? = { url ->
         (url.openConnection() as? HttpURLConnection)
@@ -189,23 +204,29 @@ class OpenFoodFactsClient(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun search(query: String): OffSearchResult {
+    suspend fun search(query: String): OffSearchResult {
         val legacyUrl = URL("https://world.openfoodfacts.org/cgi/search.pl?search_terms=" + URLEncoder.encode(query, "UTF-8") + "&search_simple=1&action=process&json=1&page_size=20&fields=code,product_name,brands,nutriments,nutrition_data_per,product_quantity,product_quantity_unit,quantity,serving_size,serving_quantity_unit")
         val legacy = requestSearch(legacyUrl, ::parseSearchResponse)
         if (legacy is OffSearchResult.Success) return legacy
+        // A search the user changed or left while search.pl answered is not sent to the fallback.
+        currentCoroutineContext().ensureActive()
         val fallback = searchFallback(query)
         // When search.pl answered with an error and the fallback could not connect, the error is the truer report.
         return if (fallback is OffSearchResult.Unavailable && legacy is OffSearchResult.Error) legacy else fallback
     }
 
     /** The newer search service (search.openfoodfacts.org, results under "hits"), asked only when search.pl fails. */
-    private fun searchFallback(query: String): OffSearchResult {
+    private suspend fun searchFallback(query: String): OffSearchResult {
         val url = URL("https://search.openfoodfacts.org/search?q=" + URLEncoder.encode(query, "UTF-8") + "&page=1&page_size=20&fields=" + URLEncoder.encode("code,product_name,brands,nutriments,quantity,serving_size,serving_quantity_unit", "UTF-8"))
         return requestSearch(url, ::parseFallbackSearchResponse)
     }
 
-    private fun requestSearch(url: URL, parser: (String) -> OffSearchResult): OffSearchResult {
+    private suspend fun requestSearch(url: URL, parser: (String) -> OffSearchResult): OffSearchResult {
         val connection = open(url) ?: return OffSearchResult.Unavailable
+        return disconnectOnCancel(connection) { readSearch(connection, parser) }
+    }
+
+    private fun readSearch(connection: HttpURLConnection, parser: (String) -> OffSearchResult): OffSearchResult {
         return try {
             if (connection.responseCode !in 200..299) return OffSearchResult.Error(OFF_NOT_RESPONDING)
             parser(connection.inputStream.bufferedReader().readText())
@@ -222,9 +243,13 @@ class OpenFoodFactsClient(
      * Looks up one product. No connection (an [java.io.IOException]) is [OffResult.Unavailable]; an HTTP error other
      * than 404 or an unreadable body is [OffResult.Error]. A code that is not a product barcode is never sent.
      */
-    fun barcode(code: String): OffResult {
+    suspend fun barcode(code: String): OffResult {
         val barcode = normalizeBarcode(code) ?: return OffResult.Missing
         val connection = open(URL("https://world.openfoodfacts.org/api/v3/product/${URLEncoder.encode(barcode, "UTF-8")}.json")) ?: return OffResult.Unavailable
+        return disconnectOnCancel(connection) { readProduct(connection, barcode) }
+    }
+
+    private fun readProduct(connection: HttpURLConnection, barcode: String): OffResult {
         return try {
             val status = connection.responseCode
             if (status == 404) return OffResult.Missing
@@ -511,4 +536,24 @@ class OpenFoodFactsClient(
     }
     private fun kotlinx.serialization.json.JsonObject.number(key: String) = this[key]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
 
+}
+
+/**
+ * Runs the blocking [read] of [connection] on IO. Cancelling the caller disconnects the connection from another
+ * thread, so a read blocked on the network ends at once instead of running out its timeout; the caller then gets the
+ * cancellation, never the result.
+ */
+internal suspend fun <T> disconnectOnCancel(connection: HttpURLConnection, read: () -> T): T = coroutineScope {
+    val watcher = launch(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
+        try {
+            awaitCancellation()
+        } finally {
+            connection.disconnect()
+        }
+    }
+    try {
+        withContext(Dispatchers.IO) { read() }
+    } finally {
+        watcher.cancel()
+    }
 }
