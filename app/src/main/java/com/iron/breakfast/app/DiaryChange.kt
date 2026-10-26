@@ -44,6 +44,16 @@ internal sealed interface DiaryChange {
         override val refreshesLibrary get() = false
     }
 
+    /**
+     * An entry edit that committed after its edit had closed (the quick-edit sheet was left while it saved). The
+     * diary is reloaded so it shows the stored row; nothing else follows, and the pending Undo stays, as it always
+     * has for such a save ([undoEndsAt]).
+     */
+    data object EntryEditedAfterClose : DiaryChange {
+        override val kind get() = DiaryChangeKind.EDIT_AFTER_CLOSE
+        override val refreshesLibrary get() = false
+    }
+
     /** An entry deleted; [offer] is the Undo that puts it back, which replaces the pending one. */
     data class EntryDeleted(val offer: UndoOffer.Deleted) : DiaryChange {
         override val kind get() = DiaryChangeKind.DELETE

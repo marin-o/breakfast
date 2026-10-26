@@ -53,6 +53,8 @@ class LoggingSettingsTest {
         // B4: a "Not right?" pick keeps the batch Undo, in every Undo mode.
         assertFalse(undoEndsAt(DiaryChangeKind.NOT_RIGHT_PICK))
         assertFalse(undoEndsAt(DiaryChangeKind.CONFIRM_MATCH))
+        // An edit saved after its edit closed has never ended Undo.
+        assertFalse(undoEndsAt(DiaryChangeKind.EDIT_AFTER_CLOSE))
     }
 
     @Test fun eachBoundaryStaysLaterThanTheOneAbove() {

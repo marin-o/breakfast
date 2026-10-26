@@ -156,7 +156,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     if (vm.contributionReviewOpen) vm.pendingContribution?.let { ContributionReviewScreen(vm, it) }
     if (vm.contributionAuthOpen) ContributionSignInScreen(vm)
     vm.contributionFailure?.let { ContributionFailureScreen(vm, it) }
-    vm.notice?.let { message -> AlertDialog(onDismissRequest = vm::dismissNotice, confirmButton = { TextButton(vm::dismissNotice) { Text("OK") } }, text = { Text(message) }) }
+    vm.notices.message?.let { message -> AlertDialog(onDismissRequest = vm.notices::dismiss, confirmButton = { TextButton(vm.notices::dismiss) { Text("OK") } }, text = { Text(message) }) }
     if (vm.pendingImport != null) AlertDialog(
         onDismissRequest = vm::cancelImport,
         confirmButton = { TextButton(vm::confirmImport) { Text("Replace diary") } },

@@ -1,0 +1,22 @@
+package com.iron.breakfast.app
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+
+/**
+ * The app's one modal message: the result of a diary write ("Added to Lunch", "Could not undo."), an Open Food Facts
+ * or scanner outcome ("No connection. Add the product manually."), or a refused input ("Choose one meal marker.").
+ *
+ * An app-level channel, not part of the diary: most messages are not about a diary write, so it is not owned by
+ * [DiarySession]. The view model builds one and hands it to the features that speak through it.
+ *
+ * It is state, not a one-time event (guide §6.5): [message] stays until [dismiss], so a recreation draws it again
+ * and nothing is lost while no screen is drawn. There is one at a time; a new message replaces the one showing.
+ */
+internal class Notices {
+    var message by mutableStateOf<String?>(null); private set
+
+    fun show(message: String) { this.message = message }
+    fun dismiss() { message = null }
+}

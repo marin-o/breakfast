@@ -59,7 +59,7 @@ class DiarySessionTest {
         var seenAtPublish: List<MealEntry>? = null
         session.onChange { seenAtPublish = session.entries }
         session.write(
-            change = { _: Unit -> DiaryChange.FoodsLogged },
+            change = DiaryChange.FoodsLogged,
             onSuccess = { source.events += "onSuccess" },
         ) { source.events += "run" }
         assertEquals(listOf("run", "refresh", "publish", "onSuccess"), source.events)
@@ -79,7 +79,7 @@ class DiarySessionTest {
 
     @Test fun aChangeWithoutRowsIsPublishedWithoutAReload() {
         opened()
-        session.write(change = { _: Unit -> DiaryChange.MatchConfirmed }) {}
+        session.write(change = DiaryChange.MatchConfirmed) {}
         assertEquals(listOf<DiaryChange>(DiaryChange.MatchConfirmed), published)
         assertEquals(0, source.entryReads)
     }
@@ -89,7 +89,7 @@ class DiarySessionTest {
         var failure: Throwable? = null
         var succeeded = false
         session.write(
-            change = { _: Unit -> DiaryChange.FoodsLogged },
+            change = DiaryChange.FoodsLogged,
             onFailure = { failure = it },
             onSuccess = { succeeded = true },
         ) { error("disk full") }
@@ -102,7 +102,7 @@ class DiarySessionTest {
 
     @Test fun withoutAFailureHandlerTheFailurePropagatesAndTheGateIsReleased() {
         opened()
-        session.write(change = { _: Unit -> DiaryChange.FoodsLogged }) { error("unexpected") }
+        session.write(change = DiaryChange.FoodsLogged) { error("unexpected") }
         assertEquals("unexpected", uncaught.single().message)
         assertTrue(published.isEmpty())
         assertFalse(session.busy)
@@ -114,7 +114,7 @@ class DiarySessionTest {
         var failure: Throwable? = null
         var succeeded = false
         val job = session.write(
-            change = { _: Unit -> DiaryChange.FoodsLogged },
+            change = DiaryChange.FoodsLogged,
             onFailure = { failure = it },
             onSuccess = { succeeded = true },
         ) { gate.await() }
@@ -132,7 +132,7 @@ class DiarySessionTest {
         val gate = CompletableDeferred<Unit>()
         var succeeded = false
         val job = session.write(
-            change = { _: Unit -> DiaryChange.EntryEdited },
+            change = DiaryChange.EntryEdited,
             nonCancellable = true,
             onSuccess = { succeeded = true },
         ) { gate.await() }
@@ -147,9 +147,9 @@ class DiarySessionTest {
     @Test fun aSecondWriteIsRefusedWhileOneRuns() {
         opened()
         val gate = CompletableDeferred<Unit>()
-        session.write(change = { _: Unit -> DiaryChange.FoodsLogged }) { gate.await() }
+        session.write(change = DiaryChange.FoodsLogged) { gate.await() }
         var secondRan = false
-        val second = session.write(change = { _: Unit -> DiaryChange.FoodsLogged }) { secondRan = true }
+        val second = session.write(change = DiaryChange.FoodsLogged) { secondRan = true }
         assertNull(second)
         assertFalse(secondRan)
         gate.complete(Unit)
@@ -167,7 +167,7 @@ class DiarySessionTest {
     @Test fun aPickerResultWaitsForTheRunningWriteAndForStorage() = runBlocking {
         // Before storage is open: the picker result waits instead of being refused.
         var exported = false
-        session.write(change = { _: Unit -> null }, entry = GateEntry.WHEN_IDLE) { exported = true }
+        session.whenIdle { exported = true }
         assertFalse(exported)
         session.open {}
         Snapshot.sendApplyNotifications()
@@ -177,7 +177,7 @@ class DiarySessionTest {
         session.write(change = { _: Unit -> null }) { gate.await() }
         val second = CompletableDeferred<Unit>()
         var imported = false
-        session.write(change = { _: Unit -> null }, entry = GateEntry.WHEN_IDLE) { second.await(); imported = true }
+        session.whenIdle { second.await(); imported = true }
         gate.complete(Unit)
         Snapshot.sendApplyNotifications()
         assertTrue(session.busy)
@@ -213,11 +213,30 @@ class DiarySessionTest {
         assertEquals(1, opened)
     }
 
-    @Test fun oneNoticeAtATimeTheLatestWins() {
-        session.show("Added to Lunch")
-        session.show("Could not undo.")
-        assertEquals("Could not undo.", session.notice)
-        session.dismissNotice()
-        assertNull(session.notice)
+    @Test fun anEditThatCommittedAfterItsEditClosedReloadsTheDiaryAndKeepsTheUndo() {
+        // B11 review: the quick-edit sheet was left while its save ran; the stored row must still reach the screen.
+        opened()
+        source.rows = listOf(entry("edited"))
+        session.write(change = DiaryChange.EntryEditedAfterClose) {}
+        assertEquals(1, source.entryReads)
+        assertEquals(listOf(entry("edited")), session.entries)
+        assertEquals(listOf<DiaryChange>(DiaryChange.EntryEditedAfterClose), published)
+        val pending = com.iron.breakfast.today.UndoOffer.Deleted(entry("gone"), 1_000L)
+        assertEquals(pending, undoAfterChange(pending, DiaryChange.EntryEditedAfterClose))
+        assertFalse(DiaryChange.EntryEditedAfterClose.refreshesLibrary)
+    }
+
+    @Test fun workThatOnlyNeedsTheDiaryStillHoldsTheGateAndPublishesNothing() {
+        opened()
+        val gate = CompletableDeferred<Unit>()
+        var result: String? = null
+        session.whenIdle(onSuccess = { value: String -> result = value }) { gate.await(); "read" }
+        assertTrue(session.busy)
+        assertNull(session.write(change = DiaryChange.FoodsLogged) {})
+        gate.complete(Unit)
+        assertEquals("read", result)
+        assertEquals(0, source.entryReads)
+        assertTrue(published.isEmpty())
+        assertFalse(session.busy)
     }
 }

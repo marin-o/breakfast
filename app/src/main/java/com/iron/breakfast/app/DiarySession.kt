@@ -25,20 +25,6 @@ internal interface DiarySource {
     suspend fun reloadIfStale(): Boolean
 }
 
-/** How a write takes the gate (see [DiarySession.write]). */
-internal enum class GateEntry {
-    /**
-     * A user action: refused (nothing runs, null is returned) unless storage is open and no write runs. The gate is
-     * held from the call itself, before the launch, so a second tap in the same frame is refused.
-     */
-    NOW,
-    /**
-     * A document-picker result (export, import), which can arrive before storage is open or while a write runs, for
-     * example after a recreation: it waits until storage is open and no write runs, then holds the gate.
-     */
-    WHEN_IDLE,
-}
-
 /**
  * The diary as the app shows it, and the one way to write it.
  *
@@ -46,8 +32,10 @@ internal enum class GateEntry {
  *   while it could not be.
  * - The write gate: [busy] is "one diary write at a time", a UX rule over the store's own lock. Every write goes
  *   through [write], which holds the gate and, after a committed write, reloads the read model and publishes a
- *   [DiaryChange] to the listeners registered with [onChange] (Undo, the Library list).
- * - The notice channel: [notice] is the one modal message ("Added to Lunch", a failure); a new one replaces it.
+ *   [DiaryChange] to the listeners registered with [onChange] (Undo, match feedback, the Library list). Work that
+ *   only needs the diary to stand still (export, reading an import file) runs through [whenIdle].
+ *
+ * Messages are not the diary's: they go through the app's [Notices].
  *
  * Coroutines run in [scope] (the view model's, on Main); [source] does its own dispatching.
  */
@@ -65,14 +53,9 @@ internal class DiarySession(
     var storageUnavailable by mutableStateOf(false); private set
     var foods by mutableStateOf<List<FoodRecord>>(emptyList()); private set
     var entries by mutableStateOf<List<MealEntry>>(emptyList()); private set
-    /** The single modal message; [dismissNotice] clears it. */
-    var notice by mutableStateOf<String?>(null); private set
 
     private val listeners = mutableListOf<(DiaryChange) -> Unit>()
     private var opening = false
-
-    fun show(message: String) { notice = message }
-    fun dismissNotice() { notice = null }
 
     /** [listener] runs after each published change, in registration order, after the read model was reloaded. */
     fun onChange(listener: (DiaryChange) -> Unit) { listeners += listener }
@@ -101,43 +84,70 @@ internal class DiarySession(
     }
 
     /**
-     * Runs [run] as the one diary write, holding [busy] until it ends (cleared in finally, so a throwing handler cannot
-     * leave the app stuck busy). When [run] returns, [change] says what changed: a non-null change reloads the read
-     * model (when [DiaryChange.rowsChanged]) and is published to the listeners, then [onSuccess] runs. A null change
-     * (nothing committed, or the result is no longer wanted) publishes nothing.
+     * Runs [run] as the one diary write, a user action: refused (nothing runs, null is returned) unless storage is open
+     * and no write runs. The gate is held from the call itself, before the launch, so a second tap in the same frame is
+     * refused, and released in finally, so a throwing handler cannot leave the app stuck busy.
      *
-     * - [entry]: [GateEntry.NOW] for user actions, [GateEntry.WHEN_IDLE] for picker results.
+     * When [run] returns, [change] names what it committed: a change with [DiaryChange.rowsChanged] reloads the read
+     * model, then the change is published to the listeners, then [onSuccess] runs. Null means nothing was committed
+     * (a refused edit), so nothing is reloaded or published. A write that committed rows always names a change, even
+     * when no screen wants its result any more (see [DiaryChange.EntryEditedAfterClose]): the diary on screen must
+     * match the store.
+     *
      * - [nonCancellable]: the whole write, the fan-out and both handlers run to the end even if the returned job is
      *   cancelled (the full entry edit, which owns its save until it ends). Otherwise a cancel stops at the next
      *   suspension and runs nothing after it; a [run] that must finish wraps its own work in NonCancellable.
      * - [onFailure]: a failure of [run] (never a [kotlinx.coroutines.CancellationException], which is rethrown) goes
      *   here. Null lets it propagate, for runs that catch everything they expect themselves.
-     *
-     * Returns the write's job, or null when the gate refused it.
      */
     fun <T> write(
         change: (T) -> DiaryChange?,
-        entry: GateEntry = GateEntry.NOW,
         nonCancellable: Boolean = false,
         onFailure: ((Throwable) -> Unit)? = null,
         onSuccess: (T) -> Unit = {},
         run: suspend () -> T,
     ): Job? {
-        if (entry == GateEntry.NOW) {
-            if (!ready || busy) return null
+        if (!ready || busy) return null
+        busy = true
+        return launchHolding(waitForIdle = false, nonCancellable, onFailure, change, onSuccess, run)
+    }
+
+    /** A [write] whose committed change does not depend on what [run] returns. */
+    fun <T> write(
+        change: DiaryChange,
+        nonCancellable: Boolean = false,
+        onFailure: ((Throwable) -> Unit)? = null,
+        onSuccess: (T) -> Unit = {},
+        run: suspend () -> T,
+    ): Job? = write({ _: T -> change }, nonCancellable, onFailure, onSuccess, run)
+
+    /**
+     * Runs [run] holding the gate, so no write changes the diary under it, once storage is open and no write runs. For
+     * a document-picker result (export, reading an import file), which can arrive before storage is open or while a
+     * write runs, for example after a recreation: it waits instead of being refused. It commits nothing to the diary,
+     * so nothing is reloaded or published; [onSuccess] gets its result. A failure propagates (these runs catch what
+     * they expect); a cancel runs nothing after it.
+     */
+    fun <T> whenIdle(onSuccess: (T) -> Unit = {}, run: suspend () -> T): Job =
+        launchHolding(waitForIdle = true, nonCancellable = false, onFailure = null, change = { null }, onSuccess, run)
+
+    private fun <T> launchHolding(
+        waitForIdle: Boolean,
+        nonCancellable: Boolean,
+        onFailure: ((Throwable) -> Unit)?,
+        change: (T) -> DiaryChange?,
+        onSuccess: (T) -> Unit,
+        run: suspend () -> T,
+    ): Job = scope.launch {
+        if (waitForIdle) {
+            awaitIdle()
             busy = true
         }
-        return scope.launch {
-            if (entry == GateEntry.WHEN_IDLE) {
-                awaitIdle()
-                busy = true
-            }
-            try {
-                if (nonCancellable) withContext(NonCancellable) { complete(run, change, onFailure, onSuccess) }
-                else complete(run, change, onFailure, onSuccess)
-            } finally {
-                busy = false
-            }
+        try {
+            if (nonCancellable) withContext(NonCancellable) { complete(run, change, onFailure, onSuccess) }
+            else complete(run, change, onFailure, onSuccess)
+        } finally {
+            busy = false
         }
     }
 

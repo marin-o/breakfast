@@ -39,6 +39,9 @@ class WritePathCharacterisationTest {
             Path("Resolver pick", Undo.END, refreshesDiary = true, refreshesLibrary = false),
             // submitToMeal edit branch and saveFullEdit, on Success with the same edit session.
             Path("Entry quick or full edit", Undo.END, refreshesDiary = true, refreshesLibrary = false),
+            // The same save when its edit had closed before it committed: Undo untouched, as before. Added in B13 (B11
+            // review): it now reloads the diary; before, nothing was published and the diary showed the old row.
+            Path("Entry edit committed after its edit closed", Undo.KEEP, refreshesDiary = true, refreshesLibrary = false),
             // delete: offerUndo(UndoOffer.Deleted(entry, clock())); refresh().
             Path("Delete entry", Undo.REPLACE_WITH_ITS_OWN, refreshesDiary = true, refreshesLibrary = false),
             // undo / undoLoggedBatch: offerUndo(null); refresh().
@@ -81,6 +84,7 @@ class WritePathCharacterisationTest {
         "New food saved / food edited", "Food archived, restored, saved or cached" -> DiaryChange.FoodsChanged
         "Resolver pick" -> DiaryChange.QueuedPartLogged
         "Entry quick or full edit" -> DiaryChange.EntryEdited
+        "Entry edit committed after its edit closed" -> DiaryChange.EntryEditedAfterClose
         "Delete entry" -> DiaryChange.EntryDeleted(deleted)
         "Undo (restore or batch)" -> DiaryChange.UndoApplied
         "Not right? pick" -> DiaryChange.MatchCorrected
