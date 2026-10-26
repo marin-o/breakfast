@@ -1,6 +1,7 @@
 package com.iron.breakfast.data
 
 import com.iron.breakfast.contribution.OffContributions
+import com.iron.breakfast.search.OffSearchService
 import com.iron.breakfast.BuildConfig
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
@@ -202,10 +203,10 @@ class OpenFoodFactsClient(
     private val connectionFactory: (URL) -> HttpURLConnection? = { url ->
         (url.openConnection() as? HttpURLConnection)
     }
-) : OffContributions {
+) : OffSearchService, OffContributions {
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun search(query: String): OffSearchResult {
+    override suspend fun search(query: String): OffSearchResult {
         val legacyUrl = URL("https://world.openfoodfacts.org/cgi/search.pl?search_terms=" + URLEncoder.encode(query, "UTF-8") + "&search_simple=1&action=process&json=1&page_size=20&fields=code,product_name,brands,nutriments,nutrition_data_per,product_quantity,product_quantity_unit,quantity,serving_size,serving_quantity_unit")
         val legacy = requestSearch(legacyUrl, ::parseSearchResponse)
         if (legacy is OffSearchResult.Success) return legacy

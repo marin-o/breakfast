@@ -63,7 +63,7 @@ import com.iron.breakfast.ui.screens.formatKcal
                 )
             }
             Column(Modifier.padding(top = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                PrimaryButton("Search Open Food Facts", { vm.openSearch(query.trim()) }, kind = ButtonKind.Neutral)
+                PrimaryButton("Search Open Food Facts", { vm.search.open(query.trim()) }, kind = ButtonKind.Neutral)
                 SecondaryButton("Create personal food", { vm.openCustom(query.trim()) })
             }
         }
@@ -73,47 +73,47 @@ import com.iron.breakfast.ui.screens.formatKcal
 /** Explicit Open Food Facts search: nothing is sent until Search (or the keyboard's search key) is used. */
 @Composable internal fun OffSearchScreen(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
-    BackHandler(onBack = vm::closeSearch)
+    BackHandler(onBack = vm.search::close)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter).verticalScroll(rememberScrollState())) {
-            TopBar("Open Food Facts", vm::closeSearch, Modifier.padding(top = 8.dp))
+            TopBar("Open Food Facts", vm.search::close, Modifier.padding(top = 8.dp))
             SearchCaption(Modifier.padding(top = 6.dp))
             Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SearchField(vm.searchQuery, vm::onSearch, onClear = { vm.onSearch("") }, label = "Search Open Food Facts", modifier = Modifier.weight(1f), onSearch = vm::submitSearch)
-                if (vm.searchBusy) SecondaryButton("Search", vm::submitSearch, Modifier.widthIn(min = 104.dp), enabled = false, fillWidth = false)
-                else PrimaryButton("Search", vm::submitSearch, Modifier.widthIn(min = 104.dp), kind = ButtonKind.Neutral, fillWidth = false)
+                SearchField(vm.search.query, vm.search::onQuery, onClear = { vm.search.onQuery("") }, label = "Search Open Food Facts", modifier = Modifier.weight(1f), onSearch = vm.search::submit)
+                if (vm.search.busy) SecondaryButton("Search", vm.search::submit, Modifier.widthIn(min = 104.dp), enabled = false, fillWidth = false)
+                else PrimaryButton("Search", vm.search::submit, Modifier.widthIn(min = 104.dp), kind = ButtonKind.Neutral, fillWidth = false)
             }
             Column(Modifier.padding(top = 16.dp)) {
                 when {
-                    vm.searchBusy -> Column(Modifier.padding(top = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    vm.search.busy -> Column(Modifier.padding(top = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         LinearProgress("Searching Open Food Facts")
-                        TertiaryButton("Cancel", vm::closeSearch, soft = true)
+                        TertiaryButton("Cancel", vm.search::close, soft = true)
                     }
-                    vm.offResults.isNotEmpty() -> {
+                    vm.search.results.isNotEmpty() -> {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("${vm.offResults.size} results from Open Food Facts", color = colors.soft, style = BreakfastType.Secondary)
-                            Text("kcal per ${vm.offResults.first().nutrition.amount.pretty()} ${vm.offResults.first().nutrition.unit.label}", color = colors.soft, style = BreakfastType.Secondary)
+                            Text("${vm.search.results.size} results from Open Food Facts", color = colors.soft, style = BreakfastType.Secondary)
+                            Text("kcal per ${vm.search.results.first().nutrition.amount.pretty()} ${vm.search.results.first().nutrition.unit.label}", color = colors.soft, style = BreakfastType.Secondary)
                         }
                         Hairline(Modifier.padding(top = 10.dp))
-                        vm.offResults.forEach { food ->
-                            FoodRow(food.name, food.brand.orEmpty(), formatKcal(food.nutrition.values.calories), onClick = { vm.chooseProduct(food) })
+                        vm.search.results.forEach { food ->
+                            FoodRow(food.name, food.brand.orEmpty(), formatKcal(food.nutrition.values.calories), onClick = { vm.search.choose(food) })
                         }
                     }
                 }
-                vm.offSearchMessage?.let { message ->
-                    val createPersonal = { vm.openCustom(vm.searchQuery.trim(), fromResolver = vm.resolutionContinuation) }
-                    when (offSearchStatus(vm.offSearchUnavailable, message)) {
+                vm.search.message?.let { message ->
+                    val createPersonal = { vm.openCustom(vm.search.query.trim(), fromResolver = vm.resolutionContinuation) }
+                    when (offSearchStatus(vm.search.unavailable, message)) {
                         OffSearchStatus.Offline -> SearchStatus(
                             title = "No connection",
                             body = "Open Food Facts needs internet. Local foods still work.",
-                            retry = vm::submitSearch,
+                            retry = vm.search::submit,
                             createPersonal = createPersonal,
                         )
                         OffSearchStatus.NoResults -> SearchStatus(title = "No results", body = null, retry = null, createPersonal = createPersonal)
                         OffSearchStatus.Failed -> SearchStatus(
                             title = "Search failed",
                             body = "Open Food Facts returned an error.",
-                            retry = vm::submitSearch,
+                            retry = vm.search::submit,
                             createPersonal = createPersonal,
                         )
                     }

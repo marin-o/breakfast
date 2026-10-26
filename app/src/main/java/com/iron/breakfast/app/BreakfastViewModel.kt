@@ -97,8 +97,6 @@ import com.iron.breakfast.foodFormBack
 import com.iron.breakfast.FoodFormBack
 import com.iron.breakfast.activeResolutionTarget
 import com.iron.breakfast.domain.SavedMeal
-import com.iron.breakfast.shouldApplyOffSearchResult
-import com.iron.breakfast.data.OffSearchResult
 import com.iron.breakfast.productReviewOrigin
 import com.iron.breakfast.scan.productPrefill
 import com.iron.breakfast.scan.ProductPrefill
@@ -127,6 +125,7 @@ import com.iron.breakfast.today.MatchStore
 import com.iron.breakfast.today.UndoController
 import com.iron.breakfast.today.UndoStore
 import com.iron.breakfast.contribution.ContributionFlow
+import com.iron.breakfast.search.OffSearch
 
 class BreakfastViewModel(application: Application, private val savedState: SavedStateHandle) : AndroidViewModel(application) {
     private val clock: () -> Long = System::currentTimeMillis
@@ -194,6 +193,16 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     )
     /** The Open Food Facts contribution flow (see [ContributionFlow]). */
     internal val contribution = ContributionFlow(off, notices, viewModelScope, Dispatchers.IO)
+    /** The Open Food Facts search (see [OffSearch]); what it opens over and returns to stays with the resolve flow here. */
+    internal val search = OffSearch(
+        off = off,
+        scope = viewModelScope,
+        io = Dispatchers.IO,
+        ready = { ready },
+        onOpen = ::searchOpened,
+        onClose = ::searchClosed,
+        onChoose = { food -> chooseProduct(food) },
+    )
     private val parser = ShorthandParser()
     private val calculator = NutritionCalculator()
     /** The Library bar's text, or the amount being edited. Never the log draft, so leaving either cannot touch it. */
@@ -217,13 +226,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     /** The food form as it opened; Back asks before discarding only when [draft] differs from it. */
     private var draftBaseline by mutableStateOf(FoodDraftFields())
     var discardFoodOpen by mutableStateOf(false); private set
-    var searchOpen by mutableStateOf(false); private set
-    var searchQuery by mutableStateOf(""); private set
-    var offResults by mutableStateOf<List<FoodRecord>>(emptyList()); private set
-    var searchBusy by mutableStateOf(false); private set
-    var offSearchMessage by mutableStateOf<String?>(null); private set
-    /** True when the last OFF search failed for lack of a connection (not for any other reason). */
-    var offSearchUnavailable by mutableStateOf(false); private set
     var scannerOpen by mutableStateOf(false); private set
     /** True when the scanner is still open but its camera preview cannot be used. */
     var scannerUnavailableState by mutableStateOf(false); private set
@@ -277,8 +279,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private var libraryPendingBatch: List<LibraryLogDraft> = emptyList()
     private var libraryRefreshJob: Job? = null
     private var libraryRefreshGeneration = 0L
-    private var offSearchJob: Job? = null
-    private var offSearchGeneration = 0L
     var libraryBatchMealPickerOpen by mutableStateOf(false); private set
     var selectedEntry by mutableStateOf<MealEntry?>(null); private set
     private var selectedEntryId: String? = savedState["entry_id"]
@@ -640,7 +640,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     /** What is drawn over Daily, Meal or Library right now, by [topOverlay]. */
     internal fun topOverlay(): Overlay? = topOverlay(
         scanner = scannerOpen, entryDetail = selectedEntry != null, productReview = selectedProduct != null,
-        resolver = resolverOpen, offSearch = searchOpen, foodForm = customOpen,
+        resolver = resolverOpen, offSearch = search.open, foodForm = customOpen,
         libraryFood = selectedLibraryFood != null, entryEdit = entryEditMode != EntryEditMode.NONE,
         settings = settingsOpen,
     )
@@ -808,7 +808,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         logResolve = null
         closeLibrary()
         selectMeal(request.slot)
-        searchOpen = false
+        search.hide()
         customOpen = false
         discardFoodOpen = false
         selectedProduct = null
@@ -1181,7 +1181,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         draftBaseline = draft.fields()
         discardFoodOpen = false
         customOpen = true
-        searchOpen = false
+        search.hide()
         resolverOpen = false
     }
     /** Back or the arrow on New food or Edit food: a changed form asks before it is discarded. */
@@ -1225,22 +1225,16 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun currentUnknownName(): String = unknownQueue.firstOrNull()?.let { typedUnknown(it).foodPhrase.trim().ifBlank { it.trim() } }.orEmpty()
     /** A part of the unknown queue as the Log read it: its food text, typed amount and unit ("mleko200g" is mleko, 200 g). */
     internal fun typedUnknown(raw: String): TypedPart = engine.planner().typed(raw)
-    fun openSearch(prefill: String? = null, fromResolver: Boolean = false) {
-        offSearchJob?.cancel()
-        offSearchGeneration++
+    /** [search] opened: it replaces the resolver and the food form; opened from elsewhere it abandons a resolve queue. */
+    private fun searchOpened(fromResolver: Boolean) {
         if (!fromResolver && unknownQueue.isNotEmpty()) abandonUnknownResolution()
         resolutionContinuation = fromResolver
-        searchOpen = true
         customOpen = false
         discardFoodOpen = false
         resolverOpen = false
-        searchQuery = prefill ?: ""
-        offResults = emptyList()
-        offSearchMessage = null
-        offSearchUnavailable = false
     }
-    fun closeSearch() { offSearchJob?.cancel(); offSearchGeneration++; searchBusy = false; searchOpen = false; if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false }
-    fun onSearch(v: String) { offSearchJob?.cancel(); offSearchGeneration++; searchBusy = false; searchQuery = v; offResults = emptyList(); offSearchMessage = null; offSearchUnavailable = false }
+    /** [search] closed: back to the resolver when it was opened from one with parts left. */
+    private fun searchClosed() { if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false }
     private var resolverSearchJob: Job? = null
     /** The resolver's search, ranked off the main thread; a result is shown only while its query is still the one typed. */
     fun onResolverQuery(v: String) {
@@ -1285,43 +1279,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     /** Leaves the current unresolved food unlogged and moves to the next one. */
     fun skipCurrentUnknown() { if (unknownQueue.isNotEmpty()) advanceUnknownQueue() }
-    fun submitSearch() {
-        if (!ready || searchQuery.isBlank() || searchBusy) return
-        val captured = searchQuery
-        val generation = ++offSearchGeneration
-        offSearchJob?.cancel()
-        searchBusy = true
-        offSearchMessage = null
-        offSearchUnavailable = false
-        offSearchJob = viewModelScope.launch(Dispatchers.IO) {
-            val result = off.search(captured)
-            withContext(Dispatchers.Main) {
-                if (shouldApplyOffSearchResult(generation, offSearchGeneration, captured, searchQuery, searchOpen)) {
-                    when (result) {
-                        is OffSearchResult.Success -> {
-                            offResults = result.foods
-                            offSearchMessage = if (result.foods.isEmpty()) "No usable result for \"$captured\"." else null
-                        }
-                        OffSearchResult.Unavailable -> {
-                            offSearchUnavailable = true
-                            offResults = emptyList()
-                            offSearchMessage = "Open Food Facts unavailable; try again or add manually."
-                        }
-                        is OffSearchResult.Error -> {
-                            offResults = emptyList()
-                            offSearchMessage = result.message
-                        }
-                    }
-                }
-                if (generation == offSearchGeneration) searchBusy = false
-            }
-        }
-    }
     fun chooseProduct(food: FoodRecord, fromScan: Boolean = false, origin: ProductReviewOrigin? = null) {
         selectedProduct = food
         selectedProductFromScan = fromScan
         selectedProductOrigin = origin ?: productReviewOrigin(slot, resolutionContinuation, unknownQueue.isNotEmpty())
-        searchOpen = false
+        search.hide()
         val prefill = unknownQueue.firstOrNull()
             ?.takeIf { resolutionContinuation }
             ?.let { productPrefill(it, food, typedUnknown(it)) }

@@ -149,7 +149,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
         dismissButton = { TextButton(vm::keepEditingFood) { Text("Keep editing") } },
     )
     if (vm.libraryNoMatch()) LibraryNoMatchScreen(vm)
-    if (vm.searchOpen) OffSearchScreen(vm)
+    if (vm.search.open) OffSearchScreen(vm)
     if (vm.resolverOpen && !scanReviewBackdropVisible) ResolveUnknownScreen(vm)
     vm.selectedProduct?.let { ProductReviewSheet(vm, it) }
     if (vm.contribution.reviewOpen) vm.contribution.pending?.let { ContributionReviewScreen(vm, it) }

@@ -496,7 +496,7 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
             }
             val actions = listOf(
                 (if (editing) "Hide details" else "Edit details") to { editing = !editing },
-                "Find better match" to { vm.clearSelectedProduct(); vm.openSearch(fromResolver = vm.resolutionContinuation) },
+                "Find better match" to { vm.clearSelectedProduct(); vm.search.open(fromResolver = vm.resolutionContinuation) },
                 "Rescan" to { vm.clearSelectedProduct(); vm.beginScan() },
             )
             // One row when every label fits on one line in a third; otherwise stacked, never wrapped or cut.

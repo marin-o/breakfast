@@ -81,7 +81,7 @@ import com.iron.breakfast.ui.screens.matchDisplay
                     }
                 }
                 Column(Modifier.padding(top = 30.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PrimaryButton("Search Open Food Facts", { vm.openSearch(vm.currentUnknownName(), fromResolver = true) }, kind = ButtonKind.Neutral)
+                    PrimaryButton("Search Open Food Facts", { vm.search.open(vm.currentUnknownName(), fromResolver = true) }, kind = ButtonKind.Neutral)
                     SecondaryButton("Create personal food", { vm.openCustom(vm.currentUnknownName(), fromResolver = true) })
                     TertiaryButton("Skip", vm::skipCurrentUnknown, Modifier.fillMaxWidth(), soft = true)
                 }

@@ -290,7 +290,7 @@ internal fun CorrectionStrip(vm: BreakfastViewModel, entry: MealEntry) {
             ChoiceOption(entry.foodName, true, { vm.feedback.confirm(entry) })
             // The match shows as selected; the alternatives and Search are actions.
             vm.feedback.alternatives(entry).forEach { alternative -> ChoiceOption(alternative.food.name, false, { vm.feedback.chooseAlternative(entry, alternative.food) }, selectable = false) }
-            ChoiceOption("Search", false, { vm.openSearch(entry.foodName) }, selectable = false)
+            ChoiceOption("Search", false, { vm.search.open(entry.foodName) }, selectable = false)
         }
     }
 }
