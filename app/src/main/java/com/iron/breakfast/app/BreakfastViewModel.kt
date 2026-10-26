@@ -74,7 +74,6 @@ import com.iron.breakfast.isLibraryNoMatch
 import com.iron.breakfast.library.libraryLogDraft
 import com.iron.breakfast.ui.label
 import com.iron.breakfast.domain.ReplacementResult
-import com.iron.breakfast.data.OffPreflightResult
 import com.iron.breakfast.contribution.contributionLanguageFor
 import com.iron.breakfast.domain.DraftRow
 import com.iron.breakfast.rowStillInDraft
@@ -96,10 +95,6 @@ import com.iron.breakfast.settings.undoWindowMs
 import com.iron.breakfast.domain.normalizeBarcode
 import com.iron.breakfast.foodFormBack
 import com.iron.breakfast.FoodFormBack
-import com.iron.breakfast.contributionAuthCanDismiss
-import com.iron.breakfast.domain.parseDecimal
-import com.iron.breakfast.data.OffContributionResult
-import com.iron.breakfast.contribution.CONTRIBUTION_UNCERTAIN
 import com.iron.breakfast.activeResolutionTarget
 import com.iron.breakfast.domain.SavedMeal
 import com.iron.breakfast.shouldApplyOffSearchResult
@@ -131,6 +126,7 @@ import com.iron.breakfast.today.MatchFeedback
 import com.iron.breakfast.today.MatchStore
 import com.iron.breakfast.today.UndoController
 import com.iron.breakfast.today.UndoStore
+import com.iron.breakfast.contribution.ContributionFlow
 
 class BreakfastViewModel(application: Application, private val savedState: SavedStateHandle) : AndroidViewModel(application) {
     private val clock: () -> Long = System::currentTimeMillis
@@ -169,6 +165,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         onOpenFailed = { Log.e(LOG_TAG, "Storage could not be opened", it) },
         onRefreshed = { selectedEntry = selectedEntryId?.let { id -> entries.firstOrNull { it.id == id } } },
     )
+    private val off = OpenFoodFactsClient()
     /** The pending Undo, its expiry and Delete (see [UndoController]); Daily and Meal talk to it. */
     internal val undo = UndoController(
         session = session,
@@ -195,7 +192,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         clock = clock,
         scope = viewModelScope,
     )
-    private val off = OpenFoodFactsClient()
+    /** The Open Food Facts contribution flow (see [ContributionFlow]). */
+    internal val contribution = ContributionFlow(off, notices, viewModelScope, Dispatchers.IO)
     private val parser = ShorthandParser()
     private val calculator = NutritionCalculator()
     /** The Library bar's text, or the amount being edited. Never the log draft, so leaving either cannot touch it. */
@@ -243,24 +241,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var productProtein by mutableStateOf(""); private set
     var productCarbs by mutableStateOf(""); private set
     var productFat by mutableStateOf(""); private set
-    var pendingContribution by mutableStateOf<OffContributionDraft?>(null); private set
-    var contributionReviewOpen by mutableStateOf(false); private set
-    var contributionAuthOpen by mutableStateOf(false); private set
-    var contributionFailure by mutableStateOf<String?>(null); private set
     /** The field New food moves focus to after a refused save; consumed by the form. */
     internal var foodFormFocus by mutableStateOf<FoodFormFocus?>(null); private set
     private var foodFormFocusSerial = 0L
     fun foodFormFocusHandled() { foodFormFocus = null }
-    /** The failure shown is "may have been sent": the answer to a sent contribution was lost. */
-    var contributionUncertain by mutableStateOf(false); private set
-    var contributionUsername by mutableStateOf(""); private set
-    var contributionPassword by mutableStateOf(""); private set
-    var contributionBusy by mutableStateOf(false); private set
-    var contributionPreflightBusy by mutableStateOf(false); private set
-    private var contributionPreflightComplete by mutableStateOf(false)
-    private var contributionPreflightToken = 0L
-    var contributionLanguageCode by mutableStateOf("en"); private set
-    var contributionPackageQuantityMl by mutableStateOf(""); private set
     var mealDraftError by mutableStateOf<String?>(null); private set
     /** The full-screen Log page. [logPreset] comes from the `+` or composer that opened it; [logChosen] from the Log's meal menu. */
     var logOpen by mutableStateOf(false); private set
@@ -457,7 +441,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             onSuccess = { deleted ->
                 if (!deleted) { notices.show(DIARY_DELETE_FAILED); return@write }
                 // Nothing deleted may be pinned or resolved into the empty diary (Undo and feedback end with the change).
-                logPins.clear(); pendingContribution = null
+                logPins.clear(); contribution.reset()
                 abandonUnknownResolution(); closeEntryDetail()
                 if (alsoSettings) settings.resetToDefaults()
             },
@@ -777,50 +761,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             onFailure = { error -> if (editSession == edit && editingEntryId == id) markEditInvalid(error.message ?: "Could not save this entry.") },
         ) { engine.replaceEntryDraft(id, foodId, parsedAmount, unit, meal, dayKey) }
     }
-    fun openContributionForFood(food: FoodRecord?) {
-        contributionPreflightToken++
-        val draft = food?.let { OffContributionDraft.fromFood(it) }
-        pendingContribution = draft
-        if (draft == null) {
-            contributionPreflightBusy = false
-            contributionPreflightComplete = false
-            notices.show("Open Food Facts submission is available only for foods with a barcode.")
-            return
-        }
-        contributionPreflightComplete = false
-        startContributionPreflight(draft)
-    }
-
-    private fun startContributionPreflight(draft: OffContributionDraft) {
-        val token = ++contributionPreflightToken
-        contributionPreflightBusy = true
-        viewModelScope.launch(Dispatchers.IO) {
-            val result = off.preflight(draft)
-            withContext(Dispatchers.Main) {
-                if (token != contributionPreflightToken) return@withContext
-                contributionPreflightBusy = false
-                contributionPreflightComplete = true
-                when (result) {
-                    OffPreflightResult.Existing -> pendingContribution = draft.copy(createNewProduct = false)
-                    OffPreflightResult.NewProduct -> {
-                        val language = contributionLanguageFor(draft.name)
-                        contributionLanguageCode = language
-                        contributionPackageQuantityMl = ""
-                        pendingContribution = draft.copy(createNewProduct = true, languageCode = language)
-                    }
-                    is OffPreflightResult.Ineligible -> {
-                        pendingContribution = null
-                        notices.show(result.message)
-                    }
-                    OffPreflightResult.Unavailable -> {
-                        pendingContribution = null
-                        notices.show("Open Food Facts was unavailable. Retry when you have a connection.")
-                    }
-                }
-                if (pendingContribution != null) contributionReviewOpen = true
-            }
-        }
-    }
     private fun abandonUnknownResolution() {
         unknownQueue = emptyList()
         unknownQueueTarget = null
@@ -892,7 +832,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         session.write(
             change = DiaryChange.FoodsChanged,
             onSuccess = { stored ->
-                pendingContribution = contributionDraftAfterLocalSave(draft.food, fromScan)
+                contribution.offerAfterLocalSave(contributionDraftAfterLocalSave(draft.food, fromScan))
                 selectedProductFromScan = false
                 finishResolve(stored)
             },
@@ -1274,91 +1214,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (resolverQuery.isBlank()) resolverQuery = currentUnknownName()
         onResolverQuery(resolverQuery)
     }
-    fun reviewContribution() {
-        val draft = pendingContribution ?: return
-        if (contributionPreflightBusy) return
-        if (contributionPreflightComplete) contributionReviewOpen = true
-        else startContributionPreflight(draft)
-    }
-    fun dismissContributionReview() { contributionReviewOpen = false }
-    fun confirmContribution() {
-        val draft = pendingContribution
-        if (draft != null && draft.createNewProduct && draft.languageCode.trim().lowercase() !in setOf("en", "mk")) {
-            notices.show("Choose en (English) or mk (Macedonian) for the new product.")
-            return
-        }
-        if (draft != null && draft.createNewProduct && draft.basisUnit == MeasureUnit.MILLILITER &&
-            (draft.packageQuantityMl == null || !draft.packageQuantityMl.isFinite() || draft.packageQuantityMl <= 0.0)
-        ) {
-            notices.show("Enter a positive package quantity in ml before continuing.")
-            return
-        }
-        if (draft != null) {
-            contributionReviewOpen = false
-            contributionAuthOpen = true
-        }
-    }
-    fun dismissContributionAuth() {
-        if (!contributionAuthCanDismiss(contributionBusy)) return
-        contributionAuthOpen = false
-        contributionPassword = ""
-    }
-    fun dismissContributionFailure() { contributionFailure = null; contributionUncertain = false; pendingContribution = null }
-    fun retryContribution() {
-        val uncertain = contributionUncertain
-        contributionFailure = null
-        contributionUncertain = false
-        val draft = pendingContribution
-        // After a lost answer the product is read again first, so a retry starts from what Open Food Facts now holds.
-        if (uncertain && draft != null) { contributionPreflightComplete = false; startContributionPreflight(draft) }
-        else contributionAuthOpen = true
-    }
-    fun onContributionUsername(v: String) { contributionUsername = v }
-    fun onContributionPassword(v: String) { contributionPassword = v }
-    fun onContributionLanguage(v: String) {
-        contributionLanguageCode = v
-        pendingContribution = pendingContribution?.copy(languageCode = v.trim().lowercase())
-    }
-    fun onContributionPackageQuantityMl(v: String) {
-        contributionPackageQuantityMl = v
-        pendingContribution = pendingContribution?.copy(packageQuantityMl = parseDecimal(v))
-    }
-    fun submitContribution() {
-        val draft = pendingContribution ?: return
-        if (contributionBusy) return
-        if (contributionUsername.isBlank() || contributionPassword.isBlank()) {
-            contributionFailure = "Enter your Open Food Facts username and password to submit."
-            contributionUncertain = false
-            contributionAuthOpen = false
-            return
-        }
-        val username = contributionUsername.trim()
-        val password = contributionPassword
-        contributionPassword = ""
-        contributionBusy = true
-        viewModelScope.launch(Dispatchers.IO) {
-            val result = off.contribute(draft, username, password)
-            withContext(Dispatchers.Main) {
-                when (result) {
-                    OffContributionResult.Success -> {
-                        pendingContribution = null
-                        contributionAuthOpen = false
-                        contributionFailure = null
-                        notices.show("Contribution sent to Open Food Facts.")
-                    }
-                    OffContributionResult.AuthFailed -> { contributionAuthOpen = false; contributionFailure = "Open Food Facts could not authenticate that account. Check the username and password, then retry." }
-                    is OffContributionResult.Ineligible -> { contributionAuthOpen = false; contributionFailure = result.message }
-                    is OffContributionResult.Rejected -> { contributionAuthOpen = false; contributionFailure = result.message }
-                    is OffContributionResult.PreflightChanged -> { contributionAuthOpen = false; contributionFailure = result.message }
-                    OffContributionResult.Unavailable -> { contributionAuthOpen = false; contributionFailure = "Open Food Facts was unavailable. Retry when you have a connection." }
-                    OffContributionResult.Uncertain -> { contributionAuthOpen = false; contributionFailure = CONTRIBUTION_UNCERTAIN }
-                    is OffContributionResult.Error -> { contributionAuthOpen = false; contributionFailure = result.message }
-                }
-                contributionUncertain = result == OffContributionResult.Uncertain
-                contributionBusy = false
-            }
-        }
-    }
     fun clearSelectedProduct() { selectedProduct = null; selectedProductFromScan = false; selectedProductOrigin = ProductReviewOrigin.LIBRARY; if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false }
     fun onProductAmount(v: String) { productAmount = v }
     fun onProductUnit(v: String) { productUnit = v }
@@ -1498,7 +1353,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             change = DiaryChange.FoodsLogged,
             onSuccess = {
                 selectedProduct = null
-                pendingContribution = contributionDraftAfterLocalSave(draft.food, fromScan)
+                contribution.offerAfterLocalSave(contributionDraftAfterLocalSave(draft.food, fromScan))
                 selectedProductFromScan = false
                 selectedProductOrigin = ProductReviewOrigin.LIBRARY
                 if (resolvesQueue) advanceUnknownQueue() else resolutionContinuation = false
@@ -1635,7 +1490,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }
         val fromOff = draft.fromOff
         val normalizedBarcode = normalizeBarcode(barcode)
-        val contribution = if (fromOff) normalizedBarcode?.let {
+        val candidate = if (fromOff) normalizedBarcode?.let {
             OffContributionDraft(
                 barcode = it, name = name.trim(), brand = brand.trim().ifBlank { null },
                 basisAmount = basisAmount, basisUnit = basisUnit, nutrition = nutrition
@@ -1652,11 +1507,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 discardFoodOpen = false
                 editingLibraryFoodId = null
                 draft.reset()
-                pendingContribution = contribution?.copy(
-                    languageCode = contributionLanguageFor(name),
-                    packageQuantityMl = null
-                )
-                contributionPreflightComplete = false
+                contribution.offerAfterLocalSave(candidate?.copy(languageCode = contributionLanguageFor(name), packageQuantityMl = null))
                 if (resolvesQueue && unknownQueue.isNotEmpty()) advanceUnknownQueue() else resolutionContinuation = false
                 notices.show(if (editingId != null) "Personal food updated for future logs." else if (saveTarget != null) "Saved to ${saveTarget.label()} and your food library." else "Saved to your food library.")
                 if (logResolve != null && editingId == null) finishResolve(saved)

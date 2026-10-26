@@ -327,7 +327,7 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
                 }
             }
             if (mealMenuOpen) MealChoices(selected = targetMeal, onSelect = { targetMeal = it; mealMenuOpen = false }, modifier = Modifier.padding(top = 8.dp))
-            if (contributionShown(vm.settings.showContribute, contributionAvailable(food))) SecondaryButton("Contribute to Open Food Facts", { vm.closeLibraryFood(); vm.openContributionForFood(food) }, Modifier.padding(top = 16.dp))
+            if (contributionShown(vm.settings.showContribute, contributionAvailable(food))) SecondaryButton("Contribute to Open Food Facts", { vm.closeLibraryFood(); vm.contribution.openForFood(food) }, Modifier.padding(top = 16.dp))
             if (food.origin == FoodOrigin.CUSTOM) DestructiveButton("Archive food", { vm.archiveLibraryFood(food) }, Modifier.fillMaxWidth().padding(top = 8.dp), outlined = true)
         }
     }

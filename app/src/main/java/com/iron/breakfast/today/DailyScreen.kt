@@ -141,7 +141,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 DailyMealSection(slot, selected.filter { it.mealSlot == slot }, foods, vm)
             }
             item {
-                if (contributionShown(vm.settings.showContribute, vm.pendingContribution != null)) ContributionAction(vm)
+                if (contributionShown(vm.settings.showContribute, vm.contribution.pending != null)) ContributionAction(vm)
             }
         }
         // Hidden during an entry edit, which owns the input and its own sheet.

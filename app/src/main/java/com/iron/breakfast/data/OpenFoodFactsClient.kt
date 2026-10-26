@@ -1,5 +1,6 @@
 package com.iron.breakfast.data
 
+import com.iron.breakfast.contribution.OffContributions
 import com.iron.breakfast.BuildConfig
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
@@ -201,7 +202,7 @@ class OpenFoodFactsClient(
     private val connectionFactory: (URL) -> HttpURLConnection? = { url ->
         (url.openConnection() as? HttpURLConnection)
     }
-) {
+) : OffContributions {
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun search(query: String): OffSearchResult {
@@ -264,7 +265,7 @@ class OpenFoodFactsClient(
         } finally { connection.disconnect() }
     }
 
-    fun contribute(draft: OffContributionDraft, username: String, password: String): OffContributionResult {
+    override fun contribute(draft: OffContributionDraft, username: String, password: String): OffContributionResult {
         if (username.isBlank() || password.isBlank()) return OffContributionResult.AuthFailed
         if (draft.createNewProduct && draft.languageCode.trim().lowercase() !in setOf("en", "mk")) {
             return OffContributionResult.Ineligible("Choose English (en) or Macedonian (mk) for a new product before submitting.")
@@ -326,7 +327,7 @@ class OpenFoodFactsClient(
         }
     }
 
-    fun preflight(draft: OffContributionDraft): OffPreflightResult {
+    override fun preflight(draft: OffContributionDraft): OffPreflightResult {
         val connection = open(URL("https://world.openfoodfacts.org/api/v3/product/${URLEncoder.encode(draft.barcode, "UTF-8")}.json"))
             ?: return OffPreflightResult.Unavailable
         return try {

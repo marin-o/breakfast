@@ -152,9 +152,9 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     if (vm.searchOpen) OffSearchScreen(vm)
     if (vm.resolverOpen && !scanReviewBackdropVisible) ResolveUnknownScreen(vm)
     vm.selectedProduct?.let { ProductReviewSheet(vm, it) }
-    if (vm.contributionReviewOpen) vm.pendingContribution?.let { ContributionReviewScreen(vm, it) }
-    if (vm.contributionAuthOpen) ContributionSignInScreen(vm)
-    vm.contributionFailure?.let { ContributionFailureScreen(vm, it) }
+    if (vm.contribution.reviewOpen) vm.contribution.pending?.let { ContributionReviewScreen(vm, it) }
+    if (vm.contribution.authOpen) ContributionSignInScreen(vm)
+    vm.contribution.failure?.let { ContributionFailureScreen(vm, it) }
     vm.notices.message?.let { message -> AlertDialog(onDismissRequest = vm.notices::dismiss, confirmButton = { TextButton(vm.notices::dismiss) { Text("OK") } }, text = { Text(message) }) }
     if (vm.pendingImport != null) AlertDialog(
         onDismissRequest = vm::cancelImport,
