@@ -41,6 +41,16 @@ class AppDecisionsTest {
         assertEquals(Overlay.SCANNER, overlay(scanner = true, foodForm = true, entryEdit = true))
     }
 
+    /**
+     * Overlays stack; they are not mutually exclusive, so one Overlay value cannot replace the flags (MOB-017 step 3).
+     * New or Edit food, then the barcode field's scan: the scanner opens over the form (beginBarcodeRescan keeps
+     * customOpen), and Back on the scanner (endScan) shows the form again, not the screen beneath it.
+     */
+    @Test fun theScannerOverAFoodFormGoesBackToTheForm() {
+        assertEquals(Overlay.SCANNER, overlay(scanner = true, foodForm = true))
+        assertEquals(Overlay.FOOD_FORM, overlay(foodForm = true))
+    }
+
     @Test fun aLibraryOpenedFromAMealGoesBackToThatMeal() {
         assertEquals(LibraryExit.MEAL, exitLibraryTarget(resolving = false, archivedOnly = false, origin = MealSlot.LUNCH))
     }
