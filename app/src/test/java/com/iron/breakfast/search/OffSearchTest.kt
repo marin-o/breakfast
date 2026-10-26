@@ -103,6 +103,18 @@ class OffSearchTest {
         assertFalse(search.busy)
     }
 
+    @Test fun reopeningASearchHiddenWhileRunningIsNotStuckBusy() {
+        search.open("kefir")
+        search.submit()
+        search.hide()
+        search.open("ayran")
+        assertEquals(listOf("kefir"), off.cancelled)
+        assertFalse(search.busy)
+        search.submit()
+        off.answer("ayran", OffSearchResult.Success(listOf(product("Ayran"))))
+        assertEquals(listOf("Ayran"), search.results.map { it.name })
+    }
+
     @Test fun aSecondSubmitWhileOneRunsAndASearchBeforeStorageAreRefused() {
         search.open("kefir")
         search.submit()

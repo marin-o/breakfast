@@ -50,6 +50,7 @@ internal class OffSearch(
     /** Opens the search on [prefill]; [fromResolver] when the resolver opened it, so closing returns there. */
     fun open(prefill: String? = null, fromResolver: Boolean = false) {
         drop()
+        busy = false
         onOpen(fromResolver)
         open = true
         query = prefill ?: ""
