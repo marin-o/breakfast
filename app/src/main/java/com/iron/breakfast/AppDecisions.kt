@@ -1,5 +1,6 @@
 package com.iron.breakfast
 
+import com.iron.breakfast.domain.DraftRow
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.NutritionInput
 import com.iron.breakfast.domain.ResolvedNutrition
@@ -246,3 +247,10 @@ internal suspend fun openStorage(open: suspend () -> Unit, onFailure: (Exception
         onFailure(e)
         false
     }
+
+/**
+ * A "Not in your foods" row still names its text in [draft] (MOB-025): the Log draws rows from a draft computed off
+ * the main thread, so after a keystroke a tapped row's span may hold other text, and that tap must do nothing.
+ */
+internal fun rowStillInDraft(draft: String, row: DraftRow.Unresolved): Boolean =
+    row.start >= 0 && row.start < row.end && row.end <= draft.length && draft.substring(row.start, row.end) == row.text

@@ -1,6 +1,8 @@
 package com.iron.breakfast.domain
 
+import com.iron.breakfast.rowStillInDraft
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -52,6 +54,17 @@ class ResolveNotInFoodsTest {
         val pinned = LogPlanner(FoodMatcher(FoodCatalog.fixtures), pins = mapOf("kiselo mleko 200ml" to picked))
         assertEquals("off-pesto-ml", pinned.plan("kiselo mleko 200ml").entries.single().food.id)
         assertTrue(planner.plan("kiselo mleko 200ml").entries.none { it.food.id == "off-pesto-ml" })
+    }
+
+    /** MOB-025 (A4-10): a row from the draft before a keystroke is not resolved against the text typed since. */
+    @Test fun aRowWhoseSpanNoLongerHoldsItsTextIsIgnored() {
+        val shown = "2 eggs, zzqx 100g"
+        val row = planner.draft(shown, typing = false).rows.filterIsInstance<DraftRow.Unresolved>().single()
+        assertTrue(rowStillInDraft(shown, row))
+        // One more letter typed before the next draft was ready: the same span now holds "zzqxa 100".
+        assertFalse(rowStillInDraft("2 eggs, zzqxa 100g", row))
+        assertFalse(rowStillInDraft("2 eggs", row))
+        assertFalse(rowStillInDraft(shown, DraftRow.Unresolved("zzqx 100g")))
     }
 
     @Test fun anUnresolvedRowCarriesItsSpanInTheInput() {

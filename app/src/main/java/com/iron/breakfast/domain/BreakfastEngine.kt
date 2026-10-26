@@ -99,30 +99,39 @@ class BreakfastEngine(private val store: BreakfastStore) {
         }
     }
 
-    suspend fun replaceEntry(entryId: String, foodId: String): ReplacementResult {
-        val old = store.entries().firstOrNull { it.id == entryId }
-            ?: return ReplacementResult.Failure("That saved entry is no longer available.")
-        val food = store.foods().firstOrNull { it.id == foodId && !it.archived }
-            ?: return ReplacementResult.Failure("That catalogue record is no longer available.")
-        if (!old.enteredAmount.isFinite() || old.enteredAmount <= 0.0) return ReplacementResult.Failure("Enter a positive amount.")
-        val calculation = calculator.calculate(food, old.enteredAmount, old.enteredUnit)
-        if (!calculation.supported) {
-            return ReplacementResult.Failure(
-                "${food.name} has no ${old.enteredUnit.displayLabel()} conversion. Re-enter this segment with a compatible amount such as ml or g."
+    /**
+     * Applies [edit] to entry [entryId] as it is stored, inside the store's write (see [BreakfastStore.editEntry]), so an
+     * edit never starts from a stale snapshot and never re-creates a deleted entry. [missing] when the entry is gone.
+     */
+    private suspend fun editEntry(entryId: String, missing: String, edit: (MealEntry) -> ReplacementResult): ReplacementResult {
+        var result: ReplacementResult = ReplacementResult.Failure(missing)
+        store.editEntry(entryId) { stored -> edit(stored).also { result = it }.let { (it as? ReplacementResult.Success)?.entry } }
+        return result
+    }
+
+    suspend fun replaceEntry(entryId: String, foodId: String): ReplacementResult =
+        editEntry(entryId, "That saved entry is no longer available.") { old ->
+            val food = store.foods().firstOrNull { it.id == foodId && !it.archived }
+                ?: return@editEntry ReplacementResult.Failure("That catalogue record is no longer available.")
+            if (!old.enteredAmount.isFinite() || old.enteredAmount <= 0.0) return@editEntry ReplacementResult.Failure("Enter a positive amount.")
+            val calculation = calculator.calculate(food, old.enteredAmount, old.enteredUnit)
+            if (!calculation.supported) {
+                return@editEntry ReplacementResult.Failure(
+                    "${food.name} has no ${old.enteredUnit.displayLabel()} conversion. Re-enter this segment with a compatible amount such as ml or g."
+                )
+            }
+            ReplacementResult.Success(
+                old.copy(
+                    foodId = food.id,
+                    foodName = food.name,
+                    resolvedBaseAmount = calculation.resolvedBaseAmount,
+                    nutritionSnapshot = calculation.nutrition,
+                    conversionProvenance = calculation.provenance,
+                    approximateConversion = calculation.approximate,
+                    resolvedBaseUnit = food.nutrition.unit
+                )
             )
         }
-        val updated = old.copy(
-            foodId = food.id,
-            foodName = food.name,
-            resolvedBaseAmount = calculation.resolvedBaseAmount,
-            nutritionSnapshot = calculation.nutrition,
-            conversionProvenance = calculation.provenance,
-            approximateConversion = calculation.approximate,
-            resolvedBaseUnit = food.nutrition.unit
-        )
-        store.replaceEntry(updated)
-        return ReplacementResult.Success(updated)
-    }
 
     /**
      * Recalculates a saved entry for its original food record, changing only
@@ -130,46 +139,46 @@ class BreakfastEngine(private val store: BreakfastStore) {
      * quick edit must contain an amount and a supported unit, and it must not
      * be allowed to fall back to the food's defaults.
      */
-    suspend fun replaceEntryAmountUnit(entryId: String, text: String): ReplacementResult {
-        val old = store.entries().firstOrNull { it.id == entryId }
-            ?: return ReplacementResult.Failure("That entry is no longer available.")
-        val parsed = parseStrictAmountUnit(text)
-            ?: return ReplacementResult.Failure("Enter a positive amount and a supported unit, such as 100 g or 1 tbsp.")
-        val food = store.foods().firstOrNull { it.id == old.foodId }
-            ?: return ReplacementResult.Failure("The original food for this entry is no longer available.")
-        val calculation = calculator.calculate(food, parsed.amount, parsed.unit)
-        if (!calculation.supported) {
-            return ReplacementResult.Failure(
-                "That amount/unit is not supported for ${food.name}."
+    suspend fun replaceEntryAmountUnit(entryId: String, text: String): ReplacementResult =
+        editEntry(entryId, "That entry is no longer available.") { old ->
+            val parsed = parseStrictAmountUnit(text)
+                ?: return@editEntry ReplacementResult.Failure("Enter a positive amount and a supported unit, such as 100 g or 1 tbsp.")
+            val food = store.foods().firstOrNull { it.id == old.foodId }
+                ?: return@editEntry ReplacementResult.Failure("The original food for this entry is no longer available.")
+            val calculation = calculator.calculate(food, parsed.amount, parsed.unit)
+            if (!calculation.supported) {
+                return@editEntry ReplacementResult.Failure(
+                    "That amount/unit is not supported for ${food.name}."
+                )
+            }
+            ReplacementResult.Success(
+                old.copy(
+                    enteredAmount = parsed.amount,
+                    enteredUnit = parsed.unit,
+                    resolvedBaseAmount = calculation.resolvedBaseAmount,
+                    nutritionSnapshot = calculation.nutrition,
+                    conversionProvenance = calculation.provenance,
+                    approximateConversion = calculation.approximate,
+                    resolvedBaseUnit = food.nutrition.unit
+                )
             )
         }
-        val updated = old.copy(
-            enteredAmount = parsed.amount,
-            enteredUnit = parsed.unit,
-            resolvedBaseAmount = calculation.resolvedBaseAmount,
-            nutritionSnapshot = calculation.nutrition,
-            conversionProvenance = calculation.provenance,
-            approximateConversion = calculation.approximate,
-            resolvedBaseUnit = food.nutrition.unit
-        )
-        store.replaceEntry(updated)
-        return ReplacementResult.Success(updated)
-    }
 
     suspend fun replaceEntryFromText(entryId: String, text: String): ReplacementResult {
-        val old = store.entries().firstOrNull { it.id == entryId } ?: return ReplacementResult.Failure("That entry is no longer available.")
+        // Matched before the write: indexing never runs inside the store's transaction.
         val parsed = parser.parse(text)
-        val match = matcher().best(parsed.foodPhrase, store.preferenceMap()) ?: return ReplacementResult.Failure("No matching food.")
-        val amount = parsed.amount ?: old.enteredAmount
-        val unit = parsed.unit ?: old.enteredUnit
-        val calculation = calculator.calculate(match.food, amount, unit)
-        if (!calculation.supported) return ReplacementResult.Failure("That amount/unit is not supported for ${match.food.name}.")
-        val updated = old.copy(foodId = match.food.id, foodName = match.food.name, enteredAmount = amount, enteredUnit = unit,
-            resolvedBaseAmount = calculation.resolvedBaseAmount, nutritionSnapshot = calculation.nutrition,
-            conversionProvenance = calculation.provenance, approximateConversion = calculation.approximate, sourcePhrase = text,
-            resolvedBaseUnit = match.food.nutrition.unit)
-        store.replaceEntry(updated)
-        return ReplacementResult.Success(updated)
+        val match = matcher().best(parsed.foodPhrase, store.preferenceMap())
+        return editEntry(entryId, "That entry is no longer available.") { old ->
+            if (match == null) return@editEntry ReplacementResult.Failure("No matching food.")
+            val amount = parsed.amount ?: old.enteredAmount
+            val unit = parsed.unit ?: old.enteredUnit
+            val calculation = calculator.calculate(match.food, amount, unit)
+            if (!calculation.supported) return@editEntry ReplacementResult.Failure("That amount/unit is not supported for ${match.food.name}.")
+            ReplacementResult.Success(old.copy(foodId = match.food.id, foodName = match.food.name, enteredAmount = amount, enteredUnit = unit,
+                resolvedBaseAmount = calculation.resolvedBaseAmount, nutritionSnapshot = calculation.nutrition,
+                conversionProvenance = calculation.provenance, approximateConversion = calculation.approximate, sourcePhrase = text,
+                resolvedBaseUnit = match.food.nutrition.unit))
+        }
     }
 
     /** Replaces every editable field in one storage transaction, retaining the entry id. */
@@ -180,33 +189,34 @@ class BreakfastEngine(private val store: BreakfastStore) {
         unit: MeasureUnit,
         mealSlot: MealSlot,
         dayKey: String,
-    ): ReplacementResult {
-        val old = store.entries().firstOrNull { it.id == entryId }
-            ?: return ReplacementResult.Failure("That saved entry is no longer available.")
+    ): ReplacementResult = editEntry(entryId, "That saved entry is no longer available.") { old ->
         val food = store.foods().firstOrNull { it.id == foodId && !it.archived }
-            ?: return ReplacementResult.Failure("That catalogue record is no longer available.")
-        if (!amount.isFinite() || amount <= 0.0) return ReplacementResult.Failure("Enter a positive amount.")
+            ?: return@editEntry ReplacementResult.Failure("That catalogue record is no longer available.")
+        if (!amount.isFinite() || amount <= 0.0) return@editEntry ReplacementResult.Failure("Enter a positive amount.")
         val calculation = calculator.calculate(food, amount, unit)
-        if (!calculation.supported) return ReplacementResult.Failure("That amount/unit is not supported for ${food.name}.")
-        val updated = old.copy(
-            foodId = food.id,
-            foodName = food.name,
-            enteredAmount = amount,
-            enteredUnit = unit,
-            resolvedBaseAmount = calculation.resolvedBaseAmount,
-            nutritionSnapshot = calculation.nutrition,
-            conversionProvenance = calculation.provenance,
-            approximateConversion = calculation.approximate,
-            sourcePhrase = food.name,
-            mealSlot = mealSlot,
-            dayKey = dayKey,
-            resolvedBaseUnit = food.nutrition.unit,
+        if (!calculation.supported) return@editEntry ReplacementResult.Failure("That amount/unit is not supported for ${food.name}.")
+        ReplacementResult.Success(
+            old.copy(
+                foodId = food.id,
+                foodName = food.name,
+                enteredAmount = amount,
+                enteredUnit = unit,
+                resolvedBaseAmount = calculation.resolvedBaseAmount,
+                nutritionSnapshot = calculation.nutrition,
+                conversionProvenance = calculation.provenance,
+                approximateConversion = calculation.approximate,
+                sourcePhrase = food.name,
+                mealSlot = mealSlot,
+                dayKey = dayKey,
+                resolvedBaseUnit = food.nutrition.unit,
+            )
         )
-        store.replaceEntry(updated)
-        return ReplacementResult.Success(updated)
     }
 
     suspend fun reinforce(foodId: String) = store.reinforce(foodId)
+
+    /** Reloads the stored diary when the read after a committed write failed; true when it reloaded. */
+    suspend fun reloadIfStale(): Boolean = store.reloadIfStale()
 
     fun foods(): List<FoodRecord> = store.foods()
 

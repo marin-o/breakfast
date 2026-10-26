@@ -4,13 +4,21 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.iron.breakfast.domain.BreakfastEngine
 import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.FoodOrigin
+import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
+import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
+import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.NutritionValues
+import com.iron.breakfast.domain.ReplacementResult
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -48,7 +56,7 @@ class BreakfastStoreTest {
         val logged = listOf(entry("undo-a"), entry("undo-b"), entry("undo-c"))
         store.saveEntries(logged)
         val edited = logged[1].copy(enteredAmount = 2.0, nutritionSnapshot = NutritionValues(20.0, 2.0, 2.0, 2.0))
-        store.replaceEntry(edited)
+        store.editEntry(edited.id) { edited }
 
         val deleted = store.deleteEntries(logged)
 
@@ -75,5 +83,50 @@ class BreakfastStoreTest {
         store.saveEntries(listOf(original))
 
         assertEquals(listOf(original), store.entries())
+    }
+
+    /** MOB-025 (A1-07): an edit of an entry deleted since is refused and does not re-create it. */
+    @Test
+    fun anEditOfADeletedEntryDoesNotRecreateIt() = runBlocking {
+        val logged = entry("edit-gone")
+        store.saveEntries(listOf(logged))
+        store.deleteEntry(logged.id)
+
+        assertFalse(store.editEntry(logged.id) { it.copy(enteredAmount = 5.0) })
+        val result = BreakfastEngine(store).replaceEntryAmountUnit(logged.id, "5 g")
+        assertTrue(result is ReplacementResult.Failure)
+        assertEquals(emptyList<String>(), database.mealEntryDao().all().map { it.id })
+    }
+
+    /** MOB-025 (A1-07): the edit starts from the stored row, so a field it does not change keeps its stored value. */
+    @Test
+    fun anEditStartsFromTheStoredRow() = runBlocking {
+        val logged = entry("edit-fresh")
+        store.saveEntries(listOf(logged))
+        store.editEntry(logged.id) { it.copy(mealSlot = MealSlot.DINNER) }
+
+        // A second edit that only changes the amount keeps the meal the first one stored.
+        store.editEntry(logged.id) { it.copy(enteredAmount = 3.0) }
+        val stored = database.mealEntryDao().all().single().toDomain()
+        assertEquals(MealSlot.DINNER, stored.mealSlot)
+        assertEquals(3.0, stored.enteredAmount, 0.0)
+    }
+
+    /** MOB-025 (A1-11): saving an edited food keeps the stored archived state. */
+    @Test
+    fun upsertFoodKeepsTheStoredArchivedState() = runBlocking {
+        val food = FoodRecord(
+            id = "custom-archived", name = "Old bar", aliases = emptyList(), category = "Personal food", origin = FoodOrigin.CUSTOM,
+            nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(400.0, 10.0, 50.0, 15.0)),
+            defaultAmount = 100.0, defaultUnit = MeasureUnit.GRAM, personalOverride = true,
+        )
+        store.upsertFood(food)
+        store.archiveFood(food.id)
+
+        store.upsertFood(food.copy(name = "Old bar 2", archived = false))
+
+        val stored = database.foodDao().byId(food.id)
+        assertEquals("Old bar 2", stored?.name)
+        assertEquals(true, stored?.archived)
     }
 }

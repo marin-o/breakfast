@@ -481,6 +481,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         foods = engine.foods()
         entries = engine.persistedMeal().entries
         selectedEntry = selectedEntryId?.let { id -> entries.firstOrNull { it.id == id } }
+        // A write that committed but could not reload the diary is reloaded now, and the screens read it again.
+        viewModelScope.launch { if (suspendRunCatching { engine.reloadIfStale() }.getOrDefault(false)) refresh() }
     }
     /** The 60-second loop: today is recomputed, while the selected day stays where it is. */
     fun reloadToday() { checkDay(returning = false); if (ready) refresh() }
@@ -832,7 +834,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 } catch (error: Throwable) {
                     if (editSession == session && editingEntryId == id) markEditInvalid(error.message ?: "Could not save this entry.")
                 } finally {
-                    if (editSession == session && editingEntryId == id) busy = false
+                    // This save owns busy until it ends, whatever the session is now (nothing else clears it).
+                    busy = false
                 }
             }
         }
@@ -905,7 +908,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
      * not log: [finishResolve] puts it back in the draft in place of the part.
      */
     fun resolveNotInFoods(row: DraftRow.Unresolved) {
-        if (!ready || busy || row.start < 0 || row.start >= row.end || row.end > logDraft.length) return
+        // A row drawn from an older draft (a keystroke since) names a span that may no longer hold its text.
+        if (!ready || busy || !rowStillInDraft(logDraft, row)) return
         val part = logDraft.substring(row.start, row.end)
         val query = engine.planner(logPins.toMap()).libraryQueryFor(part)
         logResolve = LogResolveRequest(logDraft, row.start, row.end, part, logPreset, logChosen, slot)
@@ -1150,7 +1154,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (entryEditMode == EntryEditMode.FULL && fullSaveJob?.isActive == true) return
         fullSaveJob?.cancel()
         fullSaveJob = null
-        busy = false
+        // Leaves busy alone: only the write that set it clears it, so a quick-edit save in flight still blocks a second write.
         editSession += 1
         entryEditMode = EntryEditMode.NONE
         editingEntryId = null
@@ -1634,8 +1638,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val food = selectedProduct ?: return
         if (logResolve != null) { resolveWithProduct(); return }
         if (!canSaveProductToLibrary(slot, resolutionContinuation, unknownQueue.isNotEmpty())) return
-        val draft = productDraft(food) ?: run { notice = "Enter a positive amount, a supported unit, and valid calories."; return }
         if (!ready || busy) return
+        val draft = productDraft(food) ?: run { notice = "Enter a positive amount, a supported unit, and valid calories."; return }
         busy = true
         viewModelScope.launch {
             suspendRunCatching { engine.updateFood(draft.food) }
@@ -1724,6 +1728,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         }
     }
     fun saveCustom() {
+        // A tap while the save runs is ignored, not reported as invalid.
+        if (!ready || busy) return
         val name = draft.name; val brand = draft.brand; val barcode = draft.barcode.trim()
         val aliasList = draft.allAliases(); val servingList = draft.servings
         val input = draft.nutritionInput()
@@ -1744,7 +1750,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val basisAmount = resolved.basisAmount
         val basisUnit = resolved.basisUnit
         val nutrition = NutritionValues(kcal, resolved.protein, resolved.carbohydrates, resolved.fat)
-        if (!ready || busy) { notice = "Enter a positive nutrition basis."; return }
         val resolutionPlan = resolverLogPlan(resolutionContinuation, unknownQueue.isNotEmpty(), unknownQueueTarget, slot)
         val saveTarget = resolutionPlan?.meal
         val resolvesQueue = resolutionPlan?.advancesQueue == true

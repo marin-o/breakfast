@@ -1,6 +1,7 @@
 package com.iron.breakfast.data
 
 import android.content.Context
+import android.util.Log
 import androidx.room.Room
 import androidx.room.withTransaction
 import com.iron.breakfast.domain.FoodRecord
@@ -13,6 +14,7 @@ import com.iron.breakfast.domain.Preference
 import com.iron.breakfast.domain.barcodeForms
 import com.iron.breakfast.domain.canonicalBarcode
 import com.iron.breakfast.domain.sameBarcode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
@@ -41,6 +43,10 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
 
     @Volatile
     private var initialized = false
+
+    /** A write committed but the snapshot read after it failed: [model] is older than the database until a reload. */
+    @Volatile
+    private var snapshotStale = false
 
     suspend fun initialize() {
         if (initialized) return
@@ -81,9 +87,18 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
         write { database.mealEntryDao().insertAll(entries.map { it.toEntity() }) }
     }
 
-    suspend fun replaceEntry(updated: MealEntry) {
+    /**
+     * Entry edits (MOB-025): reads entry [id] inside the write lock and transaction, so [edit] starts from the stored
+     * row, not a snapshot, and writes what it returns with UPDATE ... WHERE id, so a deleted entry is never re-created.
+     * [edit] returns null to write nothing. Returns false when the entry is gone.
+     */
+    suspend fun editEntry(id: String, edit: (MealEntry) -> MealEntry?): Boolean {
         requireReady()
-        write { database.mealEntryDao().replace(updated.toEntity()) }
+        return write {
+            val stored = database.mealEntryDao().byIds(listOf(id)).firstOrNull()?.toDomain() ?: return@write false
+            edit(stored)?.let { database.mealEntryDao().update(it.copy(id = id).toEntity()) }
+            true
+        }
     }
 
     suspend fun reinforce(foodId: String) {
@@ -98,9 +113,13 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
         }
     }
 
+    /** Saves an edited or new food. A stored food keeps its archived state: only [archiveFood] and [restoreFood] change it. */
     suspend fun upsertFood(food: FoodRecord) {
         requireReady()
-        write { insertFoodRows(food) }
+        write {
+            val storedArchived = database.foodDao().byId(food.id)?.archived
+            insertFoodRows(if (storedArchived == null) food else food.copy(archived = storedArchived))
+        }
     }
 
     suspend fun foodByBarcode(barcode: String): FoodRecord? {
@@ -232,9 +251,26 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
      */
     private suspend fun <T> write(block: suspend () -> T): T = writeMutex.withLock {
         withContext(NonCancellable + Dispatchers.IO) {
-            val result = database.withTransaction { block() }
-            model = readSnapshot()
-            result
+            commitThenRefresh(
+                commit = { database.withTransaction { block() } },
+                refresh = { model = readSnapshot(); snapshotStale = false },
+            ) { error ->
+                snapshotStale = true
+                Log.w("Breakfast", "Saved, but the diary could not be reloaded; it reloads later", error)
+            }
+        }
+    }
+
+    /** Reloads the snapshot if the read after a committed write failed. True when it reloaded. */
+    suspend fun reloadIfStale(): Boolean {
+        if (!snapshotStale) return false
+        return writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                if (!snapshotStale) return@withContext false
+                model = readSnapshot()
+                snapshotStale = false
+                true
+            }
         }
     }
 
@@ -295,6 +331,26 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
     private fun requireReady() {
         check(initialized) { "BreakfastStore.initialize() must complete before reading or writing" }
     }
+}
+
+/**
+ * A write's outcome is its [commit] (MOB-025): once that returns, the write is saved. A [refresh] that fails after it is
+ * handed to [onRefreshFailed] (reload later), never thrown as a failed save, so a retry cannot log the same food twice.
+ */
+internal suspend fun <T> commitThenRefresh(
+    commit: suspend () -> T,
+    refresh: suspend () -> Unit,
+    onRefreshFailed: (Exception) -> Unit,
+): T {
+    val result = commit()
+    try {
+        refresh()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        onRefreshFailed(error)
+    }
+    return result
 }
 
 /** The ids of [expected] whose [stored] row is still exactly the snapshot; an edited or missing entry is left out. */

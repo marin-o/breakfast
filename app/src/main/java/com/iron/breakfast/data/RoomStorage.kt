@@ -9,6 +9,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
+import androidx.room.Update
 import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
@@ -107,6 +108,9 @@ interface FoodDao {
     @Query("SELECT * FROM foods")
     suspend fun all(): List<FoodEntity>
 
+    @Query("SELECT * FROM foods WHERE id = :id")
+    suspend fun byId(id: String): FoodEntity?
+
     @Query("SELECT * FROM foods WHERE barcode IN (:barcodes)")
     suspend fun byBarcodes(barcodes: List<String>): List<FoodEntity>
 
@@ -185,6 +189,10 @@ interface MealEntryDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun replace(entry: MealEntryEntity)
+
+    /** UPDATE ... WHERE id: a row that is gone stays gone (an edit never re-creates it). */
+    @Update
+    suspend fun update(entry: MealEntryEntity): Int
 
     @Query("SELECT * FROM meal_entries WHERE id IN (:ids)")
     suspend fun byIds(ids: List<String>): List<MealEntryEntity>
