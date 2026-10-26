@@ -234,4 +234,62 @@ class BreakfastStoreTest {
         assertEquals(before, database.foodDao().all())
         assertEquals(store.foods(), BreakfastStore(database).apply { initialize() }.foods())
     }
+
+    private val personal = FoodRecord(
+        id = "custom-delete-all", name = "Домашен бурек", aliases = listOf("burek"), category = "Personal food", origin = FoodOrigin.CUSTOM,
+        nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(280.0, 9.0, 30.0, 17.5)),
+        defaultAmount = 150.0, defaultUnit = MeasureUnit.GRAM, personalOverride = true,
+    )
+
+    /** A diary with a personal food, an edited built-in food, entries and two learned picks. */
+    private suspend fun fillForDeleteAll() {
+        store.upsertFood(personal)
+        val builtIn = FoodCatalog.fixtures.first()
+        store.upsertFood(builtIn.copy(name = "Edited ${builtIn.name}", personalOverride = true))
+        store.saveEntries(listOf(entry("all-a"), entry("all-b")))
+        store.reinforce(personal.id)
+        store.reinforce(builtIn.id)
+    }
+
+    /** B9 Delete all data: entries and foods go, the built-in catalogue comes back as on a first start, picks stay. */
+    @Test
+    fun deleteAllRemovesEntriesAndFoodsAndSeedsTheCatalogueAgain() = runBlocking {
+        val fresh = database.foodDao().all()
+        fillForDeleteAll()
+        val preferences = database.preferenceDao().all()
+
+        store.deleteAllData(alsoPreferences = false)
+
+        assertEquals(emptyList<MealEntry>(), store.entries())
+        assertEquals(emptyList<String>(), database.mealEntryDao().all().map { it.id })
+        assertEquals(null, database.foodDao().byId(personal.id))
+        assertEquals(fresh, database.foodDao().all())
+        assertEquals(FoodCatalog.fixtures.map { it.id }.sorted(), store.foods().map { it.id }.sorted())
+        assertEquals(preferences, database.preferenceDao().all())
+    }
+
+    /** B9 Delete all data with "Also settings and learned picks": the learned preferences go in the same transaction. */
+    @Test
+    fun deleteAllWithLearnedPicksAlsoDeletesThePreferences() = runBlocking {
+        fillForDeleteAll()
+
+        store.deleteAllData(alsoPreferences = true)
+
+        assertEquals(emptyList<String>(), database.preferenceDao().all().map { it.foodId })
+        assertTrue(store.preferenceMap().isEmpty())
+        assertEquals(emptyList<MealEntry>(), store.entries())
+    }
+
+    /** B9 Delete all data is one transaction: a failure after the deletes leaves the diary exactly as it was. */
+    @Test
+    fun aFailingDeleteAllLeavesTheDiary() = runBlocking {
+        fillForDeleteAll()
+        val before = store.exportRows()
+
+        val failed = runCatching { store.deleteAllData(alsoPreferences = true) { error("injected failure") } }
+
+        assertTrue(failed.isFailure)
+        assertEquals(before, store.exportRows())
+        assertEquals(listOf("all-a", "all-b"), store.entries().map { it.id }.sorted())
+    }
 }

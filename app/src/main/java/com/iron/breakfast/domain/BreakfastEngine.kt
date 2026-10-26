@@ -19,6 +19,9 @@ class BreakfastEngine(private val store: BreakfastStore) {
     /** Import diary: the stored diary becomes [rows], or stays as it was if the write fails. */
     internal suspend fun replaceDiary(rows: DiaryRows) = store.replaceDiary(rows)
 
+    /** Delete all data, in one transaction; see [BreakfastStore.deleteAllData]. */
+    internal suspend fun deleteAllData(alsoPreferences: Boolean) = store.deleteAllData(alsoPreferences)
+
     private var cachedPlanner: LogPlanner? = null
     private var plannerMatcher: FoodMatcher? = null
     private var plannerPreferences: Map<String, Preference>? = null

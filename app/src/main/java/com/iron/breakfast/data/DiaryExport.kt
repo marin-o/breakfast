@@ -335,6 +335,13 @@ internal fun writeSafetyCopy(dir: File, file: DiaryFile): File {
     return target
 }
 
+/** Removes the safety copy in [dir] and any unfinished temp file ("Safety copy" Don't keep). True when none is left. */
+internal fun deleteSafetyCopy(dir: File): Boolean {
+    File(dir, "$SAFETY_COPY_NAME.tmp").delete()
+    val target = File(dir, SAFETY_COPY_NAME)
+    return !target.exists() || target.delete()
+}
+
 /** "breakfast-2026-10-26.json": the name the save picker suggests. */
 internal fun diaryFileName(date: LocalDate): String = "breakfast-$date.json"
 

@@ -139,6 +139,7 @@ import com.iron.breakfast.data.SAFETY_COPY_NAME
 import com.iron.breakfast.data.diaryFileName
 import com.iron.breakfast.data.writeDiaryChecked
 import com.iron.breakfast.data.writeSafetyCopy
+import com.iron.breakfast.data.deleteSafetyCopy
 import com.iron.breakfast.data.OffContributionDraft
 import com.iron.breakfast.data.OffContributionResult
 import com.iron.breakfast.data.OffPreflightResult
@@ -366,6 +367,14 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var flashlightAtStart by mutableStateOf(settings.flashlightAtStart); private set
     var lookUpBarcodes by mutableStateOf(settings.lookUpBarcodes); private set
     var showContribute by mutableStateOf(settings.showContribute); private set
+    /** Settings, Data. */
+    internal var exportReminder by mutableStateOf(settings.exportReminder); private set
+    var keepSafetyCopy by mutableStateOf(settings.keepSafetyCopy); private set
+    /** "Export your diary." on Daily: shown once when due, until Export is tapped or the app is left. */
+    var exportReminderVisible by mutableStateOf(false); private set
+    /** The Delete all data dialog, and its "Also settings and learned picks" chip (off each time it opens). */
+    var deleteAllOpen by mutableStateOf(false); private set
+    var deleteAllAlsoSettings by mutableStateOf(false); private set
     /** Settings, Logging: how long Undo stays, the meal a log without one goes to, and the ranking switches. */
     internal var undoWindow by mutableStateOf(settings.undoWindow); private set
     internal var mealMode by mutableStateOf(settings.mealMode); private set
@@ -548,6 +557,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             storageUnavailable = !opened
             if (opened) {
                 ready = true
+                checkExportReminder()
                 // A restored Edit food whose food is gone has nothing to edit.
                 if (customOpen && editingLibraryFoodId?.let { id -> foods.none { it.id == id } } == true) closeCustom()
             }
@@ -573,13 +583,14 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun reloadToday() { checkDay(returning = false); if (ready) refresh() }
     private var stopped = false
     /** The activity left the screen (backgrounded or closed). */
-    fun onAppStopped() { stopped = true }
+    fun onAppStopped() { stopped = true; exportReminderVisible = false }
     /** The activity is on screen again after a stop: a user following today moves to the new today. */
     fun onAppStarted() {
         if (!stopped) return
         stopped = false
         checkDay(returning = true)
         if (ready) refresh()
+        checkExportReminder()
     }
     /** Recomputes today and applies [resolveSelectedDay]; the selection moves only when [returning]. */
     private fun checkDay(returning: Boolean) {
@@ -627,6 +638,85 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         val hour = shiftDayStartHour(dayStartHour, delta)
         dayStartHour = hour
         settings.dayStartHour = hour
+        checkDay(returning = true)
+    }
+    internal fun chooseExportReminder(reminder: ExportReminder) {
+        exportReminder = reminder
+        settings.exportReminder = reminder
+        if (reminder == ExportReminder.NEVER) exportReminderVisible = false else checkExportReminder()
+    }
+    /** Shows the export reminder when [exportReminderDue]; it counts as shown from now. */
+    private fun checkExportReminder() {
+        if (exportReminderVisible || !ready) return
+        val now = clock()
+        if (!exportReminderDue(exportReminder, settings.lastExportMs, settings.exportReminderShownMs, now)) return
+        exportReminderVisible = true
+        settings.exportReminderShownMs = now
+    }
+    /** The reminder's Export: the same save picker as Settings, Export diary. */
+    fun exportFromReminder() {
+        if (!ready || busy) return
+        exportReminderVisible = false
+        requestDiaryPicker(DiaryPicker.EXPORT)
+    }
+    /** "Safety copy" Don't keep also removes the copy kept so far. */
+    fun chooseKeepSafetyCopy(keep: Boolean) {
+        keepSafetyCopy = keep
+        settings.keepSafetyCopy = keep
+        if (!keep) removeSafetyCopy()
+    }
+    private fun removeSafetyCopy() {
+        val dir = getApplication<Application>().noBackupFilesDir
+        viewModelScope.launch(Dispatchers.IO) { if (!deleteSafetyCopy(dir)) Log.w(LOG_TAG, "The safety copy could not be deleted") }
+    }
+    fun openDeleteAll() { if (ready && !busy) { deleteAllAlsoSettings = false; deleteAllOpen = true } }
+    fun toggleDeleteAllAlsoSettings() { deleteAllAlsoSettings = !deleteAllAlsoSettings }
+    fun cancelDeleteAll() { deleteAllOpen = false; deleteAllAlsoSettings = false }
+    /**
+     * Delete all in the dialog: the diary is first saved to the safety copy, whatever "Safety copy" says (no copy, no
+     * delete); then entries and foods go in one transaction and the catalogue is seeded again. With the chip on, the
+     * learned preferences go in the same transaction and every setting returns to its default.
+     */
+    fun confirmDeleteAll() {
+        if (!deleteAllAllowed(deleteAllOpen, ready, busy)) return
+        val alsoSettings = deleteAllAlsoSettings
+        cancelDeleteAll()
+        val safetyDir = getApplication<Application>().noBackupFilesDir
+        launchBusy {
+            val deleted = withContext(NonCancellable) {
+                try {
+                    if (safetyCopyStep(keepSafetyCopy, deletingAll = true) == SafetyCopyStep.WRITE) {
+                        val current = diaryFileOf(engine.exportRows(), DiarySettings(dayStartHour, longDraft), clock())
+                        withContext(Dispatchers.IO) { writeSafetyCopy(safetyDir, current) }
+                    }
+                    engine.deleteAllData(alsoPreferences = alsoSettings)
+                    true
+                } catch (e: Exception) {
+                    Log.e(LOG_TAG, "Delete all failed; the stored diary is unchanged", e)
+                    false
+                }
+            }
+            if (!deleted) return@launchBusy
+            // Nothing deleted may be undone, pinned, confirmed or resolved into the empty diary.
+            offerUndo(null); loggedBatchIds = emptyList(); logPins.clear(); feedbackIds = emptySet(); pendingContribution = null
+            abandonUnknownResolution(); closeEntryDetail()
+            if (alsoSettings) resetSettings()
+            refresh()
+            refreshLibrary()
+        }
+    }
+    /** Every setting back to its default, on the phone and on screen. */
+    private fun resetSettings() {
+        settings.clear()
+        dayStartHour = settings.dayStartHour; longDraft = settings.longDraft
+        undoWindow = settings.undoWindow; mealMode = settings.mealMode; mealBounds = settings.mealBounds
+        countTyping = settings.countTyping; engine.countTyping = countTyping
+        learnFromPicks = settings.learnFromPicks; engine.learnFromPicks = learnFromPicks
+        theme = settings.theme; showMacros = settings.showMacros; showMissingNote = settings.showMissingNote
+        decimalMark = settings.decimalMark; DisplayDecimal.mark = decimalMark
+        motion = settings.motion; textSize = settings.textSize; haptics = settings.haptics
+        flashlightAtStart = settings.flashlightAtStart; lookUpBarcodes = settings.lookUpBarcodes; showContribute = settings.showContribute
+        exportReminder = settings.exportReminder; keepSafetyCopy = settings.keepSafetyCopy; exportReminderVisible = false
         checkDay(returning = true)
     }
     fun chooseFlashlightAtStart(on: Boolean) {
@@ -740,6 +830,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
                 problem == null
             }
             busy = false
+            if (written) { settings.lastExportMs = clock(); exportReminderVisible = false }
             notice = if (written) DIARY_EXPORTED else DIARY_EXPORT_FAILED
         }
     }
@@ -769,8 +860,9 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     fun cancelImport() { pendingImport = null }
     /**
-     * Replace diary: the current diary is first saved to [SAFETY_COPY_NAME] in `no_backup` (no copy, no replace), then
-     * every table becomes the file's rows in one transaction. The phone's settings stay as they are.
+     * Replace diary: the current diary is first saved to [SAFETY_COPY_NAME] in `no_backup` (no copy, no replace; with
+     * "Safety copy" Don't keep, none is written and an old one removed), then every table becomes the file's rows in
+     * one transaction. The phone's settings stay as they are.
      */
     fun confirmImport() {
         val pending = pendingImport ?: return
@@ -782,8 +874,14 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             try {
                 val replaced = withContext(NonCancellable) {
                     try {
-                        val current = diaryFileOf(engine.exportRows(), DiarySettings(dayStartHour, longDraft), clock())
-                        withContext(Dispatchers.IO) { writeSafetyCopy(safetyDir, current) }
+                        when (safetyCopyStep(keepSafetyCopy, deletingAll = false)) {
+                            SafetyCopyStep.WRITE -> {
+                                val current = diaryFileOf(engine.exportRows(), DiarySettings(dayStartHour, longDraft), clock())
+                                withContext(Dispatchers.IO) { writeSafetyCopy(safetyDir, current) }
+                            }
+                            // "Safety copy" Don't keep: no copy, and an old one is removed.
+                            SafetyCopyStep.DELETE -> withContext(Dispatchers.IO) { deleteSafetyCopy(safetyDir) }
+                        }
                         engine.replaceDiary(pending.rows)
                         true
                     } catch (e: Exception) {
@@ -2256,6 +2354,17 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
         confirmButton = { TextButton(vm::confirmImport) { Text("Replace diary") } },
         dismissButton = { TextButton(vm::cancelImport) { Text("Cancel") } },
         text = { Text("This replaces entries and foods, not settings.") },
+    )
+    if (vm.deleteAllOpen) AlertDialog(
+        onDismissRequest = vm::cancelDeleteAll,
+        confirmButton = { TextButton(vm::confirmDeleteAll) { Text("Delete all") } },
+        dismissButton = { TextButton(vm::cancelDeleteAll) { Text("Cancel") } },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("This deletes all entries and foods.")
+                ChoiceOption("Also settings and learned picks", vm.deleteAllAlsoSettings, vm::toggleDeleteAllAlsoSettings)
+            }
+        },
     )
     if (vm.storageUnavailable) AlertDialog(onDismissRequest = {}, confirmButton = { TextButton(vm::retryStorage) { Text("Try again") } }, title = { Text("Storage unavailable") }, text = { Text("Storage could not be opened.") })
 }

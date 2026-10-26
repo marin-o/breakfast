@@ -253,6 +253,26 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
     }
 
     /**
+     * Delete all data: in one transaction, every entry and every food (with its aliases and conversions) is deleted and
+     * the built-in catalogue is seeded again, as on a first start. [alsoPreferences] also deletes the learned
+     * preferences; otherwise they stay. Any failure rolls the whole transaction back. [beforeSeed] runs inside the
+     * transaction after the deletes (tests make it throw).
+     */
+    internal suspend fun deleteAllData(alsoPreferences: Boolean, beforeSeed: suspend () -> Unit = {}) {
+        requireReady()
+        write(ALL_TABLES) {
+            database.mealEntryDao().deleteAll()
+            if (alsoPreferences) database.preferenceDao().deleteAll()
+            database.servingConversionDao().deleteAll()
+            database.foodAliasDao().deleteAll()
+            database.foodDao().deleteAll()
+            beforeSeed()
+            seedMissingFixtures()
+            syncBuiltInFoods()
+        }
+    }
+
+    /**
      * Every user-confirmed write: under [writeMutex], on IO, one transaction for [block], then a reload of the [touched]
      * tables only (MOB-028); the snapshot keeps the very same lists for the others, so a cache keyed on them (the
      * matcher on [foods], the planner on [preferenceMap]) survives. It is NonCancellable once it holds the lock, so a

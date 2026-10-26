@@ -106,7 +106,34 @@ internal class AppSettings(context: Context) {
         get() = prefs.getBoolean(SHOW_CONTRIBUTE_KEY, true)
         set(value) = prefs.edit { putBoolean(SHOW_CONTRIBUTE_KEY, value) }
 
+    /** "Export reminder": Never by default. */
+    var exportReminder: ExportReminder
+        get() = enumOf(prefs.getString(EXPORT_REMINDER_KEY, null), ExportReminder.NEVER)
+        set(value) = prefs.edit { putString(EXPORT_REMINDER_KEY, value.name) }
+
+    /** When the diary was last exported, or null when it never was. */
+    var lastExportMs: Long?
+        get() = prefs.getLong(LAST_EXPORT_KEY, -1L).takeIf { it >= 0L }
+        set(value) = prefs.edit { putLong(LAST_EXPORT_KEY, value ?: -1L) }
+
+    /** When the export reminder was last shown, or null when it never was. */
+    var exportReminderShownMs: Long?
+        get() = prefs.getLong(EXPORT_REMINDER_SHOWN_KEY, -1L).takeIf { it >= 0L }
+        set(value) = prefs.edit { putLong(EXPORT_REMINDER_SHOWN_KEY, value ?: -1L) }
+
+    /** "Safety copy": Import keeps the diary it replaces in `no_backup`; Keep by default. */
+    var keepSafetyCopy: Boolean
+        get() = prefs.getBoolean(KEEP_SAFETY_COPY_KEY, true)
+        set(value) = prefs.edit { putBoolean(KEEP_SAFETY_COPY_KEY, value) }
+
+    /** Delete all data with "Also settings and learned picks": every setting goes back to its default. */
+    fun clear() = prefs.edit { clear() }
+
     private companion object {
+        const val EXPORT_REMINDER_KEY = "export_reminder"
+        const val LAST_EXPORT_KEY = "last_export_ms"
+        const val EXPORT_REMINDER_SHOWN_KEY = "export_reminder_shown_ms"
+        const val KEEP_SAFETY_COPY_KEY = "keep_safety_copy"
         const val FLASHLIGHT_AT_START_KEY = "flashlight_at_start"
         const val LOOK_UP_BARCODES_KEY = "look_up_barcodes"
         const val SHOW_CONTRIBUTE_KEY = "show_contribute"
@@ -297,3 +324,39 @@ internal fun unknownBarcodeStep(lookUp: Boolean): UnknownBarcodeStep = if (lookU
 
 /** The Contribute to Open Food Facts action shows where it is [available], unless "Contribute" is Hide. */
 internal fun contributionShown(show: Boolean, available: Boolean): Boolean = show && available
+
+/** The "Export reminder" choice. */
+internal enum class ExportReminder { NEVER, WEEKLY, MONTHLY }
+
+/** The time between reminders: 7 days, 30 days, or none for Never. */
+internal fun exportReminderIntervalMs(reminder: ExportReminder): Long? = when (reminder) {
+    ExportReminder.NEVER -> null
+    ExportReminder.WEEKLY -> 7L * DAY_MS
+    ExportReminder.MONTHLY -> 30L * DAY_MS
+}
+
+private const val DAY_MS = 86_400_000L
+
+/**
+ * True when Daily should show "Export your diary." now: a whole interval has passed since the later of the last export
+ * and the last time the reminder was shown (so it shows once, and again one interval later if no export was made).
+ * Never exported and never shown: due at once. A clock set back before either is not due.
+ */
+internal fun exportReminderDue(reminder: ExportReminder, lastExportMs: Long?, lastShownMs: Long?, nowMs: Long): Boolean {
+    val interval = exportReminderIntervalMs(reminder) ?: return false
+    val since = listOfNotNull(lastExportMs, lastShownMs).maxOrNull() ?: return true
+    return nowMs >= since && nowMs - since >= interval
+}
+
+/** What happens to the safety copy before the diary is replaced or deleted. */
+internal enum class SafetyCopyStep { WRITE, DELETE }
+
+/**
+ * Import with "Safety copy" Keep writes it, with Don't keep removes any old one and writes none. Delete all data always
+ * writes it first, whatever the setting.
+ */
+internal fun safetyCopyStep(keep: Boolean, deletingAll: Boolean): SafetyCopyStep =
+    if (keep || deletingAll) SafetyCopyStep.WRITE else SafetyCopyStep.DELETE
+
+/** Delete all data runs only from its confirm dialog, once storage is open and no other write runs. */
+internal fun deleteAllAllowed(dialogOpen: Boolean, ready: Boolean, busy: Boolean): Boolean = dialogOpen && ready && !busy

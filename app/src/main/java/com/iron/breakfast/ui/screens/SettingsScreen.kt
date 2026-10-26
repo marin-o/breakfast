@@ -35,6 +35,7 @@ import com.iron.breakfast.DiaryPicker
 import com.iron.breakfast.SETTINGS_GROUPS
 import com.iron.breakfast.SettingsPage
 import com.iron.breakfast.DecimalMark
+import com.iron.breakfast.ExportReminder
 import com.iron.breakfast.MealMode
 import com.iron.breakfast.MotionChoice
 import com.iron.breakfast.TextSizeChoice
@@ -147,6 +148,12 @@ private fun ColumnScope.DataPage(vm: BreakfastViewModel) {
     Hairline()
     SettingsAction("Import diary", enabled = vm.ready && !vm.busy) { vm.requestDiaryPicker(DiaryPicker.IMPORT) }
     Hairline()
+    ChoiceRow("Export reminder", EXPORT_REMINDER_CHOICES, vm.exportReminder, vm::chooseExportReminder)
+    Hairline()
+    ChoiceRow("Safety copy", SAFETY_COPY_CHOICES, vm.keepSafetyCopy, vm::chooseKeepSafetyCopy)
+    Hairline()
+    SettingsAction("Delete all data", enabled = vm.ready && !vm.busy, destructive = true, onClick = vm::openDeleteAll)
+    Hairline()
 }
 
 /** A row that does one thing when tapped, as tall as the other rows. [destructive] draws the label in `bad`. */
@@ -203,6 +210,8 @@ private val MEAL_MODE_CHOICES = listOf(MealMode.ASK to "Ask", MealMode.BY_TIME t
 private val MEAL_BOUND_ROWS = listOf(MealSlot.BREAKFAST to "Breakfast until", MealSlot.LUNCH to "Lunch until", MealSlot.DINNER to "Dinner until")
 private val ON_OFF = listOf(true to "On", false to "Off")
 private val SHOW_HIDE = listOf(true to "Show", false to "Hide")
+private val EXPORT_REMINDER_CHOICES = listOf(ExportReminder.NEVER to "Never", ExportReminder.WEEKLY to "Weekly", ExportReminder.MONTHLY to "Monthly")
+private val SAFETY_COPY_CHOICES = listOf(true to "Keep", false to "Don't keep")
 private val MOTION_CHOICES = listOf(MotionChoice.SYSTEM to "System", MotionChoice.REDUCED to "Reduced")
 private val TEXT_SIZE_CHOICES = listOf(TextSizeChoice.SYSTEM to "System", TextSizeChoice.LARGER to "Larger")
 private val THEME_CHOICES = listOf(ThemeChoice.SYSTEM to "System", ThemeChoice.LIGHT to "Light", ThemeChoice.DARK to "Dark")
