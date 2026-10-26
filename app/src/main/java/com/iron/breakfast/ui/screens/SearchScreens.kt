@@ -160,7 +160,7 @@ internal fun offSearchStatus(unavailable: Boolean, message: String): OffSearchSt
 @Composable internal fun ResolveUnknownScreen(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
     val raw = vm.unknownQueue.firstOrNull().orEmpty()
-    val display = unknownDisplay(raw)
+    val display = unknownDisplay(raw, vm.typedUnknown(raw))
     val (position, total) = resolvePosition(vm.unknownQueueTotal, vm.unknownQueue.size)
     val saved = vm.savedBatchNames()
     val context = listOfNotNull(

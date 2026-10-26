@@ -1,6 +1,9 @@
 package com.iron.breakfast.ui.screens
 
+import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.FoodOrigin
+import com.iron.breakfast.domain.LogPlanner
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionBasis
@@ -34,6 +37,9 @@ class SearchScanCreateDataTest {
         assertEquals(UnknownDisplay("2 tbsp", "ajvar lovec"), unknownDisplay("2 tbsp ajvar lovec"))
         assertEquals(UnknownDisplay(null, "ajvar lovec"), unknownDisplay("ajvar lovec"))
         assertEquals(UnknownDisplay("1.5 g", "salt"), unknownDisplay("1.5 g salt"))
+        // A glued part in the queue ("млеко200г": Домашно млеко has no gram conversion) shows its amount apart.
+        val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+        assertEquals(UnknownDisplay("200 g", "млеко"), unknownDisplay("млеко200г", planner.typed("млеко200г")))
     }
 
     @Test

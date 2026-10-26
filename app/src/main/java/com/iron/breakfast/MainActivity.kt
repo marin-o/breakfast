@@ -1786,7 +1786,9 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun onProductProtein(v: String) { productProtein = v }
     fun onProductCarbs(v: String) { productCarbs = v }
     fun onProductFat(v: String) { productFat = v }
-    fun currentUnknownName(): String = unknownQueue.firstOrNull()?.let { parser.parse(it).foodPhrase.trim().ifBlank { it.trim() } }.orEmpty()
+    fun currentUnknownName(): String = unknownQueue.firstOrNull()?.let { typedUnknown(it).foodPhrase.trim().ifBlank { it.trim() } }.orEmpty()
+    /** A part of the unknown queue as the Log read it: its food text, typed amount and unit ("mleko200g" is mleko, 200 g). */
+    internal fun typedUnknown(raw: String): TypedPart = engine.planner().typed(raw)
     fun openSearch(prefill: String? = null, fromResolver: Boolean = false) {
         offSearchJob?.cancel()
         offSearchGeneration++
@@ -1834,9 +1836,9 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun resolveUnknown(food: FoodRecord) {
         val raw = unknownQueue.firstOrNull() ?: return
         val target = activeResolutionTarget(resolutionContinuation, unknownQueue, unknownQueueTarget) ?: return
-        val parsed = parser.parse(raw)
-        val amount = parsed.amount ?: food.defaultAmount
-        val unit = parsed.unit ?: food.defaultUnit
+        val typed = typedUnknown(raw)
+        val amount = typed.amount ?: food.defaultAmount
+        val unit = typed.unit ?: food.defaultUnit
         if (!ready || busy) return
         val capturedDayKey = selectedDayKey
         launchBusy {
@@ -1912,7 +1914,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         searchOpen = false
         val prefill = unknownQueue.firstOrNull()
             ?.takeIf { resolutionContinuation }
-            ?.let { productPrefill(it, food) }
+            ?.let { productPrefill(it, food, typedUnknown(it)) }
             ?: ProductPrefill(100.0, food.nutrition.unit)
         productAmount = prefill.amount.toString()
         productUnit = prefill.unit.displayLabel()
@@ -2147,13 +2149,15 @@ private fun contributionLanguageFor(name: String): String =
 internal fun productNutritionBasisLabel(food: FoodRecord): String =
     "Calories per ${food.nutrition.amount.pretty()} ${food.nutrition.unit.label}"
 
-internal fun productPrefill(raw: String, food: FoodRecord): ProductPrefill {
-    val parsed = ShorthandParser().parse(raw)
-    return ProductPrefill(
-        amount = parsed.amount ?: 100.0,
-        unit = parsed.unit ?: food.nutrition.unit
-    )
-}
+/** [typed] is [raw] as the Log read it; the view model passes the planner's reading, so a glued amount is kept. */
+internal fun productPrefill(
+    raw: String,
+    food: FoodRecord,
+    typed: TypedPart = ShorthandParser().parse(raw).let { TypedPart(it.foodPhrase, it.amount, it.unit) },
+): ProductPrefill = ProductPrefill(
+    amount = typed.amount ?: 100.0,
+    unit = typed.unit ?: food.nutrition.unit
+)
 
 internal fun parseProductUnit(value: String): MeasureUnit? = value.trim().toMeasureUnit()
 

@@ -39,6 +39,16 @@ class GluedQuantityTest {
         assertEquals(listOf(Saved("rolled_oats", 60.0, MeasureUnit.GRAM)), saved("oats60g"))
     }
 
+    /** A number that belongs to a food's name reads as that name, glued or spaced. */
+    @Test fun aGluedNumberOfANameReadsLikeTheSpacedName() {
+        assertReadsLikeSpaced("cow milk3.2", "cow milk 3.2")
+        assertReadsLikeSpaced("млеко2.8", "млеко 2.8")
+        assertReadsLikeSpaced("full fat milk3.2", "full fat milk 3.2")
+        assertEquals(planner.typed("cow milk 3.2").amount, planner.typed("cow milk3.2").amount)
+        val milk = planner.plan("cow milk3.2").entries.single().food
+        assertEquals(milk.name, planner.pickedText("cow milk3.2", milk))
+    }
+
     @Test fun cyrillicGluedQuantitiesRead() {
         assertReadsLikeSpaced("млеко200мл", "млеко 200мл")
         assertReadsLikeSpaced("банана2", "банана 2")

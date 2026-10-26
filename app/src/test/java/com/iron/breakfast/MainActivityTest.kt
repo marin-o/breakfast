@@ -40,6 +40,12 @@ class MainActivityTest {
         assertEquals(1.0, resolver.amount)
         assertEquals(MeasureUnit.TABLESPOON, resolver.unit)
 
+        // A glued part keeps its amount when the planner's reading is passed, as the view model does.
+        val planner = com.iron.breakfast.domain.LogPlanner(com.iron.breakfast.domain.FoodMatcher(com.iron.breakfast.domain.FoodCatalog.fixtures))
+        val glued = productPrefill("млеко200г", pesto, planner.typed("млеко200г"))
+        assertEquals(200.0, glued.amount)
+        assertEquals(MeasureUnit.GRAM, glued.unit)
+
         val directSearch = productPrefill("pesto", pesto)
         assertEquals(100.0, directSearch.amount)
         assertEquals(MeasureUnit.GRAM, directSearch.unit)

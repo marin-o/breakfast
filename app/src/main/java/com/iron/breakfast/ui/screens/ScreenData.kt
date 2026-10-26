@@ -12,6 +12,7 @@ import com.iron.breakfast.domain.NutritionInput
 import com.iron.breakfast.domain.ParsedAmountUnit
 import com.iron.breakfast.domain.ResolvedNutrition
 import com.iron.breakfast.domain.ShorthandParser
+import com.iron.breakfast.domain.TypedPart
 import com.iron.breakfast.domain.parseStrictAmountUnit
 import com.iron.breakfast.domain.parseDecimal
 import com.iron.breakfast.domain.resolveNutrition
@@ -196,10 +197,13 @@ internal fun basisCaption(amount: Double, unit: MeasureUnit): String = "/${amoun
 /** The unresolved quote of the resolve queue: its kept quantity ("2 tbsp", when typed) and the food words. */
 internal data class UnknownDisplay(val quantity: String?, val name: String)
 
-internal fun unknownDisplay(raw: String): UnknownDisplay {
-    val parsed = ShorthandParser().parse(raw)
-    val quantity = parsed.amount?.let { amount -> listOfNotNull(amount.pretty(), parsed.unit?.displayLabel()?.takeIf { it.isNotBlank() }).joinToString(" ") }
-    return UnknownDisplay(quantity, parsed.foodPhrase.trim().ifBlank { raw.trim() })
+/** [typed] is [raw] as the Log read it; the resolver passes the planner's reading, so a glued amount shows apart. */
+internal fun unknownDisplay(
+    raw: String,
+    typed: TypedPart = ShorthandParser().parse(raw).let { TypedPart(it.foodPhrase, it.amount, it.unit) },
+): UnknownDisplay {
+    val quantity = typed.amount?.let { amount -> listOfNotNull(amount.pretty(), typed.unit?.displayLabel()?.takeIf { it.isNotBlank() }).joinToString(" ") }
+    return UnknownDisplay(quantity, typed.foodPhrase.trim().ifBlank { raw.trim() })
 }
 
 /** One local match for the kept quantity: whole kcal, the ≈ chip text when the conversion is a guess, and the plain detail. */

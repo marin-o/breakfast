@@ -195,6 +195,8 @@ data class ParsedSegment(
     val wordQuantity: Boolean = false,
     /** True for a bare "a" or "an" with no unit: one when the food is counted by the piece, else the food's default. */
     val articleQuantity: Boolean = false,
+    /** [raw] as it reads: with a space before a quantity glued to a food word ("mleko200g" reads "mleko 200g"). */
+    val spaced: String = raw,
 )
 
 data class RankedFood(

@@ -99,12 +99,14 @@ class LogPlanner(
 ) {
     /** How one part reads: what the food is matched on, and whether the amount came from the food's own name. */
     private class Reading(val parsed: ParsedSegment, val wholeName: Boolean) {
-        val phrase: String get() = if (wholeName) parsed.raw else parsed.foodPhrase
+        // A glued part reads as its spaced form, so a name it carries is matched spaced ("cow milk3.2" as "cow milk 3.2").
+        val phrase: String get() = if (wholeName) parsed.spaced else parsed.foodPhrase
     }
 
     // The Log page resolves on a background thread while taps resolve on the main one.
     private val resolved: MutableMap<String, SegmentResolution?> = java.util.Collections.synchronizedMap(HashMap())
     private val coverCache: MutableMap<String, Boolean> = java.util.Collections.synchronizedMap(HashMap())
+    private val wholeWordCache: MutableMap<String, Boolean> = java.util.Collections.synchronizedMap(HashMap())
 
     /** Resolves one segment. Null when no food matches. An unsupported unit still resolves; check [SegmentResolution.supported]. */
     fun resolve(raw: String): SegmentResolution? {
@@ -133,7 +135,9 @@ class LogPlanner(
         val parsed = parser.parse(raw, probe)
         // A part that is exactly a food's name carries no amount: "Protein 2 bar" is one bar, not two. A number word or
         // article is part of the name when a food covers the whole part: "Ten grain bread" is one food.
-        val wholeName = matcher.isExactName(raw) || (parsed.wordQuantity && matcher.covers(raw))
+        // A glued part ("cow milk3.2") reads exactly like its spaced form, its name included.
+        val wholeName = matcher.isExactName(raw) || matcher.isExactName(parsed.spaced) ||
+            (parsed.wordQuantity && (matcher.covers(raw) || matcher.covers(parsed.spaced)))
         return Reading(parsed, wholeName)
     }
 
@@ -181,6 +185,8 @@ class LogPlanner(
      * typed for the part ("kiselo mleko 200g" with Kiselo mleko reads "Kiselo mleko 200g"). Without a typed amount, the name.
      */
     fun pickedText(raw: String, food: FoodRecord): String {
+        // A part that is a name carries no amount of its own, glued or not.
+        if (reading(raw).wholeName) return food.name
         val query = libraryQueryFor(raw)
         val amountText = if (query.isBlank()) "" else raw.replaceFirst(query, "", ignoreCase = true).trim()
         return listOf(food.name, amountText).filter { it.isNotBlank() }.joinToString(" ")
@@ -229,7 +235,7 @@ class LogPlanner(
             return resolution.supported && !resolution.needsChoice && resolution.ranked.first().wholeMatch
         }
 
-        override fun matchesWholeWord(word: String): Boolean = matcher.matchesWholeWord(word)
+        override fun matchesWholeWord(word: String): Boolean = wholeWordCache.getOrPut(word) { matcher.matchesWholeWord(word) }
     }
 
     /** The parts of [input] the Log page works with, meal words included. Every caller segments through here. */
