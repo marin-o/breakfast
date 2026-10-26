@@ -1,6 +1,7 @@
 package com.iron.breakfast.ui.theme
 
 import androidx.compose.ui.graphics.Color
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.pow
@@ -42,6 +43,14 @@ class BreakfastContrastTest {
             assertAa("$theme onOk label", c.onOk, c.ok)
             assertAtLeast("$theme ok fill", c.ok, c.bg, 3.0)
         }
+    }
+
+    /** The swipe Delete label on its `bad` fill is 16sp text: 4.5:1 in both modes; light mode keeps its white label. */
+    @Test fun swipeLabelOnBadMeetsAa() {
+        assertAa("light swipe label on bad", swipeLabelOnBad(LightBreakfastColors), LightBreakfastColors.bad)
+        assertAa("dark swipe label on bad", swipeLabelOnBad(DarkBreakfastColors), DarkBreakfastColors.bad)
+        assertEquals(LightBreakfastColors.cameraMark, swipeLabelOnBad(LightBreakfastColors))
+        assertEquals(DarkBreakfastColors.bg, swipeLabelOnBad(DarkBreakfastColors))
     }
 
     /**

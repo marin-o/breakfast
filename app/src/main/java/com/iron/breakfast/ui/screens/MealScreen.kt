@@ -57,6 +57,7 @@ import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.theme.BreakfastType
 import com.iron.breakfast.ui.theme.Gutter
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
+import com.iron.breakfast.ui.theme.swipeLabelOnBad
 import kotlin.math.roundToInt
 
 @Composable
@@ -152,7 +153,7 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
-            Text("Delete", color = colors.cameraMark, style = BreakfastType.Button, maxLines = 1, softWrap = false)
+            Text("Delete", color = swipeLabelOnBad(colors), style = BreakfastType.Button, maxLines = 1, softWrap = false)
         }
         FoodRow(
             name = entry.foodName,

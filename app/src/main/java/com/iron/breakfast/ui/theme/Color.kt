@@ -21,4 +21,10 @@ val DarkBreakfastColors = BreakfastColors(
     cameraGround = Color(0xFF0B0C0E), cameraMark = Color(0xFFFFFFFF),
 )
 
+/**
+ * The text on a `bad` fill (the swipe Delete): white (`cameraMark`) in light mode, 7.26:1; `bg` in dark mode, 6.07:1,
+ * where white on the lighter dark `bad` is only 3.09:1.
+ */
+internal fun swipeLabelOnBad(colors: BreakfastColors): Color = if (colors == DarkBreakfastColors) colors.bg else colors.cameraMark
+
 val LocalBreakfastColors = staticCompositionLocalOf { LightBreakfastColors }
