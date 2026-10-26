@@ -519,9 +519,20 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (dayKey > today) return
         selectDay(dayKey, following = dayKey == today)
     }
-    /** Settings, over the Library; its arrow and Back return there. */
-    fun openSettings() { settingsOpen = true }
-    fun closeSettings() { settingsOpen = false }
+    /**
+     * The Settings page open over the list of groups; null is the list. Kept in the view model only, so it survives a
+     * recreation (a theme change); after the process was killed Settings is closed anyway.
+     */
+    internal var settingsPage by mutableStateOf<SettingsPage?>(null); private set
+    /** Settings, over the Library, on the list of groups; its arrow and Back return there. */
+    fun openSettings() { settingsPage = null; settingsOpen = true }
+    fun closeSettings() { settingsOpen = false; settingsPage = null }
+    internal fun openSettingsPage(page: SettingsPage) { settingsPage = page }
+    /** Back or the arrow in Settings: a page goes back by [settingsPageBack], the list closes Settings. */
+    fun settingsBack() {
+        val page = settingsPage ?: return closeSettings()
+        settingsPage = settingsPageBack(page)
+    }
     fun chooseLongDraft(mode: LongDraft) {
         longDraft = mode
         settings.longDraft = mode
@@ -658,7 +669,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     private fun leaveLibrary(returnTo: MealSlot?) {
         logResolve?.let { endResolve(it, it.draftText); return }
-        libraryRefreshJob?.cancel(); libraryRefreshGeneration++; libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null; expandedLibraryFoodId = null; libraryPendingAmount = null; libraryPendingUnit = null; libraryPendingBatch = emptyList(); libraryBatchMealPickerOpen = false; libraryArchivedOnly = false; settingsOpen = false; selectMeal(returnTo)
+        libraryRefreshJob?.cancel(); libraryRefreshGeneration++; libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null; expandedLibraryFoodId = null; libraryPendingAmount = null; libraryPendingUnit = null; libraryPendingBatch = emptyList(); libraryBatchMealPickerOpen = false; libraryArchivedOnly = false; settingsOpen = false; settingsPage = null; selectMeal(returnTo)
         libraryQuery = ""
         libraryResultsQuery = null
         input = ""
