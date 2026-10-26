@@ -1,5 +1,6 @@
 package com.iron.breakfast
 
+import android.annotation.SuppressLint
 import android.app.UiModeManager
 import android.content.Context
 import android.content.res.Configuration
@@ -310,6 +311,8 @@ internal fun activityOverrideOf(baseUiMode: Int, systemFontScale: Float, sdk: In
 }
 
 /** The standard haptic for the tick on Add and Undo: CONFIRM from API 30, VIRTUAL_KEY before; null when Haptics is off. */
+// CONFIRM is only returned for [sdk] 30 and up, which the caller passes as Build.VERSION.SDK_INT.
+@SuppressLint("InlinedApi")
 internal fun tickHapticFor(enabled: Boolean, sdk: Int): Int? = when {
     !enabled -> null
     sdk >= 30 -> HapticFeedbackConstants.CONFIRM
