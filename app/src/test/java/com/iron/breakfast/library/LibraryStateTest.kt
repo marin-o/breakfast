@@ -47,12 +47,13 @@ class LibraryStateTest {
     private val store = FakeStore()
     private val notices = Notices()
     private val io = QueueDispatcher()
+    private val compute = QueueDispatcher()
     private var resolving = false
     private val picked = mutableListOf<String>()
     private val archived = mutableListOf<String>()
     private val afterSaves = mutableListOf<AfterSave>()
     private val library = LibraryState(
-        diary.session, store, notices, diary.scope, io, Dispatchers.Unconfined,
+        diary.session, store, notices, diary.scope, io, Dispatchers.Unconfined, compute,
         selectedDay = { "2026-10-28" },
         resolvingPart = { resolving },
         onPartPicked = { picked += it.id },
@@ -118,12 +119,15 @@ class LibraryStateTest {
         library.show(MealSlot.DINNER, "", archivedOnly = false)
         library.onInput("2 egg")
         library.submitInput()
+        assertEquals("the lookup waits for the compute dispatcher", emptyList<String>(), store.calls)
+        compute.runAll()
         assertEquals(listOf("log egg 2.0 PIECE DINNER 2026-10-28"), store.calls)
         assertEquals("", library.input)
         library.close()
         library.show(null, "", archivedOnly = false)
         library.onInput("2 egg")
         library.submitInput()
+        compute.runAll()
         assertTrue(library.batchMealPickerOpen)
         library.chooseBatchMeal(MealSlot.SNACKS)
         assertEquals("log egg 2.0 PIECE SNACKS 2026-10-28", store.calls.last())
@@ -137,6 +141,7 @@ class LibraryStateTest {
         library.show(MealSlot.DINNER, "", archivedOnly = false)
         library.onInput("2 egg, 100 g unknownium")
         library.submitInput()
+        compute.runAll()
         assertEquals("One or more foods are not in your local library.", notices.message)
         assertEquals(emptyList<String>(), store.calls)
     }

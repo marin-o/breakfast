@@ -29,8 +29,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The Log, the Library, the food form and the resolve flow wired as the view model wires them, over fakes: the resolve
- * frame (Log ↔ Library), the post-save handling of both saves, and where a queue's leftovers go.
+ * The contract between the Log, the Library, the food form and the resolve flow, over fakes: the resolve frame
+ * (Log ↔ Library), the post-save handling of both saves, and where a queue's leftovers go.
+ *
+ * The view model's own wiring is not under test: [ResolveFlow]'s `returnToLog` and the food form's `openMeal` are
+ * stand-ins written here. What the view model adds there (leaving the Library through its re-entrant `cancelPart`
+ * check, closing Settings, hiding the search and product review, the queue abandoned by `openFocusedLibrary`, the
+ * Meal screen coming back) is not covered; it cannot be built on the JVM until B17.
  */
 class ResolveFrameTest {
     private val diary = OpenDiary()
@@ -87,7 +92,7 @@ class ResolveFrameTest {
             override suspend fun archiveFood(id: String) {}
             override suspend fun restoreFood(id: String) {}
         },
-        notices, diary.scope, QueueDispatcher(), Dispatchers.Unconfined,
+        notices, diary.scope, QueueDispatcher(), Dispatchers.Unconfined, Dispatchers.Unconfined,
         selectedDay = { "2026-10-28" },
         resolvingPart = { resolve.resolvingPart },
         onPartPicked = resolve::finishPart,

@@ -216,6 +216,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         scope = viewModelScope,
         io = Dispatchers.IO,
         main = Dispatchers.Main,
+        compute = Dispatchers.Default,
         selectedDay = { selectedDayKey },
         resolvingPart = { resolve.resolvingPart },
         onPartPicked = resolve::finishPart,

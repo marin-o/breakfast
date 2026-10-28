@@ -14,6 +14,7 @@ import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.NutritionValues
+import com.iron.breakfast.domain.TypedPart
 import com.iron.breakfast.resolve.ResolveQueueView
 import com.iron.breakfast.today.OpenDiary
 import kotlinx.coroutines.CompletableDeferred
@@ -107,7 +108,7 @@ class FoodFormTest {
 
     @Test fun whileAQueueIsResolvedItsMealWinsAndTheQueueAdvances() {
         meal = MealSlot.LUNCH
-        queue = ResolveQueueView(MealSlot.DINNER, listOf("ayran 200ml"), 1)
+        queue = ResolveQueueView(MealSlot.DINNER, listOf("ayran 200ml"), 1, TypedPart("ayran", 200.0, MeasureUnit.MILLILITER))
         form.open(fromResolver = true)
         typeFood()
         form.save()
@@ -116,7 +117,7 @@ class FoodFormTest {
     }
 
     @Test fun aQueueWithoutAMealRefusesTheSave() {
-        queue = ResolveQueueView(null, listOf("ayran"), 1)
+        queue = ResolveQueueView(null, listOf("ayran"), 1, TypedPart("ayran", null, null))
         form.open(fromResolver = true)
         typeFood()
         form.save()
@@ -230,7 +231,7 @@ class FoodFormTest {
     }
 
     @Test fun theSaveTargetFollowsThePartTheQueueAndTheOpenMeal() {
-        val queue = ResolveQueueView(MealSlot.DINNER, listOf("ayran"), 1)
+        val queue = ResolveQueueView(MealSlot.DINNER, listOf("ayran"), 1, TypedPart("ayran", null, null))
         assertNull(foodSaveTarget(resolvingPart = true, queue = null, openMeal = MealSlot.LUNCH))
         assertEquals(ReviewLogPlan(MealSlot.DINNER, true), foodSaveTarget(false, queue, MealSlot.LUNCH))
         assertNull("a queue without a meal", foodSaveTarget(false, queue.copy(meal = null), MealSlot.LUNCH))
@@ -254,7 +255,7 @@ class FoodFormTest {
         resolvingPart = true
         assertNull(form.savedForm())
         resolvingPart = false
-        queue = ResolveQueueView(MealSlot.DINNER, listOf("ayran"), 1)
+        queue = ResolveQueueView(MealSlot.DINNER, listOf("ayran"), 1, TypedPart("ayran", null, null))
         assertNull("nor while a queue is resolved", form.savedForm())
         queue = null
         form.close()

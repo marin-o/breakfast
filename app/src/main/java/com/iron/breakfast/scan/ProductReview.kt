@@ -16,7 +16,6 @@ import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.NutritionCalculator
 import com.iron.breakfast.domain.NutritionValues
-import com.iron.breakfast.domain.ShorthandParser
 import com.iron.breakfast.domain.TypedPart
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.domain.toMeasureUnit
@@ -83,7 +82,7 @@ internal class ProductReview(
         product = food
         this.fromScan = fromScan
         this.origin = origin ?: productReviewOrigin(openMeal(), queueActive = resolveQueue != null)
-        val prefill = resolveQueue?.current?.let { productPrefill(food, it) } ?: ProductPrefill(100.0, food.nutrition.unit)
+        val prefill = resolveQueue?.let { productPrefill(food, it.current) } ?: ProductPrefill(100.0, food.nutrition.unit)
         amount = prefill.amount.toString()
         unit = prefill.unit.displayLabel()
         name = food.name
@@ -224,13 +223,6 @@ internal data class ProductPrefill(val amount: Double, val unit: MeasureUnit)
 
 internal fun productNutritionBasisLabel(food: FoodRecord): String =
     "Calories per ${food.nutrition.amount.pretty()} ${food.nutrition.unit.label}"
-
-/** [typed] is [raw] as the Log read it (a queue's [ResolveQueueView.current] is the planner's reading, so a glued amount is kept). */
-internal fun productPrefill(
-    raw: String,
-    food: FoodRecord,
-    typed: TypedPart = ShorthandParser().parse(raw).let { TypedPart(it.foodPhrase, it.amount, it.unit) },
-): ProductPrefill = productPrefill(food, typed)
 
 /** A queued part's typed amount and unit, else 100 of the food's basis unit. */
 internal fun productPrefill(food: FoodRecord, typed: TypedPart): ProductPrefill = ProductPrefill(

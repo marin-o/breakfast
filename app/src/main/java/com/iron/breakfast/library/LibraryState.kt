@@ -49,7 +49,8 @@ internal interface LibraryStore {
  * - **List:** whether it is [open], the meal it adds to ([target]: the meal it was opened from or for, null on the
  *   Library tab), the [query] the list is filtered by and the results ([foods], for [resultsQuery]), active foods or
  *   only the Archived ones ([archivedOnly]). A refresh runs in [scope], its read on [io], and applies on [main] only
- *   while it still matches what is shown ([shouldApplyLibraryRefresh]).
+ *   while it still matches what is shown ([shouldApplyLibraryRefresh]). A quantified batch's foods are looked up on
+ *   [compute] (the matcher, as the resolver's search) and the batch applies on [main].
  * - **Bar:** [input], the bar's own text, never the Log draft. Done ([submitInput]) searches, logs a quantified batch
  *   (asking for a meal when none is known: [batchMealPickerOpen]), or saves a mixed batch (asking first:
  *   [mixedMealPickerOpen]), whose unmatched parts go to the post-save handling ([afterSave]) with the bar as their
@@ -66,6 +67,7 @@ internal class LibraryState(
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
     private val main: CoroutineDispatcher,
+    private val compute: CoroutineDispatcher,
     private val selectedDay: () -> String,
     private val resolvingPart: () -> Boolean,
     private val onPartPicked: (FoodRecord) -> Unit,
@@ -240,7 +242,7 @@ internal class LibraryState(
             saveMixed(raw, effectiveTarget)
             return
         }
-        scope.launch {
+        scope.launch(compute) {
             val drafts = segments.mapNotNull { segment ->
                 store.search(segment.foodPhrase).firstOrNull()?.food?.let { food ->
                     LibraryLogDraft(food, segment.amount!!, segment.unit ?: food.defaultUnit)

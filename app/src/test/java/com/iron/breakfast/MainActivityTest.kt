@@ -41,17 +41,17 @@ class MainActivityTest {
             defaultUnit = MeasureUnit.GRAM
         )
 
-        val resolver = productPrefill("1 tbsp pesto", pesto)
+        // A queued part prefills from the planner's reading, as the resolve flow passes it; a glued part keeps its amount.
+        val planner = com.iron.breakfast.domain.LogPlanner(com.iron.breakfast.domain.FoodMatcher(com.iron.breakfast.domain.FoodCatalog.fixtures))
+        val resolver = productPrefill(pesto, planner.typed("1 tbsp pesto"))
         assertEquals(1.0, resolver.amount)
         assertEquals(MeasureUnit.TABLESPOON, resolver.unit)
 
-        // A glued part keeps its amount when the planner's reading is passed, as the view model does.
-        val planner = com.iron.breakfast.domain.LogPlanner(com.iron.breakfast.domain.FoodMatcher(com.iron.breakfast.domain.FoodCatalog.fixtures))
-        val glued = productPrefill("млеко200г", pesto, planner.typed("млеко200г"))
+        val glued = productPrefill(pesto, planner.typed("млеко200г"))
         assertEquals(200.0, glued.amount)
         assertEquals(MeasureUnit.GRAM, glued.unit)
 
-        val directSearch = productPrefill("pesto", pesto)
+        val directSearch = productPrefill(pesto, planner.typed("pesto"))
         assertEquals(100.0, directSearch.amount)
         assertEquals(MeasureUnit.GRAM, directSearch.unit)
 
