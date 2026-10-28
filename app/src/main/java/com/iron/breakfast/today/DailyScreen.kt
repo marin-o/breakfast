@@ -255,7 +255,7 @@ internal fun DailyComposer(vm: BreakfastViewModel, modifier: Modifier = Modifier
         Composer(
             placeholder = if (draft) vm.logDraft else "Log food",
             onClick = { vm.openLog(null) },
-            onScan = vm::beginScan,
+            onScan = vm.scan::begin,
             draft = draft,
             longDraft = vm.settings.longDraft,
         )

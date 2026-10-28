@@ -1,0 +1,185 @@
+package com.iron.breakfast.scan
+
+import com.iron.breakfast.app.Notices
+import com.iron.breakfast.data.OffResult
+import com.iron.breakfast.domain.FoodOrigin
+import com.iron.breakfast.domain.FoodRecord
+import com.iron.breakfast.domain.MealSlot
+import com.iron.breakfast.domain.MeasureUnit
+import com.iron.breakfast.domain.NutritionBasis
+import com.iron.breakfast.domain.NutritionValues
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class ScanSessionTest {
+    /** The Library answers at once; each Open Food Facts lookup waits until the test answers it. */
+    private class FakeLookup : BarcodeLookup {
+        val library = mutableMapOf<String, FoodRecord>()
+        val asked = mutableListOf<String>()
+        val cancelled = mutableListOf<String>()
+        private val answers = mutableMapOf<String, CompletableDeferred<OffResult>>()
+        override suspend fun localFood(barcode: String): FoodRecord? = library[barcode]
+        override suspend fun openFoodFacts(barcode: String): OffResult {
+            asked += barcode
+            val answer = CompletableDeferred<OffResult>().also { answers[barcode] = it }
+            try { return answer.await() } catch (e: CancellationException) { cancelled += barcode; throw e }
+        }
+        fun answer(barcode: String, result: OffResult) { answers.getValue(barcode).complete(result) }
+    }
+
+    private val lookup = FakeLookup()
+    private val notices = Notices()
+    private var lookUp = true
+    private var day = "2026-10-28"
+    private var meal: MealSlot? = null
+    private var queueActive = false
+    private var rescan = false
+    private val events = mutableListOf<String>()
+    private val scan = ScanSession(
+        lookup, notices, CoroutineScope(Dispatchers.Unconfined + SupervisorJob()), Dispatchers.Unconfined,
+        lookUpBarcodes = { lookUp },
+        selectedDay = { day },
+        targetMeal = { meal },
+        queueActive = { queueActive },
+        rescanRequested = { rescan },
+        onRescanned = { rescan = false; events += "rescanned $it" },
+        onEnded = { events += "ended" },
+        onProduct = { food, origin -> events += "review ${food.name} $origin" },
+        onManualForm = { name, brand, barcode, fromOff -> events += "form '$name' '$brand' $barcode fromOff=$fromOff" },
+    )
+
+    private val nutella = FoodRecord("off-1", "Nutella", emptyList(), "Spreads", FoodOrigin.GENERIC, NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(539.0, 6.3, 57.5, 30.9)))
+
+    @Test fun aLibraryBarcodeReviewsAtOnceForTheMealItWasScannedFor() {
+        lookup.library["4006381333931"] = nutella
+        meal = MealSlot.LUNCH
+        scan.begin()
+        assertTrue(scan.open)
+        scan.onBarcode("4006381333931")
+        assertFalse(scan.open)
+        assertFalse(scan.lookupBusy)
+        assertEquals(listOf("review Nutella MEAL"), events)
+        assertTrue("nothing asked of Open Food Facts", lookup.asked.isEmpty())
+    }
+
+    @Test fun anythingButAProductCodeIsIgnored() {
+        scan.begin()
+        scan.onBarcode("https://example.com")
+        scan.onBarcode("12345")
+        assertTrue(scan.open)
+        assertFalse(scan.lookupBusy)
+        assertTrue(events.isEmpty())
+    }
+
+    @Test fun anOpenFoodFactsProductReviewsAsAQueuedPartWhileAQueueIsResolved() {
+        queueActive = true
+        scan.begin()
+        scan.onBarcode("4006381333931")
+        assertTrue(scan.lookupBusy)
+        assertEquals("4006381333931", scan.lookupCode)
+        lookup.answer("4006381333931", OffResult.Found(nutella))
+        assertEquals(listOf("review Nutella QUEUE"), events)
+        assertFalse(scan.open)
+    }
+
+    @Test fun anUnknownBarcodeOpensNewFoodWithTheReason() {
+        scan.begin()
+        scan.onBarcode("4006381333931")
+        lookup.answer("4006381333931", OffResult.Missing)
+        assertEquals("Product not found. Add it manually with barcode 4006381333931", notices.message)
+        assertEquals(listOf("form '' '' 4006381333931 fromOff=false"), events)
+        scan.begin()
+        scan.onBarcode("5310382009733")
+        lookup.answer("5310382009733", OffResult.Ineligible("Ajvar", "Podravka", "5310382009733"))
+        assertEquals("Nutrition is incomplete. Review it as a personal food.", notices.message)
+        assertEquals("form 'Ajvar' 'Podravka' 5310382009733 fromOff=true", events.last())
+        scan.begin()
+        scan.onBarcode("96385074")
+        lookup.answer("96385074", OffResult.Unavailable)
+        assertEquals("No connection. Add the product manually.", notices.message)
+        scan.begin()
+        scan.onBarcode("0036000291452")
+        lookup.answer("0036000291452", OffResult.Error("Open Food Facts returned 500."))
+        assertEquals("Open Food Facts returned 500.", notices.message)
+        assertEquals("form '' '' 0036000291452 fromOff=false", events.last())
+    }
+
+    @Test fun withLookUpOffAnUnknownBarcodeGoesStraightToNewFoodWithoutANetworkRequest() {
+        lookUp = false
+        scan.begin()
+        scan.onBarcode("4006381333931")
+        assertTrue(lookup.asked.isEmpty())
+        assertNull(notices.message)
+        assertEquals(listOf("form '' '' 4006381333931 fromOff=false"), events)
+        // A barcode in the Library still reviews.
+        lookup.library["5310382009733"] = nutella
+        scan.begin()
+        scan.onBarcode("5310382009733")
+        assertEquals("review Nutella LIBRARY", events.last())
+    }
+
+    @Test fun leavingTheScannerStopsTheLookupAndItsRequest() {
+        scan.begin()
+        scan.onBarcode("4006381333931")
+        scan.end()
+        assertEquals(listOf("4006381333931"), lookup.cancelled)
+        assertFalse(scan.open)
+        assertFalse(scan.lookupBusy)
+        assertEquals("", scan.lookupCode)
+        assertEquals(listOf("ended"), events)
+    }
+
+    @Test fun aLookupForAnotherDayOrMealNoLongerApplies() {
+        scan.begin()
+        scan.onBarcode("4006381333931")
+        // The coordinator moved the day: the result that arrives later is dropped.
+        scan.invalidateLookup()
+        lookup.answer("4006381333931", OffResult.Found(nutella))
+        assertTrue(events.isEmpty())
+        // The same when the day or the meal on screen differ from the ones the scan began on.
+        scan.begin()
+        scan.onBarcode("5310382009733")
+        day = "2026-10-27"
+        lookup.answer("5310382009733", OffResult.Found(nutella))
+        assertTrue(events.isEmpty())
+        day = "2026-10-28"
+        scan.begin()
+        scan.onBarcode("96385074")
+        meal = MealSlot.DINNER
+        lookup.answer("96385074", OffResult.Found(nutella))
+        assertTrue(events.isEmpty())
+    }
+
+    @Test fun theFoodFormsScanReturnsTheBarcodeWithNoLookup() {
+        rescan = true
+        scan.begin()
+        scan.onBarcode(" 036000291452 ")
+        assertEquals(listOf("rescanned 036000291452"), events)
+        assertFalse(scan.open)
+        assertTrue(lookup.asked.isEmpty())
+    }
+
+    @Test fun aCameraThatCannotBeUsedKeepsTheScannerForManualEntry() {
+        scan.begin()
+        scan.cameraUnavailable()
+        assertTrue(scan.open)
+        assertTrue(scan.unavailable)
+        assertEquals(ScannerUnavailableReason.NO_USABLE_CAMERA, scan.unavailableReason)
+        scan.permissionDenied()
+        assertEquals(ScannerUnavailableReason.PERMISSION_DENIED, scan.unavailableReason)
+        // A typed code clears it while it is looked up.
+        scan.onBarcode("4006381333931")
+        assertFalse(scan.unavailable)
+        assertNull(scan.unavailableReason)
+        scan.begin()
+        assertFalse(scan.unavailable)
+    }
+}

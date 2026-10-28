@@ -22,17 +22,18 @@ import com.iron.breakfast.domain.BreakfastEngine
 import com.iron.breakfast.data.BreakfastStore
 import com.iron.breakfast.data.OpenFoodFactsClient
 import com.iron.breakfast.domain.ShorthandParser
-import com.iron.breakfast.domain.NutritionCalculator
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.resolveSelectedDay
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.food.FoodForm
+import com.iron.breakfast.scan.BarcodeLookup
+import com.iron.breakfast.scan.ProductReview
+import com.iron.breakfast.scan.ProductStore
+import com.iron.breakfast.scan.ScanSession
 import com.iron.breakfast.food.FoodFormStore
 import com.iron.breakfast.food.NewFood
 import com.iron.breakfast.resolve.ResolveQueueView
-import com.iron.breakfast.scan.ScannerUnavailableReason
-import com.iron.breakfast.scan.ProductReviewOrigin
 import com.iron.breakfast.resolve.LogResolveRequest
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.library.LibraryLogDraft
@@ -55,35 +56,18 @@ import com.iron.breakfast.ui.label
 import com.iron.breakfast.domain.DraftRow
 import com.iron.breakfast.rowStillInDraft
 import com.iron.breakfast.domain.replaceDraftPart
-import com.iron.breakfast.contribution.contributionDraftAfterLocalSave
-import com.iron.breakfast.domain.Calculation
 import com.iron.breakfast.library.librarySearchText
 import com.iron.breakfast.logTargetMealOf
 import com.iron.breakfast.log.LogDraftView
 import com.iron.breakfast.domain.DraftView
 import com.iron.breakfast.library.libraryInputSegments
-import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.logSubmitPlan
 import com.iron.breakfast.LogSubmitPlan
 import com.iron.breakfast.domain.ShorthandLexicon
 import com.iron.breakfast.domain.mealMarkerSlots
 import com.iron.breakfast.settings.undoWindowMs
-import com.iron.breakfast.domain.normalizeBarcode
 import com.iron.breakfast.activeResolutionTarget
 import com.iron.breakfast.domain.SavedMeal
-import com.iron.breakfast.productReviewOrigin
-import com.iron.breakfast.scan.productPrefill
-import com.iron.breakfast.scan.ProductPrefill
-import com.iron.breakfast.reviewLogPlan
-import com.iron.breakfast.canSaveProductToLibrary
-import com.iron.breakfast.scan.ProductDraft
-import com.iron.breakfast.scan.parseProductUnit
-import com.iron.breakfast.domain.NutritionBasis
-import com.iron.breakfast.domain.NutritionValues
-import com.iron.breakfast.scannerUnavailableTransition
-import com.iron.breakfast.scan.unknownBarcodeStep
-import com.iron.breakfast.scan.UnknownBarcodeStep
-import com.iron.breakfast.data.OffResult
 import com.iron.breakfast.domain.TypedPart
 import com.iron.breakfast.settings.SettingsState
 import com.iron.breakfast.today.MatchFeedback
@@ -164,7 +148,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         ready = { ready },
         onOpen = ::searchOpened,
         onClose = ::searchClosed,
-        onChoose = { food -> chooseProduct(food) },
+        onChoose = { food -> review.choose(food) },
     )
     /** Export, import, Delete all and the safety copy (see [DiaryTransfer]); the root launches its pickers. */
     internal val transfer = DiaryTransfer(
@@ -189,7 +173,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     /** "Export your diary." on Daily (see [ExportReminders]). */
     internal val reminders: ExportReminders = ExportReminders(settings, session, clock, requestExport = { transfer.requestPicker(DiaryPicker.EXPORT) })
     private val parser = ShorthandParser()
-    private val calculator = NutritionCalculator()
     /** The Library bar's text, or the amount being edited. Never the log draft, so leaving either cannot touch it. */
     var input by mutableStateOf(""); private set
     /** The log draft Daily and Meal share: the composer shows it and the Log page edits it. Only Add or clearing it removes it. */
@@ -244,28 +227,53 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         queue = ::resolveQueue,
         resolving = { logResolve != null || resolutionContinuation },
         offerContribution = contribution::offerAfterLocalSave,
-        startScan = ::beginScan,
+        startScan = { scan.begin() },
         onOpen = ::foodFormOpened,
         onClose = ::returnToResolverOrEnd,
         onSaved = ::foodSaved,
     )
-    var scannerOpen by mutableStateOf(false); private set
-    /** True when the scanner is still open but its camera preview cannot be used. */
-    var scannerUnavailableState by mutableStateOf(false); private set
-    var scannerUnavailableReason by mutableStateOf<ScannerUnavailableReason?>(null); private set
-    /** The scanner remains visible while the barcode request is in flight. */
-    var scannerLookupBusy by mutableStateOf(false); private set
-    var scannerLookupCode by mutableStateOf(""); private set
-    var selectedProduct by mutableStateOf<FoodRecord?>(null); private set
-    var selectedProductFromScan by mutableStateOf(false); private set
-    var selectedProductOrigin by mutableStateOf(ProductReviewOrigin.LIBRARY); private set
-    var productAmount by mutableStateOf("100"); private set
-    var productUnit by mutableStateOf("g"); private set
-    var productName by mutableStateOf(""); private set
-    var productCalories by mutableStateOf(""); private set
-    var productProtein by mutableStateOf(""); private set
-    var productCarbs by mutableStateOf(""); private set
-    var productFat by mutableStateOf(""); private set
+    /** The scanner and its barcode lookup (see [ScanSession]); a found product goes to [review], an unknown one to [foodForm]. */
+    internal val scan: ScanSession = ScanSession(
+        lookup = object : BarcodeLookup {
+            override suspend fun localFood(barcode: String) = engine.foodByBarcode(barcode)
+            override suspend fun openFoodFacts(barcode: String) = off.barcode(barcode)
+        },
+        notices = notices,
+        scope = viewModelScope,
+        io = Dispatchers.IO,
+        lookUpBarcodes = { settings.lookUpBarcodes },
+        selectedDay = { selectedDayKey },
+        targetMeal = { slot },
+        queueActive = { resolveQueue() != null },
+        rescanRequested = { foodForm.rescanRequested },
+        onRescanned = foodForm::rescanned,
+        onEnded = foodForm::rescanEnded,
+        onProduct = { food, origin -> search.hide(); review.choose(food, fromScan = true, origin = origin) },
+        onManualForm = { name, brand, barcode, fromOff -> foodForm.open(name, brand, barcode, fromOff = fromOff) },
+    )
+    /** Product review after a scan or a search pick (see [ProductReview]); its queue and resolve hand-offs come back here. */
+    internal val review: ProductReview = ProductReview(
+        session = session,
+        store = object : ProductStore {
+            override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
+                engine.cacheFoodAndLog(food, amount, unit, meal, dayKey)
+            }
+            override suspend fun updateFood(food: FoodRecord) = engine.updateFood(food)
+            override suspend fun cacheFood(food: FoodRecord) = engine.cacheFood(food)
+        },
+        notices = notices,
+        selectedDay = { selectedDayKey },
+        openMeal = { slot },
+        queue = ::resolveQueue,
+        resolvingPart = { logResolve != null },
+        typed = ::typedUnknown,
+        offerContribution = contribution::offerAfterLocalSave,
+        onPartResolved = ::finishResolve,
+        onLogged = { advancesQueue -> if (advancesQueue) advanceUnknownQueue() else resolutionContinuation = false },
+        onClosed = ::returnToResolverOrEnd,
+        openSearch = { fromResolver -> search.open(fromResolver = fromResolver) },
+        startScan = { scan.begin() },
+    )
     var mealDraftError by mutableStateOf<String?>(null); private set
     /** The full-screen Log page. [logPreset] comes from the `+` or composer that opened it; [logChosen] from the Log's meal menu. */
     var logOpen by mutableStateOf(false); private set
@@ -299,11 +307,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private var libraryRefreshJob: Job? = null
     private var libraryRefreshGeneration = 0L
     var libraryBatchMealPickerOpen by mutableStateOf(false); private set
-    private var barcodeRequestToken = 0L
-    /** The barcode lookup in flight; leaving the scanner cancels it, which also stops its Open Food Facts request. */
-    private var barcodeLookupJob: Job? = null
-    private var barcodeOriginDay = selectedDayKey
-    private var barcodeOriginMeal: MealSlot? = slot
     val ready: Boolean get() = session.ready
     /** A diary write is running ([DiarySession.write]); user actions that write are refused meanwhile. */
     val busy: Boolean get() = session.busy
@@ -374,7 +377,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         selectedDayKey = value
         followingToday = following
         saveSelectedDay(savedState, SavedDay(value, following))
-        barcodeRequestToken++
+        scan.invalidateLookup()
     }
     private fun selectMeal(value: MealSlot?) { slot = value; savedState["meal_slot"] = value?.name }
     fun shiftSelectedDay(delta: Long) { goToDay(runCatching { LocalDate.parse(selectedDayKey).plusDays(delta).toString() }.getOrDefault(selectedDayKey)) }
@@ -466,7 +469,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     /** What is drawn over Daily, Meal or Library right now, by [topOverlay]. */
     internal fun topOverlay(): Overlay? = topOverlay(
-        scanner = scannerOpen, entryDetail = entryEdit.selectedEntry != null, productReview = selectedProduct != null,
+        scanner = scan.open, entryDetail = entryEdit.selectedEntry != null, productReview = review.product != null,
         resolver = resolverOpen, offSearch = search.open, foodForm = foodForm.open,
         libraryFood = selectedLibraryFood != null, entryEdit = entryEdit.mode != EntryEditMode.NONE,
         settings = settingsOpen,
@@ -559,7 +562,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         resolutionContinuation = false
         resolverOpen = false
     }
-    fun openMeal(s: MealSlot) { abandonUnknownResolution(); selectMeal(s); barcodeRequestToken++; leaveEntryEdit(); mealDraftError = null }
+    fun openMeal(s: MealSlot) { abandonUnknownResolution(); selectMeal(s); scan.invalidateLookup(); leaveEntryEdit(); mealDraftError = null }
     fun openFocusedLibrary(meal: MealSlot?, query: String = "") {
         abandonUnknownResolution()
         leaveEntryEdit()
@@ -601,33 +604,13 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         selectMeal(request.slot)
         search.hide()
         foodForm.hide()
-        selectedProduct = null
+        review.hide()
         logDraft = draftInput
         logDraftCommitted = false
         mealDraftError = null
         logPreset = request.preset
         logChosen = request.chosen
         logOpen = true
-    }
-
-    /** A product picked from the search or scanner while resolving: stored as the food it is, then picked. */
-    private fun resolveWithProduct() {
-        val food = selectedProduct ?: return
-        if (!ready || busy) return
-        val draft = productDraft(food) ?: run {
-            notices.show("Enter a positive amount, a supported unit, and valid calories.")
-            return
-        }
-        val fromScan = selectedProductFromScan
-        session.write(
-            change = DiaryChange.FoodsChanged,
-            onSuccess = { stored ->
-                contribution.offerAfterLocalSave(contributionDraftAfterLocalSave(draft.food, fromScan))
-                selectedProductFromScan = false
-                finishResolve(stored)
-            },
-            onFailure = { notices.show(it.message ?: "Could not save this food.") },
-        ) { engine.cacheFood(draft.food) }
     }
 
     fun openLibraryFoodDetail(entry: MealEntry) {
@@ -642,7 +625,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     /** Leaves the meal for Daily. The log draft and its pins stay. */
     fun closeMeal() {
         logResolve?.let { endResolve(it, it.draftText); return }
-        abandonUnknownResolution(); selectMeal(null); barcodeRequestToken++; leaveEntryEdit() }
+        abandonUnknownResolution(); selectMeal(null); scan.invalidateLookup(); leaveEntryEdit() }
     /** The keyboard's Done: the draft is committed, so its last word is no longer being typed. */
     fun commitLogDraft() { logDraftCommitted = true }
     /** The Log page's typing. Clearing the draft also drops the foods picked for it. */
@@ -851,14 +834,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (resolverQuery.isBlank()) resolverQuery = currentUnknownName()
         onResolverQuery(resolverQuery)
     }
-    fun clearSelectedProduct() { selectedProduct = null; selectedProductFromScan = false; selectedProductOrigin = ProductReviewOrigin.LIBRARY; returnToResolverOrEnd() }
-    fun onProductAmount(v: String) { productAmount = v }
-    fun onProductUnit(v: String) { productUnit = v }
-    fun onProductName(v: String) { productName = v }
-    fun onProductCalories(v: String) { productCalories = v }
-    fun onProductProtein(v: String) { productProtein = v }
-    fun onProductCarbs(v: String) { productCarbs = v }
-    fun onProductFat(v: String) { productFat = v }
     fun currentUnknownName(): String = unknownQueue.firstOrNull()?.let { typedUnknown(it).foodPhrase.trim().ifBlank { it.trim() } }.orEmpty()
     /** A part of the unknown queue as the Log read it: its food text, typed amount and unit ("mleko200g" is mleko, 200 g). */
     internal fun typedUnknown(raw: String): TypedPart = engine.planner().typed(raw)
@@ -935,146 +910,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     /** Leaves the current unresolved food unlogged and moves to the next one. */
     fun skipCurrentUnknown() { if (unknownQueue.isNotEmpty()) advanceUnknownQueue() }
-    fun chooseProduct(food: FoodRecord, fromScan: Boolean = false, origin: ProductReviewOrigin? = null) {
-        selectedProduct = food
-        selectedProductFromScan = fromScan
-        selectedProductOrigin = origin ?: productReviewOrigin(slot, resolutionContinuation, unknownQueue.isNotEmpty())
-        search.hide()
-        val prefill = unknownQueue.firstOrNull()
-            ?.takeIf { resolutionContinuation }
-            ?.let { productPrefill(it, food, typedUnknown(it)) }
-            ?: ProductPrefill(100.0, food.nutrition.unit)
-        productAmount = prefill.amount.toString()
-        productUnit = prefill.unit.displayLabel()
-        productName = food.name
-        productCalories = food.nutrition.values.calories.toString()
-        productProtein = food.nutrition.values.protein?.toString().orEmpty()
-        productCarbs = food.nutrition.values.carbohydrates?.toString().orEmpty()
-        productFat = food.nutrition.values.fat?.toString().orEmpty()
-    }
-    fun productCalculation(food: FoodRecord): Calculation? = productDraft(food)?.calculation
-    /** Logs the reviewed product to [target] on the selected day; Add in the review sheet calls this. */
-    fun addSelected(chosen: MealSlot) {
-        val food = selectedProduct ?: return
-        if (!ready || busy) return
-        if (logResolve != null) { resolveWithProduct(); return }
-        val draft = productDraft(food) ?: run {
-            notices.show("Enter a positive amount, a supported unit, and valid calories.")
-            return
-        }
-        val plan = reviewLogPlan(resolutionContinuation, unknownQueue.isNotEmpty(), unknownQueueTarget, chosen)
-        val target = plan.meal
-        val resolvesQueue = plan.advancesQueue
-        val fromScan = selectedProductFromScan
-        val capturedDayKey = selectedDayKey
-        session.write(
-            change = DiaryChange.FoodsLogged,
-            onSuccess = {
-                selectedProduct = null
-                contribution.offerAfterLocalSave(contributionDraftAfterLocalSave(draft.food, fromScan))
-                selectedProductFromScan = false
-                selectedProductOrigin = ProductReviewOrigin.LIBRARY
-                if (resolvesQueue) advanceUnknownQueue() else resolutionContinuation = false
-                notices.show("Added to ${target.label()}")
-            },
-            onFailure = { notices.show(it.message ?: "This amount cannot be logged.") },
-        ) { engine.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, capturedDayKey) }
-    }
-
-    fun saveSelectedToLibrary() {
-        val food = selectedProduct ?: return
-        if (logResolve != null) { resolveWithProduct(); return }
-        if (!canSaveProductToLibrary(slot, resolutionContinuation, unknownQueue.isNotEmpty())) return
-        if (!ready || busy) return
-        val draft = productDraft(food) ?: run { notices.show("Enter a positive amount, a supported unit, and valid calories."); return }
-        session.write(
-            change = DiaryChange.FoodsChanged,
-            onSuccess = {
-                selectedProduct = null
-                selectedProductFromScan = false
-                selectedProductOrigin = ProductReviewOrigin.LIBRARY
-                notices.show("Saved ${draft.food.name} to your food library.")
-            },
-            onFailure = { notices.show(it.message ?: "Could not save this food.") },
-        ) { engine.updateFood(draft.food) }
-    }
-
-    private fun productDraft(food: FoodRecord): ProductDraft? {
-        val amount = productAmount.toDoubleOrNull()
-        val unit = parseProductUnit(productUnit)
-        val kcal = productCalories.toDoubleOrNull()
-        if (amount == null || !amount.isFinite() || amount <= 0.0 || unit == null ||
-            kcal == null || !kcal.isFinite() || kcal < 0.0
-        ) return null
-        val draftFood = food.copy(
-            name = productName.trim().ifBlank { food.name },
-            nutrition = NutritionBasis(
-                food.nutrition.amount,
-                food.nutrition.unit,
-                NutritionValues(
-                    kcal,
-                    productProtein.toDoubleOrNull(),
-                    productCarbs.toDoubleOrNull(),
-                    productFat.toDoubleOrNull()
-                )
-            )
-        )
-        val calculation = calculator.calculate(draftFood, amount, unit)
-        return ProductDraft(draftFood, amount, unit, calculation).takeIf { calculation.supported }
-    }
-    fun beginScan() { barcodeRequestToken++; barcodeOriginDay = selectedDayKey; barcodeOriginMeal = slot; scannerUnavailableState = false; scannerUnavailableReason = null; scannerLookupBusy = false; scannerLookupCode = ""; scannerOpen = true }
-    fun endScan() { barcodeRequestToken++; barcodeLookupJob?.cancel(); barcodeLookupJob = null; scannerOpen = false; scannerUnavailableState = false; scannerUnavailableReason = null; scannerLookupBusy = false; scannerLookupCode = ""; foodForm.rescanEnded() }
-    fun cancelBarcodeLookup() = endScan()
-    /** Keep the scanner route open so manual barcode entry remains available after camera failure. */
-    fun scannerUnavailable() {
-        val transition = scannerUnavailableTransition()
-        scannerUnavailableState = transition.unavailable
-        scannerUnavailableReason = ScannerUnavailableReason.NO_USABLE_CAMERA
-        scannerOpen = transition.scannerOpen
-    }
-    fun scannerPermissionDenied() {
-        scannerUnavailableState = true
-        scannerUnavailableReason = ScannerUnavailableReason.PERMISSION_DENIED
-        scannerOpen = true
-    }
-    private fun barcodeRequestStillTargets(token: Long, day: String, meal: MealSlot?): Boolean = token == barcodeRequestToken && day == selectedDayKey && meal == slot
-    /** [code] comes from the scanner or manual entry, already a product barcode; anything else is ignored before any lookup or notice. */
-    fun onBarcode(code: String) {
-        val barcode = normalizeBarcode(code) ?: return
-        scannerUnavailableState = false
-        scannerUnavailableReason = null
-        if (foodForm.rescanRequested) {
-            scannerOpen = false
-            foodForm.rescanned(barcode)
-            return
-        }
-        val token = barcodeRequestToken
-        val originDay = barcodeOriginDay
-        val originMeal = barcodeOriginMeal
-        val reviewOrigin = productReviewOrigin(originMeal, resolutionContinuation, unknownQueue.isNotEmpty())
-        val step = unknownBarcodeStep(settings.lookUpBarcodes)
-        scannerLookupCode = barcode
-        scannerLookupBusy = true
-        barcodeLookupJob = viewModelScope.launch(Dispatchers.IO) {
-            val local = engine.foodByBarcode(barcode)
-            if (local != null) {
-                withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { scannerOpen = false; scannerLookupBusy = false; chooseProduct(local, fromScan = true, origin = reviewOrigin) } }
-                return@launch
-            }
-            // "Look up unknown barcodes" Off: straight to the manual product form, no network request.
-            if (step == UnknownBarcodeStep.MANUAL_FORM) {
-                withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { scannerOpen = false; scannerLookupBusy = false; foodForm.open(barcode = barcode) } }
-                return@launch
-            }
-            when (val result = off.barcode(barcode)) {
-                is OffResult.Found -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { scannerOpen = false; scannerLookupBusy = false; chooseProduct(result.food, fromScan = true, origin = reviewOrigin) } }
-                is OffResult.Ineligible -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { scannerOpen = false; scannerLookupBusy = false; notices.show("Nutrition is incomplete. Review it as a personal food."); foodForm.open(result.name.orEmpty(), result.brand.orEmpty(), result.barcode, fromOff = true) } }
-                OffResult.Missing -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { scannerOpen = false; scannerLookupBusy = false; notices.show("Product not found. Add it manually with barcode $barcode"); foodForm.open(barcode = barcode) } }
-                OffResult.Unavailable -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { scannerOpen = false; scannerLookupBusy = false; notices.show("No connection. Add the product manually."); foodForm.open(barcode = barcode) } }
-                is OffResult.Error -> withContext(Dispatchers.Main) { if (barcodeRequestStillTargets(token, originDay, originMeal)) { scannerOpen = false; scannerLookupBusy = false; notices.show(result.message); foodForm.open(barcode = barcode) } }
-            }
-        }
-    }
 }
 
 internal const val LOG_TAG = "Breakfast"

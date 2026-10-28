@@ -237,7 +237,7 @@ internal fun LibraryComposer(vm: BreakfastViewModel) {
             if (vm.input.isNotEmpty()) IconButton(onClick = { vm.onInput("") }, modifier = Modifier.size(IconTarget)) {
                 Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = colors.bg, modifier = Modifier.size(20.dp))
             }
-            IconButton(onClick = vm::beginScan, modifier = Modifier.size(IconTarget)) {
+            IconButton(onClick = vm.scan::begin, modifier = Modifier.size(IconTarget)) {
                 Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.bg)
             }
         }

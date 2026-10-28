@@ -89,9 +89,9 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     // A recreation (dark mode, resize, locale) stops the old activity, but the user never left.
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { if (stopMeansLeaving(activity?.isChangingConfigurations == true)) vm.onAppStopped() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { vm.onAppStarted() }
-    if (vm.scannerOpen) { ScannerScreen(vm); return }
-    val scanReviewBackdropVisible = vm.selectedProduct != null && vm.selectedProductFromScan
-    if (scanReviewBackdropVisible) ScanReviewBackdrop(vm::clearSelectedProduct)
+    if (vm.scan.open) { ScannerScreen(vm); return }
+    val scanReviewBackdropVisible = vm.review.product != null && vm.review.fromScan
+    if (scanReviewBackdropVisible) ScanReviewBackdrop(vm.review::close)
     else {
     vm.entryEdit.selectedEntry?.let { entry ->
         EntryDetailScreen(vm, entry)
@@ -151,7 +151,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     if (vm.libraryNoMatch()) LibraryNoMatchScreen(vm)
     if (vm.search.open) OffSearchScreen(vm)
     if (vm.resolverOpen && !scanReviewBackdropVisible) ResolveUnknownScreen(vm)
-    vm.selectedProduct?.let { ProductReviewSheet(vm, it) }
+    vm.review.product?.let { ProductReviewSheet(vm, it) }
     if (vm.contribution.reviewOpen) vm.contribution.pending?.let { ContributionReviewScreen(vm, it) }
     if (vm.contribution.authOpen) ContributionSignInScreen(vm)
     vm.contribution.failure?.let { ContributionFailureScreen(vm, it) }

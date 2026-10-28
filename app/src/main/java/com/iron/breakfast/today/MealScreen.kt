@@ -105,12 +105,12 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 if (isLargeFont(fontScale)) {
                     Column(Modifier.fillMaxWidth().padding(top = 30.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         SecondaryButton("Add food", { vm.openFocusedLibrary(target) }, addFoodModifier, fillWidth = false)
-                        SecondaryButton("Scan", vm::beginScan, scanModifier, fillWidth = false)
+                        SecondaryButton("Scan", vm.scan::begin, scanModifier, fillWidth = false)
                     }
                 } else {
                     Row(Modifier.fillMaxWidth().padding(top = 30.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         SecondaryButton("Add food", { vm.openFocusedLibrary(target) }, addFoodModifier, fillWidth = false)
-                        SecondaryButton("Scan", vm::beginScan, scanModifier, fillWidth = false)
+                        SecondaryButton("Scan", vm.scan::begin, scanModifier, fillWidth = false)
                     }
                 }
                 if (contributionShown(vm.settings.showContribute, vm.contribution.pending != null)) ContributionAction(vm)
@@ -132,7 +132,7 @@ internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot, modifier: Mo
         Composer(
             placeholder = if (draft) vm.logDraft else "Add to ${target.label()}",
             onClick = { vm.openLog(target) },
-            onScan = vm::beginScan,
+            onScan = vm.scan::begin,
             draft = draft,
             longDraft = vm.settings.longDraft,
         )

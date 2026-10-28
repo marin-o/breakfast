@@ -96,7 +96,6 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import com.iron.breakfast.app.BreakfastViewModel
 import com.iron.breakfast.domain.FoodRecord
-import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.asciiDigits
 import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.domain.displayLabel
@@ -143,14 +142,14 @@ import com.iron.breakfast.ui.screens.sourceLabel
     // Asked once per scan session: a configuration change after a denial must not bring the system dialog back.
     var permissionAsked by rememberSaveable { mutableStateOf(false) }
     val hasCameraHardware = remember { context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasPermission = granted; if (!granted) vm.scannerPermissionDenied() }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasPermission = granted; if (!granted) vm.scan.permissionDenied() }
     val feather = with(LocalDensity.current) { ScanFeather.toPx() }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
                 hasPermission = granted
-                if (granted && vm.scannerUnavailableReason == ScannerUnavailableReason.PERMISSION_DENIED) vm.beginScan()
+                if (granted && vm.scan.unavailableReason == ScannerUnavailableReason.PERMISSION_DENIED) vm.scan.begin()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -159,18 +158,18 @@ import com.iron.breakfast.ui.screens.sourceLabel
     LaunchedEffect(Unit) {
         if (hasCameraHardware && !hasPermission && !permissionAsked) { permissionAsked = true; launcher.launch(Manifest.permission.CAMERA) }
     }
-    LaunchedEffect(hasCameraHardware) { if (!hasCameraHardware) vm.scannerUnavailable() }
+    LaunchedEffect(hasCameraHardware) { if (!hasCameraHardware) vm.scan.cameraUnavailable() }
     LaunchedEffect(torchOn, torchAvailable) { if (torchAvailable) session.camera?.cameraControl?.enableTorch(torchOn) }
-    BackHandler { vm.endScan() }
-    if (vm.scannerUnavailableState) {
+    BackHandler { vm.scan.end() }
+    if (vm.scan.unavailable) {
         ScannerUnavailableScreen(
-            noCamera = !hasCameraHardware || vm.scannerUnavailableReason == ScannerUnavailableReason.NO_USABLE_CAMERA,
-            onBack = vm::endScan,
+            noCamera = !hasCameraHardware || vm.scan.unavailableReason == ScannerUnavailableReason.NO_USABLE_CAMERA,
+            onBack = vm.scan::end,
             onManual = { manualOpen = true },
             onSettings = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) },
         )
     } else Box(Modifier.fillMaxSize().background(colors.cameraGround)) {
-        if (hasPermission && !vm.scannerUnavailableState) AndroidView(factory = { ctx -> PreviewView(ctx).also { view ->
+        if (hasPermission && !vm.scan.unavailable) AndroidView(factory = { ctx -> PreviewView(ctx).also { view ->
             val providerFuture = ProcessCameraProvider.getInstance(ctx)
             providerFuture.addListener({ runCatching {
                 if (session.disposed.get()) return@runCatching
@@ -198,7 +197,7 @@ import com.iron.breakfast.ui.screens.sourceLabel
                             if (!session.accepts(Rect(box.left.toFloat(), box.top.toFloat(), box.right.toFloat(), box.bottom.toFloat()), frame, feather)) null
                             else scannedProductBarcode(raw, upcE = barcode.format == Barcode.FORMAT_UPC_E)
                         }
-                        code?.let { if (!delivered && !session.disposed.get()) { delivered = true; vm.onBarcode(it) } }
+                        code?.let { if (!delivered && !session.disposed.get()) { delivered = true; vm.scan.onBarcode(it) } }
                     }.addOnCompleteListener { proxy.close() }
                 }
                 // A shared view port crops the analysis frame to what the preview shows, so a box maps straight onto the screen.
@@ -208,11 +207,11 @@ import com.iron.breakfast.ui.screens.sourceLabel
                 } ?: provider.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
                 session.camera = camera
                 torchAvailable = camera.cameraInfo.hasFlashUnit()
-            }.onFailure { if (!session.disposed.get()) { session.dispose(); vm.scannerUnavailable() } } }, ContextCompat.getMainExecutor(ctx))
+            }.onFailure { if (!session.disposed.get()) { session.dispose(); vm.scan.cameraUnavailable() } } }, ContextCompat.getMainExecutor(ctx))
         } }, Modifier.fillMaxSize().onGloballyPositioned { session.previewBounds = it.boundsInRoot() })
         ScannerFrame(
             top = {
-                IconButton(onClick = vm::endScan, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.cameraMark) }
+                IconButton(onClick = vm.scan::end, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.cameraMark) }
                 Box(Modifier.weight(1f))
                 if (torchAvailable) IconToggleButton(checked = torchOn, onCheckedChange = { torchOn = it }, Modifier.size(44.dp).semantics { role = Role.Switch; stateDescription = if (torchOn) "On" else "Off" }) {
                     Icon(if (torchOn) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff, contentDescription = "Torch", tint = colors.cameraMark)
@@ -220,11 +219,11 @@ import com.iron.breakfast.ui.screens.sourceLabel
             },
             viewfinderModifier = Modifier.onGloballyPositioned { session.viewfinderBounds = it.boundsInRoot() },
         ) {
-            if (vm.scannerLookupBusy) LookupProgress(vm.scannerLookupCode, vm::cancelBarcodeLookup)
+            if (vm.scan.lookupBusy) LookupProgress(vm.scan.lookupCode, vm.scan::end)
             else ScannerHint(hasPermission, onManual = { manualOpen = true })
         }
     }
-    if (manualOpen) ManualBarcodeSheet(onDismiss = { manualOpen = false }, onLookup = { code -> manualOpen = false; vm.onBarcode(code) })
+    if (manualOpen) ManualBarcodeSheet(onDismiss = { manualOpen = false }, onLookup = { code -> manualOpen = false; vm.scan.onBarcode(code) })
 }
 
 @Composable
@@ -400,8 +399,8 @@ internal fun nutrientFieldsFitRow(availableDp: Float, fontScale: Float): Boolean
     }
 }
 
-private fun amountFieldText(vm: BreakfastViewModel): String =
-    "${vm.productAmount.toDoubleOrNull()?.pretty() ?: vm.productAmount} ${vm.productUnit}".trim()
+private fun amountFieldText(review: ProductReview): String =
+    "${review.amount.toDoubleOrNull()?.pretty() ?: review.amount} ${review.unit}".trim()
 
 /**
  * Review of a scanned (or Open Food Facts) product before anything is written. Add logs it to the chosen
@@ -409,48 +408,49 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable internal fun ProductReviewSheet(vm: BreakfastViewModel, food: FoodRecord) {
+    val review = vm.review
     val colors = LocalBreakfastColors.current
     val letter = sourceLetter(food)
     val basis = food.nutrition
-    var amountText by rememberSaveable(food.id) { mutableStateOf(amountFieldText(vm)) }
+    var amountText by rememberSaveable(food.id) { mutableStateOf(amountFieldText(review)) }
     // While a resolve queue is active the meal is the queue's own: shown as a plain line, not a choice.
-    val queueMeal = vm.unknownQueueTarget.takeIf { vm.selectedProductOrigin == ProductReviewOrigin.QUEUE && vm.unknownQueue.isNotEmpty() }
-    val fromLibrary = vm.selectedProductOrigin == ProductReviewOrigin.LIBRARY
-    var meal by rememberSaveable(food.id) { mutableStateOf(queueMeal ?: vm.slot ?: MealSlot.LUNCH) }
+    val queueMeal = review.queueMeal()
+    val fromLibrary = review.origin == ProductReviewOrigin.LIBRARY
+    var meal by rememberSaveable(food.id) { mutableStateOf(review.initialMeal()) }
     var editing by rememberSaveable(food.id) { mutableStateOf(false) }
     val parsed = parseProductAmount(amountText, basis.unit)
-    val calculation = if (parsed != null) vm.productCalculation(food) else null
+    val calculation = if (parsed != null) review.calculation(food) else null
     val approx = productApproxLabel(calculation, parsed?.unit, basis.unit)
     val canAdd = !food.archived && parsed != null && calculation?.supported == true
     // The numbers on screen follow any corrections made under "Edit details".
     val values = NutritionValues(
-        vm.productCalories.toDoubleOrNull() ?: basis.values.calories,
-        vm.productProtein.toDoubleOrNull(),
-        vm.productCarbs.toDoubleOrNull(),
-        vm.productFat.toDoubleOrNull(),
+        review.calories.toDoubleOrNull() ?: basis.values.calories,
+        review.protein.toDoubleOrNull(),
+        review.carbs.toDoubleOrNull(),
+        review.fat.toDoubleOrNull(),
     )
     val per100 = "${basisLabel(basis.amount, basis.unit)}: ${formatKcal(values.calories)} kcal, " +
         "P ${values.protein?.pretty() ?: "—"}, C ${values.carbohydrates?.pretty() ?: "—"}, F ${values.fat?.pretty() ?: "—"}"
-    Sheet(onDismissRequest = vm::clearSelectedProduct, skipPartiallyExpanded = true) {
+    Sheet(onDismissRequest = review::close, skipPartiallyExpanded = true) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState())) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(foodText(vm.productName.ifBlank { food.name }), color = colors.ink, style = BreakfastType.Section, modifier = Modifier.weight(1f))
-                if (queueMeal != null) Text(resolveQueuePosition(vm), color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(start = 12.dp, top = 6.dp))
+                Text(foodText(review.name.ifBlank { food.name }), color = colors.ink, style = BreakfastType.Section, modifier = Modifier.weight(1f))
+                if (queueMeal != null) Text(review.resolveQueue()?.position().orEmpty(), color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(start = 12.dp, top = 6.dp))
             }
             if (!food.brand.isNullOrBlank()) Text(food.brand.orEmpty(), color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 2.dp))
             Text(sourceLabel(letter), color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 2.dp))
             if (!editing) Text(per100, color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 10.dp))
             Hairline(Modifier.padding(top = 16.dp))
             if (editing) Column(Modifier.fillMaxWidth().padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Field("Name", vm.productName, vm::onProductName)
+                Field("Name", review.name, review::onName)
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(basisLabel(basis.amount, basis.unit), color = colors.soft, style = BreakfastType.Meta)
                     NutrientInputs(
                         listOf(
-                            NutrientInput("kcal", vm.productCalories) { vm.onProductCalories(it.decimalInput()) },
-                            NutrientInput("Protein, g", vm.productProtein) { vm.onProductProtein(it.decimalInput()) },
-                            NutrientInput("Carbs, g", vm.productCarbs) { vm.onProductCarbs(it.decimalInput()) },
-                            NutrientInput("Fat, g", vm.productFat) { vm.onProductFat(it.decimalInput()) },
+                            NutrientInput("kcal", review.calories) { review.onCalories(it.decimalInput()) },
+                            NutrientInput("Protein, g", review.protein) { review.onProtein(it.decimalInput()) },
+                            NutrientInput("Carbs, g", review.carbs) { review.onCarbs(it.decimalInput()) },
+                            NutrientInput("Fat, g", review.fat) { review.onFat(it.decimalInput()) },
                         ),
                     )
                 }
@@ -461,8 +461,8 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
                 onValueChange = {
                     amountText = it
                     val next = parseProductAmount(it, basis.unit)
-                    vm.onProductAmount(next?.amount?.toString().orEmpty())
-                    if (next != null) vm.onProductUnit(next.unit.displayLabel())
+                    review.onAmount(next?.amount?.toString().orEmpty())
+                    if (next != null) review.onUnit(next.unit.displayLabel())
                 },
                 modifier = Modifier.padding(top = 16.dp),
                 error = parsed == null && amountText.isNotBlank(),
@@ -487,17 +487,17 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
                         Text(" kcal", color = colors.soft, style = BreakfastType.Secondary)
                     }
                 }
-                PrimaryButton("Add to ${(queueMeal ?: meal).label()}", { vm.addSelected(queueMeal ?: meal) }, Modifier.padding(top = 14.dp), enabled = canAdd)
-                if (queueMeal != null) vm.unknownQueue.drop(1).firstOrNull()?.let { next ->
+                PrimaryButton("Add to ${(queueMeal ?: meal).label()}", { review.add(queueMeal ?: meal) }, Modifier.padding(top = 14.dp), enabled = canAdd)
+                if (queueMeal != null) review.resolveQueue()?.next?.let { next ->
                     Text("Next: $next", color = colors.soft, style = BreakfastType.Secondary, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
                 }
             } else {
-                PrimaryButton("Save to Library", vm::saveSelectedToLibrary, Modifier.padding(top = 14.dp), enabled = canAdd)
+                PrimaryButton("Save to Library", review::saveToLibrary, Modifier.padding(top = 14.dp), enabled = canAdd)
             }
             val actions = listOf(
                 (if (editing) "Hide details" else "Edit details") to { editing = !editing },
-                "Find better match" to { vm.clearSelectedProduct(); vm.search.open(fromResolver = vm.resolutionContinuation) },
-                "Rescan" to { vm.clearSelectedProduct(); vm.beginScan() },
+                "Find better match" to { review.findBetterMatch() },
+                "Rescan" to { review.rescan() },
             )
             // One row when every label fits on one line in a third; otherwise stacked, never wrapped or cut.
             BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp)) {
@@ -513,11 +513,6 @@ private fun amountFieldText(vm: BreakfastViewModel): String =
             }
         }
     }
-}
-
-private fun resolveQueuePosition(vm: BreakfastViewModel): String {
-    val shown = maxOf(vm.unknownQueueTotal, vm.unknownQueue.size)
-    return "${(shown - vm.unknownQueue.size + 1).coerceIn(1, maxOf(1, shown))} of $shown"
 }
 
 private class ScannerSession {
