@@ -15,10 +15,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * What a contribution needs from Open Food Facts; `OpenFoodFactsClient` implements it. Both calls block and run to the
- * end (a user-confirmed write is never cut off), so they run on the IO dispatcher.
+ * What a contribution needs from Open Food Facts; `OpenFoodFactsClient` implements it. Both calls block, so they run on
+ * the IO dispatcher; a call once started runs to its end even when the flow no longer waits for its answer.
  */
 interface OffContributions {
     /** Reads the product the draft would change: does it exist, may it be contributed. */
@@ -37,7 +38,8 @@ interface OffContributions {
  * - The password lives only here, in memory, and is cleared when the submit starts and when the sign-in is
  *   dismissed. It is never saved.
  * - Leaving the sign-in ([dismissAuth], Back included) while it submits cancels the submit: its answer, whenever it
- *   comes, is not applied and opens nothing.
+ *   comes, is not applied and opens nothing. Like a lost answer, the product is read again before the next review,
+ *   and no new submit starts while the cancelled call is still out.
  *
  * Calls to [off] run on [io]; their results are applied in [scope] (the view model's, on Main). The blocking call
  * itself is not cut off (a request already sent may still reach Open Food Facts), but a cancelled submit's result is
@@ -62,6 +64,8 @@ internal class ContributionFlow(
     private var preflightComplete by mutableStateOf(false)
     private var preflightToken = 0L
     private var submitting: Job? = null
+    /** Contribute calls still running on [io], a cancelled one included. */
+    private val callsOut = AtomicInteger(0)
     var languageCode by mutableStateOf("en"); private set
     var packageQuantityMl by mutableStateOf(""); private set
 
@@ -131,6 +135,8 @@ internal class ContributionFlow(
      * drawn) the submit is cancelled: its answer is ignored and nothing beneath the sign-in changes.
      */
     fun dismissAuth() {
+        // The request may still reach Open Food Facts: what it holds is read again before the next review.
+        if (busy) preflightComplete = false
         submitting?.cancel()
         submitting = null
         busy = false
@@ -161,10 +167,13 @@ internal class ContributionFlow(
         pending = pending?.copy(packageQuantityMl = parseDecimal(value))
     }
 
-    /** Sends the candidate with the typed account. One submit at a time; the password is cleared as it starts. */
+    /**
+     * Sends the candidate with the typed account. One submit at a time, and none while a cancelled one's call is still
+     * out; the password is cleared as it starts.
+     */
     fun submit() {
         val draft = pending ?: return
-        if (busy) return
+        if (busy || callsOut.get() > 0) return
         if (username.isBlank() || password.isBlank()) {
             failure = "Enter your Open Food Facts username and password to submit."
             uncertain = false
@@ -177,7 +186,10 @@ internal class ContributionFlow(
         busy = true
         submitting = scope.launch {
             // A cancelled submit ends here as the call returns ([dismissAuth]): withContext does not resume it.
-            val result = withContext(io) { off.contribute(draft, user, secret) }
+            val result = withContext(io) {
+                callsOut.incrementAndGet()
+                try { off.contribute(draft, user, secret) } finally { callsOut.decrementAndGet() }
+            }
             when (result) {
                 OffContributionResult.Success -> {
                     pending = null

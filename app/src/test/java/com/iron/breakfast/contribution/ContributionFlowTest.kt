@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -167,19 +168,24 @@ class ContributionFlowTest {
     }
 
     @Test fun leavingTheSignInWhileItSubmitsCancelsTheSubmitAndIgnoresItsAnswer() {
-        reviewing()
+        reviewing(OffPreflightResult.NewProduct)
         val candidate = flow.pending
         flow.confirm()
         flow.onUsername("ana")
         flow.onPassword("secret")
         off.contributeResult = OffContributionResult.AuthFailed
-        // Back while the request is out: the sign-in closes at once.
+        // Back while the request is out: the sign-in closes at once, and no other submit starts while it is out.
         off.whileSending = {
             assertTrue(flow.busy)
             flow.dismissAuth()
             assertFalse(flow.authOpen)
             assertFalse(flow.busy)
             assertEquals("", flow.password)
+            flow.confirm()
+            flow.onPassword("secret")
+            flow.submit()
+            assertFalse(flow.busy)
+            flow.dismissAuth()
         }
         flow.submit()
         // The answer comes after: it opens nothing and changes nothing.
@@ -192,23 +198,34 @@ class ContributionFlowTest {
         assertEquals(candidate, flow.pending)
         assertNull(notices.message)
         assertEquals("", flow.password)
-        // A late success is ignored as well, and a new submit can start; one left before it was sent never goes.
+        // The request may have created the product: the next Contribute reads it again before the review.
+        off.preflightResult = OffPreflightResult.Existing
+        flow.review()
+        io.runAll()
+        assertEquals(2, off.preflights.size)
+        assertFalse(flow.pending!!.createNewProduct)
+        assertTrue(flow.reviewOpen)
+        // A late success is ignored as well.
         off.contributeResult = OffContributionResult.Success
+        off.whileSending = { flow.dismissAuth() }
         flow.confirm()
         flow.onPassword("secret")
         flow.submit()
         io.runAll()
         assertEquals(2, off.sent.size)
-        assertEquals(candidate, flow.pending)
+        assertFalse(off.sent.last().first.createNewProduct)
+        assertNotNull(flow.pending)
         assertNull(notices.message)
+        // A submit left before it was sent never goes.
         off.whileSending = {}
+        flow.review()
+        io.runAll()
         flow.confirm()
         flow.onPassword("secret")
         flow.submit()
         flow.dismissAuth()
         io.runAll()
         assertEquals(2, off.sent.size)
-        assertEquals(candidate, flow.pending)
         assertNull(notices.message)
         assertFalse(flow.authOpen)
     }
