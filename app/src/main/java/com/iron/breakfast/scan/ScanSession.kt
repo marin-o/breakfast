@@ -35,7 +35,8 @@ internal interface BarcodeLookup {
  *
  * A lookup runs in [scope], its reads on [io]. Its result applies only while it still targets what it was started for:
  * the same scan (a token that [begin], [end] and [invalidateLookup] move on) and the same day and meal ([selectedDay],
- * [targetMeal], as at [begin]). Leaving the scanner ([end]) cancels it, which also stops its Open Food Facts request.
+ * [targetMeal], as at [begin]). Leaving the scanner ([end]) or a newer barcode cancels it, which also stops its Open
+ * Food Facts request.
  */
 internal class ScanSession(
     private val lookup: BarcodeLookup,
@@ -129,6 +130,9 @@ internal class ScanSession(
             asked(barcode)
             return
         }
+        // A barcode read while another is looked up (the camera bound again after a recreation) replaces that lookup, so
+        // only one result ever applies; the earlier one's Open Food Facts request stops.
+        job?.cancel()
         val mine = token
         val day = originDay
         val meal = originMeal

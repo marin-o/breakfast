@@ -133,6 +133,21 @@ class ScanSessionTest {
         assertTrue(events.isEmpty())
     }
 
+    /** B16, deliberate: before, both lookups ran and both applied (a review over a New food form, or two reviews). */
+    @Test fun aSecondBarcodeDuringALookupReplacesIt() {
+        scan.begin()
+        scan.onBarcode("4006381333931")
+        scan.onBarcode("5310382009733")
+        assertEquals("the first request stops", listOf("4006381333931"), lookup.cancelled)
+        assertEquals("5310382009733", scan.lookupCode)
+        assertTrue(scan.lookupBusy)
+        lookup.answer("4006381333931", OffResult.Missing)
+        assertTrue("the cancelled lookup applies nothing", events.isEmpty())
+        lookup.answer("5310382009733", OffResult.Found(nutella))
+        assertEquals(listOf("review Nutella LIBRARY"), events)
+        assertFalse(scan.open)
+    }
+
     @Test fun aLookupForAnotherDayOrMealNoLongerApplies() {
         scan.begin()
         scan.onBarcode("4006381333931")
