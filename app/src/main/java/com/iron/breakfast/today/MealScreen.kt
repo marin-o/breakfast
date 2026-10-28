@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.animation.core.animate
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -157,6 +158,7 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel
     // The row follows the finger; on release it settles open or shut ([Motion.swipe]), and a new touch stops that.
     val scope = rememberCoroutineScope()
     var settle by remember(entry.id) { mutableStateOf<Job?>(null) }
+    val currentMotion by rememberUpdatedState(motion)
     var rowHeight by remember(entry.id) { androidx.compose.runtime.mutableIntStateOf(0) }
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     val deleteWidth = with(LocalDensity.current) { (96.dp * fontScale).toPx() }
@@ -201,10 +203,9 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel
                         if (horizontal && dx < 0f) { revealOffset = (revealOffset + deltaX).coerceIn(-deleteWidth, 0f); change.consume() }
                         if (!change.pressed) break
                     }
-                    if (horizontal) {
-                        val target = if (revealOffset <= -deleteWidth * .65f) -deleteWidth else 0f
-                        settle = scope.launch { animate(revealOffset, target, animationSpec = motion.swipe()) { value, _ -> revealOffset = value } }
-                    }
+                    // Every release ends open or shut, also a tap or a scroll that stopped a settle half way.
+                    val target = if (revealOffset <= -deleteWidth * .65f) -deleteWidth else 0f
+                    if (revealOffset != target) settle = scope.launch { animate(revealOffset, target, animationSpec = currentMotion.swipe()) { value, _ -> revealOffset = value } }
                 }
             },
         )

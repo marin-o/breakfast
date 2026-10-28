@@ -23,8 +23,8 @@ import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.platform.LocalGraphicsContext
 import com.iron.breakfast.ui.components.Motion
-import com.iron.breakfast.ui.components.SCREEN_IN_MS
-import kotlinx.coroutines.delay
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
 
 /** The key a surface is drawn under: the three base screens are one ([Surface.DAILY]), whichever shows. */
 internal val Surface.slot: Surface get() = if (base) Surface.DAILY else this
@@ -64,8 +64,11 @@ internal fun surfaceChange(before: List<Surface>, now: List<Surface>): SurfaceCh
 /** A shown slot's drawing and its glide (0 out of sight, 1 in place). */
 internal class LiveSlot(val layer: GraphicsLayer?, val progress: Animatable<Float, AnimationVector1D>)
 
-/** A closed screen, drawn from its last frame while it glides out (or, [held], while the screen over it glides in). */
-internal class Ghost(val slot: Surface, val layer: GraphicsLayer, val progress: Animatable<Float, AnimationVector1D>, val held: Boolean)
+/**
+ * A closed screen, drawn from its last frame while it glides out; or, [held], still while the screens in [under]
+ * glide in over it.
+ */
+internal class Ghost(val slot: Surface, val layer: GraphicsLayer, val progress: Animatable<Float, AnimationVector1D>, val held: Boolean, val under: Set<Surface>)
 
 /**
  * The motion of the root's surfaces, beside [Surfaces], which stays the one model of what is open: this only
@@ -81,6 +84,8 @@ internal class SurfaceTransitions(private val graphics: GraphicsContext) {
     private val ghosts = ArrayList<Ghost>()
     private var version by mutableIntStateOf(0)
     private var entering: Set<Surface> = emptySet()
+    /** Where a screen that opens again while its ghost fades starts its glide: where the ghost was. */
+    private val resumeAt = HashMap<Surface, Float>()
 
     /** What to draw, bottom first: each shown surface and each ghost, in [Surface] order. */
     fun frame(shown: List<Surface>, motion: Motion): List<Any> {
@@ -91,17 +96,20 @@ internal class SurfaceTransitions(private val graphics: GraphicsContext) {
         entering = change.entering
         if (ghostsWork) for (slot in change.leaving + change.held) {
             val closed = live[slot] ?: continue
-            closed.layer?.let { ghosts += Ghost(slot, it, closed.progress, held = slot in change.held) }
+            closed.layer?.let { ghosts += Ghost(slot, it, closed.progress, held = slot in change.held, under = change.entering) }
         }
-        // A screen that opens again, or reduced motion, ends its ghost.
+        // A screen that opens again, or reduced motion, ends its ghost; the screen goes on from where the ghost was.
         val slots = shown.map { it.slot }.toSet()
-        ghosts.removeAll { motion.reduced || it.slot in slots }
+        resumeAt.clear()
+        ghosts.removeAll { ghost ->
+            (motion.reduced || ghost.slot in slots).also { ends -> if (ends && !ghost.held && ghost.slot in entering) resumeAt[ghost.slot] = ghost.progress.value }
+        }
         return (shown + ghosts).sortedBy { if (it is Ghost) it.slot.ordinal else (it as Surface).slot.ordinal }
     }
 
     /** The state of [slot] as it is first drawn: a screen opening now starts out of sight. */
     fun open(slot: Surface): LiveSlot {
-        val progress = Animatable(if (slot in entering) 0f else 1f)
+        val progress = Animatable(if (slot in entering) resumeAt[slot] ?: 0f else 1f)
         return LiveSlot(if (slot.recorded) graphics.createGraphicsLayer() else null, progress).also { live[slot] = it }
     }
 
@@ -111,6 +119,9 @@ internal class SurfaceTransitions(private val graphics: GraphicsContext) {
         val layer = state.layer ?: return
         if (ghosts.none { it.layer === layer }) graphics.releaseGraphicsLayer(layer)
     }
+
+    /** Every screen in [slots] that is still shown has finished gliding in. */
+    fun cameIn(slots: Set<Surface>): Boolean = slots.all { slot -> live[slot]?.progress?.let { it.value >= 1f } ?: true }
 
     fun ended(ghost: Ghost) { if (ghosts.remove(ghost)) version++ }
 
@@ -153,12 +164,13 @@ internal fun ShownSurface(transitions: SurfaceTransitions, slot: Surface, motion
     ) { content() }
 }
 
-/** A closed screen's last frame, gliding out, or held still until the screen over it has come in; then it goes. */
+/** A closed screen's last frame, gliding out, or held still until the screens over it have come in; then it goes. */
 @Composable
 internal fun GhostSurface(transitions: SurfaceTransitions, ghost: Ghost, motion: Motion) {
     DisposableEffect(ghost) { onDispose { transitions.release(ghost) } }
     LaunchedEffect(ghost) {
-        if (ghost.held) delay(SCREEN_IN_MS.toLong()) else ghost.progress.animateTo(0f, motion.screenOut())
+        if (ghost.held) snapshotFlow { transitions.cameIn(ghost.under) }.first { it }
+        else ghost.progress.animateTo(0f, motion.screenOut())
         transitions.ended(ghost)
     }
     Spacer(

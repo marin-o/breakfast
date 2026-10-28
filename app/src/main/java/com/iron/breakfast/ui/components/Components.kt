@@ -43,7 +43,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -737,15 +736,15 @@ fun Sheet(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = LocalBreakfastColors.current
-    // Material's own slide up is the sheet's motion. With reduced motion the sheet starts where it would stop, so it
-    // is simply there (a swipe or a tap outside still lets Material slide it away).
-    val sheetState = if (rememberMotionReduced()) {
-        val density = LocalDensity.current
-        val shown = if (skipPartiallyExpanded) SheetValue.Expanded else SheetValue.PartiallyExpanded
-        rememberSaveable(skipPartiallyExpanded, saver = SheetState.Saver(skipPartiallyExpanded, { true }, density, false)) {
-            SheetState(skipPartiallyExpanded, density, shown, { true }, false)
-        }
-    } else rememberModalBottomSheetState(skipPartiallyExpanded = skipPartiallyExpanded)
+    // Material's own slide up is the sheet's motion (this is rememberModalBottomSheetState with its start chosen). With
+    // reduced motion the sheet starts where it would stop, so it is simply there (a swipe or a tap outside still lets
+    // Material slide it away). The start is read once: a sheet already open stays as it is when Motion changes.
+    val reduced = rememberMotionReduced()
+    val density = LocalDensity.current
+    val sheetState = rememberSaveable(skipPartiallyExpanded, saver = SheetState.Saver(skipPartiallyExpanded, { true }, density, false)) {
+        val start = if (!reduced) SheetValue.Hidden else if (skipPartiallyExpanded) SheetValue.Expanded else SheetValue.PartiallyExpanded
+        SheetState(skipPartiallyExpanded, density, start, { true }, false)
+    }
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         modifier = modifier,

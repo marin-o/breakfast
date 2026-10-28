@@ -24,6 +24,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -95,14 +97,17 @@ internal fun rememberMotion(): Motion {
 }
 
 /**
- * Something on its way out: it takes no touch and TalkBack does not see it. A closed snackbar, a removed row or a
- * leaving "Not right?" can still be drawn while it fades, but it can no longer be used.
+ * Something on its way out: it takes no tap and TalkBack does not see it. A closed snackbar, a removed row or a
+ * leaving "Not right?" can still be drawn while it fades, but it can no longer be used. Only presses and releases are
+ * taken (a tap needs both), so a drag that starts on it still scrolls the list around it.
  */
 internal fun Modifier.inert(): Modifier = this
     .clearAndSetSemantics { }
     .pointerInput(Unit) {
         awaitPointerEventScope {
-            while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+            while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach {
+                if (it.changedToDownIgnoreConsumed() || it.changedToUpIgnoreConsumed()) it.consume()
+            }
         }
     }
 
