@@ -54,7 +54,7 @@ import com.iron.breakfast.library.LibraryFoodDetailDialog
 import com.iron.breakfast.library.MixedMealPickerDialog
 import com.iron.breakfast.library.LibraryMealPickerDialog
 import com.iron.breakfast.library.LibraryBatchMealPickerDialog
-import com.iron.breakfast.library.LibraryFoodEditScreen
+import com.iron.breakfast.food.EditFoodScreen
 import com.iron.breakfast.food.CreateFoodScreen
 import com.iron.breakfast.settings.SettingsScreen
 import com.iron.breakfast.search.LibraryNoMatchScreen
@@ -139,14 +139,14 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     if (vm.mixedMealPickerOpen) MixedMealPickerDialog(vm)
     if (vm.libraryMealPickerFood != null) LibraryMealPickerDialog(vm, vm.libraryMealPickerFood!!)
     if (vm.libraryBatchMealPickerOpen) LibraryBatchMealPickerDialog(vm)
-    if (vm.customOpen) {
-        if (vm.editingLibraryFoodId != null) LibraryFoodEditScreen(vm) else CreateFoodScreen(vm)
+    if (vm.foodForm.open) {
+        if (vm.foodForm.editingFoodId != null) EditFoodScreen(vm) else CreateFoodScreen(vm)
     }
     if (vm.settingsOpen) SettingsScreen(vm)
-    if (vm.discardFoodOpen) AlertDialog(
-        onDismissRequest = vm::keepEditingFood,
-        confirmButton = { TextButton(vm::discardFood) { Text("Discard") } },
-        dismissButton = { TextButton(vm::keepEditingFood) { Text("Keep editing") } },
+    if (vm.foodForm.discardOpen) AlertDialog(
+        onDismissRequest = vm.foodForm::keepEditing,
+        confirmButton = { TextButton(vm.foodForm::discard) { Text("Discard") } },
+        dismissButton = { TextButton(vm.foodForm::keepEditing) { Text("Keep editing") } },
     )
     if (vm.libraryNoMatch()) LibraryNoMatchScreen(vm)
     if (vm.search.open) OffSearchScreen(vm)

@@ -64,7 +64,7 @@ import com.iron.breakfast.ui.screens.formatKcal
             }
             Column(Modifier.padding(top = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 PrimaryButton("Search Open Food Facts", { vm.search.open(query.trim()) }, kind = ButtonKind.Neutral)
-                SecondaryButton("Create personal food", { vm.openCustom(query.trim()) })
+                SecondaryButton("Create personal food", { vm.foodForm.open(query.trim()) })
             }
         }
     }
@@ -101,7 +101,7 @@ import com.iron.breakfast.ui.screens.formatKcal
                     }
                 }
                 vm.search.message?.let { message ->
-                    val createPersonal = { vm.openCustom(vm.search.query.trim(), fromResolver = vm.resolutionContinuation) }
+                    val createPersonal = { vm.foodForm.open(vm.search.query.trim(), fromResolver = vm.resolutionContinuation) }
                     when (offSearchStatus(vm.search.unavailable, message)) {
                         OffSearchStatus.Offline -> SearchStatus(
                             title = "No connection",

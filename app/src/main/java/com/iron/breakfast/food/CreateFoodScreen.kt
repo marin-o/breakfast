@@ -59,24 +59,25 @@ import com.iron.breakfast.ui.screens.editableNumber
  * keeps its own value. Name and kcal are required, so Save waits for them.
  */
 @Composable internal fun CreateFoodScreen(vm: BreakfastViewModel) {
-    val draft = vm.draft
+    val form = vm.foodForm
+    val draft = form.draft
     val barcodeError = validateBarcodeInput(draft.barcode, vm.foods)
     val state = createFoodState(draft.nutritionInput(), draft.name, barcodeError)
     val colors = LocalBreakfastColors.current
     // A save the view model refuses (Save was enabled, but a number is out of range) moves focus to the field to fix,
     // which TalkBack then reads; nothing new is shown.
     val focus = remember { FoodFormField.entries.associateWith { FocusRequester() } }
-    val focusRequest = vm.foodFormFocus
+    val focusRequest = form.focus
     LaunchedEffect(focusRequest) {
         if (focusRequest == null) return@LaunchedEffect
         runCatching { focus.getValue(focusRequest.field).requestFocus() }
-        vm.foodFormFocusHandled()
+        form.focusHandled()
     }
-    BackHandler(onBack = vm::leaveCustom)
+    BackHandler(onBack = form::leave)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).imePadding().padding(bottom = 12.dp)) {
-                TopBar("New food", vm::leaveCustom, Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+                TopBar("New food", form::leave, Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
                 Column(Modifier.padding(horizontal = Gutter).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Field("Name", draft.name, { draft.name = it }, required = true, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.NAME)))
                     Field("Brand", draft.brand, { draft.brand = it })
@@ -92,7 +93,7 @@ import com.iron.breakfast.ui.screens.editableNumber
                         trailing = if (draft.barcodeFromScan) null else ({
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 if (draft.barcode.isNotBlank()) IconButton(onClick = { draft.barcode = "" }, modifier = Modifier.size(44.dp)) { Icon(Icons.Outlined.Close, "Clear barcode", tint = colors.soft) }
-                                IconButton(onClick = vm::beginBarcodeRescan, modifier = Modifier.size(44.dp)) { Icon(ScanBarcodeIcon, "Scan barcode", tint = colors.ink) }
+                                IconButton(onClick = form::beginBarcodeRescan, modifier = Modifier.size(44.dp)) { Icon(ScanBarcodeIcon, "Scan barcode", tint = colors.ink) }
                             }
                         }),
                     )
@@ -136,7 +137,7 @@ import com.iron.breakfast.ui.screens.editableNumber
                 }
             }
             Column(Modifier.fillMaxWidth().imePadding().padding(horizontal = Gutter, vertical = 8.dp)) {
-                PrimaryButton("Save", vm::saveCustom, Modifier.padding(top = 8.dp), enabled = state.canSave, kind = ButtonKind.Constructive)
+                PrimaryButton("Save", form::save, Modifier.padding(top = 8.dp), enabled = state.canSave, kind = ButtonKind.Constructive)
             }
         }
     }
