@@ -91,9 +91,10 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     LifecycleEventEffect(Lifecycle.Event.ON_START) { vm.onAppStarted() }
     // What is open and in which order (see [Surfaces]): drawn bottom first, each surface keyed so it keeps its state
     // while others open and close over or under it. The base screen is one Scaffold whichever of the three it shows.
-    for (surface in vm.surfaces.shown()) key(if (surface.base) Surface.DAILY else surface) { DrawSurface(vm, surface) }
+    val shown = vm.surfaces.shown()
+    for (surface in shown) key(if (surface.base) Surface.DAILY else surface) { DrawSurface(vm, surface) }
     // System Back goes to the topmost surface that takes it; a dialog or sheet takes it in its own window first.
-    BackHandler(enabled = vm.surfaces.takesBack()) { vm.surfaces.back() }
+    BackHandler(enabled = vm.surfaces.takesBack(shown)) { vm.surfaces.back() }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -101,19 +101,20 @@ internal class Surfaces(
         if (scan.open) return listOf(Surface.SCANNER)
         val backdrop = review.product != null && review.fromScan
         if (!backdrop && entryEdit.selectedEntry != null) return listOf(Surface.ENTRY_DETAIL)
-        val open = Surface.entries.filter { isOpen(it, backdrop) }
+        val editing = entryEdit.editingEntry() != null
+        val open = Surface.entries.filter { isOpen(it, backdrop, editing) }
         // "No local match" is the Library's own result screen: it shows only with nothing over the Library.
         return if (library.noMatch(otherScreenOpen = open.any { it.coversBase })) (open + Surface.LIBRARY_NO_MATCH).sortedBy { it.ordinal } else open
     }
 
-    private fun isOpen(surface: Surface, backdrop: Boolean): Boolean = when (surface) {
+    private fun isOpen(surface: Surface, backdrop: Boolean, editing: Boolean): Boolean = when (surface) {
         Surface.DAILY -> !backdrop && !library.open && meal == null
         Surface.MEAL -> !backdrop && !library.open && meal != null
         Surface.LIBRARY -> !backdrop && library.open
         Surface.SCAN_REVIEW_BACKDROP -> backdrop
         Surface.LOG -> !backdrop && log.open
-        Surface.ENTRY_QUICK_EDIT -> entryEdit.mode == EntryEditMode.QUICK && entryEdit.editingEntry() != null
-        Surface.ENTRY_FULL_EDIT -> entryEdit.mode == EntryEditMode.FULL && entryEdit.editingEntry() != null
+        Surface.ENTRY_QUICK_EDIT -> entryEdit.mode == EntryEditMode.QUICK && editing
+        Surface.ENTRY_FULL_EDIT -> entryEdit.mode == EntryEditMode.FULL && editing
         Surface.ENTRY_FOOD_PICKER -> entryEdit.pickerOpen
         Surface.LIBRARY_FOOD_ADD -> library.selectedFood != null && mealOnScreen() != null
         Surface.LIBRARY_FOOD -> library.selectedFood != null && mealOnScreen() == null
@@ -139,18 +140,20 @@ internal class Surfaces(
     /** The top check: something is drawn over the base screen. */
     fun baseCovered(): Boolean = shown().any { it.coversBase }
 
-    /** System Back takes the topmost surface that handles it; false leaves Back to the system (Daily: the app goes back). */
-    fun takesBack(): Boolean = backAction() != null
+    /**
+     * System Back takes the topmost surface of [shown] that handles it; false leaves Back to the system (Daily: the app
+     * goes back). The root passes the list it just drew, so it is derived once.
+     */
+    fun takesBack(shown: List<Surface> = shown()): Boolean = backAction(shown) != null
 
     /** System Back. A dialog or sheet takes Back in its own window, so Back reaches here only for the screens. */
     fun back(): Boolean {
-        val action = backAction() ?: return false
+        val action = backAction(shown()) ?: return false
         action()
         return true
     }
 
-    private fun backAction(): (() -> Unit)? {
-        val shown = shown()
+    private fun backAction(shown: List<Surface>): (() -> Unit)? {
         val covered = shown.any { it.coversBase }
         return shown.asReversed().firstNotNullOfOrNull { backOf(it, covered) }
     }

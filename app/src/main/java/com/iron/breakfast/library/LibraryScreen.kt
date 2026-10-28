@@ -3,7 +3,6 @@ package com.iron.breakfast.library
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import com.iron.breakfast.ui.theme.*
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -120,7 +119,6 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
         root -> "${library.foods.size} foods, by last logged"
         else -> entryDateLabel(vm.selectedDayKey)
     }
-    BackHandler(enabled = menuOpen) { menuOpen = false }
     LazyColumn(modifier.fillMaxSize().background(colors.bg).padding(horizontal = Gutter)) {
         item {
             Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {

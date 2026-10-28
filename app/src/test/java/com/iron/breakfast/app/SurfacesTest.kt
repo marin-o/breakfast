@@ -15,7 +15,12 @@ import org.junit.Test
 /**
  * What is open and in which order, over every feature owner wired as the app wires them ([AppKit]): what is drawn,
  * what system Back does, and whether anything sits over the base screen. One test per stacking case of the
- * architecture inventory (§2.4), plus the base screens, the top check and the combinations that must not occur.
+ * architecture inventory (§2.4), plus the base screens, the top check, the combinations that must not occur, and what
+ * a reload or a replaced diary leaves open.
+ *
+ * Written first against the old encodings (6da279d), whose Back was modelled by composition order: the last composed
+ * enabled BackHandler. The real dispatcher used registration order; the B17 review checked that every reachable pair
+ * of handlers enabled at the same time registered in composition order, so the model was faithful.
  */
 class SurfacesTest {
     private val app = AppKit()
@@ -451,6 +456,68 @@ class SurfacesTest {
         assertFalse(app.reminderShown())
         app.scan.end()
         assertTrue(app.reminderShown())
+    }
+
+    // ---- A reload and a replaced diary ----
+
+    @Test fun theEntryDetailClosesWhenItsEntryIsGoneAfterAReload() {
+        app.diaryHas(egg)
+        app.openMeal(MealSlot.LUNCH)
+        app.entryEdit.openDetail(egg)
+        shows("ENTRY_DETAIL")
+        app.diaryHas()
+        shows("MEAL")
+    }
+
+    private fun replaceDiary() {
+        app.documents.documents["diary.json"] = validDiaryText()
+        app.transfer.import("diary.json")
+        app.transfer.confirmImport()
+        app.notices.dismiss()
+    }
+
+    private fun deleteAll() {
+        app.transfer.openDeleteAll()
+        app.transfer.confirmDeleteAll()
+        app.notices.dismiss()
+    }
+
+    @Test fun replaceDiaryEndsTheResolverAndItsQueue() {
+        addLeavesParts("ayran")
+        replaceDiary()
+        shows("DAILY")
+        assertFalse(app.resolve.queueActive)
+        assertEquals("what was left stays in the draft", "ayran", app.log.draft)
+    }
+
+    @Test fun deleteAllClosesTheEntryDetail() {
+        app.diaryHas(egg)
+        app.entryEdit.openDetail(egg)
+        deleteAll()
+        assertNull(app.entryEdit.selectedEntry)
+        shows("DAILY")
+    }
+
+    /** A part frame outlives a replaced diary: Settings stays over its Library and Back still returns to the Log. */
+    @Test fun replaceDiaryFromSettingsOverAPartsLibraryKeepsTheFrame() {
+        app.libraryFoods = listOf(food("egg"))
+        sendPartFromAMeal()
+        app.openSettings()
+        app.settings.openPage(SettingsPage.DATA)
+        replaceDiary()
+        shows("LIBRARY", "SETTINGS")
+        app.back(); app.back(); app.back()
+        backAtTheLogAsItWas()
+    }
+
+    @Test fun aNewDayStopsAScanLookingUpForTheOldOne() {
+        app.barcodes[barcode] = food("kefir", "Kefir")
+        app.openMeal(MealSlot.LUNCH)
+        app.scan.begin()
+        app.selectDay("2026-10-27")
+        app.scan.onBarcode(barcode)
+        shows("SCANNER")
+        assertNull(app.review.product)
     }
 
     // ---- Combinations that must not occur ----

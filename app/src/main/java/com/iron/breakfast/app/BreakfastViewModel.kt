@@ -317,7 +317,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         session.onChange(feedback::onChange)
         session.onChange { change -> if (change.refreshesLibrary) library.refresh() }
         // Import and Delete all: one reset of everything that referred to the old diary (see [SessionReset]).
-        session.onChange(SessionReset(listOf(log::clearPins, contribution::reset, resolve::abandon, entryEdit::closeDetail))::onChange)
+        session.onChange(SessionReset(sessionResetSteps(log, contribution, resolve, entryEdit))::onChange)
         // A new day start: today follows it at once, and a user on today stays on today (it counts as a return).
         settings.dayStartHourSetting.observe { checkDay(returning = true) }
         // An Undo offer showing now follows the new window from the moment it was made.

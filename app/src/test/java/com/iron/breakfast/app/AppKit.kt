@@ -41,24 +41,32 @@ import com.iron.breakfast.search.OffSearchService
 import com.iron.breakfast.settings.AppSettings
 import com.iron.breakfast.settings.FakeSettingsStore
 import com.iron.breakfast.settings.SettingsState
-import com.iron.breakfast.today.OpenDiary
 import com.iron.breakfast.transfer.DiaryTransfer
 import com.iron.breakfast.transfer.FakeData
 import com.iron.breakfast.transfer.FakeFiles
 import com.iron.breakfast.transfer.RecordingLog
 import com.iron.breakfast.transfer.exportReminderOnScreen
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /**
- * Every feature owner that opens a surface, over fakes, wired to each other and to [Surfaces] as the view model wires
- * them: what is drawn ([shown]), what takes Back ([back]) and whether anything is over the base screen.
+ * Every feature owner that opens a surface, over fakes, and [Surfaces]: what is drawn ([shown]), what takes Back
+ * ([back]) and whether anything is over the base screen.
+ *
+ * Mirrored from `BreakfastViewModel`: every owner-to-owner and owner-to-[Surfaces] callback, the session's reload hook
+ * (`onRefreshed` → `EntryEdit.diaryReloaded`), its Library refresh and [SessionReset] listeners (with the same
+ * [sessionResetSteps]), and a day change invalidating a scan ([selectDay]). Not mirrored, since no surface depends on
+ * them: the Undo and "Not right?" listeners, the export reminder's `check`/`hide`, `FoodForm.closeIfFoodGone` on
+ * opening storage, the saved-state restore (the initial Log draft, food form, meal and entry id) and the settings
+ * observers. Settings use their defaults; the scan lookup and the IO of search, import and export run unconfined.
  *
  * Characterisation: [SurfacesTest] was first written against the app's three encodings as they were before
  * `Surfaces` (the view model's coordination, `IronApp`'s composition order and BackHandler order, `topOverlay()`,
  * transcribed here at 6da279d) and passes unchanged against `Surfaces`.
  */
 internal class AppKit {
-    val diary = OpenDiary()
+    val diary = KitDiary(onRefreshed = { entryEdit.diaryReloaded() })
     val notices = Notices()
     /** Writes the fakes received, in order. */
     val calls = mutableListOf<String>()
@@ -227,6 +235,16 @@ internal class AppKit {
         initialMeal = null,
     )
 
+    init {
+        // As the view model registers them, after its Undo and feedback listeners; then storage opens.
+        diary.session.onChange { change -> if (change.refreshesLibrary) library.refresh() }
+        diary.session.onChange(SessionReset(sessionResetSteps(log, contribution, resolve, entryEdit))::onChange)
+        diary.session.open {}
+    }
+
+    /** The day picked, as the view model's `selectDay`: a lookup in flight no longer applies. */
+    fun selectDay(value: String) { day = value; scan.invalidateLookup() }
+
     /** Puts [entries] in the diary, as a reload would. */
     fun diaryHas(vararg entries: MealEntry) {
         diary.rows = entries.toList()
@@ -259,4 +277,22 @@ internal class AppKit {
 
     /** A due export reminder is drawn on Daily. */
     fun reminderShown(): Boolean = exportReminderOnScreen(due = true, covered = surfaces.baseCovered())
+}
+
+/** The diary the kit's storage holds ([rows], [foods]), with the [DiarySession] over it, opened by [AppKit]. */
+internal class KitDiary(onRefreshed: () -> Unit) {
+    var rows: List<MealEntry> = emptyList()
+    var foods: List<FoodRecord> = emptyList()
+    val scope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
+    val session = DiarySession(
+        source = object : DiarySource {
+            override suspend fun open() {}
+            override fun foods(): List<FoodRecord> = foods
+            override fun entries(): List<MealEntry> = rows
+            override suspend fun reloadIfStale() = false
+        },
+        scope = scope,
+        onOpenFailed = { throw it },
+        onRefreshed = onRefreshed,
+    )
 }
