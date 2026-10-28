@@ -33,6 +33,8 @@ internal interface ResolveSource {
     val text: String
     /** Shows [left], the parts not resolved yet, where they were typed. */
     fun putBack(left: String)
+    /** The queue ended with every one of its parts matched: none was skipped or is left. */
+    fun allMatched() {}
 }
 
 /**
@@ -78,6 +80,8 @@ internal class ResolveFlow(
     var resolverOpen by mutableStateOf(false); private set
     /** Where the queue's parts were typed; null once it ended or was abandoned. */
     private var source: ResolveSource? = null
+    /** A part of this queue was skipped, so it does not end with every part matched. */
+    private var skipped = false
 
     var query by mutableStateOf(""); private set
     var searchOpen by mutableStateOf(false); private set
@@ -125,6 +129,7 @@ internal class ResolveFlow(
         continuation = left
         resolverOpen = left
         this.source = source.takeIf { left }
+        skipped = false
     }
 
     /** The queue and the resolver end; what is left stays where it was typed. */
@@ -135,6 +140,7 @@ internal class ResolveFlow(
         continuation = false
         resolverOpen = false
         source = null
+        skipped = false
     }
 
     /** Back or the arrow on the resolver. */
@@ -208,11 +214,16 @@ internal class ResolveFlow(
      * Leaves the current part unlogged and moves to the next one. Refused while a pick is being written: that write
      * moves the queue on itself when it commits, and a skip in between would drop the next part too.
      */
-    fun skip() { if (queueActive && !session.busy) advance() }
+    fun skip() {
+        if (!queueActive || session.busy) return
+        skipped = true
+        advance()
+    }
 
     /**
      * The current part is done: the next one is resolved, and what is left shows where the parts were typed. A queue
-     * abandoned while the write that resolved its part ran has no [source] any more, so nothing is written back.
+     * abandoned while the write that resolved its part ran has no [source] any more, so nothing is written back. The
+     * last part done with none skipped tells the source that every part was matched ([ResolveSource.allMatched]).
      */
     private fun advance() {
         // A search still running was ranked before this food was added; it must not fill the next part's list.
@@ -226,7 +237,9 @@ internal class ResolveFlow(
         if (parts.isEmpty()) {
             queueMeal = null
             continuation = false
+            if (!skipped) source?.allMatched()
             source = null
+            skipped = false
         }
     }
 }

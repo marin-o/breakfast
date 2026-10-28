@@ -25,6 +25,7 @@ import com.iron.breakfast.today.entry
 import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -188,6 +189,40 @@ class ResolveFrameTest {
         assertEquals("save and log Kefir DINNER", calls.last())
         assertEquals("", log.draft)
         assertFalse(resolve.resolverOpen)
+    }
+
+    private fun addLeavesAyranAndKefir() {
+        logSaved = SavedMeal(listOf(entry("e1")), NutritionValues.ZERO, unresolvedSegments = listOf("ayran", "kefir"))
+        log.open(MealSlot.DINNER)
+        log.onDraft("2 eggs, ayran, kefir")
+        log.submit()
+        assertEquals("Some foods need a match.", log.error)
+    }
+
+    /** Deliberate (B17): once every part Add left is matched in the resolver, Daily no longer says "Some foods need a match.". */
+    @Test fun matchingEveryLeftPartClearsTheLogsError() {
+        addLeavesAyranAndKefir()
+        resolve.resolve(food("ayran"))
+        assertEquals("a part is still left", "Some foods need a match.", log.error)
+        foodForm.open("kefir", fromResolver = true)
+        foodForm.draft.name = "Kefir"
+        foodForm.draft.calories = "60"
+        foodForm.save()
+        assertFalse(resolve.resolverOpen)
+        assertNull(log.error)
+    }
+
+    /** A skipped part was never logged, so the message stays; so it does when the resolver is closed with parts left. */
+    @Test fun aSkippedOrLeftPartKeepsTheLogsError() {
+        addLeavesAyranAndKefir()
+        resolve.resolve(food("ayran"))
+        resolve.skip()
+        assertFalse(resolve.resolverOpen)
+        assertEquals("Some foods need a match.", log.error)
+        addLeavesAyranAndKefir()
+        resolve.close()
+        assertEquals("ayran, kefir", log.draft)
+        assertEquals("Some foods need a match.", log.error)
     }
 
     /** Deliberate (B16): a mixed batch's leftovers go back to the Library bar, never into the Log draft. */

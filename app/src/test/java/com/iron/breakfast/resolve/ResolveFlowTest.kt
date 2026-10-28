@@ -30,7 +30,10 @@ internal fun ranked(id: String) = RankedFood(food(id), 1.0, emptyList())
 /** A [ResolveSource] the test reads: the text where a queue's parts were typed. */
 internal class TypedText(override var text: String = "") : ResolveSource {
     val writes = mutableListOf<String>()
+    /** How often a queue from here ended with every part matched. */
+    var allMatched = 0
     override fun putBack(left: String) { text = left; writes += left }
+    override fun allMatched() { allMatched++ }
 }
 
 class ResolveFlowTest {
@@ -108,6 +111,29 @@ class ResolveFlowTest {
         assertFalse(flow.resolverOpen)
         assertFalse(flow.continuation)
         assertNull(flow.queueMeal)
+    }
+
+    /** B17: the source hears when its queue ended with every part matched, not when one was skipped or it was left. */
+    @Test fun theSourceHearsOnlyWhenEveryPartWasMatched() {
+        val draft = TypedText("ayran, kefir")
+        flow.afterSave(listOf("ayran", "kefir"), MealSlot.DINNER, draft, "ayran, kefir")
+        flow.resolve(ayran)
+        assertEquals("a part is still left", 0, draft.allMatched)
+        flow.childLogged(advancesQueue = true)
+        assertEquals(1, draft.allMatched)
+        // A skipped part: the queue ends, but not with every part matched.
+        flow.afterSave(listOf("ayran", "kefir"), MealSlot.DINNER, draft, "ayran, kefir")
+        flow.skip()
+        flow.resolve(food("kefir"))
+        assertFalse(flow.resolverOpen)
+        assertEquals(1, draft.allMatched)
+        // A new queue starts counting again; one closed with parts left says nothing.
+        flow.afterSave(listOf("ayran"), MealSlot.DINNER, draft, "ayran")
+        flow.resolve(ayran)
+        assertEquals(2, draft.allMatched)
+        flow.afterSave(listOf("ayran"), MealSlot.DINNER, draft, "ayran")
+        flow.close()
+        assertEquals(2, draft.allMatched)
     }
 
     @Test fun skipMovesOnWithoutAWrite() {

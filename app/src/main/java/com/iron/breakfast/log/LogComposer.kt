@@ -196,14 +196,14 @@ internal class LogComposer(
             },
             onSuccess = { saved ->
                 if (nothingSaved(saved)) {
-                    error = "Some foods need a match."
+                    error = NEEDS_A_MATCH
                     return@write
                 }
                 // Only the pins this save used: one added while it planned off the main thread belongs to the new text.
                 capturedPins.forEach { (part, food) -> if (pins[part] == food) pins.remove(part) }
                 close()
                 afterSave(saved.unresolvedSegments, target, this@LogComposer, captured)
-                error = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
+                error = if (saved.unresolvedSegments.isNotEmpty()) NEEDS_A_MATCH else null
             },
             onFailure = { error = it.message ?: "Could not save this meal." },
         ) { store.save(captured, target, selectedDay(), capturedPins) }
@@ -244,4 +244,9 @@ internal class LogComposer(
     /** The draft as the resolve queue's source: what is left of its parts is written back here. */
     override val text: String get() = draft
     override fun putBack(left: String) { draft = left }
+    /** Every part Add left was matched in the resolver: "Some foods need a match." no longer applies. A skipped part keeps it. */
+    override fun allMatched() { if (error == NEEDS_A_MATCH) error = null }
 }
+
+/** The Log's error while parts of the draft are not matched. */
+private const val NEEDS_A_MATCH = "Some foods need a match."
