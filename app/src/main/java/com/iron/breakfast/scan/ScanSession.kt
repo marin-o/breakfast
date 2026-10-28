@@ -28,7 +28,7 @@ internal interface BarcodeLookup {
  * barcode lookup in flight ([lookupBusy], [lookupCode]).
  *
  * A barcode ([onBarcode], from the camera or manual entry) goes, in order:
- * - back to the food form when the form asked for it ([rescanRequested]): no lookup;
+ * - to the one who asked for it ([beginFor], the food form's barcode field): no lookup;
  * - to product review when the Library ([BarcodeLookup.localFood]) or Open Food Facts has it ([onProduct]);
  * - to New food with the barcode ([onManualForm]) when it is unknown and "Look up unknown barcodes" is Off
  *   ([lookUpBarcodes]), or when Open Food Facts lacks it, has it incomplete, or cannot be reached (with a notice).
@@ -49,12 +49,6 @@ internal class ScanSession(
     private val targetMeal: () -> MealSlot?,
     /** A resolve queue is being resolved: a found product reviews as its part. */
     private val queueActive: () -> Boolean,
-    /** The food form asked for this scan. */
-    private val rescanRequested: () -> Boolean,
-    /** The food form's scan read this barcode. */
-    private val onRescanned: (barcode: String) -> Unit,
-    /** The scanner closed. */
-    private val onEnded: () -> Unit,
     private val onProduct: (food: FoodRecord, origin: ProductReviewOrigin) -> Unit,
     private val onManualForm: (name: String, brand: String, barcode: String, fromOff: Boolean) -> Unit,
 ) {
@@ -66,6 +60,8 @@ internal class ScanSession(
     var lookupBusy by mutableStateOf(false); private set
     var lookupCode by mutableStateOf(""); private set
     private var token = 0L
+    /** Who asked for the next barcode ([beginFor]); null for a scan that looks it up. */
+    private var requester: ((String) -> Unit)? = null
     private var job: Job? = null
     private var originDay = selectedDay()
     private var originMeal: MealSlot? = targetMeal()
@@ -82,6 +78,16 @@ internal class ScanSession(
         open = true
     }
 
+    /**
+     * Opens the scanner for one barcode, which goes to [onBarcode] instead of a lookup (the food form's barcode field).
+     * The request lasts until a barcode is read or the scanner closes; a [begin] in between (the camera permission
+     * granted on return) keeps it.
+     */
+    fun beginFor(onBarcode: (String) -> Unit) {
+        requester = onBarcode
+        begin()
+    }
+
     /** Back, the arrow or Cancel on the lookup: the scanner closes and a lookup in flight stops. */
     fun end() {
         token++
@@ -92,7 +98,7 @@ internal class ScanSession(
         unavailableReason = null
         lookupBusy = false
         lookupCode = ""
-        onEnded()
+        requester = null
     }
 
     /** The day or the meal on screen changed: a lookup in flight no longer applies. */
@@ -117,9 +123,10 @@ internal class ScanSession(
         val barcode = normalizeBarcode(code) ?: return
         unavailable = false
         unavailableReason = null
-        if (rescanRequested()) {
+        requester?.let { asked ->
+            requester = null
             open = false
-            onRescanned(barcode)
+            asked(barcode)
             return
         }
         val mine = token

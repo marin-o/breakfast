@@ -10,7 +10,6 @@ import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.ReplacementResult
 import com.iron.breakfast.domain.ServingConversion
-import com.iron.breakfast.today.FakeTime
 import com.iron.breakfast.today.OpenDiary
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
@@ -38,18 +37,16 @@ class EntryEditTest {
 
     private val diary = OpenDiary()
     private val store = FakeStore()
-    private val time = FakeTime()
     private var openMeal: MealSlot? = null
     private val events = mutableListOf<String>()
     private var savedId: String? = "kept"
     private val edit = EntryEdit(
-        diary.session, store, diary.scope,
+        diary.session, store,
         openMeal = { openMeal },
         onBegin = { events += "show $it" },
         onEnd = { events += "end toDaily=$it" },
         initialEntryId = "e1",
         saveEntryId = { savedId = it },
-        sleep = time.sleep,
     )
 
     private val oats = FoodRecord(
@@ -78,23 +75,19 @@ class EntryEditTest {
         assertNull(savedId)
     }
 
-    @Test fun aQuickEditFromDailyShowsItsMealStartsFromItsValuesAndReturnsToDaily() {
+    @Test fun aQuickEditFromDailyShowsItsMealAndReturnsToDaily() {
         edit.openDetail(e1)
         edit.beginQuick(e1)
         assertNull("the edit replaces the detail", edit.selectedEntry)
         assertEquals(listOf("show BREAKFAST"), events)
         assertEquals(EntryEditMode.QUICK, edit.mode)
-        assertEquals("120 g", edit.text)
-        assertTrue(edit.hintVisible)
-        time.advance(2_500L)
-        assertFalse(edit.hintVisible)
         // A late single tap of the double tap does not reopen the detail over the sheet.
         edit.openDetail(e1)
         assertNull(edit.selectedEntry)
         assertTrue(edit.cancel())
         assertEquals(listOf("show BREAKFAST", "end toDaily=true"), events)
         assertEquals(EntryEditMode.NONE, edit.mode)
-        assertEquals("", edit.text)
+        assertNull(edit.editingEntryId)
     }
 
     @Test fun anEditOpenedOnAMealStaysOnThatMeal() {

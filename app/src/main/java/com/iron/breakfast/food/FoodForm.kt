@@ -22,6 +22,7 @@ import com.iron.breakfast.domain.resolveNutrition
 import com.iron.breakfast.domain.sameBarcode
 import com.iron.breakfast.domain.validateBarcodeInput
 import com.iron.breakfast.foodFormBack
+import com.iron.breakfast.ReviewLogPlan
 import com.iron.breakfast.foodSaveRefusal
 import com.iron.breakfast.resolve.ResolveQueueView
 import com.iron.breakfast.resolverLogPlan
@@ -56,16 +57,17 @@ internal data class NewFood(
  *
  * - **State:** whether it is [open], the food it edits ([editingFoodId], null for New food), the [draft] the screens bind
  *   their fields to, the baseline it opened with (Back asks before discarding only when the draft differs from it:
- *   [discardOpen]), the field to move focus to after a refused save ([focus]), and a requested barcode rescan
- *   ([rescanRequested]; the scanner opens over the form and Back on it returns here).
- * - **Save targeting:** an edit updates the food; a new food is logged too when there is a meal (the resolve queue's
- *   while one is being resolved, else the meal open beneath), and is saved alone otherwise. A queue without a meal
- *   refuses the save.
+ *   [discardOpen]), and the field to move focus to after a refused save ([focus]). The barcode field's scan asks the
+ *   scanner for one barcode ([startScanFor]); the scanner opens over the form and Back on it returns here.
+ * - **Save targeting** ([foodSaveTarget]): an edit updates the food; a new food is logged too when there is a meal (the
+ *   resolve queue's while one is being resolved, else the meal open beneath), and is saved alone otherwise, and always
+ *   while a Log part is being resolved ([resolvingPart]: the part's pick goes into the draft, which logs it). A queue
+ *   without a meal refuses the save.
  * - **Process death:** [savedForm] is what the coordinator mirrors into `SavedStateHandle` and [restore] puts back; not
- *   while a part or a queue is being resolved ([resolving]), since what Save does there would not come back.
+ *   while a part or a queue is being resolved, since what Save does there would not come back.
  *
  * Inputs from the screens around it are explicit: the day ([selectedDay]), the meal open beneath ([openMeal]), the resolve
- * queue ([queue]). Opening and closing tell the coordinator ([onOpen], [onClose]); a save hands its contribution
+ * queue ([queue]), a Log part being resolved ([resolvingPart]). Opening and closing tell the coordinator ([onOpen], [onClose]); a save hands its contribution
  * candidate to [offerContribution] and then reports to [onSaved]. Writes go through [session].
  */
 internal class FoodForm(
@@ -75,11 +77,11 @@ internal class FoodForm(
     private val selectedDay: () -> String,
     private val openMeal: () -> MealSlot?,
     private val queue: () -> ResolveQueueView?,
-    /** A Log part or a resolve queue is being resolved. */
-    private val resolving: () -> Boolean,
+    /** A Log part is being resolved in the Library: a new food saved here is that part's pick. */
+    private val resolvingPart: () -> Boolean,
     private val offerContribution: (OffContributionDraft?) -> Unit,
-    /** Opens the scanner for [beginBarcodeRescan]. */
-    private val startScan: () -> Unit,
+    /** Opens the scanner for one barcode, which it hands to the callback (see [beginBarcodeRescan]). */
+    private val startScanFor: (onBarcode: (String) -> Unit) -> Unit,
     /** The form opened; [fromResolver] when the resolver opened it. */
     private val onOpen: (fromResolver: Boolean) -> Unit,
     /** The form closed without a save. */
@@ -96,13 +98,10 @@ internal class FoodForm(
     /** The field New food moves focus to after a refused save; consumed by the form ([focusHandled]). */
     var focus by mutableStateOf<FoodFormFocus?>(null); private set
     private var focusSerial = 0L
-    /** The barcode field asked for a scan: the next barcode comes back here, with no lookup. */
-    var rescanRequested = false; private set
 
     /** New food, prefilled; [fromOff] when Open Food Facts had the product without usable nutrition. */
     fun open(name: String = "", brand: String = "", barcode: String = "", fromResolver: Boolean = false, fromOff: Boolean = false) {
         onOpen(fromResolver)
-        rescanRequested = false
         editingFoodId = null
         draft.reset()
         draft.name = name
@@ -117,7 +116,6 @@ internal class FoodForm(
 
     /** Edit food for [food]. */
     fun openEdit(food: FoodRecord) {
-        rescanRequested = false
         editingFoodId = food.id
         draft.load(food)
         baseline = draft.fields()
@@ -139,7 +137,7 @@ internal class FoodForm(
 
     /** Closes the form without saving; the coordinator decides what shows next ([onClose]). */
     fun close() {
-        open = false; editingFoodId = null; rescanRequested = false; discardOpen = false; draft.reset()
+        open = false; editingFoodId = null; discardOpen = false; draft.reset()
         onClose()
     }
 
@@ -153,17 +151,14 @@ internal class FoodForm(
 
     fun commitServing() { draft.commitServing() }
 
-    /** The barcode field's scan: the scanner opens over the form. */
-    fun beginBarcodeRescan() { rescanRequested = true; startScan() }
-    /** The scan the form asked for read [barcode]. */
-    fun rescanned(barcode: String) { rescanRequested = false; draft.barcode = barcode; draft.barcodeFromScan = true }
-    /** The scanner closed. */
-    fun rescanEnded() { rescanRequested = false }
+    /** The barcode field's scan: the scanner opens over the form, and the barcode it reads comes back here, with no lookup. */
+    fun beginBarcodeRescan() { startScanFor(::rescanned) }
+    private fun rescanned(barcode: String) { draft.barcode = barcode; draft.barcodeFromScan = true }
 
     fun focusHandled() { focus = null }
 
     /** The open form for `SavedStateHandle`; null when closed or while resolving. */
-    fun savedForm(): SavedFoodForm? = if (!open || resolving()) null else SavedFoodForm(editingFoodId, draft.state(), baseline)
+    fun savedForm(): SavedFoodForm? = if (!open || resolvingPart() || queue() != null) null else SavedFoodForm(editingFoodId, draft.state(), baseline)
 
     /** Puts back a form saved before the process was killed. */
     fun restore(form: SavedFoodForm) {
@@ -198,9 +193,8 @@ internal class FoodForm(
         val basisAmount = resolved.basisAmount
         val basisUnit = resolved.basisUnit
         val nutrition = NutritionValues(kcal, resolved.protein, resolved.carbohydrates, resolved.fat)
-        // The resolve queue owns the meal while one is being resolved; otherwise the meal open beneath, if any.
         val resolveQueue = queue()
-        val plan = resolverLogPlan(resolveQueue != null, resolveQueue != null, resolveQueue?.meal, openMeal())
+        val plan = foodSaveTarget(resolvingPart(), resolveQueue, openMeal())
         val saveTarget = plan?.meal
         val resolvesQueue = plan?.advancesQueue == true
         if (resolveQueue != null && saveTarget == null) {
@@ -243,3 +237,11 @@ internal class FoodForm(
         }
     }
 }
+
+/**
+ * Where Save logs a new food, or null to save it alone. While a Log part is being resolved ([resolvingPart]) it is
+ * never logged: it becomes the part's pick, and Add logs the draft. While a resolve [queue] is being resolved its meal
+ * wins and the queue advances (no meal: null, which the form refuses); otherwise the meal open beneath, if any.
+ */
+internal fun foodSaveTarget(resolvingPart: Boolean, queue: ResolveQueueView?, openMeal: MealSlot?): ReviewLogPlan? =
+    if (resolvingPart) null else resolverLogPlan(queue != null, queue != null, queue?.meal, openMeal)

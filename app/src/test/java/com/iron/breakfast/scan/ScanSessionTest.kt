@@ -41,7 +41,6 @@ class ScanSessionTest {
     private var day = "2026-10-28"
     private var meal: MealSlot? = null
     private var queueActive = false
-    private var rescan = false
     private val events = mutableListOf<String>()
     private val scan = ScanSession(
         lookup, notices, CoroutineScope(Dispatchers.Unconfined + SupervisorJob()), Dispatchers.Unconfined,
@@ -49,9 +48,6 @@ class ScanSessionTest {
         selectedDay = { day },
         targetMeal = { meal },
         queueActive = { queueActive },
-        rescanRequested = { rescan },
-        onRescanned = { rescan = false; events += "rescanned $it" },
-        onEnded = { events += "ended" },
         onProduct = { food, origin -> events += "review ${food.name} $origin" },
         onManualForm = { name, brand, barcode, fromOff -> events += "form '$name' '$brand' $barcode fromOff=$fromOff" },
     )
@@ -134,7 +130,7 @@ class ScanSessionTest {
         assertFalse(scan.open)
         assertFalse(scan.lookupBusy)
         assertEquals("", scan.lookupCode)
-        assertEquals(listOf("ended"), events)
+        assertTrue(events.isEmpty())
     }
 
     @Test fun aLookupForAnotherDayOrMealNoLongerApplies() {
@@ -158,13 +154,28 @@ class ScanSessionTest {
         assertTrue(events.isEmpty())
     }
 
-    @Test fun theFoodFormsScanReturnsTheBarcodeWithNoLookup() {
-        rescan = true
+    @Test fun aScanAskedForOneBarcodeReturnsItWithNoLookup() {
+        scan.beginFor { events += "asked $it" }
+        assertTrue(scan.open)
+        // The camera permission granted on return begins the scan again; the request stays.
         scan.begin()
         scan.onBarcode(" 036000291452 ")
-        assertEquals(listOf("rescanned 036000291452"), events)
+        assertEquals(listOf("asked 036000291452"), events)
         assertFalse(scan.open)
         assertTrue(lookup.asked.isEmpty())
+        // One barcode only: the next scan looks its barcode up.
+        scan.begin()
+        scan.onBarcode("4006381333931")
+        assertEquals(listOf("4006381333931"), lookup.asked)
+    }
+
+    @Test fun leavingTheScannerDropsTheRequest() {
+        scan.beginFor { events += "asked $it" }
+        scan.end()
+        scan.begin()
+        scan.onBarcode("4006381333931")
+        assertTrue(events.isEmpty())
+        assertEquals(listOf("4006381333931"), lookup.asked)
     }
 
     @Test fun aCameraThatCannotBeUsedKeepsTheScannerForManualEntry() {

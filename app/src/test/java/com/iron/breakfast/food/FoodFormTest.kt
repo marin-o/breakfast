@@ -2,6 +2,7 @@ package com.iron.breakfast.food
 
 import androidx.lifecycle.SavedStateHandle
 import com.iron.breakfast.FoodFormField
+import com.iron.breakfast.ReviewLogPlan
 import com.iron.breakfast.app.DiaryChange
 import com.iron.breakfast.app.Notices
 import com.iron.breakfast.app.restoreFoodForm
@@ -41,17 +42,19 @@ class FoodFormTest {
     private val notices = Notices()
     private var meal: MealSlot? = null
     private var queue: ResolveQueueView? = null
-    private var resolving = false
+    private var resolvingPart = false
     private val offers = mutableListOf<OffContributionDraft?>()
     private val events = mutableListOf<String>()
+    /** Where the scanner the form opened hands its barcode. */
+    private var scanned: ((String) -> Unit)? = null
     private val form = FoodForm(
         diary.session, store, notices,
         selectedDay = { "2026-10-28" },
         openMeal = { meal },
         queue = { queue },
-        resolving = { resolving },
+        resolvingPart = { resolvingPart },
         offerContribution = { offers += it },
-        startScan = { events += "scan" },
+        startScanFor = { onBarcode -> events += "scan"; scanned = onBarcode },
         onOpen = { events += "open fromResolver=$it" },
         onClose = { events += "close" },
         onSaved = { food, newFood, advances -> events += "saved ${food.name} new=$newFood advances=$advances" },
@@ -205,19 +208,34 @@ class FoodFormTest {
     @Test fun theBarcodeFieldsScanComesBackToTheForm() {
         form.open("Ayran")
         form.beginBarcodeRescan()
-        assertTrue(form.rescanRequested)
         assertEquals("scan", events.last())
-        form.rescanned("4006381333931")
-        assertFalse(form.rescanRequested)
+        scanned!!("4006381333931")
         assertEquals("4006381333931", form.draft.barcode)
         assertTrue(form.draft.barcodeFromScan)
-        assertTrue(form.open)
-        form.beginBarcodeRescan()
-        form.rescanEnded()
-        assertFalse(form.rescanRequested)
-        form.beginBarcodeRescan()
-        form.close()
-        assertFalse("a closed form asks for nothing", form.rescanRequested)
+        assertTrue("the form stays under the scanner", form.open)
+    }
+
+    @Test fun whileALogPartIsResolvedANewFoodIsSavedAloneAndPickedForThePart() {
+        // B15 review fix: it used to be logged to the Library's meal too, and Add then logged it again from the draft.
+        resolvingPart = true
+        meal = MealSlot.LUNCH
+        form.open("Ayran")
+        typeFood()
+        assertNull("not kept for process death", form.savedForm())
+        form.save()
+        assertEquals(listOf("save Ayran"), store.calls)
+        assertEquals("Undo is kept", listOf<DiaryChange>(DiaryChange.FoodsChanged), diary.published)
+        assertEquals("Saved to your food library.", notices.message)
+        assertEquals("saved Ayran new=true advances=false", events.last())
+    }
+
+    @Test fun theSaveTargetFollowsThePartTheQueueAndTheOpenMeal() {
+        val queue = ResolveQueueView(MealSlot.DINNER, listOf("ayran"), 1)
+        assertNull(foodSaveTarget(resolvingPart = true, queue = null, openMeal = MealSlot.LUNCH))
+        assertEquals(ReviewLogPlan(MealSlot.DINNER, true), foodSaveTarget(false, queue, MealSlot.LUNCH))
+        assertNull("a queue without a meal", foodSaveTarget(false, queue.copy(meal = null), MealSlot.LUNCH))
+        assertEquals(ReviewLogPlan(MealSlot.LUNCH, false), foodSaveTarget(false, null, MealSlot.LUNCH))
+        assertNull(foodSaveTarget(false, null, null))
     }
 
     @Test fun anOpenFormSurvivesProcessDeathButNotWhileResolving() {
@@ -233,9 +251,12 @@ class FoodFormTest {
         assertEquals("Dukat", restored.draft.brand)
         restored.leave()
         assertTrue("the restored baseline still sees the change", restored.discardOpen)
-        resolving = true
+        resolvingPart = true
         assertNull(form.savedForm())
-        resolving = false
+        resolvingPart = false
+        queue = ResolveQueueView(MealSlot.DINNER, listOf("ayran"), 1)
+        assertNull("nor while a queue is resolved", form.savedForm())
+        queue = null
         form.close()
         assertNull(form.savedForm())
     }

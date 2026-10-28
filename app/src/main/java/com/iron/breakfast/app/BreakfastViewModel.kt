@@ -196,7 +196,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             override suspend fun replaceEntry(entryId: String, foodId: String, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) =
                 engine.replaceEntryDraft(entryId, foodId, amount, unit, meal, dayKey)
         },
-        scope = viewModelScope,
         openMeal = { slot },
         // The edit's meal shows beneath it; the Log's error goes, as it always did when an edit began.
         onBegin = { meal -> selectMeal(meal); mealDraftError = null },
@@ -225,9 +224,9 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         selectedDay = { selectedDayKey },
         openMeal = { slot },
         queue = ::resolveQueue,
-        resolving = { logResolve != null || resolutionContinuation },
+        resolvingPart = { logResolve != null },
         offerContribution = contribution::offerAfterLocalSave,
-        startScan = { scan.begin() },
+        startScanFor = { onBarcode -> scan.beginFor(onBarcode) },
         onOpen = ::foodFormOpened,
         onClose = ::returnToResolverOrEnd,
         onSaved = ::foodSaved,
@@ -245,9 +244,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         selectedDay = { selectedDayKey },
         targetMeal = { slot },
         queueActive = { resolveQueue() != null },
-        rescanRequested = { foodForm.rescanRequested },
-        onRescanned = foodForm::rescanned,
-        onEnded = foodForm::rescanEnded,
         onProduct = { food, origin -> search.hide(); review.choose(food, fromScan = true, origin = origin) },
         onManualForm = { name, brand, barcode, fromOff -> foodForm.open(name, brand, barcode, fromOff = fromOff) },
     )
