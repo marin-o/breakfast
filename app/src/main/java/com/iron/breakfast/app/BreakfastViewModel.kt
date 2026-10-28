@@ -173,7 +173,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     /** "Export your diary." on Daily (see [ExportReminders]). */
     internal val reminders: ExportReminders = ExportReminders(settings, session, clock, requestExport = { transfer.requestPicker(DiaryPicker.EXPORT) })
     private val parser = ShorthandParser()
-    /** The Library bar's text, or the amount being edited. Never the log draft, so leaving either cannot touch it. */
+    /** The Library bar's text, and nothing else (entry edits keep their own, see [EntryEdit]). Never the log draft. */
     var input by mutableStateOf(""); private set
     /** The log draft Daily and Meal share: the composer shows it and the Log page edits it. Only Add or clearing it removes it. */
     var logDraft by mutableStateOf(""); private set
@@ -274,6 +274,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         openSearch = { fromResolver -> search.open(fromResolver = fromResolver) },
         startScan = { scan.begin() },
     )
+    /**
+     * The Log page's error, shown there and on Daily: Add's refusals and failures, and "Some foods need a match." after
+     * a save that left parts unresolved (Add, or the Library mixed batch, whose post-save handling is the Log's until
+     * B16). Opening a meal, the Library or an entry edit clears it. Entry edits have their own ([EntryEdit.error]).
+     */
     var mealDraftError by mutableStateOf<String?>(null); private set
     /** The full-screen Log page. [logPreset] comes from the `+` or composer that opened it; [logChosen] from the Log's meal menu. */
     var logOpen by mutableStateOf(false); private set
