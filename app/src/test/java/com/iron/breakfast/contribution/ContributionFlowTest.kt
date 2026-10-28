@@ -25,9 +25,12 @@ class ContributionFlowTest {
         val sent = mutableListOf<Triple<OffContributionDraft, String, String>>()
         var preflightResult: OffPreflightResult = OffPreflightResult.NewProduct
         var contributeResult: OffContributionResult = OffContributionResult.Success
+        /** Runs while the contribution is being sent, before its answer. */
+        var whileSending: () -> Unit = {}
         override fun preflight(draft: OffContributionDraft): OffPreflightResult { preflights += draft.barcode; return preflightResult }
         override fun contribute(draft: OffContributionDraft, username: String, password: String): OffContributionResult {
             sent += Triple(draft, username, password)
+            whileSending()
             return contributeResult
         }
     }
@@ -150,9 +153,8 @@ class ContributionFlowTest {
         flow.submit()
         assertEquals("", flow.password)
         assertTrue(flow.busy)
-        // A second tap while it runs, and Back, do nothing; the sign-in stays.
+        // A second tap while it runs does nothing; the sign-in stays.
         flow.submit()
-        flow.dismissAuth()
         assertTrue(flow.authOpen)
         io.runAll()
         assertEquals(1, off.sent.size)
@@ -162,6 +164,53 @@ class ContributionFlowTest {
         assertNull(flow.pending)
         assertFalse(flow.authOpen)
         assertEquals("Contribution sent to Open Food Facts.", notices.message)
+    }
+
+    @Test fun leavingTheSignInWhileItSubmitsCancelsTheSubmitAndIgnoresItsAnswer() {
+        reviewing()
+        val candidate = flow.pending
+        flow.confirm()
+        flow.onUsername("ana")
+        flow.onPassword("secret")
+        off.contributeResult = OffContributionResult.AuthFailed
+        // Back while the request is out: the sign-in closes at once.
+        off.whileSending = {
+            assertTrue(flow.busy)
+            flow.dismissAuth()
+            assertFalse(flow.authOpen)
+            assertFalse(flow.busy)
+            assertEquals("", flow.password)
+        }
+        flow.submit()
+        // The answer comes after: it opens nothing and changes nothing.
+        io.runAll()
+        assertEquals(1, off.sent.size)
+        assertFalse(flow.authOpen)
+        assertFalse(flow.busy)
+        assertNull(flow.failure)
+        assertFalse(flow.uncertain)
+        assertEquals(candidate, flow.pending)
+        assertNull(notices.message)
+        assertEquals("", flow.password)
+        // A late success is ignored as well, and a new submit can start; one left before it was sent never goes.
+        off.contributeResult = OffContributionResult.Success
+        flow.confirm()
+        flow.onPassword("secret")
+        flow.submit()
+        io.runAll()
+        assertEquals(2, off.sent.size)
+        assertEquals(candidate, flow.pending)
+        assertNull(notices.message)
+        off.whileSending = {}
+        flow.confirm()
+        flow.onPassword("secret")
+        flow.submit()
+        flow.dismissAuth()
+        io.runAll()
+        assertEquals(2, off.sent.size)
+        assertEquals(candidate, flow.pending)
+        assertNull(notices.message)
+        assertFalse(flow.authOpen)
     }
 
     @Test fun leavingTheSignInClearsThePassword() {

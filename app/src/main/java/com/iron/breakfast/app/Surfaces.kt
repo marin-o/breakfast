@@ -5,7 +5,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.iron.breakfast.LibraryExit
 import com.iron.breakfast.contribution.ContributionFlow
-import com.iron.breakfast.contributionAuthCanDismiss
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
@@ -172,8 +171,8 @@ internal class Surfaces(
         Surface.OFF_SEARCH -> search::close
         Surface.RESOLVER -> resolve::close
         Surface.CONTRIBUTION_REVIEW -> contribution::dismissReview
-        // While it submits, the sign-in ignores Back, which goes to what is beneath it.
-        Surface.CONTRIBUTION_SIGN_IN -> (contribution::dismissAuth).takeIf { contributionAuthCanDismiss(contribution.busy) }
+        // Also while it submits: Back cancels the submit and closes only the sign-in.
+        Surface.CONTRIBUTION_SIGN_IN -> contribution::dismissAuth
         Surface.CONTRIBUTION_FAILURE -> contribution::dismissFailure
         Surface.ENTRY_DETAIL -> entryEdit::closeDetail
         Surface.SCANNER -> scan::end

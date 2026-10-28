@@ -10,9 +10,9 @@ import com.iron.breakfast.data.OffPreflightResult
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.parseDecimal
-import com.iron.breakfast.contributionAuthCanDismiss
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -36,9 +36,12 @@ interface OffContributions {
  *   dropped. After an answer was lost ([uncertain]), Retry reads the product again before anything is sent.
  * - The password lives only here, in memory, and is cleared when the submit starts and when the sign-in is
  *   dismissed. It is never saved.
+ * - Leaving the sign-in ([dismissAuth], Back included) while it submits cancels the submit: its answer, whenever it
+ *   comes, is not applied and opens nothing.
  *
- * Calls to [off] run on [io]; their results are applied in [scope] (the view model's, on Main). Neither job is kept
- * or cancelled: the submit is a user-confirmed write, and a stale preflight is dropped by its token.
+ * Calls to [off] run on [io]; their results are applied in [scope] (the view model's, on Main). The blocking call
+ * itself is not cut off (a request already sent may still reach Open Food Facts), but a cancelled submit's result is
+ * dropped as it returns; a stale preflight is dropped by its token.
  */
 internal class ContributionFlow(
     private val off: OffContributions,
@@ -58,6 +61,7 @@ internal class ContributionFlow(
     var preflightBusy by mutableStateOf(false); private set
     private var preflightComplete by mutableStateOf(false)
     private var preflightToken = 0L
+    private var submitting: Job? = null
     var languageCode by mutableStateOf("en"); private set
     var packageQuantityMl by mutableStateOf(""); private set
 
@@ -122,9 +126,14 @@ internal class ContributionFlow(
         }
     }
 
-    /** Leaves the sign-in (not while it submits); the password is cleared. */
+    /**
+     * Leaves the sign-in; the password is cleared. While it submits (only Back can then; the arrow and Cancel wait, as
+     * drawn) the submit is cancelled: its answer is ignored and nothing beneath the sign-in changes.
+     */
     fun dismissAuth() {
-        if (!contributionAuthCanDismiss(busy)) return
+        submitting?.cancel()
+        submitting = null
+        busy = false
         authOpen = false
         password = ""
     }
@@ -166,7 +175,8 @@ internal class ContributionFlow(
         val secret = password
         password = ""
         busy = true
-        scope.launch {
+        submitting = scope.launch {
+            // A cancelled submit ends here as the call returns ([dismissAuth]): withContext does not resume it.
             val result = withContext(io) { off.contribute(draft, user, secret) }
             when (result) {
                 OffContributionResult.Success -> {
@@ -185,6 +195,7 @@ internal class ContributionFlow(
             }
             uncertain = result == OffContributionResult.Uncertain
             busy = false
+            submitting = null
         }
     }
 

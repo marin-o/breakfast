@@ -388,8 +388,8 @@ class SurfacesTest {
         shows("LIBRARY")
     }
 
-    /** As drawn: the sign-in ignores Back while it submits, and Back reaches the screen beneath it. */
-    @Test fun backWhileTheSignInSubmitsReachesTheScreenBeneath() {
+    /** Back closes the sign-in also while it submits; the screen beneath it stays as it was. */
+    @Test fun backWhileTheSignInSubmitsClosesOnlyTheSignIn() {
         val kefir = food("kefir", "Kefir").copy(barcode = barcode)
         app.openLibrary()
         app.contribution.openForFood(kefir)
@@ -399,8 +399,14 @@ class SurfacesTest {
         app.contribution.onPassword("secret")
         app.contribution.submit()
         assertTrue(app.contribution.busy)
+        shows("LIBRARY", "CONTRIBUTION_SIGN_IN")
         app.back()
-        shows("DAILY", "CONTRIBUTION_SIGN_IN")
+        shows("LIBRARY")
+        assertFalse(app.contribution.busy)
+        assertEquals("", app.contribution.password)
+        // Whatever became of the request, nothing opens again over the Library.
+        app.offIo.runAll()
+        shows("LIBRARY")
     }
 
     @Test fun theMixedBatchsMealPickerOpensOverTheLibrary() {
