@@ -6,7 +6,6 @@ import androidx.compose.runtime.setValue
 import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.settings.ExportReminder
 import com.iron.breakfast.settings.SettingsState
-import com.iron.breakfast.Overlay
 
 /** The time between reminders: 7 days, 30 days, or none for Never. */
 internal fun exportReminderIntervalMs(reminder: ExportReminder): Long? = when (reminder) {
@@ -29,8 +28,8 @@ internal fun exportReminderDue(reminder: ExportReminder, lastExportMs: Long?, la
     return nowMs >= since && nowMs - since >= interval
 }
 
-/** The export reminder is drawn only on Daily itself: not under the Log page or any screen or sheet over Daily. */
-internal fun exportReminderOnScreen(due: Boolean, logOpen: Boolean, overlay: Overlay?): Boolean = due && !logOpen && overlay == null
+/** The export reminder is drawn only on Daily itself: not while the Log page or any screen or sheet [covered] Daily. */
+internal fun exportReminderOnScreen(due: Boolean, covered: Boolean): Boolean = due && !covered
 
 /**
  * "Export your diary." on Daily: whether it is due now ([visible]), and recording that it was shown.
@@ -71,8 +70,8 @@ internal class ExportReminders(
         settings.exportReminderShownMs = clock()
     }
 
-    /** True when Daily should draw it, given what else is on screen. */
-    fun shownOnDaily(logOpen: Boolean, overlay: Overlay?): Boolean = exportReminderOnScreen(visible, logOpen, overlay)
+    /** True when Daily should draw it; [covered]: something is drawn over Daily (`Surfaces.baseCovered`). */
+    fun shownOnDaily(covered: Boolean): Boolean = exportReminderOnScreen(visible, covered)
 
     fun hide() { visible = false }
 

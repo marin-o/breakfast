@@ -65,7 +65,7 @@ import com.iron.breakfast.ui.screens.plainLine
 
 @Composable
 internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
-    val target = vm.meal ?: return
+    val target = vm.surfaces.meal ?: return
     val entries = vm.entries.filter { it.dayKey == vm.selectedDayKey && it.mealSlot == target }
     val foods = vm.foods.associateBy { it.id }
     val total = entries.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
@@ -80,7 +80,7 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
             item {
                 TopBar(
                     title = target.label(),
-                    onBack = vm::closeMeal,
+                    onBack = vm.surfaces::closeMeal,
                     modifier = Modifier.padding(top = 8.dp),
                     subtitle = shortDateLabel(vm.selectedDayKey),
                     trailing = {
@@ -104,12 +104,12 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 val scanModifier = Modifier.widthIn(min = 80.dp * fontScale)
                 if (isLargeFont(fontScale)) {
                     Column(Modifier.fillMaxWidth().padding(top = 30.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SecondaryButton("Add food", { vm.openFocusedLibrary(target) }, addFoodModifier, fillWidth = false)
+                        SecondaryButton("Add food", { vm.surfaces.openFocusedLibrary(target) }, addFoodModifier, fillWidth = false)
                         SecondaryButton("Scan", vm.scan::begin, scanModifier, fillWidth = false)
                     }
                 } else {
                     Row(Modifier.fillMaxWidth().padding(top = 30.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SecondaryButton("Add food", { vm.openFocusedLibrary(target) }, addFoodModifier, fillWidth = false)
+                        SecondaryButton("Add food", { vm.surfaces.openFocusedLibrary(target) }, addFoodModifier, fillWidth = false)
                         SecondaryButton("Scan", vm.scan::begin, scanModifier, fillWidth = false)
                     }
                 }

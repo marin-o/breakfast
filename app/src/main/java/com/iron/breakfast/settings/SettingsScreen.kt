@@ -1,6 +1,5 @@
 package com.iron.breakfast.settings
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -60,12 +59,11 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
 internal fun SettingsScreen(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
     val page = vm.settings.page
-    BackHandler { vm.settingsBack() }
     // Each page starts at its top.
     key(page) {
         val scroll = rememberScrollState()
         Column(Modifier.fillMaxSize().background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(scroll).padding(horizontal = Gutter, vertical = 4.dp)) {
-            TopBar(page?.title ?: "Settings", vm::settingsBack, Modifier.padding(top = 8.dp))
+            TopBar(page?.title ?: "Settings", vm.surfaces::settingsBack, Modifier.padding(top = 8.dp))
             Hairline(Modifier.padding(top = 8.dp))
             when (page) {
                 null -> SETTINGS_GROUPS.forEach { group -> SettingsAction(group.title) { vm.settings.openPage(group) }; Hairline() }

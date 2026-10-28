@@ -29,7 +29,6 @@ import com.iron.breakfast.scan.ProductStore
 import com.iron.breakfast.scan.ScanSession
 import com.iron.breakfast.food.FoodFormStore
 import com.iron.breakfast.food.NewFood
-import com.iron.breakfast.resolve.LogResolveRequest
 import com.iron.breakfast.resolve.ResolveFlow
 import com.iron.breakfast.resolve.ResolveStore
 import com.iron.breakfast.domain.MeasureUnit
@@ -43,10 +42,6 @@ import com.iron.breakfast.log.LogStore
 import com.iron.breakfast.library.LibraryState
 import com.iron.breakfast.library.LibraryStore
 import com.iron.breakfast.lastUsedMeal
-import com.iron.breakfast.exitLibraryTarget
-import com.iron.breakfast.LibraryExit
-import com.iron.breakfast.Overlay
-import com.iron.breakfast.topOverlay
 import com.iron.breakfast.settings.undoWindowMs
 import com.iron.breakfast.settings.SettingsState
 import com.iron.breakfast.today.MatchFeedback
@@ -69,8 +64,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private val zone: ZoneId get() = ZoneId.systemDefault()
     /** Today's day by the clock and the day start setting. The 60-second loop and every return keep it current. */
     var todayKey by mutableStateOf(dayKeyFor(clock(), zone, settings.dayStartHour)); private set
-    /** Settings is open over the Library (its page is [SettingsState.page]). A surface of the app, so it stays here. */
-    var settingsOpen by mutableStateOf(false); private set
     private val engine = BreakfastEngine(
         BreakfastStore(application),
         countTypingSetting = { settings.countTyping },
@@ -120,12 +113,12 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     /** The Open Food Facts contribution flow (see [ContributionFlow]). */
     internal val contribution = ContributionFlow(off, notices, viewModelScope, Dispatchers.IO)
     /** The Open Food Facts search (see [OffSearch]); what it opens over and returns to stays with the resolve flow. */
-    internal val search = OffSearch(
+    internal val search: OffSearch = OffSearch(
         off = off,
         scope = viewModelScope,
         io = Dispatchers.IO,
         ready = { ready },
-        onOpen = ::searchOpened,
+        onOpen = { fromResolver -> surfaces.searchOpened(fromResolver) },
         onClose = { resolve.childClosed() },
         onChoose = { food -> review.choose(food) },
     )
@@ -159,11 +152,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var selectedDayKey by mutableStateOf(
         restoreSelectedDay(savedState).let { resolveSelectedDay(it.dayKey, it.followingToday, returning = true, clock(), zone, settings.dayStartHour) }
     ); private set
-    /**
-     * The Meal screen's meal; null on Daily. While the Library is open it shows instead, adding to its own
-     * [LibraryState.target]; leaving the Library says which of the two comes back.
-     */
-    var meal by mutableStateOf(savedState.get<String>(MEAL_SLOT_KEY)?.let { runCatching { MealSlot.valueOf(it) }.getOrNull() }); private set
     /** "Not in your foods": the Log ↔ Library resolve frame, the unknown queue and the resolver (see [ResolveFlow]). */
     internal val resolve: ResolveFlow = ResolveFlow(
         session = session,
@@ -178,8 +166,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         scope = viewModelScope,
         compute = Dispatchers.Default,
         selectedDay = { selectedDayKey },
-        openLibrary = ::openFocusedLibrary,
-        returnToLog = ::returnToLog,
+        openLibrary = { meal, query -> surfaces.openFocusedLibrary(meal, query) },
+        returnToLog = { request, pick -> surfaces.returnToLog(request, pick) },
     )
     /** The Log draft and the Log page (see [LogComposer]). */
     internal val log: LogComposer = LogComposer(
@@ -233,8 +221,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         },
         openMeal = ::mealOnScreen,
         // The edit's meal shows beneath it; the Log's error goes, as it always did when an edit began.
-        onBegin = { meal -> this.meal = meal; log.clearError() },
-        onEnd = { returnToDaily -> if (returnToDaily) meal = null; log.clearError() },
+        onBegin = { meal -> surfaces.editBegan(meal) },
+        onEnd = { returnToDaily -> surfaces.editEnded(returnToDaily) },
         initialEntryId = savedState["entry_id"],
         saveEntryId = { savedState["entry_id"] = it },
     )
@@ -262,8 +250,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         resolvingPart = { resolve.resolvingPart },
         offerContribution = contribution::offerAfterLocalSave,
         startScanFor = { onBarcode -> scan.beginFor(onBarcode) },
-        // It replaces the resolver and the search.
-        onOpen = { fromResolver -> resolve.childOpened(fromResolver); search.hide() },
+        onOpen = { fromResolver -> surfaces.foodFormOpened(fromResolver) },
         onClose = resolve::childClosed,
         onSaved = resolve::foodSaved,
     )
@@ -280,7 +267,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         selectedDay = { selectedDayKey },
         targetMeal = ::mealOnScreen,
         queueActive = { resolve.queueActive },
-        onProduct = { food, origin -> search.hide(); review.choose(food, fromScan = true, origin = origin) },
+        onProduct = { food, origin -> surfaces.productScanned(food, origin) },
         onManualForm = { name, brand, barcode, fromOff -> foodForm.open(name, brand, barcode, fromOff = fromOff) },
     )
     /** Product review after a scan or a search pick (see [ProductReview]); its queue and resolve hand-offs go to [resolve]. */
@@ -304,6 +291,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         onClosed = resolve::childClosed,
         openSearch = { fromResolver -> search.open(fromResolver = fromResolver) },
         startScan = { scan.begin() },
+    )
+    /** What is open and in which order: drawing, Back and the top check (see [Surfaces]); the Meal screen and Settings. */
+    internal val surfaces: Surfaces = Surfaces(
+        session, notices, settings, log, library, resolve, entryEdit, foodForm, search, scan, review, contribution, transfer,
+        initialMeal = savedState.get<String>(MEAL_SLOT_KEY)?.let { runCatching { MealSlot.valueOf(it) }.getOrNull() },
     )
     val ready: Boolean get() = session.ready
     /** A diary write is running ([DiarySession.write]); user actions that write are refused meanwhile. */
@@ -377,11 +369,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (dayKey > today) return
         selectDay(dayKey, following = dayKey == today)
     }
-    /** Settings, over the Library, on the list of groups; its arrow and Back return there. */
-    fun openSettings() { settings.showList(); settingsOpen = true }
-    fun closeSettings() { settingsOpen = false; settings.showList() }
-    /** Back or the arrow in Settings: a page goes back ([SettingsState.back]), the list closes Settings. */
-    fun settingsBack() { if (!settings.back()) closeSettings() }
     /**
      * The meal the "Meal" setting gives a log with no chosen, typed or preset meal, at this moment; null for Ask. The
      * Log page falls back to it, and the Library preselects it (see [libraryPresetMeal]).
@@ -389,76 +376,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     internal fun automaticMealNow(): MealSlot? = automaticMeal(
         settings.mealMode, java.time.Instant.ofEpochMilli(clock()).atZone(zone).hour, settings.mealBounds, lastUsedMeal(entries), settings.dayStartHour, settings.beforeDayStart,
     )
-    /**
-     * The meal of the screen on show: the Library's [LibraryState.target] while it is open, else the Meal screen's
-     * [meal]. What a scan, a review, a new food or an edit logs to when nothing else decides.
-     */
-    internal fun mealOnScreen(): MealSlot? = if (library.open) library.target else meal
-
-    fun openMeal(s: MealSlot) { resolve.abandon(); meal = s; scan.invalidateLookup(); entryEdit.cancel(); log.clearError() }
-    /** Leaves the meal for Daily. The log draft and its pins stay; a part being resolved goes back to the Log. */
-    fun closeMeal() {
-        if (resolve.cancelPart()) return
-        resolve.abandon(); meal = null; scan.invalidateLookup(); entryEdit.cancel()
-    }
-    /**
-     * Opens the Library over the screen beneath. Library and meal navigation end an open entry edit ([EntryEdit.cancel],
-     * which also clears the Log's error); the Library's [LibraryState.show] says what its bar starts with.
-     */
-    private fun showLibrary(target: MealSlot?, query: String, archivedOnly: Boolean, bar: String = query) {
-        entryEdit.cancel()
-        meal = null
-        library.show(target, query, archivedOnly, bar)
-    }
-    fun openLibrary() = showLibrary(null, "", archivedOnly = false)
-    fun openArchivedLibrary() = showLibrary(null, "", archivedOnly = true)
-    /** The Library adding to [target] (a meal's "Add food", a part being resolved), searching [query]. */
-    fun openFocusedLibrary(target: MealSlot, query: String = "") {
-        resolve.abandon()
-        showLibrary(target, query, archivedOnly = false)
-    }
-    /** An entry's "Open in Library": the Library tab with that food's page open. */
-    fun openLibraryFoodDetail(entry: MealEntry) {
-        entryEdit.closeDetail()
-        showLibrary(null, entry.foodName, archivedOnly = false, bar = "")
-        library.showFood(foods.firstOrNull { it.id == entry.foodId })
-    }
-    fun closeLibrary() = leaveLibrary(returnTo = null)
-    /** The Library's arrow and system Back, by [exitLibraryTarget]. */
-    fun exitLibrary() {
-        when (exitLibraryTarget(resolve.resolvingPart, library.archivedOnly, library.target)) {
-            LibraryExit.LIBRARY -> openLibrary()
-            LibraryExit.MEAL -> leaveLibrary(returnTo = library.target)
-            LibraryExit.LOG, LibraryExit.DAILY -> closeLibrary()
-        }
-    }
-    /** Leaves the Library (and Settings over it) for [returnTo] (null: Daily); a part being resolved goes back to the Log. */
-    private fun leaveLibrary(returnTo: MealSlot?) {
-        if (resolve.cancelPart()) return
-        library.close()
-        settingsOpen = false
-        settings.showList()
-        meal = returnTo
-    }
-    /** The resolve frame ended ([ResolveFlow]): the Library and what was over it close, and the Log opens where it was. */
-    private fun returnToLog(request: LogResolveRequest, pick: FoodRecord?) {
-        leaveLibrary(returnTo = request.slot)
-        search.hide()
-        foodForm.hide()
-        review.hide()
-        log.resume(request, pick)
-    }
-    /** [search] opened: it replaces the resolver and the food form. */
-    private fun searchOpened(fromResolver: Boolean) { resolve.childOpened(fromResolver); foodForm.hide() }
-    /** What is drawn over Daily, Meal or Library right now, by [topOverlay]. */
-    internal fun topOverlay(): Overlay? = topOverlay(
-        scanner = scan.open, entryDetail = entryEdit.selectedEntry != null, productReview = review.product != null,
-        resolver = resolve.resolverOpen, offSearch = search.open, foodForm = foodForm.open,
-        libraryFood = library.selectedFood != null, entryEdit = entryEdit.mode != EntryEditMode.NONE,
-        settings = settingsOpen,
-    )
-    /** A library search that finished with nothing and has no other screen over it: the "No local match" screen. */
-    fun libraryNoMatch(): Boolean = library.noMatch(otherScreenOpen = topOverlay() != null)
+    /** The meal of the screen on show ([Surfaces.mealOnScreen]), for the owners that log to it. */
+    private fun mealOnScreen(): MealSlot? = surfaces.mealOnScreen()
 }
 
 /** The meal on screen in `SavedStateHandle`. */

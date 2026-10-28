@@ -1,7 +1,6 @@
 package com.iron.breakfast.search
 
 import com.iron.breakfast.ui.theme.*
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -44,9 +43,8 @@ import com.iron.breakfast.ui.screens.formatKcal
     val query = vm.library.query
     // Leaving a no-match result must keep the Daily quick-add draft intact.
     val clear = { vm.library.onQuery("") }
-    // Back and the top-left arrow leave the search: a resolve goes back to the Log, else the list shows again.
-    val leave = { if (vm.resolve.resolvingPart) vm.closeLibrary() else clear() }
-    BackHandler(onBack = leave)
+    // The top-left arrow leaves the search as Back does ([Surfaces.leaveNoMatch]).
+    val leave = vm.surfaces::leaveNoMatch
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter)) {
             TopBar("Search", leave, Modifier.padding(top = 8.dp))
@@ -73,7 +71,6 @@ import com.iron.breakfast.ui.screens.formatKcal
 /** Explicit Open Food Facts search: nothing is sent until Search (or the keyboard's search key) is used. */
 @Composable internal fun OffSearchScreen(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
-    BackHandler(onBack = vm.search::close)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter).verticalScroll(rememberScrollState())) {
             TopBar("Open Food Facts", vm.search::close, Modifier.padding(top = 8.dp))

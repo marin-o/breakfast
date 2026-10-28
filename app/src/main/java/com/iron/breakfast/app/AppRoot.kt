@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -88,88 +89,78 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     // A recreation (dark mode, resize, locale) stops the old activity, but the user never left.
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { if (stopMeansLeaving(activity?.isChangingConfigurations == true)) vm.onAppStopped() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { vm.onAppStarted() }
-    if (vm.scan.open) { ScannerScreen(vm); return }
-    val scanReviewBackdropVisible = vm.review.product != null && vm.review.fromScan
-    if (scanReviewBackdropVisible) ScanReviewBackdrop(vm.review::close)
-    else {
-    vm.entryEdit.selectedEntry?.let { entry ->
-        EntryDetailScreen(vm, entry)
-        return
-    }
-    Scaffold(
-        containerColor = LocalBreakfastColors.current.bg,
-        contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout),
-        bottomBar = {
-            // The tray rides above the keyboard and clear of a side display cutout.
-            Box(Modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).imePadding()) {
-                // Daily and Meal composers float over their own content; only Library uses this bar.
-                if (vm.entryEdit.mode == EntryEditMode.NONE && vm.library.open && !vm.library.archivedOnly) LibraryComposer(vm)
+    // What is open and in which order (see [Surfaces]): drawn bottom first, each surface keyed so it keeps its state
+    // while others open and close over or under it. The base screen is one Scaffold whichever of the three it shows.
+    for (surface in vm.surfaces.shown()) key(if (surface.base) Surface.DAILY else surface) { DrawSurface(vm, surface) }
+    // System Back goes to the topmost surface that takes it; a dialog or sheet takes it in its own window first.
+    BackHandler(enabled = vm.surfaces.takesBack()) { vm.surfaces.back() }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
+    when (surface) {
+        Surface.DAILY, Surface.MEAL, Surface.LIBRARY -> Scaffold(
+            containerColor = LocalBreakfastColors.current.bg,
+            contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout),
+            bottomBar = {
+                // The tray rides above the keyboard and clear of a side display cutout.
+                Box(Modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).imePadding()) {
+                    // Daily and Meal composers float over their own content; only Library uses this bar.
+                    if (vm.entryEdit.mode == EntryEditMode.NONE && surface == Surface.LIBRARY && !vm.library.archivedOnly) LibraryComposer(vm)
+                }
+            }
+        ) { pad ->
+            when (surface) {
+                Surface.LIBRARY -> LibraryScreen(vm, Modifier.padding(pad))
+                Surface.DAILY -> DailyScreen(vm, Modifier.padding(pad))
+                else -> MealScreen(vm, Modifier.padding(pad))
             }
         }
-    ) { pad ->
-        when {
-            vm.library.open -> LibraryScreen(vm, Modifier.padding(pad))
-            vm.meal == null -> DailyScreen(vm, Modifier.padding(pad))
-            else -> MealScreen(vm, Modifier.padding(pad))
-        }
+        Surface.SCAN_REVIEW_BACKDROP -> ScanReviewBackdrop(vm.review::close)
+        // Drawn over the screen beneath, which keeps its scroll position. Dialogs and sheets after it render above it.
+        Surface.LOG -> LogScreen(vm)
+        Surface.ENTRY_QUICK_EDIT -> vm.entryEdit.editingEntry()?.let { EntryQuickEditSheet(vm, it) }
+        Surface.ENTRY_FULL_EDIT -> vm.entryEdit.editingEntry()?.let { EntryFullEditScreen(vm, it) }
+        Surface.ENTRY_FOOD_PICKER -> EntryFoodPicker(vm)
+        Surface.LIBRARY_FOOD_ADD -> vm.library.selectedFood?.let { FocusedFoodAddDialog(vm, it) }
+        Surface.LIBRARY_FOOD -> vm.library.selectedFood?.let { LibraryFoodDetailDialog(vm, it) }
+        Surface.MIXED_MEAL_PICKER -> MixedMealPickerDialog(vm)
+        Surface.BATCH_MEAL_PICKER -> LibraryBatchMealPickerDialog(vm)
+        Surface.FOOD_FORM -> if (vm.foodForm.editingFoodId != null) EditFoodScreen(vm) else CreateFoodScreen(vm)
+        Surface.SETTINGS -> SettingsScreen(vm)
+        Surface.DISCARD_FOOD -> AlertDialog(
+            onDismissRequest = vm.foodForm::keepEditing,
+            confirmButton = { TextButton(vm.foodForm::discard) { Text("Discard") } },
+            dismissButton = { TextButton(vm.foodForm::keepEditing) { Text("Keep editing") } },
+        )
+        Surface.LIBRARY_NO_MATCH -> LibraryNoMatchScreen(vm)
+        Surface.OFF_SEARCH -> OffSearchScreen(vm)
+        Surface.RESOLVER -> ResolveUnknownScreen(vm)
+        Surface.PRODUCT_REVIEW -> vm.review.product?.let { ProductReviewSheet(vm, it) }
+        Surface.CONTRIBUTION_REVIEW -> vm.contribution.pending?.let { ContributionReviewScreen(vm, it) }
+        Surface.CONTRIBUTION_SIGN_IN -> ContributionSignInScreen(vm)
+        Surface.CONTRIBUTION_FAILURE -> vm.contribution.failure?.let { ContributionFailureScreen(vm, it) }
+        Surface.NOTICE -> vm.notices.message?.let { message -> AlertDialog(onDismissRequest = vm.notices::dismiss, confirmButton = { TextButton(vm.notices::dismiss) { Text("OK") } }, text = { Text(message) }) }
+        Surface.REPLACE_DIARY -> AlertDialog(
+            onDismissRequest = vm.transfer::cancelImport,
+            confirmButton = { TextButton(vm.transfer::confirmImport) { Text("Replace diary") } },
+            dismissButton = { TextButton(vm.transfer::cancelImport) { Text("Cancel") } },
+            text = { Text("This replaces entries and foods, not settings.") },
+        )
+        Surface.DELETE_ALL -> AlertDialog(
+            onDismissRequest = vm.transfer::cancelDeleteAll,
+            confirmButton = { TextButton(vm.transfer::confirmDeleteAll) { Text("Delete all") } },
+            dismissButton = { TextButton(vm.transfer::cancelDeleteAll) { Text("Cancel") } },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text("This deletes all entries and foods.")
+                    ChoiceOption("Also settings and learned picks", vm.transfer.deleteAllAlsoSettings, vm.transfer::toggleDeleteAllAlsoSettings)
+                }
+            },
+        )
+        Surface.STORAGE_UNAVAILABLE -> AlertDialog(onDismissRequest = {}, confirmButton = { TextButton(vm::retryStorage) { Text("Try again") } }, title = { Text("Storage unavailable") }, text = { Text("Storage could not be opened.") })
+        Surface.ENTRY_DETAIL -> vm.entryEdit.selectedEntry?.let { EntryDetailScreen(vm, it) }
+        Surface.SCANNER -> ScannerScreen(vm)
     }
-    // Drawn over the screen beneath, which keeps its scroll position. Dialogs and sheets below render above it.
-    if (vm.log.open) LogScreen(vm)
-    }
-    when (vm.entryEdit.mode) {
-        EntryEditMode.QUICK -> vm.entryEdit.editingEntry()?.let { EntryQuickEditSheet(vm, it) }
-        EntryEditMode.FULL -> vm.entryEdit.editingEntry()?.let { EntryFullEditScreen(vm, it) }
-        EntryEditMode.NONE -> Unit
-    }
-    if (vm.entryEdit.pickerOpen) EntryFoodPicker(vm)
-    vm.library.selectedFood?.let { food ->
-        if (vm.mealOnScreen() != null) FocusedFoodAddDialog(vm, food)
-        else LibraryFoodDetailDialog(vm, food)
-    }
-    // LogScreen and every overlay own Back while they are open.
-    if (!vm.log.open && vm.topOverlay() == null) {
-        if (vm.library.open) {
-            // The same exit as the Library's top-bar arrow: Archived goes to Library, a meal's Library to the meal.
-            BackHandler { vm.exitLibrary() }
-        } else if (vm.meal != null) {
-            BackHandler { vm.closeMeal() }
-        }
-    }
-    if (vm.library.mixedMealPickerOpen) MixedMealPickerDialog(vm)
-    if (vm.library.batchMealPickerOpen) LibraryBatchMealPickerDialog(vm)
-    if (vm.foodForm.open) {
-        if (vm.foodForm.editingFoodId != null) EditFoodScreen(vm) else CreateFoodScreen(vm)
-    }
-    if (vm.settingsOpen) SettingsScreen(vm)
-    if (vm.foodForm.discardOpen) AlertDialog(
-        onDismissRequest = vm.foodForm::keepEditing,
-        confirmButton = { TextButton(vm.foodForm::discard) { Text("Discard") } },
-        dismissButton = { TextButton(vm.foodForm::keepEditing) { Text("Keep editing") } },
-    )
-    if (vm.libraryNoMatch()) LibraryNoMatchScreen(vm)
-    if (vm.search.open) OffSearchScreen(vm)
-    if (vm.resolve.resolverOpen && !scanReviewBackdropVisible) ResolveUnknownScreen(vm)
-    vm.review.product?.let { ProductReviewSheet(vm, it) }
-    if (vm.contribution.reviewOpen) vm.contribution.pending?.let { ContributionReviewScreen(vm, it) }
-    if (vm.contribution.authOpen) ContributionSignInScreen(vm)
-    vm.contribution.failure?.let { ContributionFailureScreen(vm, it) }
-    vm.notices.message?.let { message -> AlertDialog(onDismissRequest = vm.notices::dismiss, confirmButton = { TextButton(vm.notices::dismiss) { Text("OK") } }, text = { Text(message) }) }
-    if (vm.transfer.pendingImport != null) AlertDialog(
-        onDismissRequest = vm.transfer::cancelImport,
-        confirmButton = { TextButton(vm.transfer::confirmImport) { Text("Replace diary") } },
-        dismissButton = { TextButton(vm.transfer::cancelImport) { Text("Cancel") } },
-        text = { Text("This replaces entries and foods, not settings.") },
-    )
-    if (vm.transfer.deleteAllOpen) AlertDialog(
-        onDismissRequest = vm.transfer::cancelDeleteAll,
-        confirmButton = { TextButton(vm.transfer::confirmDeleteAll) { Text("Delete all") } },
-        dismissButton = { TextButton(vm.transfer::cancelDeleteAll) { Text("Cancel") } },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("This deletes all entries and foods.")
-                ChoiceOption("Also settings and learned picks", vm.transfer.deleteAllAlsoSettings, vm.transfer::toggleDeleteAllAlsoSettings)
-            }
-        },
-    )
-    if (vm.storageUnavailable) AlertDialog(onDismissRequest = {}, confirmButton = { TextButton(vm::retryStorage) { Text("Try again") } }, title = { Text("Storage unavailable") }, text = { Text("Storage could not be opened.") })
 }

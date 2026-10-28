@@ -1,7 +1,6 @@
 package com.iron.breakfast.log
 
 import com.iron.breakfast.ui.theme.*
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -85,7 +84,6 @@ import com.iron.breakfast.ui.screens.foodCountLabel
 @Composable
 internal fun LogScreen(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
-    BackHandler(onBack = vm.log::close)
     // One resolution pass per draft: rows, choices and the add-bar sum all come from the same planner run.
     // It runs off the main thread so typing never waits on matching; the last draft shows until the next is ready.
     var draft by remember { mutableStateOf(vm.log.draftView()) }

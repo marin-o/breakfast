@@ -216,7 +216,7 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
         addDescription = "Add food to ${slot.label()}",
         time = earliestMealTime(entries),
         emptyText = if (entries.isEmpty()) "Nothing yet" else null,
-        modifier = Modifier.clickable(role = Role.Button) { vm.openMeal(slot) },
+        modifier = Modifier.clickable(role = Role.Button) { vm.surfaces.openMeal(slot) },
     )
     entries.forEach { entry ->
         val quantity = quantityRateDisplay(entry, foods[entry.foodId], includeRateUnit = false, asciiMultiply = true)
@@ -247,7 +247,7 @@ internal fun DailyComposer(vm: BreakfastViewModel, modifier: Modifier = Modifier
     ComposerFade(modifier) {
         vm.undo.loggedMessage?.let { Snackbar(it, "Undo", { tick(); vm.undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
         vm.undo.deletedEntry?.let { Snackbar("${it.foodName} deleted", "Undo", { tick(); vm.undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
-        if (vm.reminders.shownOnDaily(vm.log.open, vm.topOverlay())) {
+        if (vm.reminders.shownOnDaily(covered = vm.surfaces.baseCovered())) {
             LaunchedEffect(Unit) { vm.reminders.onScreenNow() }
             Snackbar("Export your diary.", "Export", vm.reminders::export, Modifier.padding(bottom = 8.dp))
         }
@@ -259,7 +259,7 @@ internal fun DailyComposer(vm: BreakfastViewModel, modifier: Modifier = Modifier
             draft = draft,
             longDraft = vm.settings.longDraft,
         )
-        BottomNav(selectedToday = true, onToday = { vm.closeMeal(); vm.closeLibrary() }, onLibrary = { vm.closeMeal(); vm.openLibrary() })
+        BottomNav(selectedToday = true, onToday = { vm.surfaces.closeMeal(); vm.surfaces.closeLibrary() }, onLibrary = { vm.surfaces.closeMeal(); vm.surfaces.openLibrary() })
     }
 }
 

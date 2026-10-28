@@ -1,6 +1,5 @@
 package com.iron.breakfast.transfer
 
-import com.iron.breakfast.Overlay
 import com.iron.breakfast.app.DiaryChange
 import com.iron.breakfast.settings.AppSettings
 import com.iron.breakfast.settings.ExportReminder
@@ -73,9 +72,8 @@ class ExportRemindersTest {
         settings.chooseExportReminder(ExportReminder.MONTHLY)
         now += 30 * day
         reminders.check()
-        assertTrue(reminders.shownOnDaily(logOpen = false, overlay = null))
-        assertFalse(reminders.shownOnDaily(logOpen = true, overlay = null))
-        assertFalse(reminders.shownOnDaily(logOpen = false, overlay = Overlay.entries.first()))
+        assertTrue(reminders.shownOnDaily(covered = false))
+        assertFalse(reminders.shownOnDaily(covered = true))
     }
 
     @Test fun itsExportOpensTheSavePickerAndHidesIt() {

@@ -1,7 +1,6 @@
 package com.iron.breakfast.food
 
 import com.iron.breakfast.ui.theme.*
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -73,7 +72,6 @@ import com.iron.breakfast.ui.screens.editableNumber
         runCatching { focus.getValue(focusRequest.field).requestFocus() }
         form.focusHandled()
     }
-    BackHandler(onBack = form::leave)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).imePadding().padding(bottom = 12.dp)) {

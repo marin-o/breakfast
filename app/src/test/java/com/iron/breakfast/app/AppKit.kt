@@ -1,10 +1,8 @@
 package com.iron.breakfast.app
 
-import com.iron.breakfast.LibraryExit
 import com.iron.breakfast.QueueDispatcher
 import com.iron.breakfast.contribution.ContributionFlow
 import com.iron.breakfast.contribution.OffContributions
-import com.iron.breakfast.contributionAuthCanDismiss
 import com.iron.breakfast.data.OffContributionDraft
 import com.iron.breakfast.data.OffContributionResult
 import com.iron.breakfast.data.OffPreflightResult
@@ -24,7 +22,6 @@ import com.iron.breakfast.domain.SavedMeal
 import com.iron.breakfast.entry.EntryEdit
 import com.iron.breakfast.entry.EntryEditMode
 import com.iron.breakfast.entry.EntryEditStore
-import com.iron.breakfast.exitLibraryTarget
 import com.iron.breakfast.food.FoodForm
 import com.iron.breakfast.food.FoodFormStore
 import com.iron.breakfast.food.NewFood
@@ -32,7 +29,6 @@ import com.iron.breakfast.library.LibraryState
 import com.iron.breakfast.library.LibraryStore
 import com.iron.breakfast.log.LogComposer
 import com.iron.breakfast.log.LogStore
-import com.iron.breakfast.resolve.LogResolveRequest
 import com.iron.breakfast.resolve.ResolveFlow
 import com.iron.breakfast.resolve.ResolveStore
 import com.iron.breakfast.resolve.food
@@ -46,7 +42,6 @@ import com.iron.breakfast.settings.AppSettings
 import com.iron.breakfast.settings.FakeSettingsStore
 import com.iron.breakfast.settings.SettingsState
 import com.iron.breakfast.today.OpenDiary
-import com.iron.breakfast.topOverlay
 import com.iron.breakfast.transfer.DiaryTransfer
 import com.iron.breakfast.transfer.FakeData
 import com.iron.breakfast.transfer.FakeFiles
@@ -55,13 +50,12 @@ import com.iron.breakfast.transfer.exportReminderOnScreen
 import kotlinx.coroutines.Dispatchers
 
 /**
- * Every feature owner that opens a surface, over fakes, wired as the view model wires them, with the app's coordination
- * (the Meal screen, Settings, leaving the Library, the return to the Log) and the root composable's rules for what is
- * drawn ([shown]), what takes Back ([back]) and whether anything is over the base screen.
+ * Every feature owner that opens a surface, over fakes, wired to each other and to [Surfaces] as the view model wires
+ * them: what is drawn ([shown]), what takes Back ([back]) and whether anything is over the base screen.
  *
- * Characterisation: the coordination and the three rules here are transcribed from `BreakfastViewModel` and `IronApp`
- * as they are before `Surfaces`; the tests in [SurfacesTest] pin them, and keep passing once this kit reads them from
- * `Surfaces` instead.
+ * Characterisation: [SurfacesTest] was first written against the app's three encodings as they were before
+ * `Surfaces` (the view model's coordination, `IronApp`'s composition order and BackHandler order, `topOverlay()`,
+ * transcribed here at 6da279d) and passes unchanged against `Surfaces`.
  */
 internal class AppKit {
     val diary = OpenDiary()
@@ -84,10 +78,6 @@ internal class AppKit {
 
     val settings = SettingsState(AppSettings(FakeSettingsStore())) { 0L }
 
-    // The view model's own surface state before Surfaces.
-    var meal: MealSlot? = null; private set
-    var settingsOpen = false; private set
-
     val contribution = ContributionFlow(
         object : OffContributions {
             override fun preflight(draft: OffContributionDraft) = OffPreflightResult.Existing
@@ -95,16 +85,16 @@ internal class AppKit {
         },
         notices, diary.scope, offIo,
     )
-    val search = OffSearch(
+    val search: OffSearch = OffSearch(
         off = object : OffSearchService { override suspend fun search(query: String) = OffSearchResult.Success(emptyList()) },
         scope = diary.scope,
         io = Dispatchers.Unconfined,
         ready = { diary.session.ready },
-        onOpen = ::searchOpened,
+        onOpen = { fromResolver -> surfaces.searchOpened(fromResolver) },
         onClose = { resolve.childClosed() },
         onChoose = { food -> review.choose(food) },
     )
-    val transfer = DiaryTransfer(
+    val transfer: DiaryTransfer<String> = DiaryTransfer(
         diary.session, FakeData(transferEvents), documents, settings, notices, { 0L }, diary.scope,
         Dispatchers.Unconfined, RecordingLog(), onExported = {},
     )
@@ -119,8 +109,8 @@ internal class AppKit {
         },
         notices, diary.scope, Dispatchers.Unconfined,
         selectedDay = { day },
-        openLibrary = ::openFocusedLibrary,
-        returnToLog = ::returnToLog,
+        openLibrary = { meal, query -> surfaces.openFocusedLibrary(meal, query) },
+        returnToLog = { request, pick -> surfaces.returnToLog(request, pick) },
     )
     val log: LogComposer = LogComposer(
         diary.session,
@@ -169,8 +159,8 @@ internal class AppKit {
                 ReplacementResult.Failure("not in these tests")
         },
         openMeal = ::mealOnScreen,
-        onBegin = { meal -> this.meal = meal; log.clearError() },
-        onEnd = { returnToDaily -> if (returnToDaily) meal = null; log.clearError() },
+        onBegin = { meal -> surfaces.editBegan(meal) },
+        onEnd = { returnToDaily -> surfaces.editEnded(returnToDaily) },
         initialEntryId = null,
         saveEntryId = {},
     )
@@ -191,7 +181,7 @@ internal class AppKit {
         resolvingPart = { resolve.resolvingPart },
         offerContribution = contribution::offerAfterLocalSave,
         startScanFor = { onBarcode -> scan.beginFor(onBarcode) },
-        onOpen = { fromResolver -> resolve.childOpened(fromResolver); search.hide() },
+        onOpen = { fromResolver -> surfaces.foodFormOpened(fromResolver) },
         onClose = resolve::childClosed,
         onSaved = resolve::foodSaved,
     )
@@ -207,7 +197,7 @@ internal class AppKit {
         selectedDay = { day },
         targetMeal = ::mealOnScreen,
         queueActive = { resolve.queueActive },
-        onProduct = { food, origin -> search.hide(); review.choose(food, fromScan = true, origin = origin) },
+        onProduct = { food, origin -> surfaces.productScanned(food, origin) },
         onManualForm = { name, brand, barcode, fromOff -> foodForm.open(name, brand, barcode, fromOff = fromOff) },
     )
     val review: ProductReview = ProductReview(
@@ -232,144 +222,41 @@ internal class AppKit {
         startScan = { scan.begin() },
     )
 
+    val surfaces: Surfaces = Surfaces(
+        diary.session, notices, settings, log, library, resolve, entryEdit, foodForm, search, scan, review, contribution, transfer,
+        initialMeal = null,
+    )
+
     /** Puts [entries] in the diary, as a reload would. */
     fun diaryHas(vararg entries: MealEntry) {
         diary.rows = entries.toList()
         diary.session.refresh()
     }
 
-    // ---- The view model's coordination, transcribed as it is before Surfaces. ----
+    // ---- What the tests drive, by the names they were written with. ----
 
-    fun mealOnScreen(): MealSlot? = if (library.open) library.target else meal
-    fun openMeal(s: MealSlot) { resolve.abandon(); meal = s; scan.invalidateLookup(); entryEdit.cancel(); log.clearError() }
-    fun closeMeal() {
-        if (resolve.cancelPart()) return
-        resolve.abandon(); meal = null; scan.invalidateLookup(); entryEdit.cancel()
-    }
-    private fun showLibrary(target: MealSlot?, query: String, archivedOnly: Boolean, bar: String = query) {
-        entryEdit.cancel()
-        meal = null
-        library.show(target, query, archivedOnly, bar)
-    }
-    fun openLibrary() = showLibrary(null, "", archivedOnly = false)
-    fun openArchivedLibrary() = showLibrary(null, "", archivedOnly = true)
-    fun openFocusedLibrary(target: MealSlot, query: String = "") {
-        resolve.abandon()
-        showLibrary(target, query, archivedOnly = false)
-    }
-    fun openLibraryFoodDetail(entry: MealEntry) {
-        entryEdit.closeDetail()
-        showLibrary(null, entry.foodName, archivedOnly = false, bar = "")
-        library.showFood(diary.session.foods.firstOrNull { it.id == entry.foodId })
-    }
-    fun closeLibrary() = leaveLibrary(returnTo = null)
-    fun exitLibrary() {
-        when (exitLibraryTarget(resolve.resolvingPart, library.archivedOnly, library.target)) {
-            LibraryExit.LIBRARY -> openLibrary()
-            LibraryExit.MEAL -> leaveLibrary(returnTo = library.target)
-            LibraryExit.LOG, LibraryExit.DAILY -> closeLibrary()
-        }
-    }
-    private fun leaveLibrary(returnTo: MealSlot?) {
-        if (resolve.cancelPart()) return
-        library.close()
-        settingsOpen = false
-        settings.showList()
-        meal = returnTo
-    }
-    private fun returnToLog(request: LogResolveRequest, pick: FoodRecord?) {
-        leaveLibrary(returnTo = request.slot)
-        search.hide()
-        foodForm.hide()
-        review.hide()
-        log.resume(request, pick)
-    }
-    private fun searchOpened(fromResolver: Boolean) { resolve.childOpened(fromResolver); foodForm.hide() }
-    fun openSettings() { settings.showList(); settingsOpen = true }
-    fun settingsBack() { if (!settings.back()) { settingsOpen = false; settings.showList() } }
-    /** The "No local match" screen's arrow and Back. */
-    fun leaveNoMatch() { if (resolve.resolvingPart) closeLibrary() else library.onQuery("") }
-
-    // ---- IronApp's three rules, transcribed as they are before Surfaces. ----
-
-    private fun topOverlayNow() = topOverlay(
-        scanner = scan.open, entryDetail = entryEdit.selectedEntry != null, productReview = review.product != null,
-        resolver = resolve.resolverOpen, offSearch = search.open, foodForm = foodForm.open,
-        libraryFood = library.selectedFood != null, entryEdit = entryEdit.mode != EntryEditMode.NONE,
-        settings = settingsOpen,
-    )
-    private fun libraryNoMatch() = library.noMatch(otherScreenOpen = topOverlayNow() != null)
+    val meal: MealSlot? get() = surfaces.meal
+    val settingsOpen: Boolean get() = surfaces.settingsOpen
+    fun mealOnScreen(): MealSlot? = surfaces.mealOnScreen()
+    fun openMeal(s: MealSlot) = surfaces.openMeal(s)
+    fun closeMeal() = surfaces.closeMeal()
+    fun openLibrary() = surfaces.openLibrary()
+    fun openArchivedLibrary() = surfaces.openArchivedLibrary()
+    fun openFocusedLibrary(target: MealSlot, query: String = "") = surfaces.openFocusedLibrary(target, query)
+    fun openLibraryFoodDetail(entry: MealEntry) = surfaces.openLibraryFoodDetail(entry)
+    fun closeLibrary() = surfaces.closeLibrary()
+    fun exitLibrary() = surfaces.exitLibrary()
+    fun openSettings() = surfaces.openSettings()
 
     /** What the root composable draws, bottom first. */
-    fun shown(): List<String> {
-        if (scan.open) return listOf("SCANNER")
-        val out = mutableListOf<String>()
-        val backdrop = review.product != null && review.fromScan
-        if (backdrop) out += "SCAN_REVIEW_BACKDROP" else {
-            if (entryEdit.selectedEntry != null) return listOf("ENTRY_DETAIL")
-            out += when { library.open -> "LIBRARY"; meal == null -> "DAILY"; else -> "MEAL" }
-            if (log.open) out += "LOG"
-        }
-        when (entryEdit.mode) {
-            EntryEditMode.QUICK -> if (entryEdit.editingEntry() != null) out += "ENTRY_QUICK_EDIT"
-            EntryEditMode.FULL -> if (entryEdit.editingEntry() != null) out += "ENTRY_FULL_EDIT"
-            EntryEditMode.NONE -> Unit
-        }
-        if (entryEdit.pickerOpen) out += "ENTRY_FOOD_PICKER"
-        if (library.selectedFood != null) out += if (mealOnScreen() != null) "LIBRARY_FOOD_ADD" else "LIBRARY_FOOD"
-        if (library.mixedMealPickerOpen) out += "MIXED_MEAL_PICKER"
-        if (library.batchMealPickerOpen) out += "BATCH_MEAL_PICKER"
-        if (foodForm.open) out += "FOOD_FORM"
-        if (settingsOpen) out += "SETTINGS"
-        if (foodForm.discardOpen) out += "DISCARD_FOOD"
-        if (libraryNoMatch()) out += "LIBRARY_NO_MATCH"
-        if (search.open) out += "OFF_SEARCH"
-        if (resolve.resolverOpen && !backdrop) out += "RESOLVER"
-        if (review.product != null) out += "PRODUCT_REVIEW"
-        if (contribution.reviewOpen && contribution.pending != null) out += "CONTRIBUTION_REVIEW"
-        if (contribution.authOpen) out += "CONTRIBUTION_SIGN_IN"
-        if (contribution.failure != null) out += "CONTRIBUTION_FAILURE"
-        if (notices.message != null) out += "NOTICE"
-        if (transfer.pendingImport != null) out += "REPLACE_DIARY"
-        if (transfer.deleteAllOpen) out += "DELETE_ALL"
-        if (diary.session.storageUnavailable) out += "STORAGE_UNAVAILABLE"
-        return out
-    }
+    fun shown(): List<String> = surfaces.shown().map { it.name }
 
     /**
-     * System Back as the activity's dispatcher delivers it (a dialog or sheet takes Back in its own window first): the
-     * last composed enabled handler runs. False when none is enabled, so the system handles it (the app goes back).
+     * System Back as the activity's dispatcher delivers it (a dialog or sheet takes Back in its own window first). False
+     * when nothing takes it, so the system handles it (the app goes back).
      */
-    fun back(): Boolean {
-        val handlers = mutableListOf<() -> Unit>()
-        if (scan.open) handlers += scan::end else {
-            val backdrop = review.product != null && review.fromScan
-            if (!backdrop) {
-                if (entryEdit.selectedEntry != null) { entryEdit.closeDetail(); return true }
-                if (log.open) handlers += log::close
-            }
-            if (entryEdit.mode != EntryEditMode.NONE && entryEdit.editingEntry() != null) handlers += { entryEdit.cancel() }
-            if (library.selectedFood != null && mealOnScreen() == null) handlers += library::closeFood
-            if (!log.open && topOverlayNow() == null) {
-                if (library.open) handlers += ::exitLibrary else if (meal != null) handlers += ::closeMeal
-            }
-            if (foodForm.open) handlers += foodForm::leave
-            if (settingsOpen) handlers += ::settingsBack
-            if (libraryNoMatch()) handlers += ::leaveNoMatch
-            if (search.open) handlers += search::close
-            if (resolve.resolverOpen && !backdrop) handlers += resolve::close
-            if (contribution.reviewOpen && contribution.pending != null) handlers += contribution::dismissReview
-            if (contribution.authOpen && contributionAuthCanDismiss(contribution.busy)) handlers += contribution::dismissAuth
-            if (contribution.failure != null) handlers += contribution::dismissFailure
-        }
-        val handler = handlers.lastOrNull() ?: return false
-        handler()
-        return true
-    }
-
-    /** The "No local match" screen is drawn. */
-    fun noMatchShown(): Boolean = "LIBRARY_NO_MATCH" in shown()
+    fun back(): Boolean = surfaces.back()
 
     /** A due export reminder is drawn on Daily. */
-    fun reminderShown(): Boolean = exportReminderOnScreen(due = true, logOpen = log.open, overlay = topOverlayNow())
+    fun reminderShown(): Boolean = exportReminderOnScreen(due = true, covered = surfaces.baseCovered())
 }

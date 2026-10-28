@@ -124,7 +124,7 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
     LazyColumn(modifier.fillMaxSize().background(colors.bg).padding(horizontal = Gutter)) {
         item {
             Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (archived || !root) IconButton(onClick = vm::exitLibrary, modifier = Modifier.size(44.dp)) {
+                if (archived || !root) IconButton(onClick = vm.surfaces::exitLibrary, modifier = Modifier.size(44.dp)) {
                     Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.ink)
                 }
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
@@ -143,8 +143,8 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
                         ) {
                             // The one shadow in the app: the overflow menu popover.
                             Column(Modifier.widthIn(min = 220.dp).shadow(6.dp, SecondaryShape).background(colors.bg).border(1.dp, colors.line, SecondaryShape).padding(vertical = 2.dp)) {
-                                TertiaryButton("Archived foods", { menuOpen = false; vm.openArchivedLibrary() }, Modifier.fillMaxWidth())
-                                TertiaryButton("Settings", { menuOpen = false; vm.openSettings() }, Modifier.fillMaxWidth())
+                                TertiaryButton("Archived foods", { menuOpen = false; vm.surfaces.openArchivedLibrary() }, Modifier.fillMaxWidth())
+                                TertiaryButton("Settings", { menuOpen = false; vm.surfaces.openSettings() }, Modifier.fillMaxWidth())
                             }
                         }
                     }
@@ -244,7 +244,7 @@ internal fun LibraryComposer(vm: BreakfastViewModel) {
                 Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.bg)
             }
         }
-        if (!inMeal) BottomNav(selectedToday = false, onToday = { vm.closeMeal(); vm.closeLibrary() }, onLibrary = {})
+        if (!inMeal) BottomNav(selectedToday = false, onToday = { vm.surfaces.closeMeal(); vm.surfaces.closeLibrary() }, onLibrary = {})
     }
 }
 
@@ -268,9 +268,8 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
     var amountSheetOpen by rememberSaveable(food.id) { mutableStateOf(false) }
     var mealMenuOpen by rememberSaveable(food.id) { mutableStateOf(false) }
     // Starts on the meal it was opened from, else the Meal setting's meal (By time, Last used), else Lunch.
-    var targetMeal by rememberSaveable(food.id) { mutableStateOf(libraryPresetMeal(vm.mealOnScreen(), vm.automaticMealNow())) }
+    var targetMeal by rememberSaveable(food.id) { mutableStateOf(libraryPresetMeal(vm.surfaces.mealOnScreen(), vm.automaticMealNow())) }
     val servings = food.householdServings()
-    BackHandler { vm.library.closeFood() }
     Column(Modifier.fillMaxSize().background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter, vertical = 4.dp)) {
         TopBar(
             title = "Food",
@@ -360,7 +359,7 @@ private fun LibraryFactRow(label: String, number: String, unit: String) {
 
 @Composable
 internal fun FocusedFoodAddDialog(vm: BreakfastViewModel, food: FoodRecord) {
-    val target = vm.mealOnScreen() ?: return
+    val target = vm.surfaces.mealOnScreen() ?: return
     LibraryAmountSheet(vm, food, target, vm.library::closeFood)
 }
 

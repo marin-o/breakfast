@@ -140,36 +140,6 @@ internal fun resolvePosition(total: Int, remaining: Int): Pair<Int, Int> {
     return (shown - remaining + 1).coerceIn(1, maxOf(shown, 1)) to shown
 }
 
-/** A screen or sheet drawn over Daily, Meal or Library that handles Back itself. */
-internal enum class Overlay { SCANNER, ENTRY_DETAIL, PRODUCT_REVIEW, RESOLVER, OFF_SEARCH, FOOD_FORM, SETTINGS, LIBRARY_FOOD, ENTRY_EDIT }
-
-/**
- * What sits over the screen beneath, topmost first; null when nothing does. The one rule for "is something on top":
- * the Library and Meal Back handlers and the "No local match" screen all read it.
- */
-internal fun topOverlay(
-    scanner: Boolean,
-    entryDetail: Boolean,
-    productReview: Boolean,
-    resolver: Boolean,
-    offSearch: Boolean,
-    foodForm: Boolean,
-    libraryFood: Boolean,
-    entryEdit: Boolean,
-    settings: Boolean,
-): Overlay? = when {
-    scanner -> Overlay.SCANNER
-    entryDetail -> Overlay.ENTRY_DETAIL
-    productReview -> Overlay.PRODUCT_REVIEW
-    resolver -> Overlay.RESOLVER
-    offSearch -> Overlay.OFF_SEARCH
-    foodForm -> Overlay.FOOD_FORM
-    settings -> Overlay.SETTINGS
-    libraryFood -> Overlay.LIBRARY_FOOD
-    entryEdit -> Overlay.ENTRY_EDIT
-    else -> null
-}
-
 /** Where leaving the Library goes. */
 internal enum class LibraryExit { LOG, LIBRARY, MEAL, DAILY }
 

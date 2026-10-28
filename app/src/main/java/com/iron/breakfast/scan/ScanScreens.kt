@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.camera.core.UseCaseGroup
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
@@ -160,7 +159,6 @@ import com.iron.breakfast.ui.screens.sourceLabel
     }
     LaunchedEffect(hasCameraHardware) { if (!hasCameraHardware) vm.scan.cameraUnavailable() }
     LaunchedEffect(torchOn, torchAvailable) { if (torchAvailable) session.camera?.cameraControl?.enableTorch(torchOn) }
-    BackHandler { vm.scan.end() }
     if (vm.scan.unavailable) {
         ScannerUnavailableScreen(
             noCamera = !hasCameraHardware || vm.scan.unavailableReason == ScannerUnavailableReason.NO_USABLE_CAMERA,

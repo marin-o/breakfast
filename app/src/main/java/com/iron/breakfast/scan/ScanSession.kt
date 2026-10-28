@@ -64,8 +64,9 @@ internal class ScanSession(
     /** Who asked for the next barcode ([beginFor]); null for a scan that looks it up. */
     private var requester: ((String) -> Unit)? = null
     private var job: Job? = null
-    private var originDay = selectedDay()
-    private var originMeal: MealSlot? = targetMeal()
+    // What the scan was opened for, set by [begin]: the scanner is open only after it.
+    private var originDay = ""
+    private var originMeal: MealSlot? = null
 
     /** Opens the scanner for the day and meal on screen now. */
     fun begin() {

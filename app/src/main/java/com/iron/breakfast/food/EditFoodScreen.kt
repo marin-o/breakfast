@@ -1,7 +1,6 @@
 package com.iron.breakfast.food
 
 import com.iron.breakfast.ui.theme.*
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -71,7 +70,6 @@ internal fun EditFoodScreen(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
     val food = vm.foods.firstOrNull { it.id == form.editingFoodId } ?: return
     val draft = form.draft
-    BackHandler(onBack = form::leave)
     Column(Modifier.fillMaxSize().background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         TopBar("Edit food", form::leave, Modifier.padding(top = 8.dp))
         Field("Name", draft.name, { draft.name = it }, required = true)

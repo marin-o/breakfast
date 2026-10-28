@@ -2,7 +2,6 @@ package com.iron.breakfast.entry
 
 import com.iron.breakfast.ui.theme.*
 import android.app.DatePickerDialog
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -88,7 +87,6 @@ import com.iron.breakfast.ui.screens.datePickerMaxMs
 @Composable
 internal fun EntryDetailScreen(vm: BreakfastViewModel, entry: MealEntry) {
     val colors = LocalBreakfastColors.current
-    BackHandler { vm.entryEdit.closeDetail() }
     val food = vm.foods.firstOrNull { it.id == entry.foodId }
     val quantity = quantityRateDisplay(entry, food)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
@@ -106,7 +104,7 @@ internal fun EntryDetailScreen(vm: BreakfastViewModel, entry: MealEntry) {
                     PrimaryButton("Edit amount", { vm.entryEdit.closeDetail(); vm.entryEdit.beginQuick(entry) }, kind = ButtonKind.Neutral)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         SecondaryButton("Replace food", { vm.entryEdit.closeDetail(); vm.entryEdit.beginFull(entry) }, Modifier.weight(1f), fillWidth = false)
-                        SecondaryButton("Open in Library", { vm.openLibraryFoodDetail(entry) }, Modifier.weight(1f), fillWidth = false)
+                        SecondaryButton("Open in Library", { vm.surfaces.openLibraryFoodDetail(entry) }, Modifier.weight(1f), fillWidth = false)
                     }
                 }
                 DestructiveButton("Delete entry", { vm.entryEdit.closeDetail(); vm.undo.delete(entry) }, Modifier.padding(top = 8.dp))
@@ -145,7 +143,6 @@ private fun MacroTable(entry: MealEntry, modifier: Modifier = Modifier) {
 @Composable
 internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
     val colors = LocalBreakfastColors.current
-    BackHandler { vm.entryEdit.cancel() }
     // Saveable: a dark-mode or font-size change recreates the activity and must not reset what was typed.
     var amount by rememberSaveable(entry.id) { mutableStateOf(editAmountText(entry.enteredAmount)) }
     var unit by rememberSaveable(entry.id) { mutableStateOf(entry.enteredUnit) }
@@ -200,7 +197,6 @@ private fun entryDraftNutritionChanged(entry: MealEntry, amount: String, unit: M
 @Composable
 internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
     val colors = LocalBreakfastColors.current
-    BackHandler { vm.entryEdit.cancel() }
     val selectedFood = vm.entryEdit.editingFood() ?: vm.foods.firstOrNull { it.id == entry.foodId }
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     var amount by rememberSaveable(entry.id) { mutableStateOf(editAmountText(entry.enteredAmount)) }

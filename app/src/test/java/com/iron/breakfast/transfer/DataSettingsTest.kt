@@ -9,7 +9,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
-import com.iron.breakfast.Overlay
 import com.iron.breakfast.settings.enumOf
 import com.iron.breakfast.settings.ExportReminder
 
@@ -41,10 +40,9 @@ class DataSettingsTest {
     }
 
     @Test fun itIsDrawnOnlyOnDailyItself() {
-        assertTrue(exportReminderOnScreen(due = true, logOpen = false, overlay = null))
-        assertFalse(exportReminderOnScreen(due = false, logOpen = false, overlay = null))
-        assertFalse(exportReminderOnScreen(due = true, logOpen = true, overlay = null))
-        assertFalse(exportReminderOnScreen(due = true, logOpen = false, overlay = Overlay.ENTRY_EDIT))
+        assertTrue(exportReminderOnScreen(due = true, covered = false))
+        assertFalse(exportReminderOnScreen(due = false, covered = false))
+        assertFalse(exportReminderOnScreen(due = true, covered = true))
     }
 
     @Test fun theReminderComesOneIntervalAfterTheLastExport() {

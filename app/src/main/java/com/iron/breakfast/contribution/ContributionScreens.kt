@@ -29,7 +29,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.activity.compose.BackHandler
 import com.iron.breakfast.app.BreakfastViewModel
 import com.iron.breakfast.ui.components.SecondaryButton
 import com.iron.breakfast.data.OffContributionDraft
@@ -57,7 +56,6 @@ import com.iron.breakfast.ui.components.isLargeFont
 
 @Composable internal fun ContributionReviewScreen(vm: BreakfastViewModel, draft: OffContributionDraft) {
     val colors = LocalBreakfastColors.current
-    BackHandler(onBack = vm.contribution::dismissReview)
     val normalized = draft.normalizedNutrition
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter)) {
@@ -106,7 +104,6 @@ import com.iron.breakfast.ui.components.isLargeFont
     val colors = LocalBreakfastColors.current
     val passwordFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { passwordFocus.requestFocus() }
-    BackHandler(enabled = contributionAuthCanDismiss(vm.contribution.busy), onBack = vm.contribution::dismissAuth)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter)) {
             TopBar("Sign in", vm.contribution::dismissAuth, Modifier.padding(top = 8.dp), backEnabled = contributionAuthCanDismiss(vm.contribution.busy))
@@ -128,7 +125,6 @@ import com.iron.breakfast.ui.components.isLargeFont
 
 @Composable internal fun ContributionFailureScreen(vm: BreakfastViewModel, message: String) {
     val colors = LocalBreakfastColors.current
-    BackHandler(onBack = vm.contribution::dismissFailure)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter)) {
             TopBar("Contribute", vm.contribution::dismissFailure, Modifier.padding(top = 8.dp))

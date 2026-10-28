@@ -1,7 +1,6 @@
 package com.iron.breakfast.resolve
 
 import com.iron.breakfast.ui.theme.*
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -52,7 +51,6 @@ import com.iron.breakfast.ui.screens.matchDisplay
     val meta = listOfNotNull(context.ifBlank { null }, "$position of $total").joinToString(". ")
     val typed = listOfNotNull(display.quantity, display.name).joinToString(" ")
     LaunchedEffect(raw) { resolve.onQuery(display.name) }
-    BackHandler(onBack = resolve::close)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter).verticalScroll(rememberScrollState())) {
             TopBar("Resolve", resolve::close, Modifier.padding(top = 8.dp))
