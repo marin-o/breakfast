@@ -45,8 +45,9 @@ internal fun foodSaveRefusal(name: String, input: NutritionInput, resolved: Reso
     return null
 }
 
-internal fun productReviewOrigin(slot: MealSlot?, resolving: Boolean, queueNotEmpty: Boolean): ProductReviewOrigin = when {
-    resolving && queueNotEmpty -> ProductReviewOrigin.QUEUE
+/** Where a product review opens from: the resolve queue while one is being resolved ([queueActive]), else a meal or the Library. */
+internal fun productReviewOrigin(slot: MealSlot?, queueActive: Boolean): ProductReviewOrigin = when {
+    queueActive -> ProductReviewOrigin.QUEUE
     slot != null -> ProductReviewOrigin.MEAL
     else -> ProductReviewOrigin.LIBRARY
 }
@@ -91,28 +92,17 @@ internal data class ReviewLogPlan(val meal: MealSlot, val advancesQueue: Boolean
 
 internal fun contributionAuthCanDismiss(busy: Boolean): Boolean = !busy
 
-internal fun reviewLogPlan(resolutionContinuation: Boolean, queueNotEmpty: Boolean, queueTarget: MealSlot?, chosen: MealSlot): ReviewLogPlan =
-    if (resolutionContinuation && queueNotEmpty && queueTarget != null) ReviewLogPlan(queueTarget, true) else ReviewLogPlan(chosen, false)
+/** [queueActive]: a resolve queue is being resolved (it is continued and has parts left). */
+internal fun reviewLogPlan(queueActive: Boolean, queueTarget: MealSlot?, chosen: MealSlot): ReviewLogPlan =
+    if (queueActive && queueTarget != null) ReviewLogPlan(queueTarget, true) else ReviewLogPlan(chosen, false)
 
-/** The queue owns the meal while resolving, even when the Daily screen has no selected meal. */
-internal fun resolverLogPlan(
-    resolutionContinuation: Boolean,
-    queueNotEmpty: Boolean,
-    queueTarget: MealSlot?,
-    currentMeal: MealSlot?,
-): ReviewLogPlan? = when {
-    resolutionContinuation && queueNotEmpty -> queueTarget?.let { ReviewLogPlan(it, true) }
+/** The queue owns the meal while resolving ([queueActive]), even when the Daily screen has no selected meal. */
+internal fun resolverLogPlan(queueActive: Boolean, queueTarget: MealSlot?, currentMeal: MealSlot?): ReviewLogPlan? = when {
+    queueActive -> queueTarget?.let { ReviewLogPlan(it, true) }
     else -> currentMeal?.let { ReviewLogPlan(it, false) }
 }
 
-internal fun activeResolutionTarget(
-    resolutionContinuation: Boolean,
-    queue: List<String>,
-    queueTarget: MealSlot?,
-): MealSlot? = resolverLogPlan(resolutionContinuation, queue.isNotEmpty(), queueTarget, null)?.meal
-
-internal fun canSaveProductToLibrary(slot: MealSlot?, resolutionContinuation: Boolean, queueNotEmpty: Boolean): Boolean =
-    slot == null && !(resolutionContinuation && queueNotEmpty)
+internal fun canSaveProductToLibrary(slot: MealSlot?, queueActive: Boolean): Boolean = slot == null && !queueActive
 
 internal data class ScannerFailureTransition(
     val scannerOpen: Boolean,

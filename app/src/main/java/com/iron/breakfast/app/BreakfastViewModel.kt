@@ -5,15 +5,12 @@ import androidx.compose.runtime.setValue
 import android.app.Application
 import android.util.Log
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.ZoneId
 import com.iron.breakfast.settings.AppSettings
@@ -21,7 +18,6 @@ import com.iron.breakfast.domain.dayKeyFor
 import com.iron.breakfast.domain.BreakfastEngine
 import com.iron.breakfast.data.BreakfastStore
 import com.iron.breakfast.data.OpenFoodFactsClient
-import com.iron.breakfast.domain.ShorthandParser
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.resolveSelectedDay
@@ -33,42 +29,25 @@ import com.iron.breakfast.scan.ProductStore
 import com.iron.breakfast.scan.ScanSession
 import com.iron.breakfast.food.FoodFormStore
 import com.iron.breakfast.food.NewFood
-import com.iron.breakfast.resolve.ResolveQueueView
 import com.iron.breakfast.resolve.LogResolveRequest
+import com.iron.breakfast.resolve.ResolveFlow
+import com.iron.breakfast.resolve.ResolveStore
 import com.iron.breakfast.domain.MeasureUnit
-import com.iron.breakfast.library.LibraryLogDraft
 import com.iron.breakfast.entry.EntryEditMode
 import com.iron.breakfast.entry.EntryEdit
 import com.iron.breakfast.entry.EntryEditStore
-import com.iron.breakfast.domain.RankedFood
 import com.iron.breakfast.transfer.DiaryPicker
 import com.iron.breakfast.log.automaticMeal
+import com.iron.breakfast.log.LogComposer
+import com.iron.breakfast.log.LogStore
+import com.iron.breakfast.library.LibraryState
+import com.iron.breakfast.library.LibraryStore
 import com.iron.breakfast.lastUsedMeal
 import com.iron.breakfast.exitLibraryTarget
 import com.iron.breakfast.LibraryExit
-import com.iron.breakfast.domain.libraryRecencyOrder
-import com.iron.breakfast.shouldApplyLibraryRefresh
 import com.iron.breakfast.Overlay
 import com.iron.breakfast.topOverlay
-import com.iron.breakfast.isLibraryNoMatch
-import com.iron.breakfast.library.libraryLogDraft
-import com.iron.breakfast.ui.label
-import com.iron.breakfast.domain.DraftRow
-import com.iron.breakfast.rowStillInDraft
-import com.iron.breakfast.domain.replaceDraftPart
-import com.iron.breakfast.library.librarySearchText
-import com.iron.breakfast.logTargetMealOf
-import com.iron.breakfast.log.LogDraftView
-import com.iron.breakfast.domain.DraftView
-import com.iron.breakfast.library.libraryInputSegments
-import com.iron.breakfast.logSubmitPlan
-import com.iron.breakfast.LogSubmitPlan
-import com.iron.breakfast.domain.ShorthandLexicon
-import com.iron.breakfast.domain.mealMarkerSlots
 import com.iron.breakfast.settings.undoWindowMs
-import com.iron.breakfast.activeResolutionTarget
-import com.iron.breakfast.domain.SavedMeal
-import com.iron.breakfast.domain.TypedPart
 import com.iron.breakfast.settings.SettingsState
 import com.iron.breakfast.today.MatchFeedback
 import com.iron.breakfast.today.MatchStore
@@ -134,20 +113,20 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             override suspend fun reinforce(foodId: String) = engine.reinforce(foodId)
         },
         notices = notices,
-        resolverOpen = { resolverOpen },
+        resolverOpen = { resolve.resolverOpen },
         clock = clock,
         scope = viewModelScope,
     )
     /** The Open Food Facts contribution flow (see [ContributionFlow]). */
     internal val contribution = ContributionFlow(off, notices, viewModelScope, Dispatchers.IO)
-    /** The Open Food Facts search (see [OffSearch]); what it opens over and returns to stays with the resolve flow here. */
+    /** The Open Food Facts search (see [OffSearch]); what it opens over and returns to stays with the resolve flow. */
     internal val search = OffSearch(
         off = off,
         scope = viewModelScope,
         io = Dispatchers.IO,
         ready = { ready },
         onOpen = ::searchOpened,
-        onClose = ::searchClosed,
+        onClose = { resolve.childClosed() },
         onChoose = { food -> review.choose(food) },
     )
     /** Export, import, Delete all and the safety copy (see [DiaryTransfer]); the root launches its pickers. */
@@ -172,13 +151,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     )
     /** "Export your diary." on Daily (see [ExportReminders]). */
     internal val reminders: ExportReminders = ExportReminders(settings, session, clock, requestExport = { transfer.requestPicker(DiaryPicker.EXPORT) })
-    private val parser = ShorthandParser()
-    /** The Library bar's text, and nothing else (entry edits keep their own, see [EntryEdit]). Never the log draft. */
-    var input by mutableStateOf(""); private set
-    /** The log draft Daily and Meal share: the composer shows it and the Log page edits it. Only Add or clearing it removes it. */
-    var logDraft by mutableStateOf(""); private set
-    /** True after Done or Add: the draft is no longer being typed, so every part follows the finished rules. */
-    var logDraftCommitted by mutableStateOf(false); private set
     val foods: List<FoodRecord> get() = session.foods
     val entries: List<MealEntry> get() = session.entries
     /** True while the user is on today, not on a day they picked: a return from the background then opens the new today. */
@@ -187,7 +159,69 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     var selectedDayKey by mutableStateOf(
         restoreSelectedDay(savedState).let { resolveSelectedDay(it.dayKey, it.followingToday, returning = true, clock(), zone, settings.dayStartHour) }
     ); private set
-    var slot by mutableStateOf(savedState.get<String>("meal_slot")?.let { runCatching { MealSlot.valueOf(it) }.getOrNull() }); private set
+    /**
+     * The Meal screen's meal; null on Daily. While the Library is open it shows instead, adding to its own
+     * [LibraryState.target]; leaving the Library says which of the two comes back.
+     */
+    var meal by mutableStateOf(savedState.get<String>(MEAL_SLOT_KEY)?.let { runCatching { MealSlot.valueOf(it) }.getOrNull() }); private set
+    /** "Not in your foods": the Log ↔ Library resolve frame, the unknown queue and the resolver (see [ResolveFlow]). */
+    internal val resolve: ResolveFlow = ResolveFlow(
+        session = session,
+        store = object : ResolveStore {
+            override fun typed(raw: String) = engine.planner().typed(raw)
+            override fun search(query: String) = engine.search(query)
+            override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
+                engine.cacheFoodAndLog(food, amount, unit, meal, dayKey)
+            }
+        },
+        notices = notices,
+        scope = viewModelScope,
+        compute = Dispatchers.Default,
+        selectedDay = { selectedDayKey },
+        openLibrary = ::openFocusedLibrary,
+        returnToLog = ::returnToLog,
+    )
+    /** The Log draft and the Log page (see [LogComposer]). */
+    internal val log: LogComposer = LogComposer(
+        session = session,
+        store = object : LogStore {
+            override fun planner(pins: Map<String, FoodRecord>) = engine.planner(pins)
+            override suspend fun save(text: String, meal: MealSlot, dayKey: String, pins: Map<String, FoodRecord>) =
+                engine.save(text, mealSlot = meal, dayKey = dayKey, pins = pins)
+        },
+        selectedDay = { selectedDayKey },
+        automaticMeal = ::automaticMealNow,
+        openMeal = ::mealOnScreen,
+        editing = { entryEdit.mode != EntryEditMode.NONE },
+        afterSave = resolve::afterSave,
+        resolvePart = resolve::beginPart,
+        // Typed work comes back after the process was killed: the log draft (and an open food form, in [init]).
+        initial = restoreLogDraft(savedState),
+    )
+    /** The Library list, its bar, the food page and logging from it (see [LibraryState]). */
+    internal val library: LibraryState = LibraryState(
+        session = session,
+        store = object : LibraryStore {
+            override suspend fun foodsMatching(query: String, includeArchived: Boolean) = engine.foodsMatching(query, includeArchived)
+            override fun planner() = engine.planner()
+            override fun search(phrase: String) = engine.search(phrase)
+            override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
+                engine.cacheFoodAndLog(food, amount, unit, meal, dayKey)
+            }
+            override suspend fun save(text: String, meal: MealSlot, dayKey: String) = engine.save(text, mealSlot = meal, dayKey = dayKey)
+            override suspend fun archiveFood(id: String) { engine.archiveFood(id) }
+            override suspend fun restoreFood(id: String) { engine.restoreFood(id) }
+        },
+        notices = notices,
+        scope = viewModelScope,
+        io = Dispatchers.IO,
+        main = Dispatchers.Main,
+        selectedDay = { selectedDayKey },
+        resolvingPart = { resolve.resolvingPart },
+        onPartPicked = resolve::finishPart,
+        onArchived = { food -> if (foodForm.editingFoodId == food.id) foodForm.close() },
+        afterSave = resolve::afterSave,
+    )
     /** The entry detail and the quick and full edits (see [EntryEdit]); an edit shows its meal and returns to Daily through here. */
     internal val entryEdit: EntryEdit = EntryEdit(
         session = session,
@@ -196,14 +230,14 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             override suspend fun replaceEntry(entryId: String, foodId: String, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) =
                 engine.replaceEntryDraft(entryId, foodId, amount, unit, meal, dayKey)
         },
-        openMeal = { slot },
+        openMeal = ::mealOnScreen,
         // The edit's meal shows beneath it; the Log's error goes, as it always did when an edit began.
-        onBegin = { meal -> selectMeal(meal); mealDraftError = null },
-        onEnd = { returnToDaily -> if (returnToDaily) selectMeal(null); mealDraftError = null },
+        onBegin = { meal -> this.meal = meal; log.clearError() },
+        onEnd = { returnToDaily -> if (returnToDaily) meal = null; log.clearError() },
         initialEntryId = savedState["entry_id"],
         saveEntryId = { savedState["entry_id"] = it },
     )
-    /** New food and Edit food (see [FoodForm]); what it opens over and returns to stays with the resolve flow here. */
+    /** New food and Edit food (see [FoodForm]); what it opens over and returns to stays with the resolve flow. */
     internal val foodForm: FoodForm = FoodForm(
         session = session,
         store = object : FoodFormStore {
@@ -222,14 +256,15 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         },
         notices = notices,
         selectedDay = { selectedDayKey },
-        openMeal = { slot },
-        queue = ::resolveQueue,
-        resolvingPart = { logResolve != null },
+        openMeal = ::mealOnScreen,
+        queue = resolve::queueView,
+        resolvingPart = { resolve.resolvingPart },
         offerContribution = contribution::offerAfterLocalSave,
         startScanFor = { onBarcode -> scan.beginFor(onBarcode) },
-        onOpen = ::foodFormOpened,
-        onClose = ::returnToResolverOrEnd,
-        onSaved = ::foodSaved,
+        // It replaces the resolver and the search.
+        onOpen = { fromResolver -> resolve.childOpened(fromResolver); search.hide() },
+        onClose = resolve::childClosed,
+        onSaved = resolve::foodSaved,
     )
     /** The scanner and its barcode lookup (see [ScanSession]); a found product goes to [review], an unknown one to [foodForm]. */
     internal val scan: ScanSession = ScanSession(
@@ -242,12 +277,12 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         io = Dispatchers.IO,
         lookUpBarcodes = { settings.lookUpBarcodes },
         selectedDay = { selectedDayKey },
-        targetMeal = { slot },
-        queueActive = { resolveQueue() != null },
+        targetMeal = ::mealOnScreen,
+        queueActive = { resolve.queueActive },
         onProduct = { food, origin -> search.hide(); review.choose(food, fromScan = true, origin = origin) },
         onManualForm = { name, brand, barcode, fromOff -> foodForm.open(name, brand, barcode, fromOff = fromOff) },
     )
-    /** Product review after a scan or a search pick (see [ProductReview]); its queue and resolve hand-offs come back here. */
+    /** Product review after a scan or a search pick (see [ProductReview]); its queue and resolve hand-offs go to [resolve]. */
     internal val review: ProductReview = ProductReview(
         session = session,
         store = object : ProductStore {
@@ -259,84 +294,37 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         },
         notices = notices,
         selectedDay = { selectedDayKey },
-        openMeal = { slot },
-        queue = ::resolveQueue,
-        resolvingPart = { logResolve != null },
-        typed = ::typedUnknown,
+        openMeal = ::mealOnScreen,
+        queue = resolve::queueView,
+        resolvingPart = { resolve.resolvingPart },
         offerContribution = contribution::offerAfterLocalSave,
-        onPartResolved = ::finishResolve,
-        onLogged = { advancesQueue -> if (advancesQueue) advanceUnknownQueue() else resolutionContinuation = false },
-        onClosed = ::returnToResolverOrEnd,
+        onPartResolved = resolve::finishPart,
+        onLogged = resolve::childLogged,
+        onClosed = resolve::childClosed,
         openSearch = { fromResolver -> search.open(fromResolver = fromResolver) },
         startScan = { scan.begin() },
     )
-    /**
-     * The Log page's error, shown there and on Daily: Add's refusals and failures, and "Some foods need a match." after
-     * a save that left parts unresolved (Add, or the Library mixed batch, whose post-save handling is the Log's until
-     * B16). Opening a meal, the Library or an entry edit clears it. Entry edits have their own ([EntryEdit.error]).
-     */
-    var mealDraftError by mutableStateOf<String?>(null); private set
-    /** The full-screen Log page. [logPreset] comes from the `+` or composer that opened it; [logChosen] from the Log's meal menu. */
-    var logOpen by mutableStateOf(false); private set
-    var logPreset by mutableStateOf<MealSlot?>(null); private set
-    var logChosen by mutableStateOf<MealSlot?>(null); private set
-    /** A "Not in your foods" part sent to the library: picking a food there puts it back in the draft, not in the log. */
-    var logResolve by mutableStateOf<LogResolveRequest?>(null); private set
-    /** Foods picked from the library this session, by the part text they now read as; the planner resolves those parts to them. */
-    // Observable, so a pin added without a text change still recomputes the Log page's draft.
-    private val logPins = mutableStateMapOf<String, FoodRecord>()
-    /** The pins as they are now, for a draft computed off the main thread. */
-    internal fun logPinsSnapshot(): Map<String, FoodRecord> = logPins.toMap()
-    var logMealMenuOpen by mutableStateOf(false); private set
-    /** True when the meal menu was opened by Add with no meal known, so choosing a meal logs straight away. */
-    private var logMealSubmitPending = false
-    /** Library's mixed batch without a meal: asks which meal, then saves the typed text. */
-    var mixedMealPickerOpen by mutableStateOf(false); private set
-    var libraryOpen by mutableStateOf(false); private set
-    var libraryQuery by mutableStateOf(""); private set
-    /** True only on the explicit Archived foods destination; active foods are never mixed in. */
-    var libraryArchivedOnly by mutableStateOf(false); private set
-    var libraryFoods by mutableStateOf<List<FoodRecord>>(emptyList()); private set
-    /** The query [libraryFoods] was computed for; the no-match screen waits until it equals [libraryQuery]. */
-    var libraryResultsQuery by mutableStateOf<String?>(null); private set
-    var selectedLibraryFood by mutableStateOf<FoodRecord?>(null); private set
-    var libraryMealPickerFood by mutableStateOf<FoodRecord?>(null); private set
-    var expandedLibraryFoodId by mutableStateOf<String?>(null); private set
-    private var libraryPendingAmount: Double? = null
-    private var libraryPendingUnit: MeasureUnit? = null
-    private var libraryPendingBatch: List<LibraryLogDraft> = emptyList()
-    private var libraryRefreshJob: Job? = null
-    private var libraryRefreshGeneration = 0L
-    var libraryBatchMealPickerOpen by mutableStateOf(false); private set
     val ready: Boolean get() = session.ready
     /** A diary write is running ([DiarySession.write]); user actions that write are refused meanwhile. */
     val busy: Boolean get() = session.busy
     /** Storage failed to open; the dialog stays until a retry opens it. */
     val storageUnavailable: Boolean get() = session.storageUnavailable
-    var unknownQueue by mutableStateOf<List<String>>(emptyList()); private set
-    var unknownQueueTarget by mutableStateOf<MealSlot?>(null); private set
-    var unknownQueueTotal by mutableStateOf(0); private set
-    var resolutionContinuation by mutableStateOf(false); private set
-    var resolverOpen by mutableStateOf(false); private set
-    var resolverQuery by mutableStateOf(""); private set
-    var resolverSearchOpen by mutableStateOf(false); private set
-    var resolverResults by mutableStateOf<List<RankedFood>>(emptyList()); private set
 
     init {
         if (selectedDayKey == todayKey) followingToday = true
         saveSelectedDay(savedState, SavedDay(selectedDayKey, followingToday))
-        // Typed work comes back after the process was killed: the log draft, and an open food form.
-        restoreLogDraft(savedState).let { logDraft = it.text; logDraftCommitted = it.committed }
         restoreFoodForm(savedState)?.let(foodForm::restore)
         // Every change is mirrored, so an added or cleared draft and a closed or saved form drop their keys.
-        viewModelScope.launch { snapshotFlow { SavedLogDraft(logDraft, logDraftCommitted) }.collect { saveLogDraft(savedState, it) } }
+        viewModelScope.launch { snapshotFlow { log.savedDraft() }.collect { saveLogDraft(savedState, it) } }
         viewModelScope.launch { snapshotFlow { foodForm.savedForm() }.collect { saveFoodForm(savedState, it) } }
+        // The meal on screen comes back after process death as the Meal screen (the Library does not reopen).
+        viewModelScope.launch { snapshotFlow { mealOnScreen() }.collect { savedState[MEAL_SLOT_KEY] = it?.name } }
         // After every committed write, in this order: Undo, "Not right?" feedback, the Library list.
         session.onChange(undo::onChange)
         session.onChange(feedback::onChange)
-        session.onChange { change -> if (change.refreshesLibrary) refreshLibrary() }
+        session.onChange { change -> if (change.refreshesLibrary) library.refresh() }
         // Import and Delete all: one reset of everything that referred to the old diary (see [SessionReset]).
-        session.onChange(SessionReset(listOf(logPins::clear, contribution::reset, ::abandonUnknownResolution, entryEdit::closeDetail))::onChange)
+        session.onChange(SessionReset(listOf(log::clearPins, contribution::reset, resolve::abandon, entryEdit::closeDetail))::onChange)
         // A new day start: today follows it at once, and a user on today stays on today (it counts as a return).
         settings.dayStartHourSetting.observe { checkDay(returning = true) }
         // An Undo offer showing now follows the new window from the moment it was made.
@@ -380,7 +368,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         saveSelectedDay(savedState, SavedDay(value, following))
         scan.invalidateLookup()
     }
-    private fun selectMeal(value: MealSlot?) { slot = value; savedState["meal_slot"] = value?.name }
     fun shiftSelectedDay(delta: Long) { goToDay(runCatching { LocalDate.parse(selectedDayKey).plusDays(delta).toString() }.getOrDefault(selectedDayKey)) }
     fun goToday() = goToDay(todayNow())
     /** Selects a day from the arrows, swipe or date picker. Days after today are refused, so Next stops at today. */
@@ -401,516 +388,79 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     internal fun automaticMealNow(): MealSlot? = automaticMeal(
         settings.mealMode, java.time.Instant.ofEpochMilli(clock()).atZone(zone).hour, settings.mealBounds, lastUsedMeal(entries), settings.dayStartHour, settings.beforeDayStart,
     )
-    fun openLibrary() {
-        leaveEntryEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = false; refreshLibrary()
-    }
-    fun openArchivedLibrary() {
-        leaveEntryEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = true; refreshLibrary()
+    /**
+     * The meal of the screen on show: the Library's [LibraryState.target] while it is open, else the Meal screen's
+     * [meal]. What a scan, a review, a new food or an edit logs to when nothing else decides.
+     */
+    internal fun mealOnScreen(): MealSlot? = if (library.open) library.target else meal
+
+    fun openMeal(s: MealSlot) { resolve.abandon(); meal = s; scan.invalidateLookup(); entryEdit.cancel(); log.clearError() }
+    /** Leaves the meal for Daily. The log draft and its pins stay; a part being resolved goes back to the Log. */
+    fun closeMeal() {
+        if (resolve.cancelPart()) return
+        resolve.abandon(); meal = null; scan.invalidateLookup(); entryEdit.cancel()
     }
     /**
-     * Library and meal navigation end an open entry edit ([EntryEdit.cancel], which also clears the Log's error), and
-     * the Library bar starts empty, as it did when the edit borrowed it (before B15).
+     * Opens the Library over the screen beneath. Library and meal navigation end an open entry edit ([EntryEdit.cancel],
+     * which also clears the Log's error); the Library's [LibraryState.show] says what its bar starts with.
      */
-    private fun leaveEntryEdit() { entryEdit.cancel(); input = "" }
+    private fun showLibrary(target: MealSlot?, query: String, archivedOnly: Boolean, bar: String = query) {
+        entryEdit.cancel()
+        meal = null
+        library.show(target, query, archivedOnly, bar)
+    }
+    fun openLibrary() = showLibrary(null, "", archivedOnly = false)
+    fun openArchivedLibrary() = showLibrary(null, "", archivedOnly = true)
+    /** The Library adding to [target] (a meal's "Add food", a part being resolved), searching [query]. */
+    fun openFocusedLibrary(target: MealSlot, query: String = "") {
+        resolve.abandon()
+        showLibrary(target, query, archivedOnly = false)
+    }
+    /** An entry's "Open in Library": the Library tab with that food's page open. */
+    fun openLibraryFoodDetail(entry: MealEntry) {
+        entryEdit.closeDetail()
+        showLibrary(null, entry.foodName, archivedOnly = false, bar = "")
+        library.showFood(foods.firstOrNull { it.id == entry.foodId })
+    }
     fun closeLibrary() = leaveLibrary(returnTo = null)
-    /**
-     * The Library's arrow and system Back, by [exitLibraryTarget]. A Library opened from a meal keeps that meal in
-     * [slot], so [slot] is where it came from.
-     */
+    /** The Library's arrow and system Back, by [exitLibraryTarget]. */
     fun exitLibrary() {
-        when (exitLibraryTarget(logResolve != null, libraryArchivedOnly, slot)) {
+        when (exitLibraryTarget(resolve.resolvingPart, library.archivedOnly, library.target)) {
             LibraryExit.LIBRARY -> openLibrary()
-            LibraryExit.MEAL -> leaveLibrary(returnTo = slot)
+            LibraryExit.MEAL -> leaveLibrary(returnTo = library.target)
             LibraryExit.LOG, LibraryExit.DAILY -> closeLibrary()
         }
     }
+    /** Leaves the Library (and Settings over it) for [returnTo] (null: Daily); a part being resolved goes back to the Log. */
     private fun leaveLibrary(returnTo: MealSlot?) {
-        logResolve?.let { endResolve(it, it.draftText); return }
-        libraryRefreshJob?.cancel(); libraryRefreshGeneration++; libraryOpen = false; selectedLibraryFood = null; libraryMealPickerFood = null; expandedLibraryFoodId = null; libraryPendingAmount = null; libraryPendingUnit = null; libraryPendingBatch = emptyList(); libraryBatchMealPickerOpen = false; libraryArchivedOnly = false; settingsOpen = false; settings.showList(); selectMeal(returnTo)
-        libraryQuery = ""
-        libraryResultsQuery = null
-        input = ""
+        if (resolve.cancelPart()) return
+        library.close()
+        settingsOpen = false
+        settings.showList()
+        meal = returnTo
     }
-    fun cancelLibraryMealPicker() { libraryMealPickerFood = null; libraryPendingAmount = null; libraryPendingUnit = null }
-    /** The library's search: the bar shows it and the list filters by it, so both always read the same text. */
-    fun onLibraryQuery(value: String) {
-        if (libraryOpen) input = value
-        libraryQuery = value
-        refreshLibrary()
-    }
-    fun refreshLibrary() {
-        if (!ready) return
-        libraryRefreshJob?.cancel()
-        val generation = ++libraryRefreshGeneration
-        val captured = libraryQuery
-        val capturedArchivedOnly = libraryArchivedOnly
-        val capturedEntries = entries
-        libraryRefreshJob = viewModelScope.launch(Dispatchers.IO) {
-            val matching = engine.foodsMatching(captured, includeArchived = capturedArchivedOnly)
-            val ordered = libraryRecencyOrder(
-                if (capturedArchivedOnly) matching.filter { it.archived } else matching,
-                capturedEntries,
-            )
-            withContext(Dispatchers.Main) {
-                if (shouldApplyLibraryRefresh(
-                        generation, libraryRefreshGeneration, captured, libraryQuery,
-                        capturedArchivedOnly, libraryArchivedOnly, libraryOpen,
-                    )
-                ) {
-                    libraryFoods = ordered
-                    libraryResultsQuery = captured
-                }
-            }
-        }
-    }
-    fun openLibraryFood(food: FoodRecord) {
-        // While resolving, a tapped food is the pick, like its +: the part keeps its typed amount and meal.
-        if (logResolve != null) { logLibraryFood(food); return }
-        selectedLibraryFood = food
-    }
-    /** What is drawn over Daily, Meal or Library right now, by [topOverlay]. */
-    internal fun topOverlay(): Overlay? = topOverlay(
-        scanner = scan.open, entryDetail = entryEdit.selectedEntry != null, productReview = review.product != null,
-        resolver = resolverOpen, offSearch = search.open, foodForm = foodForm.open,
-        libraryFood = selectedLibraryFood != null, entryEdit = entryEdit.mode != EntryEditMode.NONE,
-        settings = settingsOpen,
-    )
-    /** A library search that finished with nothing and has no other screen over it: the "No local match" screen. */
-    fun libraryNoMatch(): Boolean = isLibraryNoMatch(
-        ready, libraryOpen, libraryQuery, libraryResultsQuery, libraryFoods.isEmpty(),
-        otherScreenOpen = topOverlay() != null,
-    )
-    fun closeLibraryFood() { selectedLibraryFood = null }
-    fun lastLoggedEntry(food: FoodRecord): MealEntry? = entries.asSequence()
-        .filter { it.foodId == food.id }
-        .maxByOrNull { it.savedAtEpochMs }
-
-    fun toggleLibraryFoodPicker(food: FoodRecord) {
-        expandedLibraryFoodId = if (expandedLibraryFoodId == food.id) null else food.id
-    }
-    fun collapseLibraryFoodPicker() { expandedLibraryFoodId = null }
-    fun noticeForInvalidLibraryAmount() { notices.show("Enter a positive amount and a supported unit such as g, ml, tbsp, tsp, or piece.") }
-
-    fun logLibraryFood(food: FoodRecord, amount: Double = lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount, unit: MeasureUnit = lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit) {
-        if (!ready || busy || food.archived) return
-        if (logResolve != null) { finishResolve(food); return }
-        val target = slot
-        if (target == null) {
-            libraryPendingAmount = amount
-            libraryPendingUnit = unit
-            libraryMealPickerFood = food
-            return
-        }
-        logLibraryFood(food, target, amount, unit)
-    }
-
-    fun logLibraryFood(food: FoodRecord, target: MealSlot, amount: Double = lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount, unit: MeasureUnit = lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit) {
-        if (!ready || busy || food.archived) return
-        if (logResolve != null) { finishResolve(food); return }
-        logLibraryBatch(listOf(libraryLogDraft(food, target, amount, unit)), target)
-    }
-
-    private fun logLibraryBatch(drafts: List<LibraryLogDraft>, target: MealSlot) {
-        if (!ready || busy || drafts.isEmpty()) return
-        val capturedDayKey = selectedDayKey
-        session.write(
-            change = DiaryChange.FoodsLogged,
-            onSuccess = { notices.show("Added ${drafts.size} food${if (drafts.size == 1) "" else "s"} to ${target.label()} on $capturedDayKey") },
-            onFailure = { notices.show(it.message ?: "Could not log this food.") },
-        ) { drafts.forEach { draft -> engine.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, capturedDayKey) } }
-    }
-
-    fun chooseLibraryBatchMeal(target: MealSlot) {
-        val drafts = libraryPendingBatch
-        libraryPendingBatch = emptyList()
-        libraryBatchMealPickerOpen = false
-        logLibraryBatch(drafts, target)
-    }
-    fun dismissLibraryBatchMealPicker() {
-        libraryPendingBatch = emptyList()
-        libraryBatchMealPickerOpen = false
-    }
-    fun chooseLibraryMeal(target: MealSlot) {
-        val food = libraryMealPickerFood ?: return
-        libraryMealPickerFood = null
-        if (!ready || busy) return
-        val amount = libraryPendingAmount ?: lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount
-        val unit = libraryPendingUnit ?: lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit
-        libraryPendingAmount = null
-        libraryPendingUnit = null
-        logLibraryFood(food, target, amount, unit)
-    }
-    fun archiveLibraryFood(food: FoodRecord) {
-        if (!ready || busy || food.archived || food.origin != com.iron.breakfast.domain.FoodOrigin.CUSTOM) return
-        session.write(
-            change = DiaryChange.FoodsChanged,
-            onSuccess = { selectedLibraryFood = null; if (foodForm.editingFoodId == food.id) foodForm.close(); notices.show("Food archived; saved diary entries remain readable.") },
-            onFailure = { notices.show(it.message ?: "Could not archive this food.") },
-        ) { engine.archiveFood(food.id) }
-    }
-    fun restoreLibraryFood(food: FoodRecord) {
-        if (!ready || busy || !food.archived) return
-        session.write(
-            change = DiaryChange.FoodsChanged,
-            onSuccess = { selectedLibraryFood = foods.firstOrNull { it.id == food.id }; notices.show("Food restored to your library.") },
-            onFailure = { notices.show(it.message ?: "Could not restore this food.") },
-        ) { engine.restoreFood(food.id) }
-    }
-    private fun abandonUnknownResolution() {
-        unknownQueue = emptyList()
-        unknownQueueTarget = null
-        unknownQueueTotal = 0
-        resolutionContinuation = false
-        resolverOpen = false
-    }
-    fun openMeal(s: MealSlot) { abandonUnknownResolution(); selectMeal(s); scan.invalidateLookup(); leaveEntryEdit(); mealDraftError = null }
-    fun openFocusedLibrary(meal: MealSlot?, query: String = "") {
-        abandonUnknownResolution()
-        leaveEntryEdit()
-        selectMeal(meal)
-        libraryOpen = true
-        // The bar shows the input, so it starts as the query the list is filtered by.
-        input = query
-        libraryQuery = query
-        libraryArchivedOnly = false
-        refreshLibrary()
-    }
-    /**
-     * Sends a "Not in your foods" part to the library search, prefilled with its food text. Picking a food there does
-     * not log: [finishResolve] puts it back in the draft in place of the part.
-     */
-    fun resolveNotInFoods(row: DraftRow.Unresolved) {
-        // A row drawn from an older draft (a keystroke since) names a span that may no longer hold its text.
-        if (!ready || busy || !rowStillInDraft(logDraft, row)) return
-        val part = logDraft.substring(row.start, row.end)
-        val query = engine.planner(logPins.toMap()).libraryQueryFor(part)
-        logResolve = LogResolveRequest(logDraft, row.start, row.end, part, logPreset, logChosen, slot)
-        logOpen = false
-        mealDraftError = null
-        openFocusedLibrary(logTargetMeal() ?: MealSlot.BREAKFAST, query)
-    }
-
-    /** Puts the picked [food] in place of the resolving part, pins it so it resolves to that food, and returns to the Log. */
-    private fun finishResolve(food: FoodRecord) {
-        val request = logResolve ?: return
-        val text = engine.planner(logPins.toMap()).pickedText(request.part, food)
-        logPins[text] = food
-        endResolve(request, replaceDraftPart(request.draftText, request.start, request.end, text))
-    }
-
-    /** Leaves the library for the Log page: the draft becomes [draftInput], and the Log opens where it was. */
-    private fun endResolve(request: LogResolveRequest, draftInput: String) {
-        logResolve = null
-        closeLibrary()
-        selectMeal(request.slot)
+    /** The resolve frame ended ([ResolveFlow]): the Library and what was over it close, and the Log opens where it was. */
+    private fun returnToLog(request: LogResolveRequest, pick: FoodRecord?) {
+        leaveLibrary(returnTo = request.slot)
         search.hide()
         foodForm.hide()
         review.hide()
-        logDraft = draftInput
-        logDraftCommitted = false
-        mealDraftError = null
-        logPreset = request.preset
-        logChosen = request.chosen
-        logOpen = true
+        log.resume(request, pick)
     }
-
-    fun openLibraryFoodDetail(entry: MealEntry) {
-        entryEdit.closeDetail()
-        leaveEntryEdit()
-        selectMeal(null)
-        libraryOpen = true
-        libraryQuery = entry.foodName
-        selectedLibraryFood = foods.firstOrNull { it.id == entry.foodId }
-        refreshLibrary()
-    }
-    /** Leaves the meal for Daily. The log draft and its pins stay. */
-    fun closeMeal() {
-        logResolve?.let { endResolve(it, it.draftText); return }
-        abandonUnknownResolution(); selectMeal(null); scan.invalidateLookup(); leaveEntryEdit() }
-    /** The keyboard's Done: the draft is committed, so its last word is no longer being typed. */
-    fun commitLogDraft() { logDraftCommitted = true }
-    /** The Log page's typing. Clearing the draft also drops the foods picked for it. */
-    fun onLogDraft(v: String) {
-        logDraft = v
-        logDraftCommitted = false
-        if (v.isBlank()) logPins.clear()
-    }
-    fun onInput(v: String) {
-        input = v
-        if (libraryOpen) {
-            libraryQuery = librarySearchText(v, parser)
-            refreshLibrary()
-        }
-    }
-    /** The meal the Log page writes to, by [logTargetMealOf] precedence. Also drives the picker label. */
-    internal fun logTargetMeal(): MealSlot? = logTargetMealOf(logChosen, mealMarkers(logDraft), logPreset, automaticMealNow())
-    /**
-     * Everything the Log page shows for the current draft, computed in one pass from one planner, so the rows,
-     * the choices and the add-bar sum all come from the same resolution.
-     */
-    internal fun logDraftView(
-        text: String = logDraft,
-        committed: Boolean = logDraftCommitted,
-        pins: Map<String, FoodRecord> = logPins.toMap(),
-    ): LogDraftView {
-        val planner = engine.planner(pins)
-        // One planner draft: rows, the choice group, suggestions and the add-bar sum all come from the same resolution.
-        val draft = if (ready) planner.draft(text, typing = !committed) else DraftView.EMPTY
-        return LogDraftView(
-            rows = draft.rows,
-            choices = draft.choices,
-            choiceHint = draft.choiceHint,
-            preselected = draft.preselected,
-            activePhrase = draft.activePhrase,
-            // The sum is the draft's own count: what Add would save.
-            logged = draft.logged,
-            // Each choice's kcal from the same planner and text as the sum, so the two never disagree.
-            choiceCalculations = draft.choices.map { planner.calculationFor(draft.activeText, it.food) },
-        )
-    }
-
-    /**
-     * Tapping a choice or a suggestion: the typed part becomes the amount, unit and name it would log, pinned to the
-     * tapped food so it stays that food. Pins live as long as the draft (cleared on Add or an empty draft).
-     */
-    fun chooseQuickSuggestion(food: FoodRecord) {
-        val chosen = engine.planner(logPins.toMap()).choose(logDraft, food, typing = !logDraftCommitted)
-        chosen.part?.let { logPins[it] = food }
-        onLogDraft(chosen.input)
-    }
-    fun submitLibraryInput() {
-        val raw = input.trim()
-        if (raw.isBlank() || !ready || busy) return
-        // While a part is being resolved, Done searches; it never logs.
-        if (logResolve != null) { onLibraryQuery(raw); return }
-        val markers = mealMarkers(raw)
-        if (markers.size > 1) { notices.show("Choose one meal marker."); return }
-        val target = markers.singleOrNull()
-        val effectiveTarget = target ?: slot
-        val segments = libraryInputSegments(raw, engine.planner())
-        if (segments.isEmpty() || segments.all { it.amount == null }) {
-            onLibraryQuery(segments.joinToString(", ") { it.foodPhrase })
-            input = ""
-            return
-        }
-        if (segments.any { it.amount == null }) {
-            if (effectiveTarget == null) {
-                libraryPendingBatch = emptyList()
-                notices.show("Choose a meal before adding a mixed batch with an unquantified food.")
-                mixedMealPickerOpen = true
-                return
-            }
-            submitLibraryMixedInput(raw, effectiveTarget)
-            return
-        }
-        viewModelScope.launch {
-            val drafts = segments.mapNotNull { segment ->
-                engine.search(segment.foodPhrase).firstOrNull()?.food?.let { food ->
-                    LibraryLogDraft(food, segment.amount!!, segment.unit ?: food.defaultUnit)
-                }
-            }
-            withContext(Dispatchers.Main) {
-                if (drafts.size != segments.size) {
-                    onLibraryQuery(segments.joinToString(", ") { it.foodPhrase })
-                    notices.show("One or more foods are not in your local library.")
-                    return@withContext
-                }
-                if (effectiveTarget != null) logLibraryBatch(drafts, effectiveTarget) else {
-                    libraryPendingBatch = drafts
-                    libraryBatchMealPickerOpen = true
-                }
-                input = ""
-            }
-        }
-    }
-
-    private fun submitLibraryMixedInput(cleaned: String, target: MealSlot) {
-        val capturedInput = input
-        val capturedDayKey = selectedDayKey
-        session.write(
-            change = { saved -> DiaryChange.BatchLogged("${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} logged to ${target.label()}", saved.entries) },
-            onSuccess = { saved ->
-                    if (input == capturedInput) input = saved.unresolvedSegments.joinToString(", ")
-                    unknownQueue = saved.unresolvedSegments
-                    unknownQueueTotal = saved.unresolvedSegments.size
-                    unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }
-                    resolutionContinuation = saved.unresolvedSegments.isNotEmpty()
-                    resolverOpen = saved.unresolvedSegments.isNotEmpty()
-                    mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
-            },
-            onFailure = { notices.show(it.message ?: "Could not save this batch.") },
-        ) { engine.save(cleaned, mealSlot = target, dayKey = capturedDayKey) }
-    }
-    /** Add on the Log page. */
-    fun submit() {
-        // Add finishes the draft in both "Count what I'm typing" modes: it saves what the finished draft counts.
-        logDraftCommitted = true
-        if (!ready || busy) return
-        when (val plan = logSubmitPlan(ready, busy, logDraft, mealMarkers(logDraft), logChosen, logPreset, automaticMealNow())) {
-            LogSubmitPlan.Ignore -> Unit
-            is LogSubmitPlan.Error -> mealDraftError = plan.message
-            LogSubmitPlan.OpenMenu -> {
-                mealDraftError = null
-                logMealSubmitPending = true
-                logMealMenuOpen = true
-            }
-            is LogSubmitPlan.Save -> submitToMeal(plan.target)
-        }
-    }
-
-    /** Opens the Log page. [preset] is the meal of the `+` or composer that opened it; null for the Daily composer. */
-    fun openLog(preset: MealSlot?) {
-        if (entryEdit.mode != EntryEditMode.NONE) return
-        logPreset = preset
-        logChosen = null
-        logMealMenuOpen = false
-        logMealSubmitPending = false
-        mealDraftError = null
-        logOpen = true
-    }
-
-    /** Closes the Log page. The draft stays in [logDraft]. */
-    fun closeLog() {
-        logOpen = false
-        logMealMenuOpen = false
-        logMealSubmitPending = false
-    }
-
-    fun openLogMealMenu() { logMealMenuOpen = true }
-    fun dismissLogMealMenu() { logMealMenuOpen = false; logMealSubmitPending = false }
-
-    /** Choosing a meal from the menu wins over everything else; it logs at once only if Add asked for it. */
-    fun chooseLogMeal(target: MealSlot) {
-        logChosen = target
-        logMealMenuOpen = false
-        if (logMealSubmitPending) {
-            logMealSubmitPending = false
-            submit()
-        }
-    }
-
-    fun dismissMixedMealPicker() { mixedMealPickerOpen = false }
-
-    /** Library's mixed batch without a meal: the chosen meal saves the bar's text, as it does when the meal is known. */
-    fun chooseMixedMeal(target: MealSlot) {
-        mixedMealPickerOpen = false
-        val raw = input.trim()
-        if (raw.isBlank() || !ready || busy) return
-        submitLibraryMixedInput(raw, target)
-    }
-
-    private fun submitToMeal(target: MealSlot) {
-        if (!ready || busy) return
-        // Save takes the draft as typed: the planner skips meal words by span, so save and the rows share one segmentation.
-        val captured = logDraft
-        val capturedPins = logPins.toMap()
-        if (engine.planner(capturedPins).segments(captured).none { ShorthandLexicon.mealSlotOf(it.text) == null }) {
-            mealDraftError = "Add at least one food."
-            return
-        }
-        // Nothing resolved: nothing was saved, so the Log stays open with the typed text and says what to fix.
-        fun nothingSaved(saved: SavedMeal) = saved.entries.isEmpty() && saved.unresolvedSegments.isNotEmpty()
-        session.write(
-            change = { saved ->
-                if (nothingSaved(saved)) null
-                else DiaryChange.BatchLogged("${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} added to ${target.label()}", saved.entries)
-            },
-            onSuccess = { saved ->
-                if (nothingSaved(saved)) {
-                    mealDraftError = "Some foods need a match."
-                    return@write
-                }
-                // Only the pins this save used: one added while it planned off the main thread belongs to the new text.
-                capturedPins.forEach { (part, food) -> if (logPins[part] == food) logPins.remove(part) }
-                closeLog()
-                if (logDraft == captured) logDraft = saved.unresolvedSegments.joinToString(", "); unknownQueue = saved.unresolvedSegments; unknownQueueTotal = saved.unresolvedSegments.size; unknownQueueTarget = target.takeIf { saved.unresolvedSegments.isNotEmpty() }; resolutionContinuation = saved.unresolvedSegments.isNotEmpty(); resolverOpen = saved.unresolvedSegments.isNotEmpty(); mealDraftError = if (saved.unresolvedSegments.isNotEmpty()) "Some foods need a match." else null
-            },
-            onFailure = { mealDraftError = it.message ?: "Could not save this meal." },
-        ) { engine.save(captured, mealSlot = target, dayKey = selectedDayKey, pins = capturedPins) }
-    }
-    private fun mealMarkers(value: String): List<MealSlot> = mealMarkerSlots(value)
-    fun closeResolver() { resolverSearchJob?.cancel(); abandonUnknownResolution(); resolverSearchOpen = false }
-    fun beginResolverSearch() {
-        resolverSearchOpen = true
-        if (resolverQuery.isBlank()) resolverQuery = currentUnknownName()
-        onResolverQuery(resolverQuery)
-    }
-    fun currentUnknownName(): String = unknownQueue.firstOrNull()?.let { typedUnknown(it).foodPhrase.trim().ifBlank { it.trim() } }.orEmpty()
-    /** A part of the unknown queue as the Log read it: its food text, typed amount and unit ("mleko200g" is mleko, 200 g). */
-    internal fun typedUnknown(raw: String): TypedPart = engine.planner().typed(raw)
-    /** [search] opened: it replaces the resolver and the food form; opened from elsewhere it abandons a resolve queue. */
-    private fun searchOpened(fromResolver: Boolean) {
-        if (!fromResolver && unknownQueue.isNotEmpty()) abandonUnknownResolution()
-        resolutionContinuation = fromResolver
-        foodForm.hide()
-        resolverOpen = false
-    }
-    /** [search] closed: back to the resolver when it was opened from one with parts left. */
-    private fun searchClosed() = returnToResolverOrEnd()
-    /**
-     * The food form opened ([FoodForm.open]): it replaces the resolver and the search; opened from elsewhere it abandons
-     * a resolve queue.
-     */
-    private fun foodFormOpened(fromResolver: Boolean) {
-        if (!fromResolver && unknownQueue.isNotEmpty()) abandonUnknownResolution()
-        resolutionContinuation = fromResolver
-        search.hide()
-        resolverOpen = false
-    }
-    /** A screen opened from the resolver (food form, search, product review) closed: back to the resolver while parts are left. */
-    private fun returnToResolverOrEnd() { if (resolutionContinuation && unknownQueue.isNotEmpty()) resolverOpen = true else resolutionContinuation = false }
-    /** The resolve queue while one is being resolved, for the screens opened from it. */
-    private fun resolveQueue(): ResolveQueueView? =
-        if (resolutionContinuation && unknownQueue.isNotEmpty()) ResolveQueueView(unknownQueueTarget, unknownQueue, unknownQueueTotal) else null
-    /** The food form saved: a queued part it resolved moves the queue on; a food made for a Log part is that part's pick. */
-    private fun foodSaved(food: FoodRecord, newFood: Boolean, advancesQueue: Boolean) {
-        if (advancesQueue && unknownQueue.isNotEmpty()) advanceUnknownQueue() else resolutionContinuation = false
-        if (logResolve != null && newFood) finishResolve(food)
-    }
-    private var resolverSearchJob: Job? = null
-    /** The resolver's search, ranked off the main thread; a result is shown only while its query is still the one typed. */
-    fun onResolverQuery(v: String) {
-        resolverQuery = v
-        resolverSearchJob?.cancel()
-        // The previous query's rows go at once, so none can be tapped for the new text while it is ranked.
-        resolverResults = emptyList()
-        if (v.isBlank()) return
-        resolverSearchJob = viewModelScope.launch {
-            val results = withContext(Dispatchers.Default) { engine.search(v) }
-            if (resolverQuery == v) resolverResults = results
-        }
-    }
-    private fun advanceUnknownQueue() {
-        // A search still running was ranked before this food was added; it must not fill the next unknown's list.
-        resolverSearchJob?.cancel()
-        unknownQueue = unknownQueue.drop(1)
-        // What is left to resolve stays where it was typed: the Library bar, or the log draft.
-        if (libraryOpen) input = unknownQueue.joinToString(", ") else logDraft = unknownQueue.joinToString(", ")
-        resolverQuery = ""
-        resolverResults = emptyList()
-        resolverSearchOpen = false
-        resolverOpen = unknownQueue.isNotEmpty()
-        if (unknownQueue.isEmpty()) {
-            unknownQueueTarget = null
-            resolutionContinuation = false
-        }
-    }
-    fun resolveUnknown(food: FoodRecord) {
-        val raw = unknownQueue.firstOrNull() ?: return
-        val target = activeResolutionTarget(resolutionContinuation, unknownQueue, unknownQueueTarget) ?: return
-        val typed = typedUnknown(raw)
-        val amount = typed.amount ?: food.defaultAmount
-        val unit = typed.unit ?: food.defaultUnit
-        if (!ready || busy) return
-        val capturedDayKey = selectedDayKey
-        session.write(
-            change = DiaryChange.QueuedPartLogged,
-            onSuccess = { advanceUnknownQueue() },
-            onFailure = { notices.show(it.message ?: "Could not resolve this food.") },
-        ) { engine.cacheFoodAndLog(food, amount, unit, target, capturedDayKey) }
-    }
-    /** Leaves the current unresolved food unlogged and moves to the next one. */
-    fun skipCurrentUnknown() { if (unknownQueue.isNotEmpty()) advanceUnknownQueue() }
+    /** [search] opened: it replaces the resolver and the food form. */
+    private fun searchOpened(fromResolver: Boolean) { resolve.childOpened(fromResolver); foodForm.hide() }
+    /** What is drawn over Daily, Meal or Library right now, by [topOverlay]. */
+    internal fun topOverlay(): Overlay? = topOverlay(
+        scanner = scan.open, entryDetail = entryEdit.selectedEntry != null, productReview = review.product != null,
+        resolver = resolve.resolverOpen, offSearch = search.open, foodForm = foodForm.open,
+        libraryFood = library.selectedFood != null, entryEdit = entryEdit.mode != EntryEditMode.NONE,
+        settings = settingsOpen,
+    )
+    /** A library search that finished with nothing and has no other screen over it: the "No local match" screen. */
+    fun libraryNoMatch(): Boolean = library.noMatch(otherScreenOpen = topOverlay() != null)
 }
+
+/** The meal on screen in `SavedStateHandle`. */
+private const val MEAL_SLOT_KEY = "meal_slot"
 
 internal const val LOG_TAG = "Breakfast"

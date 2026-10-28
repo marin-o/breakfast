@@ -132,7 +132,7 @@ internal class ScanSession(
         val mine = token
         val day = originDay
         val meal = originMeal
-        val reviewOrigin = productReviewOrigin(meal, queueActive(), queueActive())
+        val reviewOrigin = productReviewOrigin(meal, queueActive())
         val step = unknownBarcodeStep(lookUpBarcodes())
         lookupCode = barcode
         lookupBusy = true

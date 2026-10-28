@@ -52,7 +52,6 @@ import com.iron.breakfast.entry.EntryFoodPicker
 import com.iron.breakfast.library.FocusedFoodAddDialog
 import com.iron.breakfast.library.LibraryFoodDetailDialog
 import com.iron.breakfast.library.MixedMealPickerDialog
-import com.iron.breakfast.library.LibraryMealPickerDialog
 import com.iron.breakfast.library.LibraryBatchMealPickerDialog
 import com.iron.breakfast.food.EditFoodScreen
 import com.iron.breakfast.food.CreateFoodScreen
@@ -104,18 +103,18 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
             // The tray rides above the keyboard and clear of a side display cutout.
             Box(Modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).imePadding()) {
                 // Daily and Meal composers float over their own content; only Library uses this bar.
-                if (vm.entryEdit.mode == EntryEditMode.NONE && vm.libraryOpen && !vm.libraryArchivedOnly) LibraryComposer(vm)
+                if (vm.entryEdit.mode == EntryEditMode.NONE && vm.library.open && !vm.library.archivedOnly) LibraryComposer(vm)
             }
         }
     ) { pad ->
         when {
-            vm.libraryOpen -> LibraryScreen(vm, Modifier.padding(pad))
-            vm.slot == null -> DailyScreen(vm, Modifier.padding(pad))
+            vm.library.open -> LibraryScreen(vm, Modifier.padding(pad))
+            vm.meal == null -> DailyScreen(vm, Modifier.padding(pad))
             else -> MealScreen(vm, Modifier.padding(pad))
         }
     }
     // Drawn over the screen beneath, which keeps its scroll position. Dialogs and sheets below render above it.
-    if (vm.logOpen) LogScreen(vm)
+    if (vm.log.open) LogScreen(vm)
     }
     when (vm.entryEdit.mode) {
         EntryEditMode.QUICK -> vm.entryEdit.editingEntry()?.let { EntryQuickEditSheet(vm, it) }
@@ -123,22 +122,21 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
         EntryEditMode.NONE -> Unit
     }
     if (vm.entryEdit.pickerOpen) EntryFoodPicker(vm)
-    if (vm.selectedLibraryFood != null) {
-        if (vm.slot != null) FocusedFoodAddDialog(vm, vm.selectedLibraryFood!!)
-        else LibraryFoodDetailDialog(vm, vm.selectedLibraryFood!!)
+    vm.library.selectedFood?.let { food ->
+        if (vm.mealOnScreen() != null) FocusedFoodAddDialog(vm, food)
+        else LibraryFoodDetailDialog(vm, food)
     }
     // LogScreen and every overlay own Back while they are open.
-    if (!vm.logOpen && vm.topOverlay() == null) {
-        if (vm.libraryOpen) {
+    if (!vm.log.open && vm.topOverlay() == null) {
+        if (vm.library.open) {
             // The same exit as the Library's top-bar arrow: Archived goes to Library, a meal's Library to the meal.
             BackHandler { vm.exitLibrary() }
-        } else if (vm.slot != null) {
+        } else if (vm.meal != null) {
             BackHandler { vm.closeMeal() }
         }
     }
-    if (vm.mixedMealPickerOpen) MixedMealPickerDialog(vm)
-    if (vm.libraryMealPickerFood != null) LibraryMealPickerDialog(vm, vm.libraryMealPickerFood!!)
-    if (vm.libraryBatchMealPickerOpen) LibraryBatchMealPickerDialog(vm)
+    if (vm.library.mixedMealPickerOpen) MixedMealPickerDialog(vm)
+    if (vm.library.batchMealPickerOpen) LibraryBatchMealPickerDialog(vm)
     if (vm.foodForm.open) {
         if (vm.foodForm.editingFoodId != null) EditFoodScreen(vm) else CreateFoodScreen(vm)
     }
@@ -150,7 +148,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     )
     if (vm.libraryNoMatch()) LibraryNoMatchScreen(vm)
     if (vm.search.open) OffSearchScreen(vm)
-    if (vm.resolverOpen && !scanReviewBackdropVisible) ResolveUnknownScreen(vm)
+    if (vm.resolve.resolverOpen && !scanReviewBackdropVisible) ResolveUnknownScreen(vm)
     vm.review.product?.let { ProductReviewSheet(vm, it) }
     if (vm.contribution.reviewOpen) vm.contribution.pending?.let { ContributionReviewScreen(vm, it) }
     if (vm.contribution.authOpen) ContributionSignInScreen(vm)

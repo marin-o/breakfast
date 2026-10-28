@@ -41,17 +41,17 @@ import com.iron.breakfast.ui.screens.formatKcal
 /** Local search that found nothing: the way on is Open Food Facts or a personal food. */
 @Composable internal fun LibraryNoMatchScreen(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
-    val query = vm.libraryQuery
+    val query = vm.library.query
     // Leaving a no-match result must keep the Daily quick-add draft intact.
-    val clear = { vm.onLibraryQuery("") }
+    val clear = { vm.library.onQuery("") }
     // Back and the top-left arrow leave the search: a resolve goes back to the Log, else the list shows again.
-    val leave = { if (vm.logResolve != null) vm.closeLibrary() else clear() }
+    val leave = { if (vm.resolve.resolvingPart) vm.closeLibrary() else clear() }
     BackHandler(onBack = leave)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter)) {
             TopBar("Search", leave, Modifier.padding(top = 8.dp))
             SearchCaption(Modifier.padding(top = 6.dp))
-            SearchField(query, vm::onLibraryQuery, onClear = clear, label = "Search library", modifier = Modifier.padding(top = 6.dp))
+            SearchField(query, vm.library::onQuery, onClear = clear, label = "Search library", modifier = Modifier.padding(top = 6.dp))
             Column(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("No local match", color = colors.ink, style = BreakfastType.Title, modifier = Modifier.semantics { heading() })
                 Text(
@@ -101,7 +101,7 @@ import com.iron.breakfast.ui.screens.formatKcal
                     }
                 }
                 vm.search.message?.let { message ->
-                    val createPersonal = { vm.foodForm.open(vm.search.query.trim(), fromResolver = vm.resolutionContinuation) }
+                    val createPersonal = { vm.foodForm.open(vm.search.query.trim(), fromResolver = vm.resolve.continuation) }
                     when (offSearchStatus(vm.search.unavailable, message)) {
                         OffSearchStatus.Offline -> SearchStatus(
                             title = "No connection",

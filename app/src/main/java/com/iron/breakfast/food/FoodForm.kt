@@ -244,4 +244,4 @@ internal class FoodForm(
  * wins and the queue advances (no meal: null, which the form refuses); otherwise the meal open beneath, if any.
  */
 internal fun foodSaveTarget(resolvingPart: Boolean, queue: ResolveQueueView?, openMeal: MealSlot?): ReviewLogPlan? =
-    if (resolvingPart) null else resolverLogPlan(queue != null, queue != null, queue?.meal, openMeal)
+    if (resolvingPart) null else resolverLogPlan(queueActive = queue != null, queue?.meal, openMeal)

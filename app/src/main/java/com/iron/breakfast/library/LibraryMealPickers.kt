@@ -10,38 +10,28 @@ import androidx.compose.ui.Modifier
 import com.iron.breakfast.app.BreakfastViewModel
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.ui.label
-import com.iron.breakfast.domain.FoodRecord
 
 @Composable internal fun MixedMealPickerDialog(vm: BreakfastViewModel) {
     AlertDialog(
-        onDismissRequest = vm::dismissMixedMealPicker,
+        onDismissRequest = vm.library::dismissMixedMealPicker,
         title = { Text("Which meal?") },
         text = {
             Column {
                 Text("Choose where to add this batch.")
                 MealSlot.entries.forEach { target ->
-                    TextButton({ vm.chooseMixedMeal(target) }, Modifier.fillMaxWidth()) { Text(target.label()) }
+                    TextButton({ vm.library.chooseMixedMeal(target) }, Modifier.fillMaxWidth()) { Text(target.label()) }
                 }
             }
         },
-        confirmButton = { TextButton(vm::dismissMixedMealPicker) { Text("Cancel") } }
-    )
-}
-
-@Composable internal fun LibraryMealPickerDialog(vm: BreakfastViewModel, food: FoodRecord) {
-    AlertDialog(
-        onDismissRequest = vm::cancelLibraryMealPicker,
-        title = { Text("Add ${food.name} to which meal?") },
-        text = { Column { Text("Choose a meal on ${vm.selectedDayKey}"); MealSlot.entries.forEach { target -> TextButton({ vm.chooseLibraryMeal(target) }, Modifier.fillMaxWidth()) { Text(target.label()) } } } },
-        confirmButton = { TextButton(vm::cancelLibraryMealPicker) { Text("Cancel") } }
+        confirmButton = { TextButton(vm.library::dismissMixedMealPicker) { Text("Cancel") } }
     )
 }
 
 @Composable internal fun LibraryBatchMealPickerDialog(vm: BreakfastViewModel) {
     AlertDialog(
-        onDismissRequest = { vm.dismissLibraryBatchMealPicker() },
+        onDismissRequest = vm.library::dismissBatchMealPicker,
         title = { Text("Add foods to which meal?") },
-        text = { Column { Text("Choose where to add this batch on the selected day."); MealSlot.entries.forEach { target -> TextButton({ vm.chooseLibraryBatchMeal(target) }, Modifier.fillMaxWidth()) { Text(target.label()) } } } },
-        confirmButton = { TextButton(vm::dismissLibraryBatchMealPicker) { Text("Cancel") } }
+        text = { Column { Text("Choose where to add this batch on the selected day."); MealSlot.entries.forEach { target -> TextButton({ vm.library.chooseBatchMeal(target) }, Modifier.fillMaxWidth()) { Text(target.label()) } } } },
+        confirmButton = { TextButton(vm.library::dismissBatchMealPicker) { Text("Cancel") } }
     )
 }

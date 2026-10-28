@@ -9,7 +9,7 @@ import org.junit.Test
 class ReviewQueueLogicTest {
     @Test
     fun activeResolveQueueForcesItsMealAndAdvances() {
-        val plan = reviewLogPlan(resolutionContinuation = true, queueNotEmpty = true, queueTarget = MealSlot.LUNCH, chosen = MealSlot.DINNER)
+        val plan = reviewLogPlan(queueActive = true, queueTarget = MealSlot.LUNCH, chosen = MealSlot.DINNER)
         assertEquals(ReviewLogPlan(MealSlot.LUNCH, true), plan)
     }
 
@@ -17,26 +17,23 @@ class ReviewQueueLogicTest {
     fun dailyResolveQueueUsesItsMealWhenNoMealIsSelected() {
         assertEquals(
             ReviewLogPlan(MealSlot.BREAKFAST, true),
-            resolverLogPlan(true, queueNotEmpty = true, queueTarget = MealSlot.BREAKFAST, currentMeal = null),
-        )
-        assertEquals(
-            MealSlot.BREAKFAST,
-            activeResolutionTarget(true, listOf("1 unknown"), MealSlot.BREAKFAST),
+            resolverLogPlan(queueActive = true, queueTarget = MealSlot.BREAKFAST, currentMeal = null),
         )
     }
 
     @Test
     fun dailyCreateInResolveQueueUsesQueueMealAndAdvances() {
-        val plan = resolverLogPlan(true, queueNotEmpty = true, queueTarget = MealSlot.LUNCH, currentMeal = null)
+        val plan = resolverLogPlan(queueActive = true, queueTarget = MealSlot.LUNCH, currentMeal = null)
         assertEquals(ReviewLogPlan(MealSlot.LUNCH, true), plan)
         assertTrue(plan!!.advancesQueue)
     }
 
     @Test
     fun outsideAResolveQueueTheChosenMealIsUsedAndNothingAdvances() {
-        assertEquals(ReviewLogPlan(MealSlot.DINNER, false), reviewLogPlan(false, true, MealSlot.LUNCH, MealSlot.DINNER))
-        assertEquals(ReviewLogPlan(MealSlot.DINNER, false), reviewLogPlan(true, false, MealSlot.LUNCH, MealSlot.DINNER))
-        assertEquals(ReviewLogPlan(MealSlot.DINNER, false), reviewLogPlan(true, true, null, MealSlot.DINNER))
+        assertEquals(ReviewLogPlan(MealSlot.DINNER, false), reviewLogPlan(false, MealSlot.LUNCH, MealSlot.DINNER))
+        assertEquals(ReviewLogPlan(MealSlot.DINNER, false), reviewLogPlan(true, null, MealSlot.DINNER))
+        assertEquals(ReviewLogPlan(MealSlot.LUNCH, false), resolverLogPlan(false, MealSlot.BREAKFAST, MealSlot.LUNCH))
+        assertEquals(null, resolverLogPlan(true, null, MealSlot.LUNCH))
     }
 
     @Test
@@ -61,9 +58,9 @@ class ReviewQueueLogicTest {
 
     @Test
     fun librarySaveIsHiddenDuringResolveQueue() {
-        assertFalse(canSaveProductToLibrary(null, resolutionContinuation = true, queueNotEmpty = true))
-        assertTrue(canSaveProductToLibrary(null, resolutionContinuation = false, queueNotEmpty = false))
-        assertFalse(canSaveProductToLibrary(MealSlot.DINNER, resolutionContinuation = false, queueNotEmpty = false))
+        assertFalse(canSaveProductToLibrary(null, queueActive = true))
+        assertTrue(canSaveProductToLibrary(null, queueActive = false))
+        assertFalse(canSaveProductToLibrary(MealSlot.DINNER, queueActive = false))
     }
 
     @Test

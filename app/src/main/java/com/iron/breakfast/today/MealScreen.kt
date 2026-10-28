@@ -65,7 +65,7 @@ import com.iron.breakfast.ui.screens.plainLine
 
 @Composable
 internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
-    val target = vm.slot ?: return
+    val target = vm.meal ?: return
     val entries = vm.entries.filter { it.dayKey == vm.selectedDayKey && it.mealSlot == target }
     val foods = vm.foods.associateBy { it.id }
     val total = entries.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
@@ -124,14 +124,14 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
 /** Ink composer that opens the Log page with this meal preset, over the fade. Shows the logged-batch and delete snackbars. */
 @Composable
 internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot, modifier: Modifier = Modifier) {
-    val draft = vm.logDraft.isNotBlank()
+    val draft = vm.log.draft.isNotBlank()
     val tick = rememberTick()
     ComposerFade(modifier) {
         vm.undo.loggedMessage?.let { Snackbar(it, "Undo", { tick(); vm.undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
         vm.undo.deletedEntry?.let { deleted -> Snackbar("${deleted.foodName} deleted", "Undo", { tick(); vm.undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
         Composer(
-            placeholder = if (draft) vm.logDraft else "Add to ${target.label()}",
-            onClick = { vm.openLog(target) },
+            placeholder = if (draft) vm.log.draft else "Add to ${target.label()}",
+            onClick = { vm.log.open(target) },
             onScan = vm.scan::begin,
             draft = draft,
             longDraft = vm.settings.longDraft,

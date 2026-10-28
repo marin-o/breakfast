@@ -45,8 +45,8 @@ internal interface ProductStore {
  *   advances); [saveToLibrary] stores it, from the Library only. While a Log part is being resolved ([resolvingPart]),
  *   either stores it and hands the stored food to [onPartResolved] instead.
  *
- * Inputs from the screens around it are explicit: the day ([selectedDay]), the meal open beneath ([openMeal]), the resolve
- * queue ([queue]) and how a queued part reads ([typed]). Closing tells the coordinator ([onClosed]); a log reports
+ * Inputs from the screens around it are explicit: the day ([selectedDay]), the meal open beneath ([openMeal]) and the
+ * resolve queue ([queue], with its current part as the Log read it). Closing tells the coordinator ([onClosed]); a log reports
  * whether it advanced the queue ([onLogged]); [findBetterMatch] and [rescan] leave through [openSearch] and [startScan].
  */
 internal class ProductReview(
@@ -58,8 +58,6 @@ internal class ProductReview(
     private val queue: () -> ResolveQueueView?,
     /** A Log part is being resolved in the Library. */
     private val resolvingPart: () -> Boolean,
-    /** A queued part as the Log read it ("mleko200g" is mleko, 200 g). */
-    private val typed: (String) -> TypedPart,
     private val offerContribution: (OffContributionDraft?) -> Unit,
     private val onPartResolved: (FoodRecord) -> Unit,
     private val onLogged: (advancesQueue: Boolean) -> Unit,
@@ -84,9 +82,8 @@ internal class ProductReview(
         val resolveQueue = queue()
         product = food
         this.fromScan = fromScan
-        this.origin = origin ?: productReviewOrigin(openMeal(), resolveQueue != null, resolveQueue != null)
-        val prefill = resolveQueue?.parts?.firstOrNull()?.let { productPrefill(it, food, typed(it)) }
-            ?: ProductPrefill(100.0, food.nutrition.unit)
+        this.origin = origin ?: productReviewOrigin(openMeal(), queueActive = resolveQueue != null)
+        val prefill = resolveQueue?.current?.let { productPrefill(food, it) } ?: ProductPrefill(100.0, food.nutrition.unit)
         amount = prefill.amount.toString()
         unit = prefill.unit.displayLabel()
         name = food.name
@@ -142,7 +139,7 @@ internal class ProductReview(
             return
         }
         val resolveQueue = queue()
-        val plan = reviewLogPlan(resolveQueue != null, resolveQueue != null, resolveQueue?.meal, chosen)
+        val plan = reviewLogPlan(queueActive = resolveQueue != null, resolveQueue?.meal, chosen)
         val target = plan.meal
         val scanned = fromScan
         val day = selectedDay()
@@ -165,7 +162,7 @@ internal class ProductReview(
         val food = product ?: return
         if (resolvingPart()) { resolvePart(); return }
         val resolveQueue = queue()
-        if (!canSaveProductToLibrary(openMeal(), resolveQueue != null, resolveQueue != null)) return
+        if (!canSaveProductToLibrary(openMeal(), queueActive = resolveQueue != null)) return
         if (!session.ready || session.busy) return
         val draft = draft(food) ?: run { notices.show("Enter a positive amount, a supported unit, and valid calories."); return }
         session.write(
@@ -228,12 +225,15 @@ internal data class ProductPrefill(val amount: Double, val unit: MeasureUnit)
 internal fun productNutritionBasisLabel(food: FoodRecord): String =
     "Calories per ${food.nutrition.amount.pretty()} ${food.nutrition.unit.label}"
 
-/** [typed] is [raw] as the Log read it; the view model passes the planner's reading, so a glued amount is kept. */
+/** [typed] is [raw] as the Log read it (a queue's [ResolveQueueView.current] is the planner's reading, so a glued amount is kept). */
 internal fun productPrefill(
     raw: String,
     food: FoodRecord,
     typed: TypedPart = ShorthandParser().parse(raw).let { TypedPart(it.foodPhrase, it.amount, it.unit) },
-): ProductPrefill = ProductPrefill(
+): ProductPrefill = productPrefill(food, typed)
+
+/** A queued part's typed amount and unit, else 100 of the food's basis unit. */
+internal fun productPrefill(food: FoodRecord, typed: TypedPart): ProductPrefill = ProductPrefill(
     amount = typed.amount ?: 100.0,
     unit = typed.unit ?: food.nutrition.unit
 )

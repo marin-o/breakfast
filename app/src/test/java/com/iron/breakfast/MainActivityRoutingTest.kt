@@ -29,14 +29,14 @@ class MainActivityRoutingTest {
     }
 
     @Test fun scannedProductReviewKeepsLibraryOriginSeparateFromMealAndQueue() {
-        assertEquals(ProductReviewOrigin.LIBRARY, productReviewOrigin(null, resolving = false, queueNotEmpty = false))
-        assertEquals(ProductReviewOrigin.MEAL, productReviewOrigin(MealSlot.DINNER, resolving = false, queueNotEmpty = false))
-        assertEquals(ProductReviewOrigin.QUEUE, productReviewOrigin(null, resolving = true, queueNotEmpty = true))
+        assertEquals(ProductReviewOrigin.LIBRARY, productReviewOrigin(null, queueActive = false))
+        assertEquals(ProductReviewOrigin.MEAL, productReviewOrigin(MealSlot.DINNER, queueActive = false))
+        assertEquals(ProductReviewOrigin.QUEUE, productReviewOrigin(null, queueActive = true))
     }
 
     @Test fun libraryOriginCanSaveWithoutCreatingDiaryLogPlan() {
-        assertEquals(true, canSaveProductToLibrary(null, resolutionContinuation = false, queueNotEmpty = false))
-        assertEquals(false, canSaveProductToLibrary(null, resolutionContinuation = true, queueNotEmpty = true))
+        assertEquals(true, canSaveProductToLibrary(null, queueActive = false))
+        assertEquals(false, canSaveProductToLibrary(null, queueActive = true))
     }
 
     @Test fun mealWordsInsideFoodNamesAreNotMarkers() {

@@ -136,7 +136,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                     note = dailyMacroNote(macros, showMacros = vm.settings.showMacros, showNote = vm.settings.showMissingNote),
                 )
             }
-            vm.mealDraftError?.let { message -> item { Text(message, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(vertical = 6.dp)) } }
+            vm.log.error?.let { message -> item { Text(message, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(vertical = 6.dp)) } }
             items(MealSlot.entries) { slot ->
                 DailyMealSection(slot, selected.filter { it.mealSlot == slot }, foods, vm)
             }
@@ -212,7 +212,7 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
     MealHeader(
         name = slot.label(),
         total = formatKcal(total.calories),
-        onAdd = { vm.openLog(slot) },
+        onAdd = { vm.log.open(slot) },
         addDescription = "Add food to ${slot.label()}",
         time = earliestMealTime(entries),
         emptyText = if (entries.isEmpty()) "Nothing yet" else null,
@@ -247,14 +247,14 @@ internal fun DailyComposer(vm: BreakfastViewModel, modifier: Modifier = Modifier
     ComposerFade(modifier) {
         vm.undo.loggedMessage?.let { Snackbar(it, "Undo", { tick(); vm.undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
         vm.undo.deletedEntry?.let { Snackbar("${it.foodName} deleted", "Undo", { tick(); vm.undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
-        if (vm.reminders.shownOnDaily(vm.logOpen, vm.topOverlay())) {
+        if (vm.reminders.shownOnDaily(vm.log.open, vm.topOverlay())) {
             LaunchedEffect(Unit) { vm.reminders.onScreenNow() }
             Snackbar("Export your diary.", "Export", vm.reminders::export, Modifier.padding(bottom = 8.dp))
         }
-        val draft = vm.logDraft.isNotBlank()
+        val draft = vm.log.draft.isNotBlank()
         Composer(
-            placeholder = if (draft) vm.logDraft else "Log food",
-            onClick = { vm.openLog(null) },
+            placeholder = if (draft) vm.log.draft else "Log food",
+            onClick = { vm.log.open(null) },
             onScan = vm.scan::begin,
             draft = draft,
             longDraft = vm.settings.longDraft,

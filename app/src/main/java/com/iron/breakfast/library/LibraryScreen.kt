@@ -110,13 +110,14 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
     val colors = LocalBreakfastColors.current
     val density = LocalDensity.current
     var menuOpen by remember { mutableStateOf(false) }
-    val archived = vm.libraryArchivedOnly
-    val root = vm.slot == null
+    val library = vm.library
+    val archived = library.archivedOnly
+    val root = library.target == null
     // A part being resolved is searched for, not added to a meal the user did not choose here.
-    val title = if (archived) "Archived" else if (vm.logResolve != null) "Search" else if (root) "Library" else "Add to ${vm.slot!!.label()}"
+    val title = if (archived) "Archived" else if (vm.resolve.resolvingPart) "Search" else if (root) "Library" else "Add to ${library.target!!.label()}"
     val subtitle = when {
         archived -> ""
-        root -> "${vm.libraryFoods.size} foods, by last logged"
+        root -> "${library.foods.size} foods, by last logged"
         else -> entryDateLabel(vm.selectedDayKey)
     }
     BackHandler(enabled = menuOpen) { menuOpen = false }
@@ -151,11 +152,11 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
             }
             Hairline()
             if (archived) {
-                Text("${vm.libraryFoods.size} foods", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(vertical = 8.dp))
+                Text("${library.foods.size} foods", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(vertical = 8.dp))
                 Hairline()
             }
         }
-        items(vm.libraryFoods, key = { it.id }) { food -> LibraryFoodRow(vm, food, root, archived) }
+        items(library.foods, key = { it.id }) { food -> LibraryFoodRow(vm, food, root, archived) }
         item {
             Hairline(Modifier.padding(top = 8.dp))
             if (archived) Text("Past entries keep their numbers.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 8.dp))
@@ -166,11 +167,12 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
 @Composable
 private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boolean, archived: Boolean) {
     val colors = LocalBreakfastColors.current
-    val last = vm.lastLoggedEntry(food)
+    val library = vm.library
+    val last = library.lastLoggedEntry(food)
     val repeatAmount = last?.enteredAmount ?: food.defaultAmount
     val repeatUnit = last?.enteredUnit ?: food.defaultUnit
-    val expanded = root && !archived && vm.expandedLibraryFoodId == food.id
-    val target = vm.slot
+    val expanded = root && !archived && library.expandedFoodId == food.id
+    val target = library.target
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             FoodRow(
@@ -178,11 +180,11 @@ private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boole
                 quantityLine = if (archived) "Archived" else if (last == null) "${repeatAmount.pretty()} ${repeatUnit.displayLabel()}" else "last ${repeatAmount.pretty()} ${repeatUnit.displayLabel()}",
                 calories = last?.let { formatKcal(it.nutritionSnapshot.calories) } ?: defaultServingCalories(food),
                 modifier = Modifier.weight(1f),
-                onClick = { vm.openLibraryFood(food) },
+                onClick = { library.openFood(food) },
             )
             if (!archived) AddCircle(
                 contentDescription = if (target == null) "Add ${food.name} to a meal" else "Add ${food.name} to ${target.label()}",
-                onClick = { if (root) vm.toggleLibraryFoodPicker(food) else vm.logLibraryFood(food, target!!, repeatAmount, repeatUnit) },
+                onClick = { if (root) library.toggleFoodPicker(food) else library.log(food, target!!, repeatAmount, repeatUnit) },
                 enabled = !food.archived,
                 icon = if (expanded) Icons.Outlined.Close else Icons.Outlined.Add,
             )
@@ -191,7 +193,7 @@ private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boole
             Column(Modifier.padding(bottom = 8.dp)) {
                 Text("Add ${repeatAmount.pretty()} ${repeatUnit.displayLabel()} to", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(bottom = 6.dp))
                 // The Meal setting's meal shows selected (none for Ask): one tap logs it, or another meal is tapped.
-                MealChoices(selected = vm.automaticMealNow(), onSelect = { meal -> vm.logLibraryFood(food, meal, repeatAmount, repeatUnit); vm.collapseLibraryFoodPicker() }, singleRow = true)
+                MealChoices(selected = vm.automaticMealNow(), onSelect = { meal -> library.log(food, meal, repeatAmount, repeatUnit); library.collapseFoodPicker() }, singleRow = true)
             }
         }
     }
@@ -201,40 +203,41 @@ private fun defaultServingCalories(food: FoodRecord): String = formatKcal(com.ir
 
 /**
  * The Library's bottom bar: the Composer look (ink bar, "Search foods") over the existing text field.
- * It filters the list through [BreakfastViewModel.submitLibraryInput] and does not open the Log page.
+ * It filters the list through [LibraryState.submitInput] and does not open the Log page.
  */
 @Composable
 internal fun LibraryComposer(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
-    val inMeal = vm.slot != null
+    val library = vm.library
+    val inMeal = library.target != null
     // While resolving, a cleared search lands here: the bar takes the keyboard so typing goes on.
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    val resolveCleared = vm.logResolve != null && vm.libraryQuery.isEmpty()
+    val resolveCleared = vm.resolve.resolvingPart && library.query.isEmpty()
     LaunchedEffect(resolveCleared) { if (resolveCleared) { runCatching { focus.requestFocus() }; keyboard?.show() } }
     Column(Modifier.fillMaxWidth().background(colors.bg).then(if (inMeal) Modifier else Modifier.navigationBarsPadding()).padding(horizontal = Gutter, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         InkBar(if (inMeal) Modifier.navigationBarsPadding() else Modifier) {
             BasicTextField(
-                value = vm.input,
-                onValueChange = vm::onInput,
+                value = library.input,
+                onValueChange = library::onInput,
                 singleLine = true,
                 textStyle = BreakfastType.Body.copy(color = colors.bg),
                 cursorBrush = SolidColor(colors.bg),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { vm.submitLibraryInput() }, onDone = { vm.submitLibraryInput() }),
+                keyboardActions = KeyboardActions(onSearch = { library.submitInput() }, onDone = { library.submitInput() }),
                 modifier = Modifier
                     .weight(1f)
                     .focusRequester(focus)
-                    .onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { vm.submitLibraryInput(); true } else false }
+                    .onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { library.submitInput(); true } else false }
                     .semantics { contentDescription = "Search foods" },
                 decorationBox = { inner ->
                     Box(Modifier.heightIn(min = 22.dp), contentAlignment = Alignment.CenterStart) {
-                        if (vm.input.isEmpty()) Text("Search foods", color = colors.bg.copy(alpha = 0.6f), style = BreakfastType.Body)
+                        if (library.input.isEmpty()) Text("Search foods", color = colors.bg.copy(alpha = 0.6f), style = BreakfastType.Body)
                         inner()
                     }
                 },
             )
-            if (vm.input.isNotEmpty()) IconButton(onClick = { vm.onInput("") }, modifier = Modifier.size(IconTarget)) {
+            if (library.input.isNotEmpty()) IconButton(onClick = { library.onInput("") }, modifier = Modifier.size(IconTarget)) {
                 Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = colors.bg, modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = vm.scan::begin, modifier = Modifier.size(IconTarget)) {
@@ -265,15 +268,15 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
     var amountSheetOpen by rememberSaveable(food.id) { mutableStateOf(false) }
     var mealMenuOpen by rememberSaveable(food.id) { mutableStateOf(false) }
     // Starts on the meal it was opened from, else the Meal setting's meal (By time, Last used), else Lunch.
-    var targetMeal by rememberSaveable(food.id) { mutableStateOf(libraryPresetMeal(vm.slot, vm.automaticMealNow())) }
+    var targetMeal by rememberSaveable(food.id) { mutableStateOf(libraryPresetMeal(vm.mealOnScreen(), vm.automaticMealNow())) }
     val servings = food.householdServings()
-    BackHandler { vm.closeLibraryFood() }
+    BackHandler { vm.library.closeFood() }
     Column(Modifier.fillMaxSize().background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter, vertical = 4.dp)) {
         TopBar(
             title = "Food",
-            onBack = vm::closeLibraryFood,
+            onBack = vm.library::closeFood,
             modifier = Modifier.padding(top = 8.dp),
-            trailing = { if (!food.archived) TertiaryButton("Edit", { vm.closeLibraryFood(); vm.foodForm.openEdit(food) }) },
+            trailing = { if (!food.archived) TertiaryButton("Edit", { vm.library.closeFood(); vm.foodForm.openEdit(food) }) },
         )
         Hairline(Modifier.padding(top = 8.dp))
         Text(foodText(food.name), color = colors.ink, style = BreakfastType.Section, modifier = Modifier.padding(top = 8.dp))
@@ -304,7 +307,7 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
         }
         Hairline(Modifier.padding(top = 16.dp))
         if (food.archived) {
-            PrimaryButton("Restore", onClick = { vm.restoreLibraryFood(food) }, Modifier.padding(top = 24.dp))
+            PrimaryButton("Restore", onClick = { vm.library.restore(food) }, Modifier.padding(top = 24.dp))
         } else {
             // Large font stacks the meal picker over the Log button, both full width.
             val mealPicker: @Composable (Modifier, Boolean) -> Unit = { modifier, fill ->
@@ -325,8 +328,8 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
                 }
             }
             if (mealMenuOpen) MealChoices(selected = targetMeal, onSelect = { targetMeal = it; mealMenuOpen = false }, modifier = Modifier.padding(top = 8.dp))
-            if (contributionShown(vm.settings.showContribute, contributionAvailable(food))) SecondaryButton("Contribute to Open Food Facts", { vm.closeLibraryFood(); vm.contribution.openForFood(food) }, Modifier.padding(top = 16.dp))
-            if (food.origin == FoodOrigin.CUSTOM) DestructiveButton("Archive food", { vm.archiveLibraryFood(food) }, Modifier.fillMaxWidth().padding(top = 8.dp), outlined = true)
+            if (contributionShown(vm.settings.showContribute, contributionAvailable(food))) SecondaryButton("Contribute to Open Food Facts", { vm.library.closeFood(); vm.contribution.openForFood(food) }, Modifier.padding(top = 16.dp))
+            if (food.origin == FoodOrigin.CUSTOM) DestructiveButton("Archive food", { vm.library.archive(food) }, Modifier.fillMaxWidth().padding(top = 8.dp), outlined = true)
         }
     }
     if (amountSheetOpen) LibraryAmountSheet(vm, food, targetMeal) { amountSheetOpen = false }
@@ -357,16 +360,16 @@ private fun LibraryFactRow(label: String, number: String, unit: String) {
 
 @Composable
 internal fun FocusedFoodAddDialog(vm: BreakfastViewModel, food: FoodRecord) {
-    val target = vm.slot ?: return
-    LibraryAmountSheet(vm, food, target, vm::closeLibraryFood)
+    val target = vm.mealOnScreen() ?: return
+    LibraryAmountSheet(vm, food, target, vm.library::closeFood)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LibraryAmountSheet(vm: BreakfastViewModel, food: FoodRecord, target: MealSlot, onDismiss: () -> Unit) {
     val colors = LocalBreakfastColors.current
-    var amountText by rememberSaveable(food.id, target) { mutableStateOf((vm.lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount).plain()) }
-    var unit by rememberSaveable(food.id, target) { mutableStateOf(vm.lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit) }
+    var amountText by rememberSaveable(food.id, target) { mutableStateOf((vm.library.lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount).plain()) }
+    var unit by rememberSaveable(food.id, target) { mutableStateOf(vm.library.lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit) }
     var chosenMeal by rememberSaveable(food.id, target) { mutableStateOf(target) }
     val units = (listOf(food.defaultUnit, food.nutrition.unit) + food.conversions.map { it.unit }).filter { it != MeasureUnit.UNKNOWN }.distinct()
     val calc = amountText.toDoubleOrNull()?.takeIf { it > 0 }?.let { NutritionCalculator().calculate(food, it, unit) }
@@ -389,7 +392,7 @@ private fun LibraryAmountSheet(vm: BreakfastViewModel, food: FoodRecord, target:
                 "Add to ${chosenMeal.label()}",
                 onClick = {
                     val amount = amountText.toDoubleOrNull()
-                    if (amount != null && amount > 0 && calc?.supported == true) { vm.logLibraryFood(food, chosenMeal, amount, unit); onDismiss() } else vm.noticeForInvalidLibraryAmount()
+                    if (amount != null && amount > 0 && calc?.supported == true) { vm.library.log(food, chosenMeal, amount, unit); onDismiss() } else vm.library.invalidAmount()
                 },
                 enabled = !food.archived && calc?.supported == true,
             )

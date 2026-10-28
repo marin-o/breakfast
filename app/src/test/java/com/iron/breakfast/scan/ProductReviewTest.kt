@@ -42,13 +42,18 @@ class ProductReviewTest {
         openMeal = { meal },
         queue = { queue },
         resolvingPart = { resolvingPart },
-        typed = { raw -> if (raw == "nutella200g") TypedPart("nutella", 200.0, MeasureUnit.GRAM) else TypedPart(raw, null, null) },
         offerContribution = { offers += it },
         onPartResolved = { events += "resolved ${it.id}" },
         onLogged = { events += "logged advances=$it" },
         onClosed = { events += "closed" },
         openSearch = { events += "search fromResolver=$it" },
         startScan = { events += "scan" },
+    )
+
+    /** A queue as the resolve flow builds it: its current part as the planner reads it ("nutella200g" is nutella, 200 g). */
+    private fun queueOf(meal: MealSlot?, parts: List<String>, total: Int) = ResolveQueueView(
+        meal, parts, total,
+        parts.first().let { raw -> if (raw == "nutella200g") TypedPart("nutella", 200.0, MeasureUnit.GRAM) else TypedPart(raw, null, null) },
     )
 
     private val nutella = FoodRecord(
@@ -72,7 +77,7 @@ class ProductReviewTest {
     }
 
     @Test fun aQueuedPartPrefillsItsTypedAmountAndShowsItsPlace() {
-        queue = ResolveQueueView(MealSlot.BREAKFAST, listOf("nutella200g", "kefir"), 3)
+        queue = queueOf(MealSlot.BREAKFAST, listOf("nutella200g", "kefir"), 3)
         review.choose(nutella, fromScan = true)
         assertEquals(ProductReviewOrigin.QUEUE, review.origin)
         assertEquals("200.0", review.amount)
@@ -97,7 +102,7 @@ class ProductReviewTest {
     }
 
     @Test fun whileAQueueIsResolvedAddUsesItsMealAndAdvancesIt() {
-        queue = ResolveQueueView(MealSlot.BREAKFAST, listOf("nutella200g"), 1)
+        queue = queueOf(MealSlot.BREAKFAST, listOf("nutella200g"), 1)
         review.choose(nutella)
         review.add(MealSlot.SNACKS)
         assertEquals(listOf("log Nutella 200.0 g BREAKFAST 2026-10-28"), store.calls)
@@ -126,7 +131,7 @@ class ProductReviewTest {
         review.saveToLibrary()
         assertTrue("not from a meal", store.calls.isEmpty())
         meal = null
-        queue = ResolveQueueView(MealSlot.BREAKFAST, listOf("nutella"), 1)
+        queue = queueOf(MealSlot.BREAKFAST, listOf("nutella"), 1)
         review.saveToLibrary()
         assertTrue("not for a queued part", store.calls.isEmpty())
         queue = null
@@ -163,7 +168,7 @@ class ProductReviewTest {
     }
 
     @Test fun findBetterMatchAndRescanLeaveThroughTheirScreens() {
-        queue = ResolveQueueView(MealSlot.BREAKFAST, listOf("nutella"), 1)
+        queue = queueOf(MealSlot.BREAKFAST, listOf("nutella"), 1)
         review.choose(nutella)
         review.findBetterMatch()
         assertEquals(listOf("closed", "search fromResolver=true"), events)
