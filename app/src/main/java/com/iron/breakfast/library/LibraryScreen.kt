@@ -96,6 +96,7 @@ import com.iron.breakfast.ui.components.TertiaryButton
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.components.SectionHeading
 import com.iron.breakfast.ui.components.BottomNav
+import com.iron.breakfast.ui.components.rememberMotion
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import com.iron.breakfast.ui.screens.entryDateLabel
 import com.iron.breakfast.ui.screens.formatKcal
@@ -109,6 +110,7 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
     val colors = LocalBreakfastColors.current
     val density = LocalDensity.current
     var menuOpen by remember { mutableStateOf(false) }
+    val motion = rememberMotion()
     val library = vm.library
     val archived = library.archivedOnly
     val root = library.target == null
@@ -154,7 +156,10 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 Hairline()
             }
         }
-        items(library.foods, key = { it.id }) { food -> LibraryFoodRow(vm, food, root, archived) }
+        // Rows fade in and out as the list changes, and move to their new place (logged foods go to the top).
+        items(library.foods, key = { it.id }) { food ->
+            LibraryFoodRow(vm, food, root, archived, Modifier.animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem()))
+        }
         item {
             Hairline(Modifier.padding(top = 8.dp))
             if (archived) Text("Past entries keep their numbers.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 8.dp))
@@ -163,7 +168,7 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
 }
 
 @Composable
-private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boolean, archived: Boolean) {
+private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boolean, archived: Boolean, modifier: Modifier = Modifier) {
     val colors = LocalBreakfastColors.current
     val library = vm.library
     val last = library.lastLoggedEntry(food)
@@ -171,7 +176,7 @@ private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boole
     val repeatUnit = last?.enteredUnit ?: food.defaultUnit
     val expanded = root && !archived && library.expandedFoodId == food.id
     val target = library.target
-    Column(Modifier.fillMaxWidth()) {
+    Column(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             FoodRow(
                 name = food.name,

@@ -91,6 +91,18 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 - Regions are separated by 30dp of space, a 1dp `line` hairline, and 16dp.
 - Large font: the layouts switch at a font scale of 1.8 (`isLargeFont` in `Components.kt`). 1.3 keeps the standard layout. Fixed-width controls keep a minimum width and grow with their text; nothing shrinks below the type scale.
 
+## Motion
+
+Quiet: short and smooth, standard easing (`FastOutSlowInEasing`), no bounce or overshoot. Things glide in and out and stop; nothing waits for an animation, and a screen or row on its way out can no longer be used.
+
+- **Screens over the base** (Log, entry detail and full edit, Library food page, food form, Settings, Open Food Facts search, resolver, contribution screens): fade and a 24dp rise, 220ms in, 160ms out. The base stays still under the entry detail as it comes in. The base screens (Daily, Meal, Library) switch without motion; the scanner opens and closes without motion (its brackets keep their 280ms slide above the review sheet).
+- **Sheets:** Material's own slide up, not doubled. **Dialogs and menus:** the platform's and Material's own.
+- **Undo snackbars and "Not right?":** fade and an 8dp rise, 180ms; "Not right?" opens and closes its space with it.
+- **Lists** (meal rows on Daily and the Meal screen, the Library list, the Log's rows): a new row fades in, a removed row collapses out, 200ms; Library rows that move (a logged food goes to the top) glide to their place. Another day shows its rows at once.
+- **Day change** (swipe, arrows, Today, date picker): the day's content fades in from 24dp to the side the day lies on, 220ms.
+- **Swipe to delete:** the row follows the finger; on release it settles open or shut in 180ms; Delete collapses it, Undo fades it back.
+- **Reduced motion** (Settings, Motion is Reduced, or the phone's animations are removed): all of this is off and every change is instant; a sheet is simply there (dragged or tapped away, it still uses Material's slide). The one rule is `ui/components/Motion.kt`.
+
 ## Shared components
 
 The single implementation of each control lives in `ui/components/Components.kt`. Screens build their controls from those components; no screen draws its own copy of a control.

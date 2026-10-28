@@ -44,6 +44,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -734,10 +737,19 @@ fun Sheet(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = LocalBreakfastColors.current
+    // Material's own slide up is the sheet's motion. With reduced motion the sheet starts where it would stop, so it
+    // is simply there (a swipe or a tap outside still lets Material slide it away).
+    val sheetState = if (rememberMotionReduced()) {
+        val density = LocalDensity.current
+        val shown = if (skipPartiallyExpanded) SheetValue.Expanded else SheetValue.PartiallyExpanded
+        rememberSaveable(skipPartiallyExpanded, saver = SheetState.Saver(skipPartiallyExpanded, { true }, density, false)) {
+            SheetState(skipPartiallyExpanded, density, shown, { true }, false)
+        }
+    } else rememberModalBottomSheetState(skipPartiallyExpanded = skipPartiallyExpanded)
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         modifier = modifier,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = skipPartiallyExpanded),
+        sheetState = sheetState,
         shape = SheetShape,
         containerColor = colors.bg,
         contentColor = colors.ink,

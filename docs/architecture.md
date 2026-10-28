@@ -9,7 +9,7 @@ Packages under `com.iron.breakfast`. Feature packages hold that feature's screen
 | Package / file | Responsibility |
 | --- | --- |
 | `app/MainActivity.kt` | Entry point. `MainActivity` applies Theme and Text size before its window exists, sets edge-to-edge and hosts `IronApp` inside `BreakfastTheme`. |
-| `app/AppRoot.kt` | `IronApp`, the root composable: the diary pickers, the lifecycle hooks, and drawing `Surfaces.shown()` in order (each surface keyed; with the root dialogs: discard food, notice, Replace diary, Delete all, Storage unavailable), with the app's one `BackHandler`, which runs `Surfaces.back()`. Screens have no BackHandler of their own (the Library's overflow menu keeps its local one). Routing is the owners' state read through `Surfaces`, not a nav graph. |
+| `app/AppRoot.kt` | `IronApp`, the root composable: the diary pickers, the lifecycle hooks, and drawing `Surfaces.shown()` in order (each surface keyed; with the root dialogs: discard food, notice, Replace diary, Delete all, Storage unavailable), with the app's one `BackHandler`, which runs `Surfaces.back()`; each surface through `ShownSurface`, and a screen that just closed as a `GhostSurface` (see Motion). Screens have no BackHandler of their own (the Library's overflow menu keeps its local one). Routing is the owners' state read through `Surfaces`, not a nav graph. |
 | `app/Surfaces.kt` | `Surfaces`, the one ordered model of what is open (see State owners): what is drawn and in which order, what system Back does, and the top check; the Meal screen's `meal` and Settings over the Library; opening and leaving the Library (`exitLibraryTarget`), the way back from a resolve to the Log, and which screen replaces which. |
 | `app/BreakfastViewModel.kt` | `BreakfastViewModel` (`AndroidViewModel` + `SavedStateHandle`) builds `DiarySession`, the feature owners and `Surfaces`, gives each its inputs and callbacks, and coordinates the selected day, the app lifecycle and saved state. |
 | `app/DiarySession.kt`, `app/DiaryChange.kt` | The diary read model, the write gate and the post-write fan-out; the kinds of committed change and `undoAfterChange` (see State owners). |
@@ -36,7 +36,8 @@ Packages under `com.iron.breakfast`. Feature packages hold that feature's screen
 | `transfer/` | `DiaryTransfer` (export, import check and Replace diary, Delete all and its dialog, the safety copy, the picker request) over `DiaryData` and `DiaryFiles` (`ContentDiaryFiles` over the document picker's URIs and `no_backup`), in `DiaryTransferFlow.kt`; `DiaryPicker`, the messages, the safety copy step and when Delete all may run (`DiaryTransfer.kt`); `ExportReminders` and when the reminder is due and drawn (`ExportReminder.kt`). |
 | `ui/Format.kt` | Shared display formatting: `MealSlot.label()`, `Double.plain()`, `Double.pretty()`. |
 | `ui/screens/ScreenData.kt` | Pure UI mapping used by several features, unit-tested. |
-| `ui/components/`, `ui/theme/` | Shared Compose components; Monochrome tokens (`Color.kt` mirrors DESIGN.md), type, shape, dimens. |
+| `app/SurfaceTransitions.kt` | The root's motion beside `Surfaces` (see Motion): which surfaces glide (`glides`), what one change of `shown()` moves (`surfaceChange`, pure), and the ghosts of closed screens. |
+| `ui/components/`, `ui/theme/` | Shared Compose components; Monochrome tokens (`Color.kt` mirrors DESIGN.md), type, shape, dimens. `ui/components/Motion.kt` is the one motion rule (see Motion). |
 
 ## State owners
 
@@ -50,9 +51,10 @@ All state lives in `BreakfastViewModel` and the owners it builds (`DiarySession`
 
 `Surfaces` (`app/Surfaces.kt`) is the one place that knows what is open and in which order. Each owner keeps its own open state (the Log page, the scanner, the resolver, a dialog's flag); `shown()` derives from it the ordered list of `Surface`s drawn now. The `Surface` declaration order is the drawing order (the base screen, Daily, Meal or Library, first); the scanner and the entry detail are drawn alone (not even a notice until they close); the scan review's backdrop replaces the base, the Log and the resolver, which wait undrawn; "No local match" joins only with nothing over the Library. From that one list come:
 
-- **Drawing:** `IronApp` draws `shown()` bottom first.
+- **Drawing:** `IronApp` draws `shown()` bottom first (with the ghosts of screens gliding out, which are not open; see Motion).
 - **Back:** `back()` runs the Back of the topmost surface that takes it (the same action as its arrow: `scan.end`, `foodForm.leave`, `settingsBack`, `exitLibrary`, ...); a dialog or sheet takes Back in its own window first. The base takes Back only when nothing covers it (`Surface.coversBase`), and Daily never (the system goes back). The contribution sign-in ignores Back while it submits, which then reaches the surface beneath.
 - **The top check:** `baseCovered()`, a surface with `coversBase` drawn: "No local match" and the export reminder stay hidden while one is.
+
 
 Legitimate stacking stays: the scanner over the food form (Back returns to the form as it was), the resolver under the search, the food form and product review (it comes back when one closes without resolving, and waits under a scan backdrop), the resolver after a background save, the Log and Library part frame with its children, Settings and its pages over the Library, the entry detail and its edits over their meal, the contribution screens, dialogs and notices. `SurfacesTest` pins each case over every owner wired as the VM wires them (`AppKit`). Contradictions the old flags allowed are now unrepresentable (drawing, Back and the top check disagreeing: one list feeds all three) or impossible through the operations of `Surfaces` (the search, the food form and the resolver replace each other; every way out of the Library closes Settings; opening the Library clears `meal`).
 
@@ -88,6 +90,14 @@ Legitimate stacking stays: the scanner over the food form (Back returns to the f
 | Session after a replaced or deleted diary | `SessionReset`, a `DiarySession` listener on `DiaryChange.DiaryReplaced` built by the VM: Import diary and Delete all data drop the same things (log pins and the Log's error, a contribution candidate with its preflight and review, the resolve queue and resolver, the entry detail; Undo and "Not right?" feedback end through the same change). Settings are reset only by Delete all with its chip | — |
 | Diary, foods, aliases, conversions, preferences | Room | Yes |
 
+## Motion
+
+The Quiet motion (DESIGN.md, Motion) has one rule, in `ui/components/Motion.kt`: `rememberMotion()` gives the specs and transitions, and with reduced motion (`rememberMotionReduced`: Motion is Reduced, or the phone's animations are removed) every spec is `snap()` and every transition none. Nothing else decides whether something moves.
+
+- **Screens:** `SurfaceTransitions` only remembers what was drawn last; `Surfaces` stays the one model of what is open. A gliding screen (`Surface.glides`: the full screens in the app's window) fades and rises in. It and the base are recorded as they draw, so when one closes it can be drawn for a moment as a picture of its last frame (a `Ghost`): no composition, no touch, no TalkBack, and Back already acts on the new top. The base stays as a still picture under the entry detail while the detail comes in (the detail is drawn alone). The scanner comes and goes without motion. On API 28 the picture cannot keep its layers, so screens there close at once.
+- **Lists:** lazy lists (Meal, Library) use `Modifier.animateItem` with `Motion.listItem()`; a removed row is a picture there too. The other lists (Daily's meals, the Log's rows) use `AnimatedRows`, which keeps a removed row where it was, `inert`, until it has collapsed; a new day shows its rows at once.
+- **Feedback:** `Reveal` shows the Undo snackbars and "Not right?"; while one leaves it is `inert`. The Undo and feedback timing are the owners' (`UndoController`, `MatchFeedback`), unchanged by the motion.
+
 ## Durable save path
 
 Add (or any edit) runs in `viewModelScope` through `DiarySession.write`: `BreakfastViewModel` calls `BreakfastEngine` (for example `save`, `saveCustomAndLog`, `replaceEntry*`), which calls a `BreakfastStore` suspend function. The store takes one `Mutex`, switches to `Dispatchers.IO` under `NonCancellable` (every user-confirmed write; a cancel while waiting for the lock writes nothing), writes inside `database.withTransaction`, then reloads the whole `StoreSnapshot`. The gate runs these calls in `suspendRunCatching`, which rethrows `CancellationException`, so a cancel is never shown as a failed save. "Saved" means that Room transaction committed. If the reload after it fails, the write still counts as saved: the snapshot is marked stale and reloaded on the next refresh, so a retry never logs the same food twice. Entry edits re-read the row inside the transaction and write it with `UPDATE ... WHERE id`, so a deleted entry is never re-created; saving an edited food keeps its stored archived state. A logged entry stores its own nutrition snapshot and conversion provenance, so later food edits never rewrite history. Migrations are additive and there is no destructive fallback.
@@ -121,7 +131,7 @@ Library ⋮ → Settings is a list of six groups; each opens its own page (TopBa
 | Display | Long draft (`long_draft`) | End | The composer's long draft. |
 | Display | Macros on today (`show_macros`), Missing values note (`show_missing_note`) | Show | Hide drops Daily's macro block (and its note), or only the "?" note. |
 | Display | Decimal mark (`decimal_mark`) | Point | Comma shows decimals with a comma (`DisplayDecimal`, `pretty()`); fields keep a point (`plain()`), input reads both. |
-| Accessibility | Motion (`motion`) | System | Reduced makes `rememberMotionReduced` true, as "Remove animations" does. |
+| Accessibility | Motion (`motion`) | System | Reduced makes `rememberMotionReduced` true, as "Remove animations" does, which turns all motion off (see Motion). |
 | Accessibility | Text size (`text_size`) | System | Larger overrides the activity's font scale with 1.15 × the phone's (`attachBaseContext`, recreated on a change), so `LocalDensity`, dialogs and sheets follow and `isLargeFont` applies as before. |
 | Accessibility | Haptics (`haptics`) | Off | On: the standard CONFIRM (VIRTUAL_KEY below API 30) on Add and Undo; no permission. |
 | Scanner | Flashlight at start (`flashlight_at_start`) | Off | On: the torch starts on when the camera has a flash unit. |

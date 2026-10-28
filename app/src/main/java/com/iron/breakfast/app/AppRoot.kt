@@ -65,6 +65,7 @@ import com.iron.breakfast.contribution.ContributionReviewScreen
 import com.iron.breakfast.contribution.ContributionSignInScreen
 import com.iron.breakfast.contribution.ContributionFailureScreen
 import com.iron.breakfast.ui.components.ChoiceOption
+import com.iron.breakfast.ui.components.rememberMotion
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,8 +92,14 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     LifecycleEventEffect(Lifecycle.Event.ON_START) { vm.onAppStarted() }
     // What is open and in which order (see [Surfaces]): drawn bottom first, each surface keyed so it keeps its state
     // while others open and close over or under it. The base screen is one Scaffold whichever of the three it shows.
+    // A screen that just closed may still be drawn as a picture while it glides out (a [Ghost]); it is not open.
     val shown = vm.surfaces.shown()
-    for (surface in shown) key(if (surface.base) Surface.DAILY else surface) { DrawSurface(vm, surface) }
+    val motion = rememberMotion()
+    val transitions = rememberSurfaceTransitions()
+    for (drawn in transitions.frame(shown, motion)) key(if (drawn is Surface) drawn.slot else drawn) {
+        if (drawn is Surface) ShownSurface(transitions, drawn.slot, motion) { DrawSurface(vm, drawn) }
+        else GhostSurface(transitions, drawn as Ghost, motion)
+    }
     // System Back goes to the topmost surface that takes it; a dialog or sheet takes it in its own window first.
     BackHandler(enabled = vm.surfaces.takesBack(shown)) { vm.surfaces.back() }
 }

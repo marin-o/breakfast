@@ -65,6 +65,7 @@ import com.iron.breakfast.logMealPickerLabel
 import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.components.ChoiceOption
 import com.iron.breakfast.ui.components.FoodRow
+import com.iron.breakfast.ui.components.AnimatedRows
 import com.iron.breakfast.ui.components.isLargeFont
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.PrimaryButton
@@ -151,7 +152,8 @@ internal fun LogScreen(vm: BreakfastViewModel) {
             Hairline(Modifier.padding(top = 22.dp))
             vm.log.error?.let { Text(it, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(top = 8.dp)) }
             // Rows in typed order. Typed text that matches no food stays visible, so it is never lost when Add is pressed.
-            draft.rows.forEach { row ->
+            // A new part's row fades in as its space opens; a removed part's row collapses out.
+            AnimatedRows(draft.rows.withIndex().toList(), { it.index }) { (_, row) ->
                 when (row) {
                     is DraftRow.Entry -> FoodRow(
                         name = row.resolution.food.name,

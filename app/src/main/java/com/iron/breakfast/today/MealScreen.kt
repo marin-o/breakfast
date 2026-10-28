@@ -22,6 +22,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.animation.core.animate
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -53,6 +58,9 @@ import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.SecondaryButton
 import com.iron.breakfast.ui.components.Snackbar
 import com.iron.breakfast.ui.components.rememberTick
+import com.iron.breakfast.ui.components.Motion
+import com.iron.breakfast.ui.components.Reveal
+import com.iron.breakfast.ui.components.rememberMotion
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.theme.BreakfastType
 import com.iron.breakfast.ui.theme.Gutter
@@ -71,6 +79,7 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
     val total = entries.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
     val colors = LocalBreakfastColors.current
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    val motion = rememberMotion()
     Box(modifier.fillMaxSize().background(colors.bg)) {
         LazyColumn(
             Modifier.fillMaxSize(),
@@ -92,11 +101,12 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 )
                 Hairline(Modifier.padding(top = 14.dp))
             }
-            items(entries) { entry ->
-                Column(Modifier.fillMaxWidth()) {
-                    EntryRow(entry, foods[entry.foodId], vm)
+            // A new or restored row fades in; a deleted one fades as the rows below close the gap.
+            items(entries, key = { it.id }) { entry ->
+                Column(Modifier.fillMaxWidth().animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem())) {
+                    EntryRow(entry, foods[entry.foodId], vm, motion)
                     // Same correction block as Daily, for a doubtful match from the Log page.
-                    if (vm.feedback.isOpen(entry)) CorrectionStrip(vm, entry)
+                    Reveal(entry.takeIf { vm.feedback.isOpen(it) }, resize = true) { CorrectionStrip(vm, it) }
                 }
             }
             item {
@@ -127,8 +137,8 @@ internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot, modifier: Mo
     val draft = vm.log.draft.isNotBlank()
     val tick = rememberTick()
     ComposerFade(modifier) {
-        vm.undo.loggedMessage?.let { Snackbar(it, "Undo", { tick(); vm.undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
-        vm.undo.deletedEntry?.let { deleted -> Snackbar("${deleted.foodName} deleted", "Undo", { tick(); vm.undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
+        Reveal(vm.undo.loggedMessage) { Snackbar(it, "Undo", { tick(); vm.undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
+        Reveal(vm.undo.deletedEntry) { deleted -> Snackbar("${deleted.foodName} deleted", "Undo", { tick(); vm.undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
         Composer(
             placeholder = if (draft) vm.log.draft else "Add to ${target.label()}",
             onClick = { vm.log.open(target) },
@@ -141,9 +151,12 @@ internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot, modifier: Mo
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel) {
+private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel, motion: Motion) {
     val colors = LocalBreakfastColors.current
     var revealOffset by remember(entry.id) { mutableFloatStateOf(0f) }
+    // The row follows the finger; on release it settles open or shut ([Motion.swipe]), and a new touch stops that.
+    val scope = rememberCoroutineScope()
+    var settle by remember(entry.id) { mutableStateOf<Job?>(null) }
     var rowHeight by remember(entry.id) { androidx.compose.runtime.mutableIntStateOf(0) }
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     val deleteWidth = with(LocalDensity.current) { (96.dp * fontScale).toPx() }
@@ -153,7 +166,7 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel
     Box(Modifier.fillMaxWidth().background(colors.bg).onSizeChanged { rowHeight = it.height }) {
         // Swipe reveals the delete panel; the panel is the only place `bad` fills a surface.
         if (revealOffset < 0f) Row(
-            Modifier.align(Alignment.CenterEnd).widthIn(min = 96.dp * fontScale).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).background(colors.bad).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { vm.undo.delete(entry); revealOffset = 0f },
+            Modifier.align(Alignment.CenterEnd).widthIn(min = 96.dp * fontScale).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).background(colors.bad).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { vm.undo.delete(entry) },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
@@ -173,6 +186,7 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel
             }.combinedClickable(onClick = { vm.entryEdit.openDetail(entry) }, onDoubleClick = { vm.entryEdit.beginQuick(entry) }, onLongClick = { vm.entryEdit.beginFull(entry) }).pointerInput(entry.id) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
+                    settle?.cancel()
                     var dx = 0f
                     var dy = 0f
                     var horizontal = false
@@ -187,7 +201,10 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel
                         if (horizontal && dx < 0f) { revealOffset = (revealOffset + deltaX).coerceIn(-deleteWidth, 0f); change.consume() }
                         if (!change.pressed) break
                     }
-                    if (horizontal) revealOffset = if (revealOffset <= -deleteWidth * .65f) -deleteWidth else 0f
+                    if (horizontal) {
+                        val target = if (revealOffset <= -deleteWidth * .65f) -deleteWidth else 0f
+                        settle = scope.launch { animate(revealOffset, target, animationSpec = motion.swipe()) { value, _ -> revealOffset = value } }
+                    }
                 }
             },
         )

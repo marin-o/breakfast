@@ -30,12 +30,15 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.animate
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -67,6 +70,10 @@ import com.iron.breakfast.ui.components.MacroStat
 import com.iron.breakfast.ui.components.MealHeader
 import com.iron.breakfast.ui.components.Snackbar
 import com.iron.breakfast.ui.components.rememberTick
+import com.iron.breakfast.ui.components.AnimatedRows
+import com.iron.breakfast.ui.components.Motion
+import com.iron.breakfast.ui.components.Reveal
+import com.iron.breakfast.ui.components.rememberMotion
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import java.time.Instant
 import java.time.LocalDate
@@ -90,10 +97,16 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
     val touchSlop = LocalViewConfiguration.current.touchSlop
     val swipeThreshold = with(androidx.compose.ui.platform.LocalDensity.current) { 96.dp.toPx() }
     var pickerOpen by remember { mutableStateOf(false) }
+    val motion = rememberMotion()
+    val daySlide = rememberDaySlide(vm.selectedDayKey, motion)
 
     Box(modifier.fillMaxSize().background(colors.bg)) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize().pointerInput(vm.selectedDayKey) {
+            modifier = Modifier.fillMaxSize().graphicsLayer {
+                // Another day comes in from the side it lies on: a later day from the right.
+                translationX = daySlide.offset * motion.screenSlidePx
+                alpha = 1f - abs(daySlide.offset)
+            }.pointerInput(vm.selectedDayKey) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     var dx = 0f
@@ -138,7 +151,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
             }
             vm.log.error?.let { message -> item { Text(message, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(vertical = 6.dp)) } }
             items(MealSlot.entries) { slot ->
-                DailyMealSection(slot, selected.filter { it.mealSlot == slot }, foods, vm)
+                DailyMealSection(slot, selected.filter { it.mealSlot == slot }, foods, vm, rows = vm.selectedDayKey to vm.ready)
             }
             item {
                 if (contributionShown(vm.settings.showContribute, vm.contribution.pending != null)) ContributionAction(vm)
@@ -153,6 +166,26 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
         onDismiss = { pickerOpen = false },
         onPick = { dayKey -> vm.goToDay(dayKey); pickerOpen = false },
     )
+}
+
+/** The day's content offset after a change of day: from ±1 (a whole [Motion.screenSlidePx] to the side) to 0. */
+private class DaySlide(var day: String) { var offset by mutableFloatStateOf(0f) }
+
+/**
+ * Slides the day's content in from the side the new [day] lies on (later days from the right), whichever way the day
+ * changed: a swipe, the arrows, Today or the date picker. Set as the day changes, so its first frame is already offset.
+ */
+@Composable
+private fun rememberDaySlide(day: String, motion: Motion): DaySlide {
+    val slide = remember { DaySlide(day) }
+    if (slide.day != day) {
+        slide.offset = if (motion.reduced) 0f else if (day > slide.day) 1f else -1f
+        slide.day = day
+    }
+    LaunchedEffect(day) {
+        if (slide.offset != 0f) animate(slide.offset, 0f, animationSpec = motion.day()) { value, _ -> slide.offset = value }
+    }
+    return slide
 }
 
 /** Date picker opened from the day title. Future days are not selectable, as with Next. */
@@ -207,7 +240,7 @@ internal fun dailyMacroNote(macros: MacroTotals, showMacros: Boolean = true, sho
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Map<String, FoodRecord>, vm: BreakfastViewModel) {
+private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Map<String, FoodRecord>, vm: BreakfastViewModel, rows: Any) {
     val total = entries.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
     MealHeader(
         name = slot.label(),
@@ -218,7 +251,8 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
         emptyText = if (entries.isEmpty()) "Nothing yet" else null,
         modifier = Modifier.clickable(role = Role.Button) { vm.surfaces.openMeal(slot) },
     )
-    entries.forEach { entry ->
+    // Rows fade in and collapse out; another day (or the first load) shows its rows at once.
+    AnimatedRows(entries, { it.id }, reset = rows) { entry -> Column(Modifier.fillMaxWidth()) {
         val quantity = quantityRateDisplay(entry, foods[entry.foodId], includeRateUnit = false, asciiMultiply = true)
         FoodRow(
             name = entry.foodName,
@@ -233,8 +267,8 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
                 )
             }.combinedClickable(onClick = { vm.entryEdit.openDetail(entry) }, onDoubleClick = { vm.entryEdit.beginQuick(entry) }, onLongClick = { vm.entryEdit.beginFull(entry) }),
         )
-        if (vm.feedback.isOpen(entry)) CorrectionStrip(vm, entry)
-    }
+        Reveal(entry.takeIf { vm.feedback.isOpen(it) }, resize = true) { CorrectionStrip(vm, it) }
+    } }
 }
 
 /**
@@ -245,8 +279,8 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
 internal fun DailyComposer(vm: BreakfastViewModel, modifier: Modifier = Modifier) {
     val tick = rememberTick()
     ComposerFade(modifier) {
-        vm.undo.loggedMessage?.let { Snackbar(it, "Undo", { tick(); vm.undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
-        vm.undo.deletedEntry?.let { Snackbar("${it.foodName} deleted", "Undo", { tick(); vm.undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
+        Reveal(vm.undo.loggedMessage) { Snackbar(it, "Undo", { tick(); vm.undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
+        Reveal(vm.undo.deletedEntry) { Snackbar("${it.foodName} deleted", "Undo", { tick(); vm.undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
         if (vm.reminders.shownOnDaily(covered = vm.surfaces.baseCovered())) {
             LaunchedEffect(Unit) { vm.reminders.onScreenNow() }
             Snackbar("Export your diary.", "Export", vm.reminders::export, Modifier.padding(bottom = 8.dp))
