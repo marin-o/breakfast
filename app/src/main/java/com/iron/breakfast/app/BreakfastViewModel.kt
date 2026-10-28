@@ -12,7 +12,6 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -38,6 +37,8 @@ import com.iron.breakfast.resolve.LogResolveRequest
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.library.LibraryLogDraft
 import com.iron.breakfast.entry.EntryEditMode
+import com.iron.breakfast.entry.EntryEdit
+import com.iron.breakfast.entry.EntryEditStore
 import com.iron.breakfast.domain.RankedFood
 import com.iron.breakfast.transfer.DiaryPicker
 import com.iron.breakfast.log.automaticMeal
@@ -51,7 +52,6 @@ import com.iron.breakfast.topOverlay
 import com.iron.breakfast.isLibraryNoMatch
 import com.iron.breakfast.library.libraryLogDraft
 import com.iron.breakfast.ui.label
-import com.iron.breakfast.domain.ReplacementResult
 import com.iron.breakfast.contribution.contributionLanguageFor
 import com.iron.breakfast.domain.DraftRow
 import com.iron.breakfast.rowStillInDraft
@@ -63,7 +63,6 @@ import com.iron.breakfast.logTargetMealOf
 import com.iron.breakfast.log.LogDraftView
 import com.iron.breakfast.domain.DraftView
 import com.iron.breakfast.library.libraryInputSegments
-import com.iron.breakfast.ui.plain
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.logSubmitPlan
 import com.iron.breakfast.LogSubmitPlan
@@ -137,7 +136,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         },
         scope = viewModelScope,
         onOpenFailed = { Log.e(LOG_TAG, "Storage could not be opened", it) },
-        onRefreshed = { selectedEntry = selectedEntryId?.let { id -> entries.firstOrNull { it.id == id } } },
+        onRefreshed = { entryEdit.diaryReloaded() },
     )
     private val off = OpenFoodFactsClient()
     /** The pending Undo, its expiry and Delete (see [UndoController]); Daily and Meal talk to it. */
@@ -217,6 +216,22 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         restoreSelectedDay(savedState).let { resolveSelectedDay(it.dayKey, it.followingToday, returning = true, clock(), zone, settings.dayStartHour) }
     ); private set
     var slot by mutableStateOf(savedState.get<String>("meal_slot")?.let { runCatching { MealSlot.valueOf(it) }.getOrNull() }); private set
+    /** The entry detail and the quick and full edits (see [EntryEdit]); an edit shows its meal and returns to Daily through here. */
+    internal val entryEdit: EntryEdit = EntryEdit(
+        session = session,
+        store = object : EntryEditStore {
+            override suspend fun replaceAmountUnit(entryId: String, text: String) = engine.replaceEntryAmountUnit(entryId, text)
+            override suspend fun replaceEntry(entryId: String, foodId: String, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) =
+                engine.replaceEntryDraft(entryId, foodId, amount, unit, meal, dayKey)
+        },
+        scope = viewModelScope,
+        openMeal = { slot },
+        // The edit's meal shows beneath it; the Log's error goes, as it always did when an edit began.
+        onBegin = { meal -> selectMeal(meal); mealDraftError = null },
+        onEnd = { returnToDaily -> if (returnToDaily) selectMeal(null); mealDraftError = null },
+        initialEntryId = savedState["entry_id"],
+        saveEntryId = { savedState["entry_id"] = it },
+    )
     var customOpen by mutableStateOf(false); private set
     var editingLibraryFoodId by mutableStateOf<String?>(null); private set
     val draft = FoodDraft()
@@ -277,8 +292,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     private var libraryRefreshJob: Job? = null
     private var libraryRefreshGeneration = 0L
     var libraryBatchMealPickerOpen by mutableStateOf(false); private set
-    var selectedEntry by mutableStateOf<MealEntry?>(null); private set
-    private var selectedEntryId: String? = savedState["entry_id"]
     private var barcodeRequestToken = 0L
     /** The barcode lookup in flight; leaving the scanner cancels it, which also stops its Open Food Facts request. */
     private var barcodeLookupJob: Job? = null
@@ -290,16 +303,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     val busy: Boolean get() = session.busy
     /** Storage failed to open; the dialog stays until a retry opens it. */
     val storageUnavailable: Boolean get() = session.storageUnavailable
-    var entryEditMode by mutableStateOf(EntryEditMode.NONE); private set
-    var editingEntryId by mutableStateOf<String?>(null); private set
-    var editingFoodName by mutableStateOf<String?>(null); private set
-    var editingFoodId by mutableStateOf<String?>(null); private set
-    var editingFoodPickerOpen by mutableStateOf(false); private set
-    var quickEditHintVisible by mutableStateOf(false); private set
-    private var editSession = 0L
-    private var editReturnToDaily = false
-    private var quickHintSession = 0L
-    private var fullSaveJob: Job? = null
     var unknownQueue by mutableStateOf<List<String>>(emptyList()); private set
     var unknownQueueTarget by mutableStateOf<MealSlot?>(null); private set
     var unknownQueueTotal by mutableStateOf(0); private set
@@ -328,7 +331,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         session.onChange(feedback::onChange)
         session.onChange { change -> if (change.refreshesLibrary) refreshLibrary() }
         // Import and Delete all: one reset of everything that referred to the old diary (see [SessionReset]).
-        session.onChange(SessionReset(listOf(logPins::clear, contribution::reset, ::abandonUnknownResolution, ::closeEntryDetail))::onChange)
+        session.onChange(SessionReset(listOf(logPins::clear, contribution::reset, ::abandonUnknownResolution, entryEdit::closeDetail))::onChange)
         // A new day start: today follows it at once, and a user on today stays on today (it counts as a return).
         settings.dayStartHourSetting.observe { checkDay(returning = true) }
         // An Undo offer showing now follows the new window from the moment it was made.
@@ -402,11 +405,16 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         settings.mealMode, java.time.Instant.ofEpochMilli(clock()).atZone(zone).hour, settings.mealBounds, lastUsedMeal(entries), settings.dayStartHour, settings.beforeDayStart,
     )
     fun openLibrary() {
-        cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = false; refreshLibrary()
+        leaveEntryEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = false; refreshLibrary()
     }
     fun openArchivedLibrary() {
-        cancelEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = true; refreshLibrary()
+        leaveEntryEdit(); selectMeal(null); libraryOpen = true; libraryQuery = ""; libraryArchivedOnly = true; refreshLibrary()
     }
+    /**
+     * Library and meal navigation end an open entry edit ([EntryEdit.cancel], which also clears the Log's error), and
+     * the Library bar starts empty, as it did when the edit borrowed it (before B15).
+     */
+    private fun leaveEntryEdit() { entryEdit.cancel(); input = "" }
     fun closeLibrary() = leaveLibrary(returnTo = null)
     /**
      * The Library's arrow and system Back, by [exitLibraryTarget]. A Library opened from a meal keeps that meal in
@@ -465,9 +473,9 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
     /** What is drawn over Daily, Meal or Library right now, by [topOverlay]. */
     internal fun topOverlay(): Overlay? = topOverlay(
-        scanner = scannerOpen, entryDetail = selectedEntry != null, productReview = selectedProduct != null,
+        scanner = scannerOpen, entryDetail = entryEdit.selectedEntry != null, productReview = selectedProduct != null,
         resolver = resolverOpen, offSearch = search.open, foodForm = customOpen,
-        libraryFood = selectedLibraryFood != null, entryEdit = entryEditMode != EntryEditMode.NONE,
+        libraryFood = selectedLibraryFood != null, entryEdit = entryEdit.mode != EntryEditMode.NONE,
         settings = settingsOpen,
     )
     /** A library search that finished with nothing and has no other screen over it: the "No local match" screen. */
@@ -551,42 +559,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             onFailure = { notices.show(it.message ?: "Could not restore this food.") },
         ) { engine.restoreFood(food.id) }
     }
-    fun openEntryDetail(entry: MealEntry) {
-        // A double tap is resolved by combinedClickable into quick edit. If a
-        // delayed single-tap callback arrives after that, it must not reopen
-        // the detail route over the edit sheet.
-        if (entryEditMode != EntryEditMode.NONE) return
-        selectedEntry = entry
-        selectedEntryId = entry.id
-        savedState["entry_id"] = entry.id
-    }
-    fun closeEntryDetail() { selectedEntry = null; selectedEntryId = null; savedState["entry_id"] = null }
-    fun editingEntry(): MealEntry? = editingEntryId?.let { id -> entries.firstOrNull { it.id == id } }
-    fun saveFullEdit(foodId: String, amount: String, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
-        val id = editingEntryId ?: return
-        val edit = editSession
-        // A tap while the save runs is ignored, not reported as invalid.
-        if (!ready || busy) return
-        val parsedAmount = amount.toDoubleOrNull()
-        if (parsedAmount == null || parsedAmount <= 0.0 || foodId.isBlank()) {
-            markEditInvalid("Enter a positive amount and choose a food.")
-            return
-        }
-        fullSaveJob?.cancel()
-        // This save owns the gate until it ends, whatever the edit session is now; a result for an edit no longer open
-        // reloads the diary and nothing else.
-        fullSaveJob = session.write(
-            change = { result -> entryEditChange(result, stillOpen = editSession == edit && editingEntryId == id) },
-            nonCancellable = true,
-            onSuccess = { result ->
-                if (editSession == edit && editingEntryId == id) when (result) {
-                    is ReplacementResult.Success -> { fullSaveJob = null; cancelEdit() }
-                    is ReplacementResult.Failure -> markEditInvalid(result.reason)
-                }
-            },
-            onFailure = { error -> if (editSession == edit && editingEntryId == id) markEditInvalid(error.message ?: "Could not save this entry.") },
-        ) { engine.replaceEntryDraft(id, foodId, parsedAmount, unit, meal, dayKey) }
-    }
     private fun abandonUnknownResolution() {
         unknownQueue = emptyList()
         unknownQueueTarget = null
@@ -594,10 +566,10 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         resolutionContinuation = false
         resolverOpen = false
     }
-    fun openMeal(s: MealSlot) { abandonUnknownResolution(); selectMeal(s); barcodeRequestToken++; cancelEdit(); mealDraftError = null }
+    fun openMeal(s: MealSlot) { abandonUnknownResolution(); selectMeal(s); barcodeRequestToken++; leaveEntryEdit(); mealDraftError = null }
     fun openFocusedLibrary(meal: MealSlot?, query: String = "") {
         abandonUnknownResolution()
-        cancelEdit()
+        leaveEntryEdit()
         selectMeal(meal)
         libraryOpen = true
         // The bar shows the input, so it starts as the query the list is filtered by.
@@ -667,33 +639,18 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     }
 
     fun openLibraryFoodDetail(entry: MealEntry) {
-        closeEntryDetail()
-        cancelEdit()
+        entryEdit.closeDetail()
+        leaveEntryEdit()
         selectMeal(null)
         libraryOpen = true
         libraryQuery = entry.foodName
         selectedLibraryFood = foods.firstOrNull { it.id == entry.foodId }
         refreshLibrary()
     }
-    fun openEditFoodPicker() {
-        editingFoodPickerOpen = true
-        refreshLibrary()
-    }
-    fun closeEditFoodPicker() { editingFoodPickerOpen = false }
-    fun chooseEditFood(food: FoodRecord) {
-        editingFoodId = food.id
-        editingFoodName = food.name
-        editingFoodPickerOpen = false
-    }
-    fun editingFood(): FoodRecord? = editingFoodId?.let { id -> foods.firstOrNull { it.id == id } }
-    fun editUnits(food: FoodRecord): List<MeasureUnit> = (listOf(food.defaultUnit, food.nutrition.unit) + food.conversions.map { it.unit })
-        .filter { it != MeasureUnit.UNKNOWN }.distinct()
-    fun draftCalculation(foodId: String, amount: Double, unit: MeasureUnit): Calculation? =
-        foods.firstOrNull { it.id == foodId }?.let { calculator.calculate(it, amount, unit) }
     /** Leaves the meal for Daily. The log draft and its pins stay. */
     fun closeMeal() {
         logResolve?.let { endResolve(it, it.draftText); return }
-        abandonUnknownResolution(); selectMeal(null); barcodeRequestToken++; cancelEdit() }
+        abandonUnknownResolution(); selectMeal(null); barcodeRequestToken++; leaveEntryEdit() }
     /** The keyboard's Done: the draft is committed, so its last word is no longer being typed. */
     fun commitLogDraft() { logDraftCommitted = true }
     /** The Log page's typing. Clearing the draft also drops the foods picked for it. */
@@ -808,81 +765,11 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             onFailure = { notices.show(it.message ?: "Could not save this batch.") },
         ) { engine.save(cleaned, mealSlot = target, dayKey = capturedDayKey) }
     }
-    fun beginQuickEdit(entry: MealEntry) {
-        if (busy) return
-        closeEntryDetail()
-        editReturnToDaily = slot == null
-        selectMeal(entry.mealSlot)
-        editSession += 1
-        editingEntryId = entry.id
-        editingFoodId = entry.foodId
-        editingFoodName = entry.foodName
-        entryEditMode = EntryEditMode.QUICK
-        input = "${entry.enteredAmount.plain()} ${entry.enteredUnit.displayLabel()}"
-        mealDraftError = null
-        quickEditHintVisible = true
-        val hintSession = ++quickHintSession
-        viewModelScope.launch {
-            delay(2_500)
-            if (quickHintSession == hintSession && entryEditMode == EntryEditMode.QUICK) quickEditHintVisible = false
-        }
-    }
-    fun beginFullEdit(entry: MealEntry) {
-        if (busy) return
-        closeEntryDetail()
-        editReturnToDaily = slot == null
-        selectMeal(entry.mealSlot)
-        editSession += 1
-        editingEntryId = entry.id
-        editingFoodId = entry.foodId
-        editingFoodName = entry.foodName
-        editingFoodPickerOpen = false
-        entryEditMode = EntryEditMode.FULL
-        input = "${entry.enteredAmount.plain()} ${entry.enteredUnit.displayLabel()} ${entry.foodName}"
-        mealDraftError = null
-        quickHintSession += 1
-        quickEditHintVisible = false
-    }
-    fun cancelEdit() {
-        if (entryEditMode == EntryEditMode.FULL && fullSaveJob?.isActive == true) return
-        fullSaveJob?.cancel()
-        fullSaveJob = null
-        // Leaves busy alone: only the write that set it clears it, so a quick-edit save in flight still blocks a second write.
-        editSession += 1
-        entryEditMode = EntryEditMode.NONE
-        editingEntryId = null
-        editingFoodName = null
-        editingFoodId = null
-        editingFoodPickerOpen = false
-        input = ""
-        quickHintSession += 1
-        quickEditHintVisible = false
-        if (editReturnToDaily) selectMeal(null)
-        editReturnToDaily = false
-        mealDraftError = null
-    }
-    /** An entry edit could not be saved: the message stays until the edit changes ([editInputChanged]). */
-    private fun markEditInvalid(message: String) {
-        mealDraftError = message
-    }
-    /** The amount, unit, food, meal or date being edited changed, so an earlier save error no longer applies. */
-    fun editInputChanged() {
-        if (entryEditMode != EntryEditMode.NONE) mealDraftError = null
-    }
-    /** Add on the Log page, or Save in quick edit, which reads [input] and never the draft. */
+    /** Add on the Log page. */
     fun submit() {
         // Add finishes the draft in both "Count what I'm typing" modes: it saves what the finished draft counts.
-        if (entryEditMode == EntryEditMode.NONE) logDraftCommitted = true
+        logDraftCommitted = true
         if (!ready || busy) return
-        if (entryEditMode != EntryEditMode.NONE) {
-            if (input.isBlank()) {
-                cancelEdit()
-                return
-            }
-            val target = slot ?: return
-            submitToMeal(target)
-            return
-        }
         when (val plan = logSubmitPlan(ready, busy, logDraft, mealMarkers(logDraft), logChosen, logPreset, automaticMealNow())) {
             LogSubmitPlan.Ignore -> Unit
             is LogSubmitPlan.Error -> mealDraftError = plan.message
@@ -897,7 +784,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
 
     /** Opens the Log page. [preset] is the meal of the `+` or composer that opened it; null for the Daily composer. */
     fun openLog(preset: MealSlot?) {
-        if (entryEditMode != EntryEditMode.NONE) return
+        if (entryEdit.mode != EntryEditMode.NONE) return
         logPreset = preset
         logChosen = null
         logMealMenuOpen = false
@@ -938,27 +825,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
 
     private fun submitToMeal(target: MealSlot) {
         if (!ready || busy) return
-        val editing = editingEntryId
-        val mode = entryEditMode
-        if (editing != null && mode != EntryEditMode.NONE) {
-            val edit = editSession
-            fun stillEditing() = entryEditMode == mode && editingEntryId == editing && editSession == edit
-            // A result for an edit no longer open reloads the diary and nothing else.
-            session.write(
-                change = { result -> entryEditChange(result, stillOpen = stillEditing()) },
-                onSuccess = { result ->
-                    if (stillEditing()) when (result) {
-                        is ReplacementResult.Success -> cancelEdit()
-                        is ReplacementResult.Failure -> markEditInvalid(result.reason)
-                    }
-                },
-                onFailure = { if (stillEditing()) markEditInvalid(it.message ?: "Could not edit this entry.") },
-            ) {
-                if (mode == EntryEditMode.QUICK) engine.replaceEntryAmountUnit(editing, input)
-                else engine.replaceEntryFromText(editing, input)
-            }
-            return
-        }
         // Save takes the draft as typed: the planner skips meal words by span, so save and the rows share one segmentation.
         val captured = logDraft
         val capturedPins = logPins.toMap()
@@ -987,12 +853,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         ) { engine.save(captured, mealSlot = target, dayKey = selectedDayKey, pins = capturedPins) }
     }
     private fun mealMarkers(value: String): List<MealSlot> = mealMarkerSlots(value)
-    /** What a saved entry edit committed: nothing when refused; an edit, or one whose edit had closed meanwhile. */
-    private fun entryEditChange(result: ReplacementResult, stillOpen: Boolean): DiaryChange? = when {
-        result !is ReplacementResult.Success -> null
-        stillOpen -> DiaryChange.EntryEdited
-        else -> DiaryChange.EntryEditedAfterClose
-    }
     fun openCustom(name: String = "", brand: String = "", barcode: String = "", fromResolver: Boolean = false, fromOff: Boolean = false) {
         if (!fromResolver && unknownQueue.isNotEmpty()) abandonUnknownResolution()
         resolutionContinuation = fromResolver

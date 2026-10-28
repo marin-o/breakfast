@@ -145,7 +145,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
             }
         }
         // Hidden during an entry edit, which owns the input and its own sheet.
-        if (vm.entryEditMode == EntryEditMode.NONE) DailyComposer(vm, Modifier.align(Alignment.BottomCenter))
+        if (vm.entryEdit.mode == EntryEditMode.NONE) DailyComposer(vm, Modifier.align(Alignment.BottomCenter))
     }
     if (pickerOpen) DayPickerDialog(
         dayKey = vm.selectedDayKey,
@@ -225,13 +225,13 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
             quantityLine = quantity.plainLine(),
             calories = formatKcal(entry.nutritionSnapshot.calories),
             modifier = Modifier.semantics {
-                onClick(label = "Open details for ${entry.foodName}") { vm.openEntryDetail(entry); true }
+                onClick(label = "Open details for ${entry.foodName}") { vm.entryEdit.openDetail(entry); true }
                 customActions = listOf(
-                    CustomAccessibilityAction("Quick edit amount") { vm.beginQuickEdit(entry); true },
-                    CustomAccessibilityAction("Edit food and amount") { vm.beginFullEdit(entry); true },
+                    CustomAccessibilityAction("Quick edit amount") { vm.entryEdit.beginQuick(entry); true },
+                    CustomAccessibilityAction("Edit food and amount") { vm.entryEdit.beginFull(entry); true },
                     CustomAccessibilityAction("Delete ${entry.foodName}") { vm.undo.delete(entry); true },
                 )
-            }.combinedClickable(onClick = { vm.openEntryDetail(entry) }, onDoubleClick = { vm.beginQuickEdit(entry) }, onLongClick = { vm.beginFullEdit(entry) }),
+            }.combinedClickable(onClick = { vm.entryEdit.openDetail(entry) }, onDoubleClick = { vm.entryEdit.beginQuick(entry) }, onLongClick = { vm.entryEdit.beginFull(entry) }),
         )
         if (vm.feedback.isOpen(entry)) CorrectionStrip(vm, entry)
     }

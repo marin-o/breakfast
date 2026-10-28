@@ -38,13 +38,14 @@ internal class FakeTime(var now: Long = 1_000L) {
 /** An open [DiarySession] over rows the test sets, on an unconfined scope, recording what it publishes. */
 internal class OpenDiary {
     var rows: List<MealEntry> = emptyList()
+    var foods: List<FoodRecord> = emptyList()
     var entryReads = 0
     val published = mutableListOf<DiaryChange>()
     val scope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
     val session = DiarySession(
         source = object : DiarySource {
             override suspend fun open() {}
-            override fun foods(): List<FoodRecord> = emptyList()
+            override fun foods(): List<FoodRecord> = foods
             override fun entries(): List<MealEntry> { entryReads++; return rows }
             override suspend fun reloadIfStale() = false
         },

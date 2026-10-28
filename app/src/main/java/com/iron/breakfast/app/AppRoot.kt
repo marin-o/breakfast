@@ -93,8 +93,8 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     val scanReviewBackdropVisible = vm.selectedProduct != null && vm.selectedProductFromScan
     if (scanReviewBackdropVisible) ScanReviewBackdrop(vm::clearSelectedProduct)
     else {
-    if (vm.selectedEntry != null) {
-        EntryDetailScreen(vm, vm.selectedEntry!!)
+    vm.entryEdit.selectedEntry?.let { entry ->
+        EntryDetailScreen(vm, entry)
         return
     }
     Scaffold(
@@ -104,7 +104,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
             // The tray rides above the keyboard and clear of a side display cutout.
             Box(Modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).imePadding()) {
                 // Daily and Meal composers float over their own content; only Library uses this bar.
-                if (vm.entryEditMode == EntryEditMode.NONE && vm.libraryOpen && !vm.libraryArchivedOnly) LibraryComposer(vm)
+                if (vm.entryEdit.mode == EntryEditMode.NONE && vm.libraryOpen && !vm.libraryArchivedOnly) LibraryComposer(vm)
             }
         }
     ) { pad ->
@@ -117,12 +117,12 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     // Drawn over the screen beneath, which keeps its scroll position. Dialogs and sheets below render above it.
     if (vm.logOpen) LogScreen(vm)
     }
-    when (vm.entryEditMode) {
-        EntryEditMode.QUICK -> vm.editingEntry()?.let { EntryQuickEditSheet(vm, it) }
-        EntryEditMode.FULL -> vm.editingEntry()?.let { EntryFullEditScreen(vm, it) }
+    when (vm.entryEdit.mode) {
+        EntryEditMode.QUICK -> vm.entryEdit.editingEntry()?.let { EntryQuickEditSheet(vm, it) }
+        EntryEditMode.FULL -> vm.entryEdit.editingEntry()?.let { EntryFullEditScreen(vm, it) }
         EntryEditMode.NONE -> Unit
     }
-    if (vm.editingFoodPickerOpen) EntryFoodPicker(vm)
+    if (vm.entryEdit.pickerOpen) EntryFoodPicker(vm)
     if (vm.selectedLibraryFood != null) {
         if (vm.slot != null) FocusedFoodAddDialog(vm, vm.selectedLibraryFood!!)
         else LibraryFoodDetailDialog(vm, vm.selectedLibraryFood!!)

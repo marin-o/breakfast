@@ -117,7 +117,7 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
             }
         }
         // Hidden during an entry edit, which owns the input and its own sheet.
-        if (vm.entryEditMode == EntryEditMode.NONE) MealComposer(vm, target, Modifier.align(Alignment.BottomCenter))
+        if (vm.entryEdit.mode == EntryEditMode.NONE) MealComposer(vm, target, Modifier.align(Alignment.BottomCenter))
     }
 }
 
@@ -164,13 +164,13 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel
             quantityLine = quantity.plainLine(),
             calories = formatKcal(entry.nutritionSnapshot.calories),
             modifier = Modifier.offset { IntOffset(revealOffset.roundToInt(), 0) }.semantics {
-                onClick(label = "Open details for ${entry.foodName}") { vm.openEntryDetail(entry); true }
+                onClick(label = "Open details for ${entry.foodName}") { vm.entryEdit.openDetail(entry); true }
                 customActions = listOf(
-                    CustomAccessibilityAction("Quick edit amount") { vm.beginQuickEdit(entry); true },
-                    CustomAccessibilityAction("Edit food and amount") { vm.beginFullEdit(entry); true },
+                    CustomAccessibilityAction("Quick edit amount") { vm.entryEdit.beginQuick(entry); true },
+                    CustomAccessibilityAction("Edit food and amount") { vm.entryEdit.beginFull(entry); true },
                     CustomAccessibilityAction("Delete ${entry.foodName}") { vm.undo.delete(entry); true },
                 )
-            }.combinedClickable(onClick = { vm.openEntryDetail(entry) }, onDoubleClick = { vm.beginQuickEdit(entry) }, onLongClick = { vm.beginFullEdit(entry) }).pointerInput(entry.id) {
+            }.combinedClickable(onClick = { vm.entryEdit.openDetail(entry) }, onDoubleClick = { vm.entryEdit.beginQuick(entry) }, onLongClick = { vm.entryEdit.beginFull(entry) }).pointerInput(entry.id) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     var dx = 0f
