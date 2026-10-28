@@ -173,6 +173,36 @@ class ResolveFlowTest {
         assertEquals("ayran", draft.text)
     }
 
+    @Test fun aQueueNoLongerContinuedIsNotResolvedOrSkipped() {
+        val draft = TypedText("kefir, ayran")
+        flow.afterSave(listOf("kefir", "ayran"), MealSlot.LUNCH, draft, "kefir, ayran")
+        flow.childOpened(fromResolver = true)
+        flow.childLogged(advancesQueue = false)
+        assertEquals("parts are left", listOf("kefir", "ayran"), flow.parts)
+        assertNull(flow.queueView())
+        flow.resolve(food("kefir"))
+        flow.skip()
+        assertEquals(emptyList<String>(), store.calls)
+        assertEquals(listOf("kefir", "ayran"), flow.parts)
+        assertEquals("kefir, ayran", draft.text)
+    }
+
+    /** Deliberate (B16 review): Skip while a pick is written advanced the queue twice, dropping the next part unlogged. */
+    @Test fun skipIsRefusedWhileAPickIsWritten() {
+        val draft = TypedText("kefir, ayran, egg")
+        flow.afterSave(listOf("kefir", "ayran", "egg"), MealSlot.LUNCH, draft, "kefir, ayran, egg")
+        val hold = CompletableDeferred<Unit>()
+        store.hold = hold
+        flow.resolve(food("kefir"))
+        flow.skip()
+        assertEquals(listOf("kefir", "ayran", "egg"), flow.parts)
+        hold.complete(Unit)
+        assertEquals("only the pick moved the queue on", listOf("ayran", "egg"), flow.parts)
+        assertEquals("ayran, egg", draft.text)
+        flow.skip()
+        assertEquals(listOf("egg"), flow.parts)
+    }
+
     @Test fun aPickNeedsAQueueBeingResolved() {
         flow.resolve(ayran)
         flow.afterSave(listOf("ayran"), MealSlot.LUNCH, TypedText(), "")

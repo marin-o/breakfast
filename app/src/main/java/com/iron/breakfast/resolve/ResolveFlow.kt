@@ -204,8 +204,11 @@ internal class ResolveFlow(
         ) { store.cacheFoodAndLog(food, amount, unit, meal, day) }
     }
 
-    /** Leaves the current part unlogged and moves to the next one. */
-    fun skip() { if (parts.isNotEmpty()) advance() }
+    /**
+     * Leaves the current part unlogged and moves to the next one. Refused while a pick is being written: that write
+     * moves the queue on itself when it commits, and a skip in between would drop the next part too.
+     */
+    fun skip() { if (queueActive && !session.busy) advance() }
 
     /**
      * The current part is done: the next one is resolved, and what is left shows where the parts were typed. A queue
