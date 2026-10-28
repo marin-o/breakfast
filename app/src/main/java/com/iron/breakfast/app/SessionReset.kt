@@ -21,8 +21,9 @@ internal class SessionReset(private val steps: List<() -> Unit>) {
 }
 
 /**
- * What the session drops with the old diary, in order: the Log's pins, a contribution candidate with its preflight and review, the
+ * What the session drops with the old diary, in order: the Log's pins and its error (since B17: a "Some foods need a
+ * match." about the old diary's foods no longer applies), a contribution candidate with its preflight and review, the
  * resolve queue and resolver, and the entry detail.
  */
 internal fun sessionResetSteps(log: LogComposer, contribution: ContributionFlow, resolve: ResolveFlow, entryEdit: EntryEdit): List<() -> Unit> =
-    listOf(log::clearPins, contribution::reset, resolve::abandon, entryEdit::closeDetail)
+    listOf(log::clearPins, log::clearError, contribution::reset, resolve::abandon, entryEdit::closeDetail)

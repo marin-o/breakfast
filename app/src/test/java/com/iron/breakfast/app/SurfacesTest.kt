@@ -510,6 +510,19 @@ class SurfacesTest {
         backAtTheLogAsItWas()
     }
 
+    /** Deliberate (B17): the Log's error goes with the diary it was about. */
+    @Test fun aReplacedOrDeletedDiaryClearsTheLogsError() {
+        addLeavesParts("ayran")
+        app.back()
+        assertEquals("Some foods need a match.", app.log.error)
+        replaceDiary()
+        assertNull(app.log.error)
+        addLeavesParts("ayran")
+        app.back()
+        deleteAll()
+        assertNull(app.log.error)
+    }
+
     @Test fun aNewDayStopsAScanLookingUpForTheOldOne() {
         app.barcodes[barcode] = food("kefir", "Kefir")
         app.openMeal(MealSlot.LUNCH)

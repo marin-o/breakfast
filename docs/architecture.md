@@ -85,7 +85,7 @@ Legitimate stacking stays: the scanner over the food form (Back returns to the f
 | Product review (product, origin, editable fields) | `ProductReview` (`scan/`) | No |
 | OFF contribution (candidate, preflight, review, sign-in, failure) | `ContributionFlow` (`contribution/`) | No |
 | OFF username and password | `ContributionFlow`, memory only; the password is cleared when the submit starts and when the sign-in is left | No, by design |
-| Session after a replaced or deleted diary | `SessionReset`, a `DiarySession` listener on `DiaryChange.DiaryReplaced` built by the VM: Import diary and Delete all data drop the same things (log pins, a contribution candidate with its preflight and review, the resolve queue and resolver, the entry detail; Undo and "Not right?" feedback end through the same change). Settings are reset only by Delete all with its chip | — |
+| Session after a replaced or deleted diary | `SessionReset`, a `DiarySession` listener on `DiaryChange.DiaryReplaced` built by the VM: Import diary and Delete all data drop the same things (log pins and the Log's error, a contribution candidate with its preflight and review, the resolve queue and resolver, the entry detail; Undo and "Not right?" feedback end through the same change). Settings are reset only by Delete all with its chip | — |
 | Diary, foods, aliases, conversions, preferences | Room | Yes |
 
 ## Durable save path

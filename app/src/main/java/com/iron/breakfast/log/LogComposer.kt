@@ -83,7 +83,7 @@ internal class LogComposer(
     /** The foods picked for the old diary are dropped with it (see `SessionReset`). */
     fun clearPins() { pins.clear() }
 
-    /** A meal, the Library or an entry edit opened: the Log's error no longer applies. */
+    /** A meal, the Library or an entry edit opened, or the diary was replaced: the Log's error no longer applies. */
     fun clearError() { error = null }
 
     /** Opens the Log page. [preset] is the meal of the `+` or composer that opened it; null for the Daily composer. */
