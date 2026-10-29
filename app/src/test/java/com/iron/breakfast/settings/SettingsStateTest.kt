@@ -79,6 +79,38 @@ class SettingsStateTest {
         assertNull(state.lastExportMs)
     }
 
+    @Test fun aResetTellsOnlyTheSettingsItChanged() {
+        val told = mutableListOf<String>()
+        state.all.forEach { setting -> setting.observe { told += setting.name } }
+        state.chooseHaptics(true)
+        told.clear()
+        state.resetToDefaults()
+        assertEquals(listOf("haptics"), told)
+    }
+
+    /**
+     * Haptics stands in for a Safety copy whose default were Don't keep (both are Booleans; Haptics defaults to off):
+     * a reset to such a default is not the user choosing it, so an effect wired to the choice (the safety copy's
+     * removal, `AppOwners`) does not run, while the value's observers do.
+     */
+    @Test fun aResetIsNotAChoice() {
+        val chosen = mutableListOf<Boolean>()
+        val observed = mutableListOf<Boolean>()
+        state.hapticsSetting.onChosen { chosen += it }
+        state.hapticsSetting.observe { observed += it }
+        state.chooseHaptics(true)
+        state.resetToDefaults()
+        assertFalse(state.haptics)
+        assertEquals("only the user's choice", listOf(true), chosen)
+        assertEquals(listOf(true, false), observed)
+        // The real Safety copy: a choice runs it, a reset never.
+        val keep = mutableListOf<Boolean>()
+        state.keepSafetyCopySetting.onChosen { keep += it }
+        state.chooseKeepSafetyCopy(false)
+        state.resetToDefaults()
+        assertEquals(listOf(false), keep)
+    }
+
     @Test fun everyStoredSettingIsDeclaredOnce() {
         // Every AppSettings property with a setter is a setting, except the export reminder's times, which are not
         // shown and go with a reset through the cleared store.

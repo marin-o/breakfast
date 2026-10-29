@@ -41,7 +41,6 @@ import com.iron.breakfast.scan.ScannerScreen
 import com.iron.breakfast.scan.ScanReviewBackdrop
 import com.iron.breakfast.entry.EntryDetailScreen
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
-import com.iron.breakfast.entry.EntryEditMode
 import com.iron.breakfast.library.LibraryComposer
 import com.iron.breakfast.library.LibraryScreen
 import com.iron.breakfast.today.DailyScreen
@@ -115,7 +114,7 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
                 // The tray rides above the keyboard and clear of a side display cutout.
                 Box(Modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).imePadding()) {
                     // Daily and Meal composers float over their own content; only Library uses this bar.
-                    if (vm.entryEdit.mode == EntryEditMode.NONE && surface == Surface.LIBRARY) LibraryComposer(vm)
+                    if (!vm.entryEdit.editing && surface == Surface.LIBRARY) LibraryComposer(vm)
                 }
             }
         ) { pad ->

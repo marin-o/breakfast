@@ -39,7 +39,9 @@ class ContributionFlowTest {
     private val off = FakeOff()
     private val notices = Notices()
     private val io = QueueDispatcher()
-    private val flow = ContributionFlow(off, notices, CoroutineScope(Dispatchers.Unconfined + SupervisorJob()), io)
+    /** "Contribute" in Settings. */
+    private var showContribute = true
+    private val flow = ContributionFlow(off, notices, CoroutineScope(Dispatchers.Unconfined + SupervisorJob()), io, showContribute = { showContribute })
 
     private fun food(barcode: String?, name: String = "Kefir", unit: MeasureUnit = MeasureUnit.GRAM) = FoodRecord(
         "f-$barcode", name, emptyList(), "dairy", FoodOrigin.CUSTOM, NutritionBasis(100.0, unit, NutritionValues(60.0, 3.0, 4.0, 3.0)),
@@ -102,6 +104,15 @@ class ContributionFlowTest {
         flow.openForFood(food("4006381333931"))
         io.runAll()
         assertEquals("Open Food Facts was unavailable. Retry when you have a connection.", notices.message)
+    }
+
+    /** Daily and Meal show Contribute for a waiting candidate, unless "Contribute" is Hide. */
+    @Test fun theActionShowsForACandidateUnlessContributeIsHidden() {
+        assertFalse("no candidate", flow.actionShown)
+        flow.offerAfterLocalSave(draft("5000112548167"))
+        assertTrue(flow.actionShown)
+        showContribute = false
+        assertFalse(flow.actionShown)
     }
 
     @Test fun aLocalSaveReplacesTheCandidateAndItsRunningPreflight() {

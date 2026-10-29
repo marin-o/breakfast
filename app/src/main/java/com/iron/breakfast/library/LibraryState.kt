@@ -76,6 +76,8 @@ internal class LibraryState(
     private val onDeleted: (food: FoodRecord) -> Unit,
     /** Post-save handling: the parts a mixed batch could not match, for [meal] (see `ResolveFlow.afterSave`). */
     private val afterSave: (unresolved: List<String>, meal: MealSlot, source: ResolveSource, typedAtSave: String) -> Unit,
+    /** A food was logged to the meal and day the user chose: "Logged!" (see `Confirmations`). */
+    private val confirmLogged: () -> Unit,
 ) : ResolveSource {
     var open by mutableStateOf(false); private set
     var target by mutableStateOf<MealSlot?>(null); private set
@@ -195,7 +197,7 @@ internal class LibraryState(
         val day = selectedDay()
         session.write(
             change = DiaryChange.FoodsLogged,
-            onSuccess = { notices.show("Added ${drafts.size} food${if (drafts.size == 1) "" else "s"} to ${target.label()} on $day") },
+            onSuccess = { confirmLogged() },
             onFailure = { notices.show(it.message ?: "Could not log this food.") },
         ) { drafts.forEach { draft -> store.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, day) } }
     }

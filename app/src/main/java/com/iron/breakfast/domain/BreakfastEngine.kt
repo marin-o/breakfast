@@ -101,7 +101,7 @@ class BreakfastEngine(
         if (entries.isNotEmpty()) store.saveEntries(entries)
         return SavedMeal(
             entries = entries,
-            totals = entries.fold(NutritionValues.ZERO) { total, entry -> total + entry.nutritionSnapshot },
+            totals = nutritionTotalOf(entries),
             unresolvedSegments = plan.unresolved
         )
     }
@@ -367,12 +367,11 @@ class BreakfastEngine(
         val entries = store.entries()
         return SavedMeal(
             entries = entries,
-            totals = entries.fold(NutritionValues.ZERO) { total, entry -> total + entry.nutritionSnapshot }
+            totals = nutritionTotalOf(entries)
         )
     }
 
-    fun totalsForToday(): NutritionValues = store.entries()
-        .fold(NutritionValues.ZERO) { total, entry -> total + entry.nutritionSnapshot }
+    fun totalsForToday(): NutritionValues = nutritionTotalOf(store.entries())
 }
 
 /** The preferences ranking reads: [stored] when picks are learned, else none (the same empty map every time). */

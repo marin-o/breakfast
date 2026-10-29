@@ -31,6 +31,8 @@ class ProductReviewTest {
     private val diary = OpenDiary()
     private val store = FakeStore()
     private val notices = Notices()
+    /** How often "Logged!" was asked for. */
+    private var confirmed = 0
     private var meal: MealSlot? = null
     private var queue: ResolveQueueView? = null
     private var resolvingPart = false
@@ -48,6 +50,7 @@ class ProductReviewTest {
         onClosed = { events += "closed" },
         openSearch = { events += "search fromResolver=$it" },
         startScan = { events += "scan" },
+        confirmLogged = { confirmed++ },
     )
 
     /** A queue as the resolve flow builds it: its current part as the planner reads it ("nutella200g" is nutella, 200 g). */
@@ -94,7 +97,8 @@ class ProductReviewTest {
         review.add(MealSlot.SNACKS)
         assertEquals(listOf("log Nutella jar 15.0 g SNACKS 2026-10-28"), store.calls)
         assertEquals(listOf<DiaryChange>(DiaryChange.FoodsLogged), diary.published)
-        assertEquals("Added to Snacks", notices.message)
+        assertEquals(1, confirmed)
+        assertNull(notices.message)
         assertNull(review.product)
         assertFalse(review.fromScan)
         assertEquals(listOf("logged advances=false"), events)

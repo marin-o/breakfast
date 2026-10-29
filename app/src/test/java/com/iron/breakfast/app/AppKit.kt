@@ -166,6 +166,7 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
     val settings = owners.settings
     val day = owners.day
     val notices = owners.notices
+    val confirmations = owners.confirmations
     val undo = owners.undo
     val feedback = owners.feedback
     val contribution = owners.contribution

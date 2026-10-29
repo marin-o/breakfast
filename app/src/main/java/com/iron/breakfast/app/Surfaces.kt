@@ -178,7 +178,7 @@ internal class Surfaces(
         Surface.OFF_SEARCH -> search::close
         Surface.RESOLVER -> resolve::close
         Surface.CONTRIBUTION_REVIEW -> contribution::dismissReview
-        // Also while it submits: Back cancels the submit and closes only the sign-in.
+        // Also while it submits, as its arrow and Cancel do: the submit is cancelled and only the sign-in closes.
         Surface.CONTRIBUTION_SIGN_IN -> contribution::dismissAuth
         Surface.CONTRIBUTION_FAILURE -> contribution::dismissFailure
         Surface.ENTRY_DETAIL -> entryEdit::closeDetail

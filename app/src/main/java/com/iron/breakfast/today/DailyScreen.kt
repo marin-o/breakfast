@@ -48,15 +48,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.app.BreakfastViewModel
-import com.iron.breakfast.entry.EntryEditMode
 import com.iron.breakfast.contribution.ContributionAction
-import com.iron.breakfast.contribution.contributionShown
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MacroTotal
 import com.iron.breakfast.domain.MacroTotals
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
-import com.iron.breakfast.domain.NutritionValues
+import com.iron.breakfast.domain.nutritionTotalOf
 import com.iron.breakfast.domain.macroTotalsOf
 import com.iron.breakfast.ui.label
 import com.iron.breakfast.ui.pretty
@@ -69,6 +67,7 @@ import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.MacroStat
 import com.iron.breakfast.ui.components.MealHeader
 import com.iron.breakfast.ui.components.Snackbar
+import com.iron.breakfast.ui.components.ConfirmationSnackbar
 import com.iron.breakfast.ui.components.rememberTick
 import com.iron.breakfast.ui.components.AnimatedRows
 import com.iron.breakfast.ui.components.Motion
@@ -91,7 +90,7 @@ import com.iron.breakfast.ui.screens.plainLine
 internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
     val selected = vm.entries.filter { it.dayKey == vm.day.selectedDayKey }
     val foods = vm.foods.associateBy { it.id }
-    val total = selected.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
+    val total = nutritionTotalOf(selected)
     val isToday = vm.day.selectedDayKey == vm.day.todayKey
     val colors = LocalBreakfastColors.current
     val touchSlop = LocalViewConfiguration.current.touchSlop
@@ -154,11 +153,11 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 DailyMealSection(slot, selected.filter { it.mealSlot == slot }, foods, vm, rows = vm.day.selectedDayKey to vm.ready)
             }
             item {
-                if (contributionShown(vm.settings.showContribute, vm.contribution.pending != null)) ContributionAction(vm)
+                if (vm.contribution.actionShown) ContributionAction(vm)
             }
         }
         // Hidden during an entry edit, which owns the input and its own sheet.
-        if (vm.entryEdit.mode == EntryEditMode.NONE) DailyComposer(vm, Modifier.align(Alignment.BottomCenter))
+        if (!vm.entryEdit.editing) DailyComposer(vm, Modifier.align(Alignment.BottomCenter))
     }
     if (pickerOpen) DayPickerDialog(
         dayKey = vm.day.selectedDayKey,
@@ -241,7 +240,7 @@ internal fun dailyMacroNote(macros: MacroTotals, showMacros: Boolean = true, sho
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Map<String, FoodRecord>, vm: BreakfastViewModel, rows: Any) {
-    val total = entries.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
+    val total = nutritionTotalOf(entries)
     MealHeader(
         name = slot.label(),
         total = formatKcal(total.calories),
@@ -281,6 +280,7 @@ internal fun DailyComposer(vm: BreakfastViewModel, modifier: Modifier = Modifier
     ComposerFade(modifier) {
         Reveal(vm.undo.loggedMessage) { Snackbar(it, "Undo", { tick(); vm.undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
         Reveal(vm.undo.deletedEntry) { Snackbar("${it.foodName} deleted", "Undo", { tick(); vm.undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
+        ConfirmationSnackbar(vm.confirmations.message, Modifier.padding(bottom = 8.dp))
         if (vm.reminders.shownOnDaily(covered = vm.surfaces.baseCovered())) {
             LaunchedEffect(Unit) { vm.reminders.onScreenNow() }
             Snackbar("Export your diary.", "Export", vm.reminders::export, Modifier.padding(bottom = 8.dp))

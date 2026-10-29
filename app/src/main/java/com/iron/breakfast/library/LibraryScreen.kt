@@ -91,6 +91,7 @@ import com.iron.breakfast.ui.components.TertiaryButton
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.components.SectionHeading
 import com.iron.breakfast.ui.components.BottomNav
+import com.iron.breakfast.ui.components.ConfirmationSnackbar
 import com.iron.breakfast.ui.components.rememberMotion
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import com.iron.breakfast.ui.screens.entryDateLabel
@@ -184,32 +185,36 @@ internal fun LibraryComposer(vm: BreakfastViewModel) {
     val resolveCleared = vm.resolve.resolvingPart && library.query.isEmpty()
     LaunchedEffect(resolveCleared) { if (resolveCleared) { runCatching { focus.requestFocus() }; keyboard?.show() } }
     Column(Modifier.fillMaxWidth().background(colors.bg).then(if (inMeal) Modifier else Modifier.navigationBarsPadding()).padding(horizontal = Gutter, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        InkBar(if (inMeal) Modifier.navigationBarsPadding() else Modifier) {
-            BasicTextField(
-                value = library.input,
-                onValueChange = library::onInput,
-                singleLine = true,
-                textStyle = BreakfastType.Body.copy(color = colors.bg),
-                cursorBrush = SolidColor(colors.bg),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { library.submitInput() }, onDone = { library.submitInput() }),
-                modifier = Modifier
-                    .weight(1f)
-                    .focusRequester(focus)
-                    .onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { library.submitInput(); true } else false }
-                    .semantics { contentDescription = "Search foods" },
-                decorationBox = { inner ->
-                    Box(Modifier.heightIn(min = 22.dp), contentAlignment = Alignment.CenterStart) {
-                        if (library.input.isEmpty()) Text("Search foods", color = colors.bg.copy(alpha = 0.6f), style = BreakfastType.Body)
-                        inner()
-                    }
-                },
-            )
-            if (library.input.isNotEmpty()) IconButton(onClick = { library.onInput("") }, modifier = Modifier.size(IconTarget)) {
-                Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = colors.bg, modifier = Modifier.size(20.dp))
-            }
-            IconButton(onClick = vm.scan::begin, modifier = Modifier.size(IconTarget)) {
-                Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.bg)
+        // "Logged!" sits on the bar; the bar keeps its place in the column.
+        Column {
+            ConfirmationSnackbar(vm.confirmations.message, Modifier.padding(bottom = 8.dp))
+            InkBar(if (inMeal) Modifier.navigationBarsPadding() else Modifier) {
+                BasicTextField(
+                    value = library.input,
+                    onValueChange = library::onInput,
+                    singleLine = true,
+                    textStyle = BreakfastType.Body.copy(color = colors.bg),
+                    cursorBrush = SolidColor(colors.bg),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { library.submitInput() }, onDone = { library.submitInput() }),
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(focus)
+                        .onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { library.submitInput(); true } else false }
+                        .semantics { contentDescription = "Search foods" },
+                    decorationBox = { inner ->
+                        Box(Modifier.heightIn(min = 22.dp), contentAlignment = Alignment.CenterStart) {
+                            if (library.input.isEmpty()) Text("Search foods", color = colors.bg.copy(alpha = 0.6f), style = BreakfastType.Body)
+                            inner()
+                        }
+                    },
+                )
+                if (library.input.isNotEmpty()) IconButton(onClick = { library.onInput("") }, modifier = Modifier.size(IconTarget)) {
+                    Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = colors.bg, modifier = Modifier.size(20.dp))
+                }
+                IconButton(onClick = vm.scan::begin, modifier = Modifier.size(IconTarget)) {
+                    Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.bg)
+                }
             }
         }
         if (!inMeal) BottomNav(selectedToday = false, onToday = { vm.surfaces.closeMeal(); vm.surfaces.closeLibrary() }, onLibrary = {}, onSettings = vm.surfaces::openSettings)

@@ -41,6 +41,8 @@ class FoodFormTest {
     private val diary = OpenDiary()
     private val store = FakeStore()
     private val notices = Notices()
+    /** How often "Logged!" was asked for. */
+    private var confirmed = 0
     private var meal: MealSlot? = null
     private var queue: ResolveQueueView? = null
     private var resolvingPart = false
@@ -59,6 +61,7 @@ class FoodFormTest {
         onOpen = { events += "open fromResolver=$it" },
         onClose = { events += "close" },
         onSaved = { food, newFood, advances -> events += "saved ${food.name} new=$newFood advances=$advances" },
+        confirmLogged = { confirmed++ },
     )
 
     private val kefir = record("kefir", "Kefir", "4006381333931")
@@ -103,7 +106,8 @@ class FoodFormTest {
         form.save()
         assertEquals(listOf("save and log Ayran to LUNCH on 2026-10-28"), store.calls)
         assertEquals(listOf<DiaryChange>(DiaryChange.FoodsLogged), diary.published)
-        assertEquals("Saved to Lunch and your food library.", notices.message)
+        assertEquals(1, confirmed)
+        assertNull(notices.message)
     }
 
     @Test fun whileAQueueIsResolvedItsMealWinsAndTheQueueAdvances() {
@@ -245,7 +249,7 @@ class FoodFormTest {
         form.draft.brand = "Dukat"
         saveFoodForm(state, form.savedForm())
         val restored = FoodForm(
-            diary.session, store, notices, { "2026-10-28" }, { null }, { null }, { false }, {}, {}, {}, {}, { _, _, _ -> },
+            diary.session, store, notices, { "2026-10-28" }, { null }, { null }, { false }, {}, {}, {}, {}, { _, _, _ -> }, {},
         )
         restoreFoodForm(SavedStateHandle(state.keys().associateWith { state.get<Any?>(it) }))?.let(restored::restore)
         assertTrue(restored.open)

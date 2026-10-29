@@ -12,8 +12,9 @@ import kotlin.reflect.KMutableProperty1
  *
  * Each setting is declared once, as a [Setting] over its [AppSettings] property. A setter writes the value to the
  * screen state and to the phone; [resetToDefaults] clears the stored settings and reloads every declared setting, so
- * a new setting cannot be left out of the reset. Other owners react to a value through [Setting.observe] (the view
- * model wires the effects that are not settings: today's day, the Undo window, the export reminder, the safety copy).
+ * a new setting cannot be left out of the reset. Other owners react to a value through [Setting.observe] (`AppOwners`
+ * wires the effects that are not settings: today's day, the Undo window, the export reminder), or, for an effect that
+ * acts on the user's own choice and must never follow a reset, through [Setting.onChosen] (the safety copy's removal).
  * The decimal mark shown by `pretty()` is the one effect kept here: [DisplayDecimal] is a global read everywhere, and
  * this class is its only writer.
  */
@@ -24,17 +25,32 @@ internal class SettingsState(private val prefs: AppSettings, private val clock: 
         val name: String get() = property.name
         var value by mutableStateOf(property.get(prefs)); private set
         private val observers = mutableListOf<(T) -> Unit>()
+        private val choiceObservers = mutableListOf<(T) -> Unit>()
 
-        /** [observer] runs after every change of this setting, and after [resetToDefaults], with the new value. */
+        /** [observer] runs with the new value after the user chose one, and after a [resetToDefaults] that changed it. */
         fun observe(observer: (T) -> Unit) { observers += observer }
+
+        /**
+         * [observer] runs only after the user chose a value, never after [resetToDefaults]: a reset must not act as a
+         * choice (Delete all with its settings chip would otherwise delete the safety copy it just wrote, were the
+         * default ever Don't keep).
+         */
+        fun onChosen(observer: (T) -> Unit) { choiceObservers += observer }
 
         internal fun set(newValue: T) {
             value = newValue
             property.set(prefs, newValue)
             notifyObservers()
+            choiceObservers.forEach { it(value) }
         }
 
-        internal fun reload() { value = property.get(prefs) }
+        /** Reads the stored value again; true when that changed it. */
+        internal fun reload(): Boolean {
+            val before = value
+            value = property.get(prefs)
+            return value != before
+        }
+
         internal fun notifyObservers() = observers.forEach { it(value) }
     }
 
@@ -145,12 +161,13 @@ internal class SettingsState(private val prefs: AppSettings, private val clock: 
 
     /**
      * Every setting back to its default, on the phone and on screen (Delete all data with "Also settings and learned
-     * picks"): the stored settings are cleared, every declared setting is read again, then each one's observers run.
+     * picks"): the stored settings are cleared, every declared setting is read again, then the [Setting.observe]
+     * observers of those whose value changed run. No [Setting.onChosen] observer runs: a reset is not a choice.
      */
     fun resetToDefaults() {
         prefs.clear()
-        declared.forEach { it.reload() }
-        declared.forEach { it.notifyObservers() }
+        val changed = declared.filter { it.reload() }
+        changed.forEach { it.notifyObservers() }
     }
 
     /**

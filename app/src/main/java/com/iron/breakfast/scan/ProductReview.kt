@@ -22,7 +22,6 @@ import com.iron.breakfast.domain.toMeasureUnit
 import com.iron.breakfast.productReviewOrigin
 import com.iron.breakfast.resolve.ResolveQueueView
 import com.iron.breakfast.queueLogPlan
-import com.iron.breakfast.ui.label
 import com.iron.breakfast.ui.pretty
 
 /** The writes product review makes; the view model adapts `BreakfastEngine`. */
@@ -63,6 +62,8 @@ internal class ProductReview(
     private val onClosed: () -> Unit,
     private val openSearch: (fromResolver: Boolean) -> Unit,
     private val startScan: () -> Unit,
+    /** Add logged the product to the meal the user chose: "Logged!" (see `Confirmations`). */
+    private val confirmLogged: () -> Unit,
 ) {
     var product by mutableStateOf<FoodRecord?>(null); private set
     var fromScan by mutableStateOf(false); private set
@@ -156,7 +157,7 @@ internal class ProductReview(
                 fromScan = false
                 origin = ProductReviewOrigin.LIBRARY
                 onLogged(plan.advancesQueue)
-                notices.show("Added to ${target.label()}")
+                confirmLogged()
             },
             onFailure = { notices.show(it.message ?: "This amount cannot be logged.") },
         ) { store.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, day) }

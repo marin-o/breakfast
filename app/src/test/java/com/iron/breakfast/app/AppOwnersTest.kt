@@ -7,6 +7,7 @@ import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.resolve.food
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -62,6 +63,29 @@ class AppOwnersTest {
         other.library.askDelete(egg)
         other.library.confirmDelete()
         assertNull(other.review.product)
+    }
+
+    @Test fun addingAFoodFromTheLibraryConfirmsWithoutADialog() {
+        val app = AppKit()
+        app.openFocusedLibrary(MealSlot.LUNCH)
+        app.library.log(food("kefir", "Kefir"), MealSlot.LUNCH, 200.0, com.iron.breakfast.domain.MeasureUnit.MILLILITER)
+        assertEquals("Logged!", app.confirmations.message)
+        assertNull(app.notices.message)
+        assertEquals(listOf("LIBRARY"), app.shown())
+    }
+
+    /** The wiring half of `SettingsStateTest.aResetIsNotAChoice`: the safety copy's removal follows only a choice. */
+    @Test fun deleteAllWithItsSettingsKeepsTheSafetyCopyItJustWrote() {
+        val app = AppKit()
+        app.settings.chooseKeepSafetyCopy(false)
+        app.transfer.openDeleteAll()
+        app.transfer.toggleDeleteAllAlsoSettings()
+        app.transfer.confirmDeleteAll()
+        assertTrue("settings went back to their defaults", app.settings.keepSafetyCopy)
+        assertNotNull(app.documents.safetyCopy)
+        // Choosing Don't keep still removes it.
+        app.settings.chooseKeepSafetyCopy(false)
+        assertNull(app.documents.safetyCopy)
     }
 
     @Test fun aLogAddOffersItsUndoAndANewDayStartMovesAFollowerOfToday() {

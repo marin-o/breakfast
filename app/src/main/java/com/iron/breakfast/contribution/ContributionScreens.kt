@@ -46,7 +46,6 @@ import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.components.ButtonKind
 import com.iron.breakfast.ui.components.TertiaryButton
-import com.iron.breakfast.contributionAuthCanDismiss
 import com.iron.breakfast.ui.components.isLargeFont
 
 /** The 48dp outline under a scanned product's log, as M-Food-Detail draws it. */
@@ -106,7 +105,7 @@ import com.iron.breakfast.ui.components.isLargeFont
     LaunchedEffect(Unit) { passwordFocus.requestFocus() }
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter)) {
-            TopBar("Sign in", vm.contribution::dismissAuth, Modifier.padding(top = 8.dp), backEnabled = contributionAuthCanDismiss(vm.contribution.busy))
+            TopBar("Sign in", vm.contribution::dismissAuth, Modifier.padding(top = 8.dp))
             Text("Open Food Facts account", color = colors.ink, style = BreakfastType.Section, modifier = Modifier.padding(top = 16.dp))
             Field("Username", vm.contribution.username, vm.contribution::onUsername, Modifier.padding(top = 16.dp))
             Field(
@@ -118,7 +117,8 @@ import com.iron.breakfast.ui.components.isLargeFont
             )
             Text("Password is not saved.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 12.dp))
             PrimaryButton(if (vm.contribution.busy) "Submitting" else "Submit", vm.contribution::submit, Modifier.padding(top = 24.dp), enabled = !vm.contribution.busy, kind = ButtonKind.Neutral)
-            if (contributionAuthCanDismiss(vm.contribution.busy)) TertiaryButton("Cancel", vm.contribution::dismissAuth, Modifier.fillMaxWidth().padding(top = 4.dp), soft = true)
+            // The arrow, Cancel and system Back are one action, also while it submits ([ContributionFlow.dismissAuth]).
+            TertiaryButton("Cancel", vm.contribution::dismissAuth, Modifier.fillMaxWidth().padding(top = 4.dp), soft = true)
         }
     }
 }

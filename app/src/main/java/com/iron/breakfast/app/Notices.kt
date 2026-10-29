@@ -5,8 +5,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
 /**
- * The app's one modal message: the result of a diary write ("Added to Lunch", "Could not undo."), an Open Food Facts
- * or scanner outcome ("No connection. Add the product manually."), or a refused input ("Choose one meal marker.").
+ * The app's one modal message: the result of a diary write ("Saved to your food library.", "Could not undo."), an
+ * Open Food Facts or scanner outcome ("No connection. Add the product manually."), or a refused input ("Choose one
+ * meal marker."). A food logged where the user chose says so in [Confirmations] instead, which is not a dialog.
  *
  * An app-level channel, not part of the diary: most messages are not about a diary write, so it is not owned by
  * [DiarySession]. The view model builds one and hands it to the features that speak through it.

@@ -90,9 +90,6 @@ internal fun logSubmitPlan(
 /** Where a food is logged ([queueLogPlan]), and whether that advances the resolve queue. */
 internal data class ReviewLogPlan(val meal: MealSlot, val advancesQueue: Boolean)
 
-/** The sign-in's arrow and Cancel are offered only while it does not submit (as drawn); Back closes it always. */
-internal fun contributionAuthCanDismiss(busy: Boolean): Boolean = !busy
-
 /**
  * Where a food logs from a screen the resolver can open (product review's Add, the food form's Save). While a resolve
  * queue is being resolved ([queueActive]: it is continued and has parts left) the queue owns the meal, even when the

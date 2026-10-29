@@ -81,6 +81,7 @@ class EntryEditTest {
         assertNull("the edit replaces the detail", edit.selectedEntry)
         assertEquals(listOf("show BREAKFAST"), events)
         assertEquals(EntryEditMode.QUICK, edit.mode)
+        assertTrue("the composers give way to the edit", edit.editing)
         // A late single tap of the double tap does not reopen the detail over the sheet.
         edit.openDetail(e1)
         assertNull(edit.selectedEntry)
@@ -93,7 +94,9 @@ class EntryEditTest {
     @Test fun anEditOpenedOnAMealStaysOnThatMeal() {
         openMeal = MealSlot.LUNCH
         edit.beginFull(e1)
+        assertTrue("a full edit owns the input too", edit.editing)
         edit.cancel()
+        assertFalse(edit.editing)
         assertEquals(listOf("show BREAKFAST", "end toDaily=false"), events)
     }
 

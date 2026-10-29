@@ -50,6 +50,8 @@ internal class ContributionFlow(
     private val notices: Notices,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
+    /** "Contribute" (Settings, Scanner) is Show. */
+    private val showContribute: () -> Boolean,
 ) {
     var pending by mutableStateOf<OffContributionDraft?>(null); private set
     var reviewOpen by mutableStateOf(false); private set
@@ -68,6 +70,9 @@ internal class ContributionFlow(
     private val callsOut = AtomicInteger(0)
     var languageCode by mutableStateOf("en"); private set
     var packageQuantityMl by mutableStateOf(""); private set
+
+    /** Contribute on Daily and Meal: a candidate waits ([pending]) and "Contribute" is Show ([contributionShown]). */
+    val actionShown: Boolean get() = contributionShown(showContribute(), available = pending != null)
 
     /** Contribute on a Library food: a food without a barcode cannot be contributed, which is said. */
     fun openForFood(food: FoodRecord?) {
@@ -131,8 +136,8 @@ internal class ContributionFlow(
     }
 
     /**
-     * Leaves the sign-in; the password is cleared. While it submits (only Back can then; the arrow and Cancel wait, as
-     * drawn) the submit is cancelled: its answer is ignored and nothing beneath the sign-in changes.
+     * Leaves the sign-in: its arrow, Cancel and system Back alike, also while it submits. The password is cleared.
+     * While it submits, the submit is cancelled: its answer is ignored and nothing beneath the sign-in changes.
      */
     fun dismissAuth() {
         // The request may still reach Open Food Facts: what it holds is read again before the next review.

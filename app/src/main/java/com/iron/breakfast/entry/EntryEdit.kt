@@ -57,6 +57,8 @@ internal class EntryEdit(
     private var selectedEntryId: String? = initialEntryId
 
     var mode by mutableStateOf(EntryEditMode.NONE); private set
+    /** A quick or full edit is open. It owns the input: the composers on Daily and Meal and the Library bar give way. */
+    val editing: Boolean get() = mode != EntryEditMode.NONE
     var editingEntryId by mutableStateOf<String?>(null); private set
     var editingFoodId by mutableStateOf<String?>(null); private set
     var pickerOpen by mutableStateOf(false); private set

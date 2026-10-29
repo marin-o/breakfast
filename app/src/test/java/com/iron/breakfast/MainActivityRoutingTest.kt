@@ -23,11 +23,6 @@ import com.iron.breakfast.library.libraryLogDraft
 import com.iron.breakfast.library.libraryInputSegments
 
 class MainActivityRoutingTest {
-    @Test fun contributionAuthCannotDismissWhileSubmitting() {
-        assertEquals(false, contributionAuthCanDismiss(true))
-        assertEquals(true, contributionAuthCanDismiss(false))
-    }
-
     @Test fun scannedProductReviewKeepsLibraryOriginSeparateFromMealAndQueue() {
         assertEquals(ProductReviewOrigin.LIBRARY, productReviewOrigin(null, queueActive = false))
         assertEquals(ProductReviewOrigin.MEAL, productReviewOrigin(MealSlot.DINNER, queueActive = false))

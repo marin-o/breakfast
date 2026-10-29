@@ -49,12 +49,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.app.BreakfastViewModel
 import com.iron.breakfast.contribution.ContributionAction
-import com.iron.breakfast.contribution.contributionShown
-import com.iron.breakfast.entry.EntryEditMode
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
-import com.iron.breakfast.domain.NutritionValues
+import com.iron.breakfast.domain.nutritionTotalOf
 import com.iron.breakfast.ui.label
 import com.iron.breakfast.ui.components.isLargeFont
 import com.iron.breakfast.ui.components.Composer
@@ -62,6 +60,7 @@ import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.SecondaryButton
 import com.iron.breakfast.ui.components.Snackbar
+import com.iron.breakfast.ui.components.ConfirmationSnackbar
 import com.iron.breakfast.ui.components.rememberTick
 import com.iron.breakfast.ui.components.Motion
 import com.iron.breakfast.ui.components.Reveal
@@ -81,7 +80,7 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
     val target = vm.surfaces.meal ?: return
     val entries = vm.entries.filter { it.dayKey == vm.day.selectedDayKey && it.mealSlot == target }
     val foods = vm.foods.associateBy { it.id }
-    val total = entries.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
+    val total = nutritionTotalOf(entries)
     val colors = LocalBreakfastColors.current
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     val motion = rememberMotion()
@@ -128,11 +127,11 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
                         SecondaryButton("Scan", vm.scan::begin, scanModifier, fillWidth = false)
                     }
                 }
-                if (contributionShown(vm.settings.showContribute, vm.contribution.pending != null)) ContributionAction(vm)
+                if (vm.contribution.actionShown) ContributionAction(vm)
             }
         }
         // Hidden during an entry edit, which owns the input and its own sheet.
-        if (vm.entryEdit.mode == EntryEditMode.NONE) MealComposer(vm, target, Modifier.align(Alignment.BottomCenter))
+        if (!vm.entryEdit.editing) MealComposer(vm, target, Modifier.align(Alignment.BottomCenter))
     }
 }
 
@@ -144,6 +143,7 @@ internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot, modifier: Mo
     ComposerFade(modifier) {
         Reveal(vm.undo.loggedMessage) { Snackbar(it, "Undo", { tick(); vm.undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
         Reveal(vm.undo.deletedEntry) { deleted -> Snackbar("${deleted.foodName} deleted", "Undo", { tick(); vm.undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
+        ConfirmationSnackbar(vm.confirmations.message, Modifier.padding(bottom = 8.dp))
         Composer(
             placeholder = if (draft) vm.log.draft else "Add to ${target.label()}",
             onClick = { vm.log.open(target) },

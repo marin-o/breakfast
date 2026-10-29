@@ -66,10 +66,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -804,6 +806,15 @@ fun Snackbar(
             )
         }
     }
+}
+
+/**
+ * A confirmation with no action ("Logged!", `app/Confirmations`) as a [Snackbar], gliding in and out with [Reveal].
+ * It replaces a dialog that TalkBack read out, so it is a polite live region: TalkBack reads it when it appears.
+ */
+@Composable
+internal fun ConfirmationSnackbar(message: String?, modifier: Modifier = Modifier) {
+    Reveal(message) { Snackbar(it, modifier = modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
 }
 
 /**

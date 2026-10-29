@@ -45,6 +45,8 @@ class LibraryStateTest {
     private val diary = OpenDiary()
     private val store = FakeStore()
     private val notices = Notices()
+    /** How often "Logged!" was asked for. */
+    private var confirmed = 0
     private val io = QueueDispatcher()
     private val compute = QueueDispatcher()
     private var resolving = false
@@ -58,6 +60,7 @@ class LibraryStateTest {
         onPartPicked = { picked += it.id },
         onDeleted = { deleted += it.id },
         afterSave = { unresolved, meal, source, typed -> afterSaves += AfterSave(unresolved, meal, source, typed) },
+        confirmLogged = { confirmed++ },
     )
     private val kefir = food("kefir", "Kefir")
     private val egg = FoodCatalog.fixtures.first { it.id == "egg" }
@@ -95,7 +98,8 @@ class LibraryStateTest {
         library.log(kefir, MealSlot.LUNCH, 200.0, MeasureUnit.MILLILITER)
         assertEquals(listOf("log kefir 200.0 MILLILITER LUNCH 2026-10-28"), store.calls)
         assertEquals(listOf<DiaryChange>(DiaryChange.FoodsLogged), diary.published)
-        assertEquals("Added 1 food to Lunch on 2026-10-28", notices.message)
+        assertEquals("\"Logged!\", not a dialog naming the meal and day just chosen", 1, confirmed)
+        assertNull(notices.message)
     }
 
     @Test fun whileAPartIsResolvedATapOrAnAddIsThePickAndDoneOnlySearches() {

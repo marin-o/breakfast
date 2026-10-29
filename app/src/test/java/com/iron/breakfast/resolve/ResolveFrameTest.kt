@@ -98,6 +98,7 @@ class ResolveFrameTest {
         onPartPicked = resolve::finishPart,
         onDeleted = {},
         afterSave = resolve::afterSave,
+        confirmLogged = {},
     )
     private val foodForm: FoodForm = FoodForm(
         diary.session,
@@ -120,6 +121,7 @@ class ResolveFrameTest {
         onOpen = { fromResolver -> resolve.childOpened(fromResolver); events += "form open" },
         onClose = resolve::childClosed,
         onSaved = resolve::foodSaved,
+        confirmLogged = {},
     )
 
     private fun sendPartToTheLibrary() {

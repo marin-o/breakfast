@@ -185,12 +185,12 @@ class SurfacesTest {
         app.foodForm.open(app.resolve.currentName(), fromResolver = true)
         app.foodForm.draft.calories = "40"
         app.foodForm.save()
-        shows("DAILY", "RESOLVER", "NOTICE")
-        app.notices.dismiss()
+        // "Logged!" is no dialog: it waits on Daily's composer, under the resolver, and goes by itself.
+        shows("DAILY", "RESOLVER")
+        assertEquals("Logged!", app.confirmations.message)
         app.foodForm.open(app.resolve.currentName(), fromResolver = true)
         app.foodForm.draft.calories = "60"
         app.foodForm.save()
-        app.notices.dismiss()
         shows("DAILY")
         assertEquals("", app.log.draft)
     }
@@ -382,8 +382,12 @@ class SurfacesTest {
         shows("LIBRARY")
     }
 
-    /** Back closes the sign-in also while it submits; the screen beneath it stays as it was. */
-    @Test fun backWhileTheSignInSubmitsClosesOnlyTheSignIn() {
+    /**
+     * Back, the arrow and Cancel close the sign-in also while it submits, through one action
+     * ([com.iron.breakfast.contribution.ContributionFlow.dismissAuth]); the screen beneath it stays as it was. No new
+     * submit starts while the cancelled call is out (`ContributionFlowTest`).
+     */
+    private fun leaveTheSignInWhileItSubmits(leave: () -> Unit) {
         val kefir = food("kefir", "Kefir").copy(barcode = barcode)
         app.openLibrary()
         app.contribution.openForFood(kefir)
@@ -395,7 +399,7 @@ class SurfacesTest {
         app.contribution.submit()
         assertTrue(app.contribution.busy)
         shows("LIBRARY", "CONTRIBUTION_SIGN_IN")
-        app.back()
+        leave()
         shows("LIBRARY")
         assertFalse(app.contribution.busy)
         assertEquals("", app.contribution.password)
@@ -403,6 +407,11 @@ class SurfacesTest {
         app.io.runAll()
         shows("LIBRARY")
     }
+
+    @Test fun backWhileTheSignInSubmitsClosesOnlyTheSignIn() = leaveTheSignInWhileItSubmits { assertTrue(app.back()) }
+
+    /** The screen's arrow and Cancel call the same action as Back. */
+    @Test fun theArrowOrCancelWhileTheSignInSubmitsDoWhatBackDoes() = leaveTheSignInWhileItSubmits(app.contribution::dismissAuth)
 
     @Test fun theMixedBatchsMealPickerOpensOverTheLibrary() {
         app.libraryFoods = listOf(food("egg"))

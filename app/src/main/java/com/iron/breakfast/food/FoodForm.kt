@@ -26,7 +26,6 @@ import com.iron.breakfast.ReviewLogPlan
 import com.iron.breakfast.foodSaveRefusal
 import com.iron.breakfast.resolve.ResolveQueueView
 import com.iron.breakfast.queueLogPlan
-import com.iron.breakfast.ui.label
 
 /** The food writes the form makes; the view model adapts `BreakfastEngine`. */
 internal interface FoodFormStore {
@@ -88,6 +87,8 @@ internal class FoodForm(
     private val onClose: () -> Unit,
     /** Saved: [food] as stored ([newFood] false: the food as it was before the edit), [advancesQueue] when it resolved a queued part. */
     private val onSaved: (food: FoodRecord, newFood: Boolean, advancesQueue: Boolean) -> Unit,
+    /** A new food was saved and logged to the meal the user chose: "Logged!" (see `Confirmations`). */
+    private val confirmLogged: () -> Unit,
 ) {
     var open by mutableStateOf(false); private set
     var editingFoodId by mutableStateOf<String?>(null); private set
@@ -226,7 +227,11 @@ internal class FoodForm(
                 editingFoodId = null
                 draft.reset()
                 offerContribution(candidate?.copy(languageCode = contributionLanguageFor(name), packageQuantityMl = null))
-                notices.show(if (editingId != null) "Personal food updated for future logs." else if (saveTarget != null) "Saved to ${saveTarget.label()} and your food library." else "Saved to your food library.")
+                when {
+                    editingId != null -> notices.show("Personal food updated for future logs.")
+                    saveTarget != null -> confirmLogged()
+                    else -> notices.show("Saved to your food library.")
+                }
                 onSaved(saved, editingId == null, resolvesQueue)
             },
             onFailure = { notices.show(it.message ?: "Could not save this food.") },

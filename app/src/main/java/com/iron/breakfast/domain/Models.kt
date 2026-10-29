@@ -78,6 +78,13 @@ internal fun macroTotalsOf(values: List<NutritionValues>): MacroTotals = MacroTo
     fat = macroTotalOf(values.map { it.fat }),
 )
 
+/**
+ * The nutrition of [entries] together (a day, a meal, a save): their snapshots summed with [NutritionValues.plus], so
+ * a macro no entry knows stays unknown. Daily, Meal and the engine read totals only through this.
+ */
+internal fun nutritionTotalOf(entries: List<MealEntry>): NutritionValues =
+    entries.fold(NutritionValues.ZERO) { total, entry -> total + entry.nutritionSnapshot }
+
 @Serializable
 data class NutritionBasis(
     val amount: Double,

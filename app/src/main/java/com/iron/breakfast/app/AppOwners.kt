@@ -6,7 +6,6 @@ import com.iron.breakfast.contribution.ContributionFlow
 import com.iron.breakfast.contribution.OffContributions
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.entry.EntryEdit
-import com.iron.breakfast.entry.EntryEditMode
 import com.iron.breakfast.entry.EntryEditStore
 import com.iron.breakfast.food.FoodForm
 import com.iron.breakfast.food.FoodFormStore
@@ -108,6 +107,8 @@ internal class AppOwners<D>(
     )
     /** The app's one modal message (see [Notices]); features speak through it. */
     val notices = Notices()
+    /** "Logged!" after a food is logged to the meal and day the user chose (see [Confirmations]); it goes by itself. */
+    val confirmations = Confirmations(threads.scope, sleep = threads.sleep)
     /** The read model and the write gate (see [DiarySession]). */
     val session = DiarySession(
         source = stores.diary,
@@ -136,7 +137,7 @@ internal class AppOwners<D>(
         sleep = threads.sleep,
     )
     /** The Open Food Facts contribution flow (see [ContributionFlow]). */
-    val contribution = ContributionFlow(stores.contributions, notices, threads.scope, threads.io)
+    val contribution = ContributionFlow(stores.contributions, notices, threads.scope, threads.io, showContribute = { settings.showContribute })
     /** The Open Food Facts search (see [OffSearch]); what it opens over and returns to stays with the resolve flow. */
     val search: OffSearch = OffSearch(
         off = stores.offSearch,
@@ -180,7 +181,7 @@ internal class AppOwners<D>(
         selectedDay = { day.selectedDayKey },
         automaticMeal = ::automaticMealNow,
         openMeal = ::mealOnScreen,
-        editing = { entryEdit.mode != EntryEditMode.NONE },
+        editing = { entryEdit.editing },
         afterSave = resolve::afterSave,
         resolvePart = resolve::beginPart,
         // Typed work comes back after the process was killed: the log draft (and an open food form, in [init]).
@@ -205,6 +206,7 @@ internal class AppOwners<D>(
             review.foodDeleted(food.id)
         },
         afterSave = resolve::afterSave,
+        confirmLogged = confirmations::logged,
     )
     /** The entry detail and the quick and full edits (see [EntryEdit]); an edit shows its meal and returns to Daily through here. */
     val entryEdit: EntryEdit = EntryEdit(
@@ -231,6 +233,7 @@ internal class AppOwners<D>(
         onOpen = { fromResolver -> surfaces.foodFormOpened(fromResolver) },
         onClose = resolve::childClosed,
         onSaved = resolve::foodSaved,
+        confirmLogged = confirmations::logged,
     )
     /** The scanner and its barcode lookup (see [ScanSession]); a found product goes to [review], an unknown one to [foodForm]. */
     val scan: ScanSession = ScanSession(
@@ -260,6 +263,7 @@ internal class AppOwners<D>(
         onClosed = resolve::childClosed,
         openSearch = { fromResolver -> search.open(fromResolver = fromResolver) },
         startScan = { scan.begin() },
+        confirmLogged = confirmations::logged,
     )
     /** What is open and in which order: drawing, Back and the top check (see [Surfaces]); the Meal screen and Settings. */
     val surfaces: Surfaces = Surfaces(
@@ -285,8 +289,8 @@ internal class AppOwners<D>(
         // An Undo offer showing now follows the new window from the moment it was made.
         settings.undoWindowSetting.observe { undo.windowChanged() }
         settings.exportReminderSetting.observe(reminders::settingChanged)
-        // "Safety copy" Don't keep also removes the copy kept so far.
-        settings.keepSafetyCopySetting.observe { keep -> if (!keep) transfer.removeSafetyCopy() }
+        // Choosing "Safety copy" Don't keep also removes the copy kept so far; a reset is not a choice and never does.
+        settings.keepSafetyCopySetting.onChosen { keep -> if (!keep) transfer.removeSafetyCopy() }
         openStore()
     }
 
