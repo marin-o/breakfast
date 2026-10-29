@@ -42,7 +42,7 @@ The diary, search and food-detail patterns follow MyFitnessPal so the app feels 
 - Calories are required to create a personal food; protein, carbs and fat may be unknown. Uncertain serving conversions are visibly marked as approximate.
 - Out of scope: recipes, saved meals, goals, weight, progress, reports, exercise, water, onboarding or profile, accounts, subscriptions or premium gating, and configurable meal names. Recipes and saved meals may come later.
 - This is a personal, open-source project with limited engineering capacity. Reuse existing components before adding dependencies.
-- Undecided: how a deleted personal food is presented (the recommended default is to archive it while keeping it readable in history); whether OFF results are cached automatically or saved explicitly (the recommended default is to keep the current automatic save, with a source label); and whether to keep a contribution history (the recommended default is to defer it). A preparation-preference setting has been postponed.
+- Decided (2026-10-29): Delete food deletes a personal food for good, after a confirmation; past entries keep their own name and numbers. There is no archive. Undecided: whether OFF results are cached automatically or saved explicitly (the recommended default is to keep the current automatic save, with a source label); and whether to keep a contribution history (the recommended default is to defer it). A preparation-preference setting has been postponed.
 
 ## Brand Commitments
 

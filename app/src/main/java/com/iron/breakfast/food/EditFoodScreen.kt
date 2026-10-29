@@ -138,6 +138,6 @@ internal fun EditFoodScreen(vm: BreakfastViewModel) {
             TertiaryButton("Add alias", { draft.aliasFieldOpen = true })
         }
         PrimaryButton("Save", form::save, Modifier.padding(top = 8.dp))
-        if (food.origin == FoodOrigin.CUSTOM && !food.archived) DestructiveButton("Archive food", { vm.library.archive(food) }, Modifier.fillMaxWidth(), outlined = true)
+        if (food.origin == FoodOrigin.CUSTOM) DestructiveButton("Delete food", { vm.library.askDelete(food) }, Modifier.fillMaxWidth(), outlined = true)
     }
 }

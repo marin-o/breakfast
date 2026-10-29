@@ -29,8 +29,8 @@ import kotlinx.coroutines.withContext
 
 /** What the Library reads and writes; the view model adapts `BreakfastEngine`. */
 internal interface LibraryStore {
-    /** The foods whose name matches [query]; archived ones too when [includeArchived]. */
-    suspend fun foodsMatching(query: String, includeArchived: Boolean): List<FoodRecord>
+    /** The foods whose name matches [query]. */
+    suspend fun foodsMatching(query: String): List<FoodRecord>
     /** The planner over the current foods, for the bar's parts. */
     fun planner(): LogPlanner
     /** The local matches for a food phrase, best first. */
@@ -39,23 +39,24 @@ internal interface LibraryStore {
     suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String)
     /** Saves typed [text] to [meal] on [dayKey]: what resolves is logged, the rest comes back unresolved. */
     suspend fun save(text: String, meal: MealSlot, dayKey: String): SavedMeal
-    suspend fun archiveFood(id: String)
-    suspend fun restoreFood(id: String)
+    /** Deletes the food for good; entries keep their own name and numbers. */
+    suspend fun deleteFood(id: String)
 }
 
 /**
  * The Library: the list, its bar, the food page, and logging from it.
  *
  * - **List:** whether it is [open], the meal it adds to ([target]: the meal it was opened from or for, null on the
- *   Library tab), the [query] the list is filtered by and the results ([foods], for [resultsQuery]), active foods or
- *   only the Archived ones ([archivedOnly]). A refresh runs in [scope], its read on [io], and applies on [main] only
+ *   Library tab), the [query] the list is filtered by and the results ([foods], for [resultsQuery]). A refresh runs in
+ *   [scope], its read on [io], and applies on [main] only
  *   while it still matches what is shown ([shouldApplyLibraryRefresh]). A quantified batch's foods are looked up on
  *   [compute] (the matcher, as the resolver's search) and the batch applies on [main].
  * - **Bar:** [input], the bar's own text, never the Log draft. Done ([submitInput]) searches, logs a quantified batch
  *   (asking for a meal when none is known: [batchMealPickerOpen]), or saves a mixed batch (asking first:
  *   [mixedMealPickerOpen]), whose unmatched parts go to the post-save handling ([afterSave]) with the bar as their
  *   [ResolveSource].
- * - **Food page:** [selectedFood], the row picker ([expandedFoodId]), logging ([log]), Archive and Restore.
+ * - **Food page:** [selectedFood], the row picker ([expandedFoodId]), logging ([log]), and Delete food, which asks
+ *   first ([deleteRequest]) and deletes for good.
  *
  * While a Log part is being resolved here ([resolvingPart]), a food tapped or added is that part's pick
  * ([onPartPicked]) and Done only searches. Writes go through [session].
@@ -71,8 +72,8 @@ internal class LibraryState(
     private val selectedDay: () -> String,
     private val resolvingPart: () -> Boolean,
     private val onPartPicked: (FoodRecord) -> Unit,
-    /** [food] was archived: a form editing it closes. */
-    private val onArchived: (food: FoodRecord) -> Unit,
+    /** [food] was deleted: a form editing it closes. */
+    private val onDeleted: (food: FoodRecord) -> Unit,
     /** Post-save handling: the parts a mixed batch could not match, for [meal] (see `ResolveFlow.afterSave`). */
     private val afterSave: (unresolved: List<String>, meal: MealSlot, source: ResolveSource, typedAtSave: String) -> Unit,
 ) : ResolveSource {
@@ -80,8 +81,6 @@ internal class LibraryState(
     var target by mutableStateOf<MealSlot?>(null); private set
     var input by mutableStateOf(""); private set
     var query by mutableStateOf(""); private set
-    /** True only on the explicit Archived foods destination; active foods are never mixed in. */
-    var archivedOnly by mutableStateOf(false); private set
     var foods by mutableStateOf<List<FoodRecord>>(emptyList()); private set
     /** The query [foods] was computed for; the no-match screen waits until it equals [query]. */
     var resultsQuery by mutableStateOf<String?>(null); private set
@@ -90,18 +89,19 @@ internal class LibraryState(
     var batchMealPickerOpen by mutableStateOf(false); private set
     /** A mixed batch without a meal: asks which meal, then saves the bar's text. */
     var mixedMealPickerOpen by mutableStateOf(false); private set
+    /** The food "Delete food" asks about (the confirmation is open); null otherwise. */
+    var deleteRequest by mutableStateOf<FoodRecord?>(null); private set
     private var pendingBatch: List<LibraryLogDraft> = emptyList()
     private var refreshJob: Job? = null
     private var refreshGeneration = 0L
     private val parser = ShorthandParser()
 
     /** Opens the list for [target], filtered by [query], with [bar] in the bar (the query unless told otherwise). */
-    fun show(target: MealSlot?, query: String, archivedOnly: Boolean, bar: String = query) {
+    fun show(target: MealSlot?, query: String, bar: String = query) {
         open = true
         this.target = target
         input = bar
         this.query = query
-        this.archivedOnly = archivedOnly
         refresh()
     }
 
@@ -118,7 +118,7 @@ internal class LibraryState(
         expandedFoodId = null
         pendingBatch = emptyList()
         batchMealPickerOpen = false
-        archivedOnly = false
+        deleteRequest = null
         query = ""
         resultsQuery = null
         input = ""
@@ -145,16 +145,11 @@ internal class LibraryState(
         refreshJob?.cancel()
         val generation = ++refreshGeneration
         val captured = query
-        val capturedArchivedOnly = archivedOnly
         val capturedEntries = session.entries
         refreshJob = scope.launch(io) {
-            val matching = store.foodsMatching(captured, includeArchived = capturedArchivedOnly)
-            val ordered = libraryRecencyOrder(
-                if (capturedArchivedOnly) matching.filter { it.archived } else matching,
-                capturedEntries,
-            )
+            val ordered = libraryRecencyOrder(store.foodsMatching(captured), capturedEntries)
             withContext(main) {
-                if (shouldApplyLibraryRefresh(generation, refreshGeneration, captured, query, capturedArchivedOnly, archivedOnly, open)) {
+                if (shouldApplyLibraryRefresh(generation, refreshGeneration, captured, query, open)) {
                     foods = ordered
                     resultsQuery = captured
                 }
@@ -185,13 +180,13 @@ internal class LibraryState(
 
     /** Logs [food] to [target]; while resolving, it is the part's pick instead and keeps the part's typed amount and meal. */
     fun log(food: FoodRecord, target: MealSlot, amount: Double, unit: MeasureUnit) {
-        if (!session.ready || session.busy || food.archived) return
+        if (!session.ready || session.busy) return
         if (resolvingPart()) { onPartPicked(food); return }
         logBatch(listOf(libraryLogDraft(food, target, amount, unit)), target)
     }
 
     private fun pick(food: FoodRecord) {
-        if (!session.ready || session.busy || food.archived) return
+        if (!session.ready || session.busy) return
         onPartPicked(food)
     }
 
@@ -284,22 +279,31 @@ internal class LibraryState(
         ) { store.save(cleaned, target, day) }
     }
 
-    fun archive(food: FoodRecord) {
-        if (!session.ready || session.busy || food.archived || food.origin != FoodOrigin.CUSTOM) return
-        session.write(
-            change = DiaryChange.FoodsChanged,
-            onSuccess = { selectedFood = null; onArchived(food); notices.show("Food archived; saved diary entries remain readable.") },
-            onFailure = { notices.show(it.message ?: "Could not archive this food.") },
-        ) { store.archiveFood(food.id) }
+    /** "Delete food" on a personal food (its page or Edit food): the confirmation opens first. */
+    fun askDelete(food: FoodRecord) {
+        if (food.origin != FoodOrigin.CUSTOM) return
+        deleteRequest = food
     }
 
-    fun restore(food: FoodRecord) {
-        if (!session.ready || session.busy || !food.archived) return
+    fun cancelDelete() { deleteRequest = null }
+
+    /**
+     * The confirmation's "Delete food": the food goes for good, with its aliases, conversions and learned pick; its
+     * page closes and a form editing it closes ([onDeleted]). Past entries keep their own name and numbers. No Undo.
+     */
+    fun confirmDelete() {
+        val food = deleteRequest ?: return
+        deleteRequest = null
+        if (!session.ready || session.busy) return
         session.write(
             change = DiaryChange.FoodsChanged,
-            onSuccess = { selectedFood = session.foods.firstOrNull { it.id == food.id }; notices.show("Food restored to your library.") },
-            onFailure = { notices.show(it.message ?: "Could not restore this food.") },
-        ) { store.restoreFood(food.id) }
+            onSuccess = {
+                if (selectedFood?.id == food.id) selectedFood = null
+                if (expandedFoodId == food.id) expandedFoodId = null
+                onDeleted(food)
+            },
+            onFailure = { notices.show(it.message ?: "Could not delete this food.") },
+        ) { store.deleteFood(food.id) }
     }
 
     /** The bar as the resolve queue's source: what is left of a mixed batch's parts is written back here. */

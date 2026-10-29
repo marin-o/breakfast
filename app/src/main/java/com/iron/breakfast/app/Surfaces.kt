@@ -42,6 +42,8 @@ internal enum class Surface(
     LIBRARY_FOOD(coversBase = true),
     MIXED_MEAL_PICKER, BATCH_MEAL_PICKER,
     FOOD_FORM(coversBase = true), SETTINGS(coversBase = true), DISCARD_FOOD,
+    /** "Delete food" asks first, over the food page or Edit food. */
+    DELETE_FOOD,
     LIBRARY_NO_MATCH,
     OFF_SEARCH(coversBase = true), RESOLVER(coversBase = true), PRODUCT_REVIEW(coversBase = true),
     CONTRIBUTION_REVIEW, CONTRIBUTION_SIGN_IN, CONTRIBUTION_FAILURE,
@@ -126,6 +128,7 @@ internal class Surfaces(
         Surface.FOOD_FORM -> foodForm.open
         Surface.SETTINGS -> settingsOpen
         Surface.DISCARD_FOOD -> foodForm.discardOpen
+        Surface.DELETE_FOOD -> library.deleteRequest != null
         Surface.LIBRARY_NO_MATCH -> false
         Surface.OFF_SEARCH -> search.open
         Surface.RESOLVER -> !backdrop && resolve.resolverOpen
@@ -163,7 +166,7 @@ internal class Surfaces(
 
     private fun backOf(surface: Surface, covered: Boolean): (() -> Unit)? = when (surface) {
         Surface.DAILY -> null
-        // The same exits as the arrows: Archived goes to the Library, a meal's Library to the meal, a part's to the Log.
+        // The same exits as the arrows: a meal's Library goes to the meal, a part's to the Log.
         Surface.MEAL -> ::closeMeal.takeIf { !covered }
         Surface.LIBRARY -> ::exitLibrary.takeIf { !covered }
         Surface.LOG -> log::close
@@ -182,7 +185,7 @@ internal class Surfaces(
         Surface.SCANNER -> scan::end
         // Dialogs and sheets, in their own window; the backdrop goes with its review sheet.
         Surface.SCAN_REVIEW_BACKDROP, Surface.ENTRY_FOOD_PICKER, Surface.LIBRARY_FOOD_ADD, Surface.MIXED_MEAL_PICKER,
-        Surface.BATCH_MEAL_PICKER, Surface.DISCARD_FOOD, Surface.PRODUCT_REVIEW, Surface.NOTICE, Surface.REPLACE_DIARY,
+        Surface.BATCH_MEAL_PICKER, Surface.DISCARD_FOOD, Surface.DELETE_FOOD, Surface.PRODUCT_REVIEW, Surface.NOTICE, Surface.REPLACE_DIARY,
         Surface.DELETE_ALL, Surface.STORAGE_UNAVAILABLE -> null
     }
 
@@ -205,29 +208,27 @@ internal class Surfaces(
      * Opens the Library over the screen beneath. Library and meal navigation end an open entry edit ([EntryEdit.cancel],
      * which also clears the Log's error); the Library's [LibraryState.show] says what its bar starts with.
      */
-    private fun showLibrary(target: MealSlot?, query: String, archivedOnly: Boolean, bar: String = query) {
+    private fun showLibrary(target: MealSlot?, query: String, bar: String = query) {
         entryEdit.cancel()
         meal = null
-        library.show(target, query, archivedOnly, bar)
+        library.show(target, query, bar)
     }
-    fun openLibrary() = showLibrary(null, "", archivedOnly = false)
-    fun openArchivedLibrary() = showLibrary(null, "", archivedOnly = true)
+    fun openLibrary() = showLibrary(null, "")
     /** The Library adding to [target] (a meal's "Add food", a part being resolved), searching [query]. */
     fun openFocusedLibrary(target: MealSlot, query: String = "") {
         resolve.abandon()
-        showLibrary(target, query, archivedOnly = false)
+        showLibrary(target, query)
     }
     /** An entry's "Open in Library": the Library tab with that food's page open. */
     fun openLibraryFoodDetail(entry: MealEntry) {
         entryEdit.closeDetail()
-        showLibrary(null, entry.foodName, archivedOnly = false, bar = "")
+        showLibrary(null, entry.foodName, bar = "")
         library.showFood(session.foods.firstOrNull { it.id == entry.foodId })
     }
     fun closeLibrary() = leaveLibrary(returnTo = null)
     /** The Library's arrow and system Back, by [exitLibraryTarget]. */
     fun exitLibrary() {
-        when (exitLibraryTarget(resolve.resolvingPart, library.archivedOnly, library.target)) {
-            LibraryExit.LIBRARY -> openLibrary()
+        when (exitLibraryTarget(resolve.resolvingPart, library.target)) {
             LibraryExit.MEAL -> leaveLibrary(returnTo = library.target)
             LibraryExit.LOG, LibraryExit.DAILY -> closeLibrary()
         }

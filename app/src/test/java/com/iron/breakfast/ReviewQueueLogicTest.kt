@@ -72,12 +72,11 @@ class ReviewQueueLogicTest {
     }
 
     @Test
-    fun staleLibraryResponsesRequireCurrentOpenQueryGenerationAndArchiveMode() {
-        assertTrue(shouldApplyLibraryRefresh(4, 4, "oats", "oats", false, false, true))
-        assertFalse(shouldApplyLibraryRefresh(3, 4, "oats", "oats", false, false, true))
-        assertFalse(shouldApplyLibraryRefresh(4, 4, "oats", "milk", false, false, true))
-        assertFalse(shouldApplyLibraryRefresh(4, 4, "oats", "oats", false, true, true))
-        assertFalse(shouldApplyLibraryRefresh(4, 4, "oats", "oats", false, false, false))
+    fun staleLibraryResponsesRequireCurrentOpenQueryAndGeneration() {
+        assertTrue(shouldApplyLibraryRefresh(4, 4, "oats", "oats", true))
+        assertFalse(shouldApplyLibraryRefresh(3, 4, "oats", "oats", true))
+        assertFalse(shouldApplyLibraryRefresh(4, 4, "oats", "milk", true))
+        assertFalse(shouldApplyLibraryRefresh(4, 4, "oats", "oats", false))
     }
 
     @Test

@@ -419,7 +419,7 @@ private fun amountFieldText(review: ProductReview): String =
     val parsed = parseProductAmount(amountText, basis.unit)
     val calculation = if (parsed != null) review.calculation(food) else null
     val approx = productApproxLabel(calculation, parsed?.unit, basis.unit)
-    val canAdd = !food.archived && parsed != null && calculation?.supported == true
+    val canAdd = parsed != null && calculation?.supported == true
     // The numbers on screen follow any corrections made under "Edit details".
     val values = NutritionValues(
         review.calories.toDoubleOrNull() ?: basis.values.calories,

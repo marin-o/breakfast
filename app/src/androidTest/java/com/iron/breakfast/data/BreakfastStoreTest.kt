@@ -18,6 +18,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -112,22 +113,61 @@ class BreakfastStoreTest {
         assertEquals(3.0, stored.enteredAmount, 0.0)
     }
 
-    /** MOB-025 (A1-11): saving an edited food keeps the stored archived state. */
+    /** Delete food: the food, its aliases, conversions and learned pick go; its entries stay with their numbers. */
     @Test
-    fun upsertFoodKeepsTheStoredArchivedState() = runBlocking {
+    fun deleteFoodRemovesItsRowsAndKeepsItsEntries() = runBlocking {
         val food = FoodRecord(
-            id = "custom-archived", name = "Old bar", aliases = emptyList(), category = "Personal food", origin = FoodOrigin.CUSTOM,
+            id = "custom-delete", name = "Old bar", aliases = listOf("ob"), category = "Personal food", origin = FoodOrigin.CUSTOM,
             nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(400.0, 10.0, 50.0, 15.0)),
+            conversions = listOf(com.iron.breakfast.domain.ServingConversion(MeasureUnit.PIECE, 40.0, "user", approximate = false, label = "bar")),
             defaultAmount = 100.0, defaultUnit = MeasureUnit.GRAM, personalOverride = true,
         )
-        store.upsertFood(food)
-        store.archiveFood(food.id)
+        val logged = entry("eaten").copy(foodId = food.id, foodName = food.name)
+        store.addFoodAndEntry(food, logged)
+        store.reinforce(food.id)
 
-        store.upsertFood(food.copy(name = "Old bar 2", archived = false))
+        store.deleteFood(food.id)
 
-        val stored = database.foodDao().byId(food.id)
-        assertEquals("Old bar 2", stored?.name)
-        assertEquals(true, stored?.archived)
+        assertNull(database.foodDao().byId(food.id))
+        assertTrue(database.foodAliasDao().all().none { it.foodId == food.id })
+        assertTrue(database.servingConversionDao().all().none { it.foodId == food.id })
+        assertNull(database.preferenceDao().byFood(food.id))
+        assertTrue(store.foods().none { it.id == food.id })
+        assertEquals(listOf(logged), store.entries().filter { it.id == "eaten" })
+        assertEqualsFullRead()
+    }
+
+    /** Foods are no longer archived: a row an older build archived is deleted when the store opens, once. */
+    @Test
+    fun theStoreDeletesArchivedFoodsWhenItOpensAndOnlyThem() = runBlocking {
+        val food = FoodRecord(
+            id = "custom-archived", name = "Old jam", aliases = listOf("jam"), category = "Personal food", origin = FoodOrigin.CUSTOM,
+            nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(250.0, 0.5, 60.0, 0.1)),
+            defaultAmount = 20.0, defaultUnit = MeasureUnit.GRAM, personalOverride = true,
+        )
+        val kept = food.copy(id = "custom-kept", name = "New jam", aliases = emptyList())
+        store.addFoodAndEntry(food, entry("jam").copy(foodId = food.id, foodName = food.name))
+        store.addFood(kept)
+        store.reinforce(food.id)
+        // As an older build left it.
+        database.foodDao().upsert(database.foodDao().byId(food.id)!!.copy(archived = true))
+        val catalogue = database.foodDao().all().filter { it.origin != FoodOrigin.CUSTOM.name }
+
+        val reopened = BreakfastStore(database)
+        reopened.initialize()
+
+        assertNull(database.foodDao().byId(food.id))
+        assertTrue(database.foodAliasDao().all().none { it.foodId == food.id })
+        assertNull(database.preferenceDao().byFood(food.id))
+        assertEquals("New jam", database.foodDao().byId(kept.id)?.name)
+        assertEquals(catalogue, database.foodDao().all().filter { it.origin != FoodOrigin.CUSTOM.name })
+        assertEquals(food.name, reopened.entries().single { it.id == "jam" }.foodName)
+        assertTrue(database.foodDao().archivedIds().isEmpty())
+
+        // Opening again changes nothing.
+        val after = database.foodDao().all()
+        BreakfastStore(database).initialize()
+        assertEquals(after, database.foodDao().all())
     }
 
     /** MOB-028: an entry write keeps the very same foods list and preference map; a food write replaces the list. */
@@ -145,7 +185,7 @@ class BreakfastStoreTest {
         assertTrue(foods === store.foods())
         assertTrue(preferences !== store.preferenceMap())
 
-        store.archiveFood(FoodCatalog.fixtures.first().id)
+        store.deleteFood(FoodCatalog.fixtures.first().id)
         assertTrue(foods !== store.foods())
     }
 
@@ -162,10 +202,9 @@ class BreakfastStoreTest {
         store.reinforce(food.id)
         store.editEntry("full-a") { it.copy(enteredAmount = 4.0) }
         store.deleteEntry("full-b")
-        store.archiveFood(food.id)
+        store.deleteFood(food.id)
         assertEqualsFullRead()
 
-        store.restoreFood(food.id)
         val second = food.copy(id = "custom-reload-2", name = "Second bar", aliases = listOf("sb"))
         store.addFood(second)
         store.addFoodAndEntry(food.copy(id = "custom-reload-3", name = "Third bar"), entry("full-c").copy(foodId = "custom-reload-3"))
@@ -222,7 +261,7 @@ class BreakfastStoreTest {
         assertTrue(matcher === engine.matcherForTesting())
         assertTrue(planner !== engine.planner())
 
-        store.archiveFood(FoodCatalog.fixtures.first().id)
+        store.deleteFood(FoodCatalog.fixtures.first().id)
         assertTrue(matcher !== engine.matcherForTesting())
     }
 

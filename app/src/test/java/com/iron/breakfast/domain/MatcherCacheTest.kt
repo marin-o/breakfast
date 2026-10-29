@@ -9,7 +9,7 @@ import org.junit.Test
 class MatcherCacheTest {
     @Test fun theSameFoodsListKeepsTheMatcherAndANewOneRebuildsIt() {
         var builds = 0
-        val cache = MatcherCache { builds++; FoodMatcher(foodsAvailableForLogging(it)) }
+        val cache = MatcherCache { builds++; FoodMatcher(it) }
         val foods = FoodCatalog.fixtures.toList()
         val first = cache.matcherFor(foods)
         assertSame(first, cache.matcherFor(foods))

@@ -131,7 +131,7 @@ class BreakfastEngine(
 
     suspend fun replaceEntry(entryId: String, foodId: String): ReplacementResult =
         editEntry(entryId, "That saved entry is no longer available.") { old ->
-            val food = store.foods().firstOrNull { it.id == foodId && !it.archived }
+            val food = store.foods().firstOrNull { it.id == foodId }
                 ?: return@editEntry ReplacementResult.Failure("That catalogue record is no longer available.")
             if (!old.enteredAmount.isFinite() || old.enteredAmount <= 0.0) return@editEntry ReplacementResult.Failure("Enter a positive amount.")
             val calculation = calculator.calculate(food, old.enteredAmount, old.enteredUnit)
@@ -210,7 +210,7 @@ class BreakfastEngine(
         mealSlot: MealSlot,
         dayKey: String,
     ): ReplacementResult = editEntry(entryId, "That saved entry is no longer available.") { old ->
-        val food = store.foods().firstOrNull { it.id == foodId && !it.archived }
+        val food = store.foods().firstOrNull { it.id == foodId }
             ?: return@editEntry ReplacementResult.Failure("That catalogue record is no longer available.")
         if (!amount.isFinite() || amount <= 0.0) return@editEntry ReplacementResult.Failure("Enter a positive amount.")
         val calculation = calculator.calculate(food, amount, unit)
@@ -250,9 +250,11 @@ class BreakfastEngine(
     /** Undoes a logged batch in one transaction; an entry changed since [entries] were saved stays. Returns the ids deleted. */
     suspend fun deleteEntries(entries: List<MealEntry>): List<String> = store.deleteEntries(entries)
 
-    suspend fun archiveFood(foodId: String) = store.archiveFood(foodId)
-
-    suspend fun restoreFood(foodId: String) = store.restoreFood(foodId)
+    /** Deletes a food for good; past entries keep their own name and numbers. */
+    suspend fun deleteFood(foodId: String) {
+        store.deleteFood(foodId)
+        invalidateMatcher()
+    }
 
     suspend fun updateFood(food: FoodRecord) {
         store.upsertFood(food.copy(personalOverride = true))
@@ -261,8 +263,7 @@ class BreakfastEngine(
 
     suspend fun foodById(foodId: String): FoodRecord? = store.foodById(foodId)
 
-    suspend fun foodsMatching(query: String = "", includeArchived: Boolean = false): List<FoodRecord> =
-        store.foodsMatching(query, includeArchived)
+    suspend fun foodsMatching(query: String = ""): List<FoodRecord> = store.foodsMatching(query)
 
     suspend fun saveCustomAndLog(
         name: String,
@@ -375,10 +376,7 @@ internal fun rankingPreferences(learn: Boolean, stored: Map<String, Preference>)
 private val NO_PREFERENCES: Map<String, Preference> = emptyMap()
 
 internal fun cachedFoodForLogging(candidate: FoodRecord, byId: FoodRecord?, byBarcode: FoodRecord?): FoodRecord =
-    listOfNotNull(byId, byBarcode).firstOrNull { it.personalOverride && !it.archived } ?: candidate
-
-internal fun foodsAvailableForLogging(foods: List<FoodRecord>): List<FoodRecord> =
-    foods.filterNot { it.archived }
+    listOfNotNull(byId, byBarcode).firstOrNull { it.personalOverride } ?: candidate
 
 data class ParsedAmountUnit(val amount: Double, val unit: MeasureUnit)
 
@@ -401,7 +399,7 @@ internal fun orderedSavedAt(nowMs: Long, index: Int): Long = nowMs + index
 
 /** One [FoodMatcher] per foods list object, built by [build] the first time that list is asked for. */
 internal class MatcherCache(
-    private val build: (List<FoodRecord>) -> FoodMatcher = { FoodMatcher(foodsAvailableForLogging(it)) },
+    private val build: (List<FoodRecord>) -> FoodMatcher = { FoodMatcher(it) },
 ) {
     private var source: List<FoodRecord>? = null
     private var matcher: FoodMatcher? = null

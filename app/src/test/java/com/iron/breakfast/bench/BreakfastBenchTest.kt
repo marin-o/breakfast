@@ -3,7 +3,6 @@ package com.iron.breakfast.bench
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.LogPlanner
 import com.iron.breakfast.domain.MatcherCache
-import com.iron.breakfast.domain.foodsAvailableForLogging
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -14,7 +13,7 @@ import org.junit.Test
  */
 class BreakfastBenchTest {
     private val year = SyntheticYear()
-    private val logging = foodsAvailableForLogging(year.foods)
+    private val logging = year.foods
     private val preferences = year.preferences.associateBy { it.foodId }
 
     private fun report(stats: BenchStats) = println("BreakfastBench jvm ${stats.line()}")

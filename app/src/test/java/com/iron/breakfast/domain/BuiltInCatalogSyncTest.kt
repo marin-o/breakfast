@@ -47,13 +47,6 @@ class BuiltInCatalogSyncTest {
         assertTrue(BuiltInCatalogSync.changedRows(listOf(edited), FoodCatalog.fixtures).isEmpty())
     }
 
-    @Test fun anArchivedBuiltInFoodStaysArchivedAndGetsTheCurrentContent() {
-        val archived = seededBefore.copy(archived = true)
-        val changed = BuiltInCatalogSync.changedRows(listOf(archived), FoodCatalog.fixtures).single()
-        assertTrue(changed.archived)
-        assertEquals(homeMilk.aliases, changed.aliases)
-    }
-
     @Test fun sourceIdentityAndBarcodeAreKept() {
         val stored = seededBefore.copy(barcode = "4800000000001", sourceId = "off-1", sourceName = "Open Food Facts")
         val changed = BuiltInCatalogSync.changedRows(listOf(stored), FoodCatalog.fixtures).single()

@@ -115,7 +115,7 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
                 // The tray rides above the keyboard and clear of a side display cutout.
                 Box(Modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).imePadding()) {
                     // Daily and Meal composers float over their own content; only Library uses this bar.
-                    if (vm.entryEdit.mode == EntryEditMode.NONE && surface == Surface.LIBRARY && !vm.library.archivedOnly) LibraryComposer(vm)
+                    if (vm.entryEdit.mode == EntryEditMode.NONE && surface == Surface.LIBRARY) LibraryComposer(vm)
                 }
             }
         ) { pad ->
@@ -137,6 +137,13 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         Surface.BATCH_MEAL_PICKER -> LibraryBatchMealPickerDialog(vm)
         Surface.FOOD_FORM -> if (vm.foodForm.editingFoodId != null) EditFoodScreen(vm) else CreateFoodScreen(vm)
         Surface.SETTINGS -> SettingsScreen(vm)
+        // Deleting is for good: past entries keep their own name and numbers.
+        Surface.DELETE_FOOD -> AlertDialog(
+            onDismissRequest = vm.library::cancelDelete,
+            confirmButton = { TextButton(vm.library::confirmDelete) { Text("Delete food") } },
+            dismissButton = { TextButton(vm.library::cancelDelete) { Text("Cancel") } },
+            text = { Text("Past entries keep their numbers.") },
+        )
         Surface.DISCARD_FOOD -> AlertDialog(
             onDismissRequest = vm.foodForm::keepEditing,
             confirmButton = { TextButton(vm.foodForm::discard) { Text("Discard") } },

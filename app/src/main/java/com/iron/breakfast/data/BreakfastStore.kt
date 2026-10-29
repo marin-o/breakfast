@@ -58,6 +58,7 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
             if (initialized) return
             withContext(Dispatchers.IO) {
                 database.withTransaction {
+                    deleteArchivedFoods()
                     seedMissingFixtures()
                     syncBuiltInFoods()
                 }
@@ -121,13 +122,10 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
         }
     }
 
-    /** Saves an edited or new food. A stored food keeps its archived state: only [archiveFood] and [restoreFood] change it. */
+    /** Saves an edited or new food. */
     suspend fun upsertFood(food: FoodRecord) {
         requireReady()
-        write(FOODS) {
-            val storedArchived = database.foodDao().byId(food.id)?.archived
-            insertFoodRows(if (storedArchived == null) food else food.copy(archived = storedArchived))
-        }
+        write(FOODS) { insertFoodRows(food) }
     }
 
     suspend fun foodByBarcode(barcode: String): FoodRecord? {
@@ -144,13 +142,12 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
         }
     }
 
-    suspend fun foodsMatching(query: String = "", includeArchived: Boolean = false): List<FoodRecord> {
+    suspend fun foodsMatching(query: String = ""): List<FoodRecord> {
         requireReady()
         val normalized = query.trim().lowercase()
         return model.foods.filter { food ->
-            (includeArchived || !food.archived) &&
-                (normalized.isBlank() || food.allNames().any { it.lowercase().contains(normalized) } ||
-                    food.brand?.lowercase()?.contains(normalized) == true || barcodeMatchesQuery(food.barcode, normalized))
+            normalized.isBlank() || food.allNames().any { it.lowercase().contains(normalized) } ||
+                food.brand?.lowercase()?.contains(normalized) == true || barcodeMatchesQuery(food.barcode, normalized)
         }
     }
 
@@ -159,20 +156,13 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
         return model.foods.firstOrNull { it.id == id }
     }
 
-    suspend fun archiveFood(id: String) {
+    /**
+     * Deletes the food for good, with its aliases, conversions and learned pick. Entries are not touched: each keeps its
+     * own food name and nutrition snapshot, and nothing requires its food id to name a stored food.
+     */
+    suspend fun deleteFood(id: String) {
         requireReady()
-        write(FOODS) {
-            val current = database.foodDao().all().firstOrNull { it.id == id } ?: return@write
-            database.foodDao().upsert(current.copy(archived = true))
-        }
-    }
-
-    suspend fun restoreFood(id: String) {
-        requireReady()
-        write(FOODS) {
-            val current = database.foodDao().all().firstOrNull { it.id == id } ?: return@write
-            database.foodDao().upsert(current.copy(archived = false))
-        }
+        write(FOODS + PREFERENCES) { deleteFoodRows(id) }
     }
 
     suspend fun deleteEntry(id: String) {
@@ -194,19 +184,16 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
         }
     }
 
-    /** Stores [food] without an entry. An archived food stays as it is. */
+    /** Stores [food] without an entry. */
     suspend fun addFood(food: FoodRecord) {
         requireReady()
-        write(FOODS) {
-            if (database.foodDao().all().firstOrNull { it.id == food.id }?.archived != true) insertFoodRows(food)
-        }
+        write(FOODS) { insertFoodRows(food) }
     }
 
     suspend fun addFoodAndEntry(food: FoodRecord, entry: MealEntry) {
         requireReady()
         write(FOODS + ENTRIES) {
-            val current = database.foodDao().all().firstOrNull { it.id == food.id }
-            if (current?.archived != true) insertFoodRows(food)
+            insertFoodRows(food)
             database.mealEntryDao().replace(entry.toEntity())
         }
     }
@@ -230,9 +217,9 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
     }
 
     /**
-     * Import diary: replaces every table with [rows] in one transaction, then seeds and syncs the catalogue as at start.
-     * Any failure rolls the whole transaction back, so the stored diary and [model] stay as they were. [rows] must
-     * already have passed [validateDiary].
+     * Import diary: replaces every table with [rows] in one transaction, then, as at start, deletes the foods an older
+     * file holds as archived and seeds and syncs the catalogue. Any failure rolls the whole transaction back, so the
+     * stored diary and [model] stay as they were. [rows] must already have passed [validateDiary].
      */
     internal suspend fun replaceDiary(rows: DiaryRows) {
         requireReady()
@@ -247,6 +234,7 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
             database.servingConversionDao().insertAllOrAbort(rows.conversions)
             database.preferenceDao().insertAllOrAbort(rows.preferences)
             database.mealEntryDao().insertAllOrAbort(rows.entries)
+            deleteArchivedFoods()
             seedMissingFixtures()
             syncBuiltInFoods()
         }
@@ -315,6 +303,23 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
         database.servingConversionDao().deleteForFood(food.id)
         database.foodAliasDao().insertAll(food.toAliasEntities())
         database.servingConversionDao().insertAll(food.toConversionEntities())
+    }
+
+    /** A food's rows: the food, its aliases and conversions, and its learned pick. Runs inside a transaction. */
+    private suspend fun deleteFoodRows(id: String) {
+        database.foodDao().deleteById(id)
+        database.foodAliasDao().deleteForFood(id)
+        database.servingConversionDao().deleteForFood(id)
+        database.preferenceDao().deleteForFood(id)
+    }
+
+    /**
+     * Foods are deleted, not archived: a row an older build archived, or an older diary file brought in, is deleted
+     * here (before the catalogue is seeded, so an archived built-in food comes back as the catalogue has it). With
+     * none left it does nothing, so it runs at every start.
+     */
+    private suspend fun deleteArchivedFoods() {
+        database.foodDao().archivedIds().forEach { deleteFoodRows(it) }
     }
 
     /** Rewrites the stored built-in foods whose catalogue content changed; see [BuiltInCatalogSync]. */
@@ -407,13 +412,13 @@ internal fun unchangedEntryIds(expected: List<MealEntry>, stored: List<MealEntry
 }
 
 /**
- * Of the rows holding [barcode] in any of its forms, a live one: the exact spelling first, then the canonical
- * spelling, then the lowest id, so the pick is the same every time. Null when only archived rows match.
+ * Of the rows holding [barcode] in any of its forms: the exact spelling first, then the canonical spelling, then the
+ * lowest id, so the pick is the same every time.
  */
 internal fun pickBarcodeMatch(rows: List<FoodEntity>, barcode: String): FoodEntity? {
     val exact = barcode.trim()
     val canonical = canonicalBarcode(barcode)
-    return rows.filterNot { it.archived }.sortedWith(
+    return rows.sortedWith(
         compareBy<FoodEntity>({ if (it.barcode?.trim() == exact) 0 else 1 }, { if (it.barcode?.trim() == canonical) 0 else 1 }, { it.id })
     ).firstOrNull()
 }

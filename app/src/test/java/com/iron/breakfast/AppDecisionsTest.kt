@@ -6,21 +6,17 @@ import org.junit.Test
 
 class AppDecisionsTest {
     @Test fun aLibraryOpenedFromAMealGoesBackToThatMeal() {
-        assertEquals(LibraryExit.MEAL, exitLibraryTarget(resolving = false, archivedOnly = false, origin = MealSlot.LUNCH))
+        assertEquals(LibraryExit.MEAL, exitLibraryTarget(resolving = false, origin = MealSlot.LUNCH))
     }
 
     @Test fun theLibraryTabGoesBackToDaily() {
-        assertEquals(LibraryExit.DAILY, exitLibraryTarget(resolving = false, archivedOnly = false, origin = null))
-    }
-
-    @Test fun archivedFoodsGoBackToTheLibrary() {
-        assertEquals(LibraryExit.LIBRARY, exitLibraryTarget(resolving = false, archivedOnly = true, origin = null))
+        assertEquals(LibraryExit.DAILY, exitLibraryTarget(resolving = false, origin = null))
     }
 
     @Test fun aResolveAlwaysGoesBackToTheLog() {
         // A resolve opens the Library on the Log's meal, but it returns to the Log, not to that meal.
-        assertEquals(LibraryExit.LOG, exitLibraryTarget(resolving = true, archivedOnly = false, origin = MealSlot.BREAKFAST))
-        assertEquals(LibraryExit.LOG, exitLibraryTarget(resolving = true, archivedOnly = false, origin = null))
+        assertEquals(LibraryExit.LOG, exitLibraryTarget(resolving = true, origin = MealSlot.BREAKFAST))
+        assertEquals(LibraryExit.LOG, exitLibraryTarget(resolving = true, origin = null))
     }
 
     @Test fun anOverlayHidesTheNoMatchScreen() {

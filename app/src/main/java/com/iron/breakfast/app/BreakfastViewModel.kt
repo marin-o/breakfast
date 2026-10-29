@@ -190,15 +190,14 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     internal val library: LibraryState = LibraryState(
         session = session,
         store = object : LibraryStore {
-            override suspend fun foodsMatching(query: String, includeArchived: Boolean) = engine.foodsMatching(query, includeArchived)
+            override suspend fun foodsMatching(query: String) = engine.foodsMatching(query)
             override fun planner() = engine.planner()
             override fun search(phrase: String) = engine.search(phrase)
             override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
                 engine.cacheFoodAndLog(food, amount, unit, meal, dayKey)
             }
             override suspend fun save(text: String, meal: MealSlot, dayKey: String) = engine.save(text, mealSlot = meal, dayKey = dayKey)
-            override suspend fun archiveFood(id: String) { engine.archiveFood(id) }
-            override suspend fun restoreFood(id: String) { engine.restoreFood(id) }
+            override suspend fun deleteFood(id: String) { engine.deleteFood(id) }
         },
         notices = notices,
         scope = viewModelScope,
@@ -208,7 +207,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         selectedDay = { selectedDayKey },
         resolvingPart = { resolve.resolvingPart },
         onPartPicked = resolve::finishPart,
-        onArchived = { food -> if (foodForm.editingFoodId == food.id) foodForm.close() },
+        onDeleted = { food -> if (foodForm.editingFoodId == food.id) foodForm.close() },
         afterSave = resolve::afterSave,
     )
     /** The entry detail and the quick and full edits (see [EntryEdit]); an edit shows its meal and returns to Daily through here. */

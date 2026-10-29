@@ -139,7 +139,7 @@ internal class AppKit {
     val library: LibraryState = LibraryState(
         diary.session,
         object : LibraryStore {
-            override suspend fun foodsMatching(query: String, includeArchived: Boolean) = libraryFoods
+            override suspend fun foodsMatching(query: String) = libraryFoods
             override fun planner() = plannerFor(emptyMap())
             override fun search(phrase: String) = emptyList<RankedFood>()
             override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
@@ -149,14 +149,13 @@ internal class AppKit {
                 calls += "library save \"$text\" $meal"
                 return SavedMeal(listOf(com.iron.breakfast.today.entry("batch")), NutritionValues.ZERO, unmatched)
             }
-            override suspend fun archiveFood(id: String) {}
-            override suspend fun restoreFood(id: String) {}
+            override suspend fun deleteFood(id: String) { calls += "delete food $id" }
         },
         notices, diary.scope, Dispatchers.Unconfined, Dispatchers.Unconfined, Dispatchers.Unconfined,
         selectedDay = { day },
         resolvingPart = { resolve.resolvingPart },
         onPartPicked = resolve::finishPart,
-        onArchived = { food -> if (foodForm.editingFoodId == food.id) foodForm.close() },
+        onDeleted = { food -> if (foodForm.editingFoodId == food.id) foodForm.close() },
         afterSave = resolve::afterSave,
     )
     val entryEdit: EntryEdit = EntryEdit(
@@ -259,7 +258,6 @@ internal class AppKit {
     fun openMeal(s: MealSlot) = surfaces.openMeal(s)
     fun closeMeal() = surfaces.closeMeal()
     fun openLibrary() = surfaces.openLibrary()
-    fun openArchivedLibrary() = surfaces.openArchivedLibrary()
     fun openFocusedLibrary(target: MealSlot, query: String = "") = surfaces.openFocusedLibrary(target, query)
     fun openLibraryFoodDetail(entry: MealEntry) = surfaces.openLibraryFoodDetail(entry)
     fun closeLibrary() = surfaces.closeLibrary()

@@ -259,7 +259,7 @@ internal fun EntryFoodPicker(vm: BreakfastViewModel) {
     Sheet(onDismissRequest = vm.entryEdit::closeFoodPicker) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SectionHeading("Replace food", Modifier.padding(bottom = 8.dp))
-            vm.foods.filterNot { it.archived }.take(30).forEach { food ->
+            vm.foods.take(30).forEach { food ->
                 TertiaryButton(food.name, { vm.entryEdit.chooseFood(food) }, Modifier.fillMaxWidth())
             }
         }

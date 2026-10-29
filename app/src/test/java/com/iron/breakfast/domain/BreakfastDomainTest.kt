@@ -10,19 +10,11 @@ class BreakfastDomainTest {
     private val parser = ShorthandParser()
 
     @Test
-    fun archivedFoodsAreExcludedFromLoggingCatalog() {
-        val active = FoodCatalog.fixtures.first()
-        val archived = active.copy(id = "archived", archived = true)
-        assertEquals(listOf(active), foodsAvailableForLogging(listOf(active, archived)))
-    }
-
-    @Test
-    fun archivedPersonalOverrideCannotBecomeEffectiveDuringRecache() {
+    fun aPersonalOverrideIsKeptDuringRecache() {
         val candidate = FoodCatalog.fixtures.first().copy(id = "off-123", barcode = "123")
-        val archivedOverride = candidate.copy(name = "Archived local edit", archived = true, personalOverride = true)
-        assertEquals(candidate, cachedFoodForLogging(candidate, archivedOverride, null))
-        val activeOverride = archivedOverride.copy(archived = false)
-        assertEquals(activeOverride, cachedFoodForLogging(candidate, activeOverride, null))
+        val override = candidate.copy(name = "Local edit", personalOverride = true)
+        assertEquals(override, cachedFoodForLogging(candidate, override, null))
+        assertEquals(candidate, cachedFoodForLogging(candidate, candidate.copy(name = "Not edited"), null))
     }
 
     @Test

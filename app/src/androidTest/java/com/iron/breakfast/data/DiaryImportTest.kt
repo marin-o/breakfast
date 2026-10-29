@@ -47,7 +47,7 @@ class DiaryImportTest {
         id = "custom-import", name = "Домашен бурек", aliases = listOf("burek", "бурек"), origin = FoodOrigin.CUSTOM,
         nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(280.0, 9.0, null, 17.5)),
         conversions = listOf(ServingConversion(MeasureUnit.PIECE, 150.0, "user", approximate = true, label = "slice")),
-        barcode = null, archived = false,
+        barcode = null,
     )
 
     private fun entry(id: String, foodId: String, calories: Double) = MealEntry(
@@ -56,12 +56,12 @@ class DiaryImportTest {
         approximateConversion = true, savedAtEpochMs = 1_000L + calories.toLong(), dayKey = "2026-10-25", resolvedBaseUnit = MeasureUnit.GRAM,
     )
 
-    /** A diary with a custom food, an archived food, a preference and entries, one of them for a food that is gone. */
+    /** A diary with a custom food, a deleted food, a preference and entries, two of them for foods that are gone. */
     private suspend fun fillDiary() {
         store.addFood(custom)
-        store.addFood(custom.copy(id = "archived-import", name = "Old jam", aliases = emptyList(), conversions = emptyList()))
-        store.archiveFood("archived-import")
-        store.saveEntries(listOf(entry("a", custom.id, 420.0), entry("b", "archived-import", 80.0), entry("c", "never-stored", 55.0)))
+        store.addFood(custom.copy(id = "deleted-import", name = "Old jam", aliases = emptyList(), conversions = emptyList()))
+        store.deleteFood("deleted-import")
+        store.saveEntries(listOf(entry("a", custom.id, 420.0), entry("b", "deleted-import", 80.0), entry("c", "never-stored", 55.0)))
         store.reinforce(custom.id)
     }
 
@@ -92,7 +92,7 @@ class DiaryImportTest {
         assertEquals(beforeCounts, counts())
         assertEquals(checksum(before), checksum(exportText()))
         assertEquals(beforeEntries, store.entries())
-        assertTrue(store.foods().single { it.id == "archived-import" }.archived)
+        assertTrue(store.foods().none { it.id == "deleted-import" })
         assertEquals(custom.aliases.toSet(), store.foods().single { it.id == custom.id }.aliases.toSet())
         assertEquals(1, store.preferenceMap().getValue(custom.id).explicitCount)
     }
@@ -114,5 +114,30 @@ class DiaryImportTest {
 
         assertEquals(checksum(before), checksum(exportText()))
         assertEquals(3, store.entries().size)
+    }
+
+    /** A file from an older build with an archived food is accepted: the food is left out, its entries kept. */
+    @Test
+    fun anOlderFileWithAnArchivedFoodImportsWithoutIt() = runBlocking {
+        fillDiary()
+        val rows = store.exportRows()
+        val old = custom.copy(id = "archived-old", name = "Archived jam", aliases = listOf("ajam"), conversions = emptyList())
+        val file = diaryFileOf(
+            rows.copy(
+                foods = rows.foods + old.toEntity().copy(archived = true),
+                aliases = rows.aliases + old.toAliasEntities(),
+                preferences = rows.preferences + PreferenceEntity(old.id, 2, 5L),
+                entries = rows.entries + entry("d", old.id, 90.0).toEntity(),
+            ),
+            settings, exportedAtEpochMs = 0L,
+        )
+        val imported = decodeDiary(encodeDiary(file)) as DiaryImport.Valid
+        store.replaceDiary(imported.rows)
+
+        assertTrue(store.foods().none { it.id == old.id })
+        assertTrue(store.exportRows().aliases.none { it.foodId == old.id })
+        assertTrue(store.preferenceMap()[old.id] == null)
+        assertEquals(90.0, store.entries().single { it.id == "d" }.nutritionSnapshot.calories, 0.0)
+        assertEquals(4, store.entries().size)
     }
 }

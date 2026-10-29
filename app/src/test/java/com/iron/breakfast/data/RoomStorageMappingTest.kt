@@ -121,12 +121,13 @@ class RoomStorageMappingTest {
     }
 
     @Test
-    fun archivedFoodRoundTripsWithoutChangingHistoricalEntrySnapshots() {
+    fun aCustomFoodRoundTripsAndIsNeverStoredArchived() {
         val archived = FoodCatalog.fixtures.first().copy(
-            id = "archived-food", origin = FoodOrigin.CUSTOM, archived = true,
+            id = "custom-food", origin = FoodOrigin.CUSTOM,
             aliases = listOf("legacy alias")
         )
         assertEquals(archived, archived.toEntity().toDomain(archived.aliases, archived.conversions))
+        assertEquals(false, archived.toEntity().archived)
         val entry = MealEntry(
             id = "historical", foodId = archived.id, foodName = archived.name,
             enteredAmount = 100.0, enteredUnit = MeasureUnit.GRAM, resolvedBaseAmount = 100.0,

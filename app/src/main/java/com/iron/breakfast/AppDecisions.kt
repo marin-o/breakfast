@@ -126,10 +126,8 @@ internal fun shouldApplyLibraryRefresh(
     currentGeneration: Long,
     responseQuery: String,
     currentQuery: String,
-    responseArchivedOnly: Boolean,
-    currentArchivedOnly: Boolean,
     libraryOpen: Boolean,
-): Boolean = libraryOpen && responseGeneration == currentGeneration && responseQuery == currentQuery && responseArchivedOnly == currentArchivedOnly
+): Boolean = libraryOpen && responseGeneration == currentGeneration && responseQuery == currentQuery
 
 /** The "No local match" screen shows only once a finished library search for the current query is empty and nothing sits over it. */
 internal fun isLibraryNoMatch(ready: Boolean, libraryOpen: Boolean, query: String, resultsQuery: String?, noResults: Boolean, otherScreenOpen: Boolean): Boolean =
@@ -142,15 +140,14 @@ internal fun resolvePosition(total: Int, remaining: Int): Pair<Int, Int> {
 }
 
 /** Where leaving the Library goes. */
-internal enum class LibraryExit { LOG, LIBRARY, MEAL, DAILY }
+internal enum class LibraryExit { LOG, MEAL, DAILY }
 
 /**
- * The Library's arrow and system Back both go here: a part being resolved back to the Log, Archived foods to the
- * Library, a Library opened from a meal ([origin]) back to that meal, and the Library tab to Daily.
+ * The Library's arrow and system Back both go here: a part being resolved back to the Log, a Library opened from a
+ * meal ([origin]) back to that meal, and the Library tab to Daily.
  */
-internal fun exitLibraryTarget(resolving: Boolean, archivedOnly: Boolean, origin: MealSlot?): LibraryExit = when {
+internal fun exitLibraryTarget(resolving: Boolean, origin: MealSlot?): LibraryExit = when {
     resolving -> LibraryExit.LOG
-    archivedOnly -> LibraryExit.LIBRARY
     origin != null -> LibraryExit.MEAL
     else -> LibraryExit.DAILY
 }
@@ -189,7 +186,7 @@ internal fun resolveSelectedDay(
 }
 
 /**
- * The kind of a diary change, for [undoEndsAt]. [FOOD_EDIT] is a food saved, edited, archived or restored without a log;
+ * The kind of a diary change, for [undoEndsAt]. [FOOD_EDIT] is a food saved, edited or deleted without a log;
  * [UNDO] an Undo applied; [REPLACE] the whole diary replaced (import) or deleted; [EDIT_AFTER_CLOSE] an entry edit
  * that committed after its edit had closed.
  */

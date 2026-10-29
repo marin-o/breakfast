@@ -29,16 +29,15 @@ class LibraryStateTest {
         val calls = mutableListOf<String>()
         var library: List<FoodRecord> = emptyList()
         var saved = SavedMeal(listOf(entry("e1")), NutritionValues.ZERO)
-        override suspend fun foodsMatching(query: String, includeArchived: Boolean) =
-            library.filter { it.name.contains(query, ignoreCase = true) && (includeArchived || !it.archived) }
+        override suspend fun foodsMatching(query: String) = library.filter { it.name.contains(query, ignoreCase = true) }
         override fun planner() = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
         override fun search(phrase: String) = FoodCatalog.fixtures.filter { phrase in it.aliases || phrase == it.id }.map { RankedFood(it, 1.0, emptyList()) }
         override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
             calls += "log ${food.id} $amount ${unit.name} $meal $dayKey"
         }
         override suspend fun save(text: String, meal: MealSlot, dayKey: String): SavedMeal { calls += "save \"$text\" $meal $dayKey"; return saved }
-        override suspend fun archiveFood(id: String) { calls += "archive $id" }
-        override suspend fun restoreFood(id: String) { calls += "restore $id" }
+        var failDelete = false
+        override suspend fun deleteFood(id: String) { if (failDelete) throw IllegalStateException(); calls += "delete $id" }
     }
 
     private class AfterSave(val unresolved: List<String>, val meal: MealSlot, val source: ResolveSource, val typedAtSave: String)
@@ -50,14 +49,14 @@ class LibraryStateTest {
     private val compute = QueueDispatcher()
     private var resolving = false
     private val picked = mutableListOf<String>()
-    private val archived = mutableListOf<String>()
+    private val deleted = mutableListOf<String>()
     private val afterSaves = mutableListOf<AfterSave>()
     private val library = LibraryState(
         diary.session, store, notices, diary.scope, io, Dispatchers.Unconfined, compute,
         selectedDay = { "2026-10-28" },
         resolvingPart = { resolving },
         onPartPicked = { picked += it.id },
-        onArchived = { archived += it.id },
+        onDeleted = { deleted += it.id },
         afterSave = { unresolved, meal, source, typed -> afterSaves += AfterSave(unresolved, meal, source, typed) },
     )
     private val kefir = food("kefir", "Kefir")
@@ -65,7 +64,7 @@ class LibraryStateTest {
 
     @Test fun aRefreshAppliesOnlyWhileItStillMatchesWhatIsShown() {
         store.library = listOf(kefir, food("ayran", "Ayran"))
-        library.show(MealSlot.LUNCH, "kef", archivedOnly = false)
+        library.show(MealSlot.LUNCH, "kef")
         assertEquals("kef", library.input)
         library.onQuery("ayr")
         io.runAll()
@@ -82,7 +81,7 @@ class LibraryStateTest {
     }
 
     @Test fun theBarFiltersByItsFoodTextAndTheNoMatchScreenWaitsForTheResult() {
-        library.show(null, "", archivedOnly = false)
+        library.show(null, "")
         library.onInput("200 g kefir")
         assertEquals("kefir", library.query)
         assertFalse("still running", library.noMatch(otherScreenOpen = false))
@@ -92,18 +91,16 @@ class LibraryStateTest {
     }
 
     @Test fun addingAFoodLogsItToTheMeal() {
-        library.show(MealSlot.LUNCH, "", archivedOnly = false)
+        library.show(MealSlot.LUNCH, "")
         library.log(kefir, MealSlot.LUNCH, 200.0, MeasureUnit.MILLILITER)
         assertEquals(listOf("log kefir 200.0 MILLILITER LUNCH 2026-10-28"), store.calls)
         assertEquals(listOf<DiaryChange>(DiaryChange.FoodsLogged), diary.published)
         assertEquals("Added 1 food to Lunch on 2026-10-28", notices.message)
-        library.log(kefir.copy(archived = true), MealSlot.LUNCH, 1.0, MeasureUnit.GRAM)
-        assertEquals("an archived food is not logged", 1, store.calls.size)
     }
 
     @Test fun whileAPartIsResolvedATapOrAnAddIsThePickAndDoneOnlySearches() {
         resolving = true
-        library.show(MealSlot.BREAKFAST, "kefir", archivedOnly = false)
+        library.show(MealSlot.BREAKFAST, "kefir")
         library.openFood(kefir)
         library.log(kefir, MealSlot.BREAKFAST, 100.0, MeasureUnit.GRAM)
         assertEquals(listOf("kefir", "kefir"), picked)
@@ -116,7 +113,7 @@ class LibraryStateTest {
     }
 
     @Test fun aQuantifiedBatchLogsToTheTypedOrTargetMealOrAsksForOne() {
-        library.show(MealSlot.DINNER, "", archivedOnly = false)
+        library.show(MealSlot.DINNER, "")
         library.onInput("2 egg")
         library.submitInput()
         assertEquals("the lookup waits for the compute dispatcher", emptyList<String>(), store.calls)
@@ -124,7 +121,7 @@ class LibraryStateTest {
         assertEquals(listOf("log egg 2.0 PIECE DINNER 2026-10-28"), store.calls)
         assertEquals("", library.input)
         library.close()
-        library.show(null, "", archivedOnly = false)
+        library.show(null, "")
         library.onInput("2 egg")
         library.submitInput()
         compute.runAll()
@@ -138,7 +135,7 @@ class LibraryStateTest {
     }
 
     @Test fun aBatchWithAFoodNotInTheLibrarySearchesInstead() {
-        library.show(MealSlot.DINNER, "", archivedOnly = false)
+        library.show(MealSlot.DINNER, "")
         library.onInput("2 egg, 100 g unknownium")
         library.submitInput()
         compute.runAll()
@@ -147,7 +144,7 @@ class LibraryStateTest {
     }
 
     @Test fun aMixedBatchSavesTheBarAndHandsWhatIsLeftToThePostSaveHandling() {
-        library.show(MealSlot.LUNCH, "", archivedOnly = false)
+        library.show(MealSlot.LUNCH, "")
         library.onInput("2 egg, kefir")
         store.saved = SavedMeal(listOf(entry("e1")), NutritionValues.ZERO, unresolvedSegments = listOf("kefir"))
         library.submitInput()
@@ -163,7 +160,7 @@ class LibraryStateTest {
     }
 
     @Test fun aMixedBatchWithoutAMealAsksFirst() {
-        library.show(null, "", archivedOnly = false)
+        library.show(null, "")
         library.onInput(" 2 egg, kefir ")
         library.submitInput()
         assertTrue(library.mixedMealPickerOpen)
@@ -174,19 +171,42 @@ class LibraryStateTest {
         assertEquals(" 2 egg, kefir ", afterSaves.single().typedAtSave)
     }
 
-    @Test fun archiveAndRestoreTellTheCoordinatorAndReopenThePage() {
+    @Test fun deleteFoodAsksFirstThenDeletesAndClosesThePage() {
         val custom = kefir
         library.showFood(custom)
-        library.archive(custom)
-        assertEquals(listOf("archive kefir"), store.calls)
-        assertEquals(listOf("kefir"), archived)
-        assertNull(library.selectedFood)
-        assertEquals("Food archived; saved diary entries remain readable.", notices.message)
-        diary.foods = listOf(custom)
-        library.restore(custom.copy(archived = true))
-        assertEquals("restore kefir", store.calls.last())
+        library.askDelete(custom)
+        assertEquals(custom, library.deleteRequest)
+        assertEquals("nothing is deleted before the confirmation", emptyList<String>(), store.calls)
+        library.cancelDelete()
+        assertNull(library.deleteRequest)
         assertEquals(custom, library.selectedFood)
-        assertEquals("Food restored to your library.", notices.message)
+        assertEquals(emptyList<String>(), store.calls)
+
+        library.askDelete(custom)
+        library.confirmDelete()
+        assertNull(library.deleteRequest)
+        assertEquals(listOf("delete kefir"), store.calls)
+        assertEquals(listOf("kefir"), deleted)
+        assertNull(library.selectedFood)
+        assertEquals(listOf<DiaryChange>(DiaryChange.FoodsChanged), diary.published)
+        assertNull("no Undo and no notice", notices.message)
+    }
+
+    @Test fun onlyAPersonalFoodCanBeDeleted() {
+        library.askDelete(egg)
+        assertNull(library.deleteRequest)
+        library.confirmDelete()
+        assertEquals(emptyList<String>(), store.calls)
+    }
+
+    @Test fun aFailedDeleteSaysSoAndKeepsThePage() {
+        library.showFood(kefir)
+        store.failDelete = true
+        library.askDelete(kefir)
+        library.confirmDelete()
+        assertEquals("Could not delete this food.", notices.message)
+        assertEquals(kefir, library.selectedFood)
+        assertEquals(emptyList<String>(), deleted)
     }
 
     @Test fun theLastLoggedEntryGivesTheRepeatAmount() {

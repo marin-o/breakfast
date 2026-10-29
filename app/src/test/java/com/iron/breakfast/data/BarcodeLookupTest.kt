@@ -14,10 +14,10 @@ import org.junit.Test
 
 /** The store's barcode lookup: the SQL IN over [barcodeForms], then [pickBarcodeMatch]. */
 class BarcodeLookupTest {
-    private fun food(id: String, barcode: String, archived: Boolean = false) = FoodRecord(
+    private fun food(id: String, barcode: String) = FoodRecord(
         id = id, name = id, aliases = emptyList(), category = "Personal food", origin = FoodOrigin.CUSTOM,
         nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(100.0, null, null, null)),
-        barcode = barcode, archived = archived,
+        barcode = barcode,
     ).toEntity()
 
     private fun lookup(rows: List<FoodEntity>, scanned: String): FoodEntity? {
@@ -31,12 +31,10 @@ class BarcodeLookupTest {
         assertEquals("gtin", lookup(listOf(food("gtin", "00036000291452")), "036000291452")?.id)
     }
 
-    @Test fun theExactSpellingWinsAndArchivedRowsAreSkipped() {
+    @Test fun theExactSpellingWins() {
         val rows = listOf(food("upc", "036000291452"), food("ean", "0036000291452"))
         assertEquals("ean", lookup(rows, "0036000291452")?.id)
         assertEquals("upc", lookup(rows, "036000291452")?.id)
-        assertEquals("ean", lookup(listOf(food("upc", "036000291452", archived = true), food("ean", "0036000291452")), "036000291452")?.id)
-        assertNull(lookup(listOf(food("upc", "036000291452", archived = true)), "0036000291452"))
         assertNull(lookup(listOf(food("other", "3017620422003")), "0036000291452"))
     }
 }

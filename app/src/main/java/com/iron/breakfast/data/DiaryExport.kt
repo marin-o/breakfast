@@ -18,9 +18,10 @@ import java.time.LocalDate
  * The diary file written by Settings > Export diary and read back by Import diary: one JSON document holding every row
  * of every table in [BreakfastDatabase], plus the user's settings (written for reference; an import leaves the phone's
  * settings as they are). It is the diary's backup (Android cloud backup
- * leaves the database out). The bundled catalogue rows are included as stored, so built-in foods the user edited,
- * archived or added aliases to come back exactly; after an import the store seeds and syncs the catalogue as at
- * every start, so a file from an older build still gets the current catalogue.
+ * leaves the database out). The bundled catalogue rows are included as stored, so built-in foods the user edited
+ * or added aliases to come back exactly; after an import the store seeds and syncs the catalogue as at every start,
+ * so a file from an older build still gets the current catalogue. Foods are no longer archived: the field is still
+ * written (false) and read, and a food an older file holds as archived is deleted by the import, its entries kept.
  *
  * Mapping and validation are pure: nothing here touches Room or Android.
  */

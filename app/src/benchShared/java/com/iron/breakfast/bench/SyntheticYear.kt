@@ -17,7 +17,7 @@ import kotlin.random.Random
 
 /**
  * A year-sized diary for the benchmarks (MOB-028, MOB-H07), the same every run: the bundled catalogue plus
- * [customFoods] personal foods (about a third with Cyrillic names, some with aliases, some archived), [entries]
+ * [customFoods] personal foods (about a third with Cyrillic names, some with aliases), [entries]
  * entries over 365 days ending on [lastDay] with one busiest day, and preferences for the favourite foods.
  * Test code only; it never touches a stored diary.
  */
@@ -79,7 +79,6 @@ class SyntheticYear(
                 defaultUnit = unit,
                 brand = if (random.nextInt(3) == 0) "Brand ${random.nextInt(40)}" else null,
                 barcode = if (random.nextInt(4) == 0) "38" + (1_000_000_000L + index).toString() + "0" else null,
-                archived = index % 20 == 19,
                 personalOverride = true,
             )
         }
@@ -87,14 +86,13 @@ class SyntheticYear(
 
     private fun buildEntries(): List<MealEntry> {
         // Most logs use a few favourites, as a real diary does: a third of the foods take nearly every entry.
-        val live = foods.filterNot { it.archived }
-        val favourites = live.shuffled(random).take(live.size / 3)
+        val favourites = foods.shuffled(random).take(foods.size / 3)
         val busiest = 200
         val spread = entries - BUSIEST_EXTRA
         return (0 until entries).map { index ->
             val dayIndex = if (index < spread) (index.toLong() * 365 / spread).toInt() else busiest
             val day = lastDay.minusDays((364 - dayIndex).toLong())
-            val food = if (random.nextInt(10) < 8) favourites[random.nextInt(favourites.size)] else live[random.nextInt(live.size)]
+            val food = if (random.nextInt(10) < 8) favourites[random.nextInt(favourites.size)] else foods[random.nextInt(foods.size)]
             val unit = food.nutrition.unit
             val amount = 20.0 + random.nextInt(280)
             val calculation = calculator.calculate(food, amount, unit)

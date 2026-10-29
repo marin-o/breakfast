@@ -120,10 +120,10 @@ class MainActivityTest {
         assertEquals("Calories per 250 g", productNutritionBasisLabel(food))
     }
 
-    private fun food(id: String, name: String, origin: FoodOrigin = FoodOrigin.GENERIC, barcode: String? = null, archived: Boolean = false, sourceId: String? = null) = FoodRecord(
+    private fun food(id: String, name: String, origin: FoodOrigin = FoodOrigin.GENERIC, barcode: String? = null, sourceId: String? = null) = FoodRecord(
         id = id, name = name, aliases = emptyList(), category = "Test", origin = origin,
         nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(100.0, 1.0, 2.0, 3.0)),
-        barcode = barcode, archived = archived, sourceId = sourceId,
+        barcode = barcode, sourceId = sourceId,
     )
 
     @Test
@@ -141,10 +141,10 @@ class MainActivityTest {
     }
 
     @Test
-    fun barcodeValidationBlocksOtherFoodsIncludingArchivedAndNamesThem() {
-        val archived = food("archived", "Old Oats", barcode = "1234567890123", archived = true)
+    fun barcodeValidationBlocksOtherFoodsAndNamesThem() {
+        val other = food("other-oats", "Old Oats", barcode = "1234567890123")
         val self = food("self", "Mine", barcode = "4006381333931")
-        val foods = listOf(archived, self)
+        val foods = listOf(other, self)
         assertEquals("That barcode already belongs to Old Oats.", validateBarcodeInput("1234567890123", foods, editingId = "self"))
         assertEquals("That barcode already belongs to Mine.", validateBarcodeInput(" 4006381333931 ", foods, editingId = "other"))
         assertNull(validateBarcodeInput("4006381333931", foods, editingId = "self"))

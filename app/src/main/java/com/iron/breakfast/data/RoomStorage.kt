@@ -43,6 +43,10 @@ data class FoodEntity(
     @ColumnInfo(name = "source_description") val sourceDescription: String?,
     val brand: String?,
     val barcode: String?,
+    /**
+     * Kept for the schema only: foods are deleted, not archived. A row stored as archived by an older build is deleted
+     * when the store opens ([BreakfastStore.initialize]); the app never writes true.
+     */
     val archived: Boolean = false,
     @ColumnInfo(name = "personal_override") val personalOverride: Boolean = false
 )
@@ -115,6 +119,13 @@ interface FoodDao {
     @Query("SELECT * FROM foods WHERE barcode IN (:barcodes)")
     suspend fun byBarcodes(barcodes: List<String>): List<FoodEntity>
 
+    /** Rows an older build archived (or an older diary file brought in): they are deleted ([BreakfastStore]). */
+    @Query("SELECT id FROM foods WHERE archived = 1")
+    suspend fun archivedIds(): List<String>
+
+    @Query("DELETE FROM foods WHERE id = :id")
+    suspend fun deleteById(id: String)
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(foods: List<FoodEntity>)
 
@@ -172,6 +183,9 @@ interface PreferenceDao {
 
     @Query("SELECT * FROM preferences WHERE foodId = :foodId")
     suspend fun byFood(foodId: String): PreferenceEntity?
+
+    @Query("DELETE FROM preferences WHERE foodId = :foodId")
+    suspend fun deleteForFood(foodId: String)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(preference: PreferenceEntity)
@@ -312,7 +326,6 @@ fun FoodRecord.toEntity(): FoodEntity = FoodEntity(
     sourceDescription = sourceDescription,
     brand = brand,
     barcode = barcode,
-    archived = archived,
     personalOverride = personalOverride
 )
 
@@ -360,7 +373,6 @@ fun FoodEntity.toDomain(
         sourceDescription = sourceDescription,
         brand = brand,
         barcode = barcode,
-        archived = archived,
         personalOverride = personalOverride
     )
 

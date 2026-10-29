@@ -57,7 +57,7 @@ class ResolveFrameTest {
         },
         notices, diary.scope, Dispatchers.Unconfined,
         selectedDay = { "2026-10-28" },
-        openLibrary = { meal, query -> library.show(meal, query, archivedOnly = false) },
+        openLibrary = { meal, query -> library.show(meal, query) },
         // As the view model returns: the Library and what was over it close, the Log opens.
         returnToLog = { request, pick -> library.close(); foodForm.hide(); log.resume(request, pick) },
     )
@@ -80,7 +80,7 @@ class ResolveFrameTest {
     private val library: LibraryState = LibraryState(
         diary.session,
         object : LibraryStore {
-            override suspend fun foodsMatching(query: String, includeArchived: Boolean) = emptyList<FoodRecord>()
+            override suspend fun foodsMatching(query: String) = emptyList<FoodRecord>()
             override fun planner() = plannerFor(emptyMap())
             override fun search(phrase: String) = emptyList<RankedFood>()
             override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
@@ -90,14 +90,13 @@ class ResolveFrameTest {
                 calls += "library save \"$text\" $meal"
                 return SavedMeal(listOf(entry("e2")), NutritionValues.ZERO, unresolvedSegments = listOf("ayran", "kefir"))
             }
-            override suspend fun archiveFood(id: String) {}
-            override suspend fun restoreFood(id: String) {}
+            override suspend fun deleteFood(id: String) {}
         },
         notices, diary.scope, QueueDispatcher(), Dispatchers.Unconfined, Dispatchers.Unconfined,
         selectedDay = { "2026-10-28" },
         resolvingPart = { resolve.resolvingPart },
         onPartPicked = resolve::finishPart,
-        onArchived = {},
+        onDeleted = {},
         afterSave = resolve::afterSave,
     )
     private val foodForm: FoodForm = FoodForm(
@@ -228,7 +227,7 @@ class ResolveFrameTest {
     /** Deliberate (B16): a mixed batch's leftovers go back to the Library bar, never into the Log draft. */
     @Test fun aMixedBatchsLeftoversStayInTheLibraryBar() {
         log.onDraft("my own draft")
-        library.show(MealSlot.LUNCH, "", archivedOnly = false)
+        library.show(MealSlot.LUNCH, "")
         library.onInput("2 egg, ayran, kefir")
         library.submitInput()
         assertEquals("library save \"2 egg, ayran, kefir\" LUNCH", calls.last())

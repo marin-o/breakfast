@@ -54,9 +54,9 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 
 ## Rules
 
-- Colours are only the tokens above. Interactive elements are ink. Green (`ok`) is only for constructive actions (add, save, log, restore). Red (`bad`) is only for delete, archive and error. Nothing else is coloured.
+- Colours are only the tokens above. Interactive elements are ink. Green (`ok`) is only for constructive actions (add, save, log). Red (`bad`) is only for delete and error. Nothing else is coloured.
 - One big figure per screen at most (the 72sp day total or entry kcal). Everything else is calm.
-- No cards, no shadows (the one exception is the Library overflow popover), no gradients (the composer's `bg` fade is the only one), no chips or pills, no fills behind content.
+- No cards, no shadows, no gradients (the composer's `bg` fade is the only one), no chips or pills, no fills behind content.
 - Sentence case everywhere. No all-caps labels, no middle dots, no emoji, no decimal commas. Decimals use a dot; numbers are tabular with no thousands separators.
 - Source (Bundled, Personal, Open Food Facts) appears only as a soft line on entry, food and search detail. It never appears in lists.
 - Approximate amounts are written plainly in the quantity line: `≈1 tbsp, 16 g`.
@@ -77,6 +77,11 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 - **BottomNav**: centred text tabs "Meals" (Daily) and "Library", 40dp apart, 14sp/500. Active ink, inactive soft. At the right end a 22dp soft Settings icon in a 44dp target opens Settings over the screen; Back returns to it.
 - **Sheet**: `bg`, top radius 20, 36x5 `line` grabber, 24dp padding, `scrim` behind.
 - **Snackbar**: `ink` fill, radius 14, `bg` text, the action in `bg` 500 on the right, 16dp from the edges.
+
+## Foods
+
+- A personal food's page and Edit food end with **Delete food** (DestructiveButton, outlined). It asks first in a dialog: "Past entries keep their numbers." with **Delete food** and **Cancel**. Deleting is for good (no Undo); past entries keep their own name and numbers. There is no Archived list and no Restore.
+- The Library header on the Library tab is the title, its count line and **New food**; there is no menu.
 
 ## Lists and totals
 

@@ -4,7 +4,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import com.iron.breakfast.ui.theme.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Arrangement
@@ -32,7 +31,6 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
-import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,7 +41,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -53,8 +50,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -108,86 +103,57 @@ import com.iron.breakfast.ui.screens.contributionAvailable
 @Composable
 internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
     val colors = LocalBreakfastColors.current
-    val density = LocalDensity.current
-    var menuOpen by remember { mutableStateOf(false) }
     val motion = rememberMotion()
     val library = vm.library
-    val archived = library.archivedOnly
     val root = library.target == null
     // A part being resolved is searched for, not added to a meal the user did not choose here.
-    val title = if (archived) "Archived" else if (vm.resolve.resolvingPart) "Search" else if (root) "Library" else "Add to ${library.target!!.label()}"
-    val subtitle = when {
-        archived -> ""
-        root -> "${library.foods.size} foods, by last logged"
-        else -> entryDateLabel(vm.selectedDayKey)
-    }
+    val title = if (vm.resolve.resolvingPart) "Search" else if (root) "Library" else "Add to ${library.target!!.label()}"
+    val subtitle = if (root) "${library.foods.size} foods, by last logged" else entryDateLabel(vm.selectedDayKey)
     LazyColumn(modifier.fillMaxSize().background(colors.bg).padding(horizontal = Gutter)) {
         item {
             Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (archived || !root) IconButton(onClick = vm.surfaces::exitLibrary, modifier = Modifier.size(44.dp)) {
+                if (!root) IconButton(onClick = vm.surfaces::exitLibrary, modifier = Modifier.size(44.dp)) {
                     Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.ink)
                 }
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
                     Text(title, color = colors.ink, style = BreakfastType.Section)
-                    if (!archived) Text(subtitle, color = colors.soft, style = BreakfastType.Meta)
+                    Text(subtitle, color = colors.soft, style = BreakfastType.Meta)
                 }
-                if (root && !archived) {
-                    TertiaryButton("New food", { vm.foodForm.open() })
-                    Box {
-                        IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(44.dp)) { Icon(Icons.Outlined.MoreVert, "Library menu", tint = colors.ink) }
-                        if (menuOpen) Popup(
-                            alignment = Alignment.TopEnd,
-                            offset = with(density) { androidx.compose.ui.unit.IntOffset(0, 48.dp.roundToPx()) },
-                            onDismissRequest = { menuOpen = false },
-                            properties = PopupProperties(focusable = true, dismissOnClickOutside = true, dismissOnBackPress = true),
-                        ) {
-                            // The one shadow in the app: the overflow menu popover.
-                            Column(Modifier.widthIn(min = 220.dp).shadow(6.dp, SecondaryShape).background(colors.bg).border(1.dp, colors.line, SecondaryShape).padding(vertical = 2.dp)) {
-                                TertiaryButton("Archived foods", { menuOpen = false; vm.surfaces.openArchivedLibrary() }, Modifier.fillMaxWidth())
-                            }
-                        }
-                    }
-                } else Spacer(Modifier.size(44.dp))
+                if (root) TertiaryButton("New food", { vm.foodForm.open() }) else Spacer(Modifier.size(44.dp))
             }
             Hairline()
-            if (archived) {
-                Text("${library.foods.size} foods", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(vertical = 8.dp))
-                Hairline()
-            }
         }
         // Rows fade in and out as the list changes, and move to their new place (logged foods go to the top).
         items(library.foods, key = { it.id }) { food ->
-            LibraryFoodRow(vm, food, root, archived, Modifier.animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem()))
+            LibraryFoodRow(vm, food, root, Modifier.animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem()))
         }
         item {
             Hairline(Modifier.padding(top = 8.dp))
-            if (archived) Text("Past entries keep their numbers.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 8.dp))
         }
     }
 }
 
 @Composable
-private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boolean, archived: Boolean, modifier: Modifier = Modifier) {
+private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boolean, modifier: Modifier = Modifier) {
     val colors = LocalBreakfastColors.current
     val library = vm.library
     val last = library.lastLoggedEntry(food)
     val repeatAmount = last?.enteredAmount ?: food.defaultAmount
     val repeatUnit = last?.enteredUnit ?: food.defaultUnit
-    val expanded = root && !archived && library.expandedFoodId == food.id
+    val expanded = root && library.expandedFoodId == food.id
     val target = library.target
     Column(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             FoodRow(
                 name = food.name,
-                quantityLine = if (archived) "Archived" else if (last == null) "${repeatAmount.pretty()} ${repeatUnit.displayLabel()}" else "last ${repeatAmount.pretty()} ${repeatUnit.displayLabel()}",
+                quantityLine = if (last == null) "${repeatAmount.pretty()} ${repeatUnit.displayLabel()}" else "last ${repeatAmount.pretty()} ${repeatUnit.displayLabel()}",
                 calories = last?.let { formatKcal(it.nutritionSnapshot.calories) } ?: defaultServingCalories(food),
                 modifier = Modifier.weight(1f),
                 onClick = { library.openFood(food) },
             )
-            if (!archived) AddCircle(
+            AddCircle(
                 contentDescription = if (target == null) "Add ${food.name} to a meal" else "Add ${food.name} to ${target.label()}",
                 onClick = { if (root) library.toggleFoodPicker(food) else library.log(food, target!!, repeatAmount, repeatUnit) },
-                enabled = !food.archived,
                 icon = if (expanded) Icons.Outlined.Close else Icons.Outlined.Add,
             )
         }
@@ -277,11 +243,10 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
             title = "Food",
             onBack = vm.library::closeFood,
             modifier = Modifier.padding(top = 8.dp),
-            trailing = { if (!food.archived) TertiaryButton("Edit", { vm.library.closeFood(); vm.foodForm.openEdit(food) }) },
+            trailing = { TertiaryButton("Edit", { vm.library.closeFood(); vm.foodForm.openEdit(food) }) },
         )
         Hairline(Modifier.padding(top = 8.dp))
         Text(foodText(food.name), color = colors.ink, style = BreakfastType.Section, modifier = Modifier.padding(top = 8.dp))
-        if (food.archived) Text("Archived", color = colors.soft, style = BreakfastType.Secondary)
         food.brand?.takeIf { it.isNotBlank() }?.let { Text(it, color = colors.soft, style = BreakfastType.Secondary) }
         Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Secondary)
         food.barcode?.let { Text("Barcode $it", color = colors.soft, style = BreakfastType.Secondary) }
@@ -307,31 +272,27 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
             food.aliases.forEach { Text(it, color = colors.ink, style = BreakfastType.Body, modifier = Modifier.padding(top = 4.dp)) }
         }
         Hairline(Modifier.padding(top = 16.dp))
-        if (food.archived) {
-            PrimaryButton("Restore", onClick = { vm.library.restore(food) }, Modifier.padding(top = 24.dp))
-        } else {
-            // Large font stacks the meal picker over the Log button, both full width.
-            val mealPicker: @Composable (Modifier, Boolean) -> Unit = { modifier, fill ->
-                SecondaryButton(targetMeal.label(), { mealMenuOpen = true }, modifier, fillWidth = fill, trailing = Icons.Outlined.KeyboardArrowDown)
-            }
-            val logButton: @Composable (Modifier) -> Unit = { modifier ->
-                PrimaryButton("Log to ${targetMeal.label()}", onClick = { amountSheetOpen = true }, modifier)
-            }
-            if (isLargeFont(LocalDensity.current.fontScale)) {
-                Column(Modifier.fillMaxWidth().padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    mealPicker(Modifier.fillMaxWidth(), true)
-                    logButton(Modifier.fillMaxWidth())
-                }
-            } else {
-                Row(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    mealPicker(Modifier.widthIn(min = 128.dp), false)
-                    logButton(Modifier.weight(1f))
-                }
-            }
-            if (mealMenuOpen) MealChoices(selected = targetMeal, onSelect = { targetMeal = it; mealMenuOpen = false }, modifier = Modifier.padding(top = 8.dp))
-            if (contributionShown(vm.settings.showContribute, contributionAvailable(food))) SecondaryButton("Contribute to Open Food Facts", { vm.library.closeFood(); vm.contribution.openForFood(food) }, Modifier.padding(top = 16.dp))
-            if (food.origin == FoodOrigin.CUSTOM) DestructiveButton("Archive food", { vm.library.archive(food) }, Modifier.fillMaxWidth().padding(top = 8.dp), outlined = true)
+        // Large font stacks the meal picker over the Log button, both full width.
+        val mealPicker: @Composable (Modifier, Boolean) -> Unit = { modifier, fill ->
+            SecondaryButton(targetMeal.label(), { mealMenuOpen = true }, modifier, fillWidth = fill, trailing = Icons.Outlined.KeyboardArrowDown)
         }
+        val logButton: @Composable (Modifier) -> Unit = { modifier ->
+            PrimaryButton("Log to ${targetMeal.label()}", onClick = { amountSheetOpen = true }, modifier)
+        }
+        if (isLargeFont(LocalDensity.current.fontScale)) {
+            Column(Modifier.fillMaxWidth().padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                mealPicker(Modifier.fillMaxWidth(), true)
+                logButton(Modifier.fillMaxWidth())
+            }
+        } else {
+            Row(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                mealPicker(Modifier.widthIn(min = 128.dp), false)
+                logButton(Modifier.weight(1f))
+            }
+        }
+        if (mealMenuOpen) MealChoices(selected = targetMeal, onSelect = { targetMeal = it; mealMenuOpen = false }, modifier = Modifier.padding(top = 8.dp))
+        if (contributionShown(vm.settings.showContribute, contributionAvailable(food))) SecondaryButton("Contribute to Open Food Facts", { vm.library.closeFood(); vm.contribution.openForFood(food) }, Modifier.padding(top = 16.dp))
+        if (food.origin == FoodOrigin.CUSTOM) DestructiveButton("Delete food", { vm.library.askDelete(food) }, Modifier.fillMaxWidth().padding(top = 8.dp), outlined = true)
     }
     if (amountSheetOpen) LibraryAmountSheet(vm, food, targetMeal) { amountSheetOpen = false }
 }
@@ -395,7 +356,7 @@ private fun LibraryAmountSheet(vm: BreakfastViewModel, food: FoodRecord, target:
                     val amount = amountText.toDoubleOrNull()
                     if (amount != null && amount > 0 && calc?.supported == true) { vm.library.log(food, chosenMeal, amount, unit); onDismiss() } else vm.library.invalidAmount()
                 },
-                enabled = !food.archived && calc?.supported == true,
+                enabled = calc?.supported == true,
             )
         }
     }

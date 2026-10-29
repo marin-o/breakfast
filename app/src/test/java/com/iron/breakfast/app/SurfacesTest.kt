@@ -48,10 +48,6 @@ class SurfacesTest {
         shows("LIBRARY")
         app.back()
         shows("DAILY")
-        app.openArchivedLibrary()
-        app.back()
-        assertFalse("Archived foods go back to the Library", app.library.archivedOnly)
-        shows("LIBRARY")
         app.openMeal(MealSlot.DINNER)
         app.openFocusedLibrary(MealSlot.DINNER)
         shows("LIBRARY")
@@ -415,6 +411,32 @@ class SurfacesTest {
         app.library.onInput("2 egg, ayran")
         app.library.submitInput()
         shows("LIBRARY", "MIXED_MEAL_PICKER", "NOTICE")
+    }
+
+    /** Delete food asks over the food page; Cancel keeps the page, Delete food deletes it and the Library shows. */
+    @Test fun deleteFoodAsksOverTheFoodPageAndTheLibraryShowsAfter() {
+        val jam = food("jam", "Jam")
+        app.openLibrary()
+        app.library.openFood(jam)
+        app.library.askDelete(jam)
+        shows("LIBRARY", "LIBRARY_FOOD", "DELETE_FOOD")
+        app.library.cancelDelete()
+        shows("LIBRARY", "LIBRARY_FOOD")
+        app.library.askDelete(jam)
+        app.library.confirmDelete()
+        shows("LIBRARY")
+        assertTrue("delete food jam" in app.calls)
+    }
+
+    /** Delete food on Edit food: the form closes with it, without asking to discard. */
+    @Test fun deleteFoodFromEditFoodClosesTheForm() {
+        val jam = food("jam", "Jam")
+        app.openLibrary()
+        app.foodForm.openEdit(jam)
+        app.library.askDelete(jam)
+        shows("LIBRARY", "FOOD_FORM", "DELETE_FOOD")
+        app.library.confirmDelete()
+        shows("LIBRARY")
     }
 
     /** The bottom bar's Settings icon on Daily: Settings opens over Daily, and Back from a page and the list returns there. */

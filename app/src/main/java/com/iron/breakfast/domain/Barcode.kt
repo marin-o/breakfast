@@ -152,7 +152,7 @@ fun expandUpcE(code: String): String? {
 
 /**
  * Validates a barcode typed or scanned into a food form. Blank means "no barcode" and is valid.
- * A code held by any other food, archived ones included, is rejected by naming that food.
+ * A code held by any other food is rejected by naming that food.
  */
 fun validateBarcodeInput(value: String, foods: List<FoodRecord>, editingId: String? = null): String? {
     if (value.isBlank()) return null

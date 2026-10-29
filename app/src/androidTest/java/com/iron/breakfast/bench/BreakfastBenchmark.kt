@@ -19,7 +19,6 @@ import com.iron.breakfast.domain.BreakfastEngine
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
-import com.iron.breakfast.domain.foodsAvailableForLogging
 import com.iron.breakfast.domain.libraryRecencyOrder
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -160,8 +159,8 @@ class BreakfastBenchmark {
     /** (d) The matcher index build, and the engine path end to end: does an entry-only write rebuild it? */
     @Test
     fun d_matcherBuildAndRebuildAfterEntryWrite() = runBlocking {
-        report(bench("d matcher-build foods=${foodsAvailableForLogging(store.foods()).size}", warmup = WARMUP, iterations = ITERATIONS) {
-            FoodMatcher(foodsAvailableForLogging(store.foods()))
+        report(bench("d matcher-build foods=${store.foods().size}", warmup = WARMUP, iterations = ITERATIONS) {
+            FoodMatcher(store.foods())
         })
         val pin = year.foods.first()
         engine.planner()

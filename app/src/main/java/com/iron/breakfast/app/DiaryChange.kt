@@ -82,7 +82,7 @@ internal sealed interface DiaryChange {
         override val refreshesLibrary get() = false
     }
 
-    /** A food saved, edited, archived, restored or cached without a log. */
+    /** A food saved, edited, deleted or cached without a log. */
     data object FoodsChanged : DiaryChange {
         override val kind get() = DiaryChangeKind.FOOD_EDIT
         override val refreshesLibrary get() = true

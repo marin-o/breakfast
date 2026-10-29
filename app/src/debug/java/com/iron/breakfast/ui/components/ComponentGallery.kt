@@ -50,7 +50,7 @@ private fun ComponentGallery() {
             TertiaryButton("Open in Library", {})
             TertiaryButton("Soft", {}, soft = true)
             DestructiveButton("Delete entry", {})
-            DestructiveButton("Archive food", {}, outlined = true)
+            DestructiveButton("Delete food", {}, outlined = true)
             Row2 {
                 ChoiceOption("g", true, {})
                 ChoiceOption("ml", false, {}, detail = "105 kcal")

@@ -4,7 +4,7 @@ package com.iron.breakfast.domain
  * Brings each stored copy of a built-in catalogue food up to the current catalogue, matched by id. Catalogue edits
  * reach an existing install this way; a fresh install already has them.
  *
- * Kept as the user has it: a food the user edited (`personalOverride`), its archive state, its source identity and
+ * Kept as the user has it: a food the user edited (`personalOverride`), its source identity and
  * barcode, custom foods (not in the catalogue), and logged entries (which keep their own nutrition snapshot). Running
  * it again changes nothing once the rows match, so it runs at every start.
  */
