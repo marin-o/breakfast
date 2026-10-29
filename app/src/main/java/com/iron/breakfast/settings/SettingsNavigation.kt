@@ -14,7 +14,7 @@ internal val SETTINGS_GROUPS: List<SettingsPage> = listOf(
 /** Back or the arrow on a Settings page: Licences returns to About, a group page to the list (null). */
 internal fun settingsPageBack(page: SettingsPage): SettingsPage? = if (page == SettingsPage.LICENCES) SettingsPage.ABOUT else null
 
-/** About, Version: "0.1 (10)", the versionName then the versionCode. */
+/** About, Version: the versionName then the versionCode, as in "0.1 (13)". */
 internal fun versionLabel(versionName: String, versionCode: Int): String = "$versionName ($versionCode)"
 
 /** About, Licences: the bundled font licence, shown as plain text. */

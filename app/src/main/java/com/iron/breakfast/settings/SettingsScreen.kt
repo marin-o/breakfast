@@ -52,8 +52,8 @@ import com.iron.breakfast.ui.theme.Gutter
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 
 /**
- * Settings, opened from the Library menu: the list of groups, each a row that opens the group's own page. On a page
- * the arrow and Back return to the list; on the list they return to the Library.
+ * Settings, opened from the bottom bar's gear over Daily or the Library: the list of groups, each a row that opens the
+ * group's own page. On a page the arrow and Back return to the list; on the list they return to the screen beneath.
  */
 @Composable
 internal fun SettingsScreen(vm: BreakfastViewModel) {
