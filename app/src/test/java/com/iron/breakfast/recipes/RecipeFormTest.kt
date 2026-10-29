@@ -208,6 +208,29 @@ class RecipeFormTest {
         assertFalse(form.open)
     }
 
+    /** A replaced diary: pins to foods it does not have go, as the Log's do; one made of an ingredient's own numbers stays. */
+    @Test fun aReplacedDiaryDropsThePinsOfFoodsItDoesNotHave() {
+        val gone = mince.copy(foodId = "custom-gone", foodName = "Old mince")
+        val recipe = chili.copy(ingredients = listOf(gone))
+        diary.recipes = listOf(recipe)
+        diary.session.refresh()
+        form.openEdit(recipe)
+        form.addIngredient(kefir, 250.0, MeasureUnit.GRAM)
+        assertEquals(setOf("custom-gone", "custom-kefir"), form.pinsSnapshot().values.map { it.id }.toSet())
+        diary.foods = FoodCatalog.fixtures
+        diary.session.refresh()
+        form.diaryReplaced()
+        assertTrue(form.open)
+        assertEquals(setOf("custom-gone"), form.pinsSnapshot().values.map { it.id }.toSet())
+        // A New recipe keeps no pin to a food the new diary lacks either.
+        typed(ingredients = "")
+        form.addIngredient(egg, 2.0, MeasureUnit.PIECE)
+        diary.foods = emptyList()
+        diary.session.refresh()
+        form.diaryReplaced()
+        assertTrue(form.pinsSnapshot().isEmpty())
+    }
+
     @Test fun anOpenFormComesBackAfterTheProcessWasKilled() {
         typed(ingredients = "2 eggs")
         form.chooseSuggestion(egg)

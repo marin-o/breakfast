@@ -268,6 +268,17 @@ internal class RecipeForm(
         if (open && editingRecipeId?.let { id -> session.recipes.none { it.id == id } } == true) close()
     }
 
+    /**
+     * The diary was replaced (Import, Delete all): an Edit of a recipe it does not have closes, and a pin to a food it
+     * does not have goes, as the Log's pins do, so the part is matched again in the new diary. A pin made of an
+     * ingredient's own numbers ([snapshotFood]) stays: it never named a stored food.
+     */
+    fun diaryReplaced() {
+        closeIfRecipeGone()
+        val foodIds = session.foods.mapTo(HashSet()) { it.id }
+        pins.entries.removeAll { it.value.id !in foodIds && it.value.category != SNAPSHOT_CATEGORY }
+    }
+
     /** The open form for `SavedStateHandle`; null when closed. */
     fun savedForm(): SavedRecipeForm? = if (!open) null else SavedRecipeForm(editingRecipeId, fields, baseline, committed, pins.toMap())
 

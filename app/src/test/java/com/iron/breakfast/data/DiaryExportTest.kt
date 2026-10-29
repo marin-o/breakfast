@@ -114,6 +114,9 @@ class DiaryExportTest {
         val f = file()
         refused(f.copy(recipes = f.recipes + f.recipes.first()))
         refused(f.copy(recipes = f.recipes + RecipeDto("custom-1", "Clash with a food", 1.0, null)))
+        // Ids say what they are: a recipe's starts "recipe-", and a food's never does.
+        refused(f.copy(recipes = f.recipes + RecipeDto("hand-made", "No prefix", 1.0, null)))
+        refused(f.copy(foods = f.foods + f.foods.first().copy(id = "recipe-food")))
         refused(f.copy(recipes = f.recipes.map { it.copy(name = " ") }))
         refused(f.copy(recipes = f.recipes.map { it.copy(portions = 0.0) }))
         refused(f.copy(recipes = f.recipes.map { it.copy(totalWeight = -1.0) }))

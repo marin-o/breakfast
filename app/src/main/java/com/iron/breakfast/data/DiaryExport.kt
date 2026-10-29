@@ -3,6 +3,7 @@ package com.iron.breakfast.data
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
+import com.iron.breakfast.domain.isRecipeId
 import com.iron.breakfast.ui.components.LongDraft
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -262,6 +263,8 @@ internal fun diaryProblem(file: DiaryFile): String? {
         when {
             f.id.isBlank() -> return "$at: blank id"
             !foodIds.add(f.id) -> return "$at: duplicate id ${f.id}"
+            // A food never takes a recipe's id: it would be logged as a recipe, never stored.
+            isRecipeId(f.id) -> return "$at: recipe id ${f.id}"
             f.name.isBlank() -> return "$at: blank name"
             f.origin !in ORIGIN_NAMES -> return "$at: origin ${f.origin}"
             f.nutritionUnit !in UNIT_NAMES -> return "$at: nutrition unit ${f.nutritionUnit}"
@@ -299,6 +302,8 @@ internal fun diaryProblem(file: DiaryFile): String? {
         val at = "recipe $i"
         when {
             r.id.isBlank() -> return "$at: blank id"
+            // A recipe's id says it is one: a hand-made id could otherwise be stored as a food.
+            !isRecipeId(r.id) -> return "$at: not a recipe id ${r.id}"
             !recipeIds.add(r.id) || r.id in foodIds -> return "$at: duplicate id ${r.id}"
             r.name.isBlank() -> return "$at: blank name"
             r.portions != null && !r.portions.positive() -> return "$at: portions ${r.portions}"

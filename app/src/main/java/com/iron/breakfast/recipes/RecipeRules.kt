@@ -91,12 +91,15 @@ internal fun recipeEdit(recipe: Recipe, foods: List<FoodRecord>, planner: LogPla
     return RecipeEdit(fields, pins)
 }
 
+/** The category of a [snapshotFood], so the form can tell such a pin from one to a stored food. */
+internal const val SNAPSHOT_CATEGORY = "Recipe ingredient"
+
 /** A food made of an ingredient's own numbers, for one whose food was deleted: its amount gives exactly them. */
 internal fun snapshotFood(ingredient: RecipeIngredient): FoodRecord = FoodRecord(
     id = ingredient.foodId,
     name = ingredient.foodName,
     aliases = emptyList(),
-    category = "Personal food",
+    category = SNAPSHOT_CATEGORY,
     origin = FoodOrigin.CUSTOM,
     nutrition = NutritionBasis(ingredient.enteredAmount.takeIf { it > 0.0 } ?: 1.0, ingredient.enteredUnit, ingredient.nutritionSnapshot),
     defaultAmount = ingredient.enteredAmount,
