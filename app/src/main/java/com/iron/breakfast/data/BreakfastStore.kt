@@ -16,6 +16,7 @@ import com.iron.breakfast.domain.Recipe
 import com.iron.breakfast.domain.following
 import com.iron.breakfast.domain.barcodeForms
 import com.iron.breakfast.domain.canonicalBarcode
+import com.iron.breakfast.domain.hyphensAsBreaks
 import com.iron.breakfast.domain.sameBarcode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -239,11 +240,7 @@ class BreakfastStore internal constructor(
 
     suspend fun foodsMatching(query: String = ""): List<FoodRecord> {
         requireReady()
-        val normalized = query.trim().lowercase()
-        return model.foods.filter { food ->
-            normalized.isBlank() || food.allNames().any { it.lowercase().contains(normalized) } ||
-                food.brand?.lowercase()?.contains(normalized) == true || barcodeMatchesQuery(food.barcode, normalized)
-        }
+        return model.foods.filter { food -> foodMatchesQuery(food, query) }
     }
 
     suspend fun foodById(id: String): FoodRecord? {
@@ -592,6 +589,19 @@ internal fun pickBarcodeMatch(rows: List<FoodEntity>, barcode: String): FoodEnti
         compareBy<FoodEntity>({ if (it.barcode?.trim() == exact) 0 else 1 }, { if (it.barcode?.trim() == canonical) 0 else 1 }, { it.id })
     ).firstOrNull()
 }
+
+/**
+ * The Library's search: [query] is part of a name, an alias or the brand, or the barcode. A hyphen between letters is a
+ * word break on both sides ([hyphensAsBreaks]): "coca-cola zero" finds "Coca Cola Zero" and "coca cola" "Coca-Cola".
+ */
+internal fun foodMatchesQuery(food: FoodRecord, query: String): Boolean {
+    val normalized = searchText(query.trim())
+    if (normalized.isBlank()) return true
+    return food.allNames().any { searchText(it).contains(normalized) } ||
+        food.brand?.let { searchText(it).contains(normalized) } == true || barcodeMatchesQuery(food.barcode, query.trim().lowercase())
+}
+
+private fun searchText(text: String): String = hyphensAsBreaks(text).lowercase()
 
 /** Library search on a barcode: part of the stored digits, or the whole code in any equivalent spelling. */
 internal fun barcodeMatchesQuery(barcode: String?, query: String): Boolean =

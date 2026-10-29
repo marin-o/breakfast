@@ -220,7 +220,7 @@ class FoodMatcher(
         .split(WHITESPACE)
         .joinToString(" ") { abbreviations[it] ?: it }
 
-    private fun tokens(value: String): List<String> = value
+    private fun tokens(value: String): List<String> = hyphensAsBreaks(value)
         .lowercase(Locale.ROOT)
         // An apostrophe joins its word ("Jerry's" is one word), so its "s" is never a word of its own.
         .replace("'", "").replace("’", "")
@@ -285,6 +285,28 @@ class FoodMatcher(
             return previous[b.length] <= max
         }
     }
+}
+
+/**
+ * [text] with a hyphen between two letters read as a word break, as food names and aliases are matched: "coca-cola" is
+ * "coca cola", "кока-кола" "кока кола". A hyphen between letters of two scripts joins them into one word instead, which
+ * mixes scripts and so matches nothing: splitting it must not make a match across scripts. A hyphen by a digit ("1-2")
+ * is left as it is.
+ */
+fun hyphensAsBreaks(text: String): String {
+    if ('-' !in text) return text
+    val out = StringBuilder(text.length)
+    for (i in text.indices) {
+        val c = text[i]
+        val before = text.getOrNull(i - 1)
+        val after = text.getOrNull(i + 1)
+        if (c == '-' && before != null && after != null && before.isLetter() && after.isLetter()) {
+            if (scriptOf(before.toString()) == scriptOf(after.toString())) out.append(' ')
+            continue
+        }
+        out.append(c)
+    }
+    return out.toString()
 }
 
 /** The script a word is written in. Matching never crosses scripts, and a word that mixes them matches nothing. */
