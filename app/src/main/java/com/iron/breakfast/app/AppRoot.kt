@@ -122,9 +122,17 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
             }
         ) { pad ->
             when (surface) {
-                Surface.LIBRARY -> LibraryScreen(vm.library, vm.resolve, vm.day, vm.surfaces, vm.foodForm, vm.confirmations, vm::automaticMealNow, Modifier.padding(pad))
-                Surface.DAILY -> DailyScreen(vm, Modifier.padding(pad))
-                else -> MealScreen(vm, Modifier.padding(pad))
+                Surface.LIBRARY -> LibraryScreen(
+                    vm.library, vm.resolve, vm.day, vm.surfaces, vm.foodForm, vm.confirmations, vm::automaticMealNow, Modifier.padding(pad),
+                )
+                Surface.DAILY -> DailyScreen(
+                    vm.session, vm.day, vm.settings, vm.log, vm.contribution, vm.entryEdit, vm.surfaces, vm.undo, vm.feedback,
+                    vm.search, vm.confirmations, vm.reminders, vm.scan, Modifier.padding(pad),
+                )
+                else -> MealScreen(
+                    vm.session, vm.day, vm.settings, vm.log, vm.contribution, vm.entryEdit, vm.surfaces, vm.undo, vm.feedback,
+                    vm.search, vm.confirmations, vm.scan, Modifier.padding(pad),
+                )
             }
         }
         Surface.SCAN_REVIEW_BACKDROP -> ScanReviewBackdrop(vm.review::close)

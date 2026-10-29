@@ -47,7 +47,16 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import com.iron.breakfast.app.BreakfastViewModel
+import com.iron.breakfast.app.Confirmations
+import com.iron.breakfast.app.DiarySession
+import com.iron.breakfast.app.Surfaces
+import com.iron.breakfast.contribution.ContributionFlow
+import com.iron.breakfast.entry.EntryEdit
+import com.iron.breakfast.log.LogComposer
+import com.iron.breakfast.scan.ScanSession
+import com.iron.breakfast.search.OffSearch
+import com.iron.breakfast.settings.SettingsState
+import com.iron.breakfast.transfer.ExportReminders
 import com.iron.breakfast.contribution.ContributionAction
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MacroTotal
@@ -87,17 +96,32 @@ import com.iron.breakfast.ui.screens.plainLine
 
 
 @Composable
-internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
-    val selected = vm.entries.filter { it.dayKey == vm.day.selectedDayKey }
-    val foods = vm.foods.associateBy { it.id }
+internal fun DailyScreen(
+    session: DiarySession,
+    day: DayState,
+    settings: SettingsState,
+    log: LogComposer,
+    contribution: ContributionFlow,
+    entryEdit: EntryEdit,
+    surfaces: Surfaces,
+    undo: UndoController,
+    feedback: MatchFeedback,
+    search: OffSearch,
+    confirmations: Confirmations,
+    reminders: ExportReminders,
+    scan: ScanSession,
+    modifier: Modifier,
+) {
+    val selected = session.entries.filter { it.dayKey == day.selectedDayKey }
+    val foods = session.foods.associateBy { it.id }
     val total = nutritionTotalOf(selected)
-    val isToday = vm.day.selectedDayKey == vm.day.todayKey
+    val isToday = day.selectedDayKey == day.todayKey
     val colors = LocalBreakfastColors.current
     val touchSlop = LocalViewConfiguration.current.touchSlop
     val swipeThreshold = with(androidx.compose.ui.platform.LocalDensity.current) { 96.dp.toPx() }
     var pickerOpen by remember { mutableStateOf(false) }
     val motion = rememberMotion()
-    val daySlide = rememberDaySlide(vm.day.selectedDayKey, motion)
+    val daySlide = rememberDaySlide(day.selectedDayKey, motion)
 
     Box(modifier.fillMaxSize().background(colors.bg)) {
         LazyColumn(
@@ -105,7 +129,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 // Another day comes in from the side it lies on: a later day from the right.
                 translationX = daySlide.offset * motion.screenSlidePx
                 alpha = 1f - abs(daySlide.offset)
-            }.pointerInput(vm.day.selectedDayKey) {
+            }.pointerInput(day.selectedDayKey) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     var dx = 0f
@@ -123,7 +147,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                         if (horizontal) change.consume()
                         if (!change.pressed) break
                     }
-                    if (horizontal && abs(dx) >= swipeThreshold) vm.day.shift(if (dx < 0f) 1 else -1)
+                    if (horizontal && abs(dx) >= swipeThreshold) day.shift(if (dx < 0f) 1 else -1)
                 }
             },
             // Room for the composer and nav that float over the end of the list.
@@ -131,39 +155,39 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
         ) {
             item {
                 DayHeader(
-                    title = shortDateLabel(vm.day.selectedDayKey),
-                    onPrevious = { vm.day.shift(-1) },
-                    onNext = { vm.day.shift(1) },
+                    title = shortDateLabel(day.selectedDayKey),
+                    onPrevious = { day.shift(-1) },
+                    onNext = { day.shift(1) },
                     modifier = Modifier.padding(top = 8.dp),
                     showToday = !isToday,
-                    onToday = vm.day::goToday,
+                    onToday = day::goToday,
                     nextEnabled = !isToday,
                     onTitleClick = { pickerOpen = true },
                 )
                 val macros = macroTotalsOf(selected.map { it.nutritionSnapshot })
                 DayTotal(
                     formatKcal(total.calories),
-                    if (vm.settings.showMacros) dailyMacroStats(total.calories, macros) else emptyList(),
+                    if (settings.showMacros) dailyMacroStats(total.calories, macros) else emptyList(),
                     Modifier.padding(top = 18.dp),
-                    note = dailyMacroNote(macros, showMacros = vm.settings.showMacros, showNote = vm.settings.showMissingNote),
+                    note = dailyMacroNote(macros, showMacros = settings.showMacros, showNote = settings.showMissingNote),
                 )
             }
-            vm.log.error?.let { message -> item { Text(message, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(vertical = 6.dp)) } }
+            log.error?.let { message -> item { Text(message, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(vertical = 6.dp)) } }
             items(MealSlot.entries) { slot ->
-                DailyMealSection(slot, selected.filter { it.mealSlot == slot }, foods, vm, rows = vm.day.selectedDayKey to vm.ready)
+                DailyMealSection(slot, selected.filter { it.mealSlot == slot }, foods, log, surfaces, entryEdit, undo, feedback, search, rows = day.selectedDayKey to session.ready)
             }
             item {
-                if (vm.contribution.actionShown) ContributionAction(vm.contribution)
+                if (contribution.actionShown) ContributionAction(contribution)
             }
         }
         // Hidden during an entry edit, which owns the input and its own sheet.
-        if (!vm.entryEdit.editing) DailyComposer(vm, Modifier.align(Alignment.BottomCenter))
+        if (!entryEdit.editing) DailyComposer(undo, confirmations, reminders, surfaces, log, scan, settings, Modifier.align(Alignment.BottomCenter))
     }
     if (pickerOpen) DayPickerDialog(
-        dayKey = vm.day.selectedDayKey,
-        todayKey = vm.day.todayKey,
+        dayKey = day.selectedDayKey,
+        todayKey = day.todayKey,
         onDismiss = { pickerOpen = false },
-        onPick = { dayKey -> vm.day.goTo(dayKey); pickerOpen = false },
+        onPick = { dayKey -> day.goTo(dayKey); pickerOpen = false },
     )
 }
 
@@ -239,16 +263,27 @@ internal fun dailyMacroNote(macros: MacroTotals, showMacros: Boolean = true, sho
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Map<String, FoodRecord>, vm: BreakfastViewModel, rows: Any) {
+private fun DailyMealSection(
+    slot: MealSlot,
+    entries: List<MealEntry>,
+    foods: Map<String, FoodRecord>,
+    log: LogComposer,
+    surfaces: Surfaces,
+    entryEdit: EntryEdit,
+    undo: UndoController,
+    feedback: MatchFeedback,
+    search: OffSearch,
+    rows: Any,
+) {
     val total = nutritionTotalOf(entries)
     MealHeader(
         name = slot.label(),
         total = formatKcal(total.calories),
-        onAdd = { vm.log.open(slot) },
+        onAdd = { log.open(slot) },
         addDescription = "Add food to ${slot.label()}",
         time = earliestMealTime(entries),
         emptyText = if (entries.isEmpty()) "Nothing yet" else null,
-        modifier = Modifier.clickable(role = Role.Button) { vm.surfaces.openMeal(slot) },
+        modifier = Modifier.clickable(role = Role.Button) { surfaces.openMeal(slot) },
     )
     // Rows fade in and collapse out; another day (or the first load) shows its rows at once.
     AnimatedRows(entries, { it.id }, reset = rows) { entry -> Column(Modifier.fillMaxWidth()) {
@@ -258,15 +293,15 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
             quantityLine = quantity.plainLine(),
             calories = formatKcal(entry.nutritionSnapshot.calories),
             modifier = Modifier.semantics {
-                onClick(label = "Open details for ${entry.foodName}") { vm.entryEdit.openDetail(entry); true }
+                onClick(label = "Open details for ${entry.foodName}") { entryEdit.openDetail(entry); true }
                 customActions = listOf(
-                    CustomAccessibilityAction("Quick edit amount") { vm.entryEdit.beginQuick(entry); true },
-                    CustomAccessibilityAction("Edit food and amount") { vm.entryEdit.beginFull(entry); true },
-                    CustomAccessibilityAction("Delete ${entry.foodName}") { vm.undo.delete(entry); true },
+                    CustomAccessibilityAction("Quick edit amount") { entryEdit.beginQuick(entry); true },
+                    CustomAccessibilityAction("Edit food and amount") { entryEdit.beginFull(entry); true },
+                    CustomAccessibilityAction("Delete ${entry.foodName}") { undo.delete(entry); true },
                 )
-            }.combinedClickable(onClick = { vm.entryEdit.openDetail(entry) }, onDoubleClick = { vm.entryEdit.beginQuick(entry) }, onLongClick = { vm.entryEdit.beginFull(entry) }),
+            }.combinedClickable(onClick = { entryEdit.openDetail(entry) }, onDoubleClick = { entryEdit.beginQuick(entry) }, onLongClick = { entryEdit.beginFull(entry) }),
         )
-        Reveal(entry.takeIf { vm.feedback.isOpen(it) }, resize = true) { CorrectionStrip(vm, it) }
+        Reveal(entry.takeIf { feedback.isOpen(it) }, resize = true) { CorrectionStrip(feedback, search, it) }
     } }
 }
 
@@ -275,25 +310,34 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
  * Tapping "Log food" opens the Log page with no meal preset; the scan icon opens the scanner.
  */
 @Composable
-internal fun DailyComposer(vm: BreakfastViewModel, modifier: Modifier = Modifier) {
+internal fun DailyComposer(
+    undo: UndoController,
+    confirmations: Confirmations,
+    reminders: ExportReminders,
+    surfaces: Surfaces,
+    log: LogComposer,
+    scan: ScanSession,
+    settings: SettingsState,
+    modifier: Modifier = Modifier,
+) {
     val tick = rememberTick()
     ComposerFade(modifier) {
-        Reveal(vm.undo.loggedMessage) { Snackbar(it, UNDO, { tick(); vm.undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
-        Reveal(vm.undo.deletedEntry) { Snackbar(deletedText(it), UNDO, { tick(); vm.undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
-        ConfirmationSnackbar(vm.confirmations.message)
-        if (vm.reminders.shownOnDaily(covered = vm.surfaces.baseCovered())) {
-            LaunchedEffect(Unit) { vm.reminders.onScreenNow() }
-            Snackbar("Export your diary.", "Export", vm.reminders::export, Modifier.padding(bottom = 8.dp))
+        Reveal(undo.loggedMessage) { Snackbar(it, UNDO, { tick(); undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
+        Reveal(undo.deletedEntry) { Snackbar(deletedText(it), UNDO, { tick(); undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
+        ConfirmationSnackbar(confirmations.message)
+        if (reminders.shownOnDaily(covered = surfaces.baseCovered())) {
+            LaunchedEffect(Unit) { reminders.onScreenNow() }
+            Snackbar("Export your diary.", "Export", reminders::export, Modifier.padding(bottom = 8.dp))
         }
-        val draft = vm.log.draft.isNotBlank()
+        val draft = log.draft.isNotBlank()
         Composer(
-            placeholder = if (draft) vm.log.draft else "Log food",
-            onClick = { vm.log.open(null) },
-            onScan = vm.scan::begin,
+            placeholder = if (draft) log.draft else "Log food",
+            onClick = { log.open(null) },
+            onScan = scan::begin,
             draft = draft,
-            longDraft = vm.settings.longDraft,
+            longDraft = settings.longDraft,
         )
-        BottomNav(selectedToday = true, onToday = { vm.surfaces.closeMeal(); vm.surfaces.closeLibrary() }, onLibrary = { vm.surfaces.closeMeal(); vm.surfaces.openLibrary() }, onSettings = vm.surfaces::openSettings)
+        BottomNav(selectedToday = true, onToday = { surfaces.closeMeal(); surfaces.closeLibrary() }, onLibrary = { surfaces.closeMeal(); surfaces.openLibrary() }, onSettings = surfaces::openSettings)
     }
 }
 
@@ -316,15 +360,15 @@ internal fun ComposerFade(modifier: Modifier = Modifier, content: @Composable Co
 
 /** A day's correction after a doubtful match: "<food> matched. Not right?" with the alternatives and Search. */
 @Composable
-internal fun CorrectionStrip(vm: BreakfastViewModel, entry: MealEntry) {
+internal fun CorrectionStrip(feedback: MatchFeedback, search: OffSearch, entry: MealEntry) {
     val colors = LocalBreakfastColors.current
     Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
         Text("${entry.foodName} matched. Not right?", color = colors.soft, style = BreakfastType.Meta)
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ChoiceOption(entry.foodName, true, { vm.feedback.confirm(entry) })
+            ChoiceOption(entry.foodName, true, { feedback.confirm(entry) })
             // The match shows as selected; the alternatives and Search are actions.
-            vm.feedback.alternatives(entry).forEach { alternative -> ChoiceOption(alternative.food.name, false, { vm.feedback.chooseAlternative(entry, alternative.food) }, selectable = false) }
-            ChoiceOption("Search", false, { vm.search.open(entry.foodName) }, selectable = false)
+            feedback.alternatives(entry).forEach { alternative -> ChoiceOption(alternative.food.name, false, { feedback.chooseAlternative(entry, alternative.food) }, selectable = false) }
+            ChoiceOption("Search", false, { search.open(entry.foodName) }, selectable = false)
         }
     }
 }

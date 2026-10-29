@@ -47,7 +47,15 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import com.iron.breakfast.app.BreakfastViewModel
+import com.iron.breakfast.app.Confirmations
+import com.iron.breakfast.app.DiarySession
+import com.iron.breakfast.app.Surfaces
+import com.iron.breakfast.contribution.ContributionFlow
+import com.iron.breakfast.entry.EntryEdit
+import com.iron.breakfast.log.LogComposer
+import com.iron.breakfast.scan.ScanSession
+import com.iron.breakfast.search.OffSearch
+import com.iron.breakfast.settings.SettingsState
 import com.iron.breakfast.contribution.ContributionAction
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
@@ -76,10 +84,24 @@ import com.iron.breakfast.ui.screens.quantityRateDisplay
 import com.iron.breakfast.ui.screens.plainLine
 
 @Composable
-internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
-    val target = vm.surfaces.meal ?: return
-    val entries = vm.entries.filter { it.dayKey == vm.day.selectedDayKey && it.mealSlot == target }
-    val foods = vm.foods.associateBy { it.id }
+internal fun MealScreen(
+    session: DiarySession,
+    day: DayState,
+    settings: SettingsState,
+    log: LogComposer,
+    contribution: ContributionFlow,
+    entryEdit: EntryEdit,
+    surfaces: Surfaces,
+    undo: UndoController,
+    feedback: MatchFeedback,
+    search: OffSearch,
+    confirmations: Confirmations,
+    scan: ScanSession,
+    modifier: Modifier,
+) {
+    val target = surfaces.meal ?: return
+    val entries = session.entries.filter { it.dayKey == day.selectedDayKey && it.mealSlot == target }
+    val foods = session.foods.associateBy { it.id }
     val total = nutritionTotalOf(entries)
     val colors = LocalBreakfastColors.current
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
@@ -93,9 +115,9 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
             item {
                 TopBar(
                     title = target.label(),
-                    onBack = vm.surfaces::closeMeal,
+                    onBack = surfaces::closeMeal,
                     modifier = Modifier.padding(top = 8.dp),
-                    subtitle = shortDateLabel(vm.day.selectedDayKey),
+                    subtitle = shortDateLabel(day.selectedDayKey),
                     trailing = {
                         Row(Modifier.padding(end = 12.dp), verticalAlignment = Alignment.Bottom) {
                             Text(formatKcal(total.calories), color = colors.ink, style = BreakfastType.Title)
@@ -108,9 +130,9 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
             // A new or restored row fades in; a deleted one fades as the rows below close the gap.
             items(entries, key = { it.id }) { entry ->
                 Column(Modifier.fillMaxWidth().animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem())) {
-                    EntryRow(entry, foods[entry.foodId], vm, motion)
+                    EntryRow(entry, foods[entry.foodId], undo, entryEdit, motion)
                     // Same correction block as Daily, for a doubtful match from the Log page.
-                    Reveal(entry.takeIf { vm.feedback.isOpen(it) }, resize = true) { CorrectionStrip(vm, it) }
+                    Reveal(entry.takeIf { feedback.isOpen(it) }, resize = true) { CorrectionStrip(feedback, search, it) }
                 }
             }
             item {
@@ -118,45 +140,53 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 val scanModifier = Modifier.widthIn(min = 80.dp * fontScale)
                 if (isLargeFont(fontScale)) {
                     Column(Modifier.fillMaxWidth().padding(top = 30.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SecondaryButton("Add food", { vm.surfaces.openFocusedLibrary(target) }, addFoodModifier, fillWidth = false)
-                        SecondaryButton("Scan", vm.scan::begin, scanModifier, fillWidth = false)
+                        SecondaryButton("Add food", { surfaces.openFocusedLibrary(target) }, addFoodModifier, fillWidth = false)
+                        SecondaryButton("Scan", scan::begin, scanModifier, fillWidth = false)
                     }
                 } else {
                     Row(Modifier.fillMaxWidth().padding(top = 30.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SecondaryButton("Add food", { vm.surfaces.openFocusedLibrary(target) }, addFoodModifier, fillWidth = false)
-                        SecondaryButton("Scan", vm.scan::begin, scanModifier, fillWidth = false)
+                        SecondaryButton("Add food", { surfaces.openFocusedLibrary(target) }, addFoodModifier, fillWidth = false)
+                        SecondaryButton("Scan", scan::begin, scanModifier, fillWidth = false)
                     }
                 }
-                if (vm.contribution.actionShown) ContributionAction(vm.contribution)
+                if (contribution.actionShown) ContributionAction(contribution)
             }
         }
         // Hidden during an entry edit, which owns the input and its own sheet.
-        if (!vm.entryEdit.editing) MealComposer(vm, target, Modifier.align(Alignment.BottomCenter))
+        if (!entryEdit.editing) MealComposer(log, undo, confirmations, scan, settings, target, Modifier.align(Alignment.BottomCenter))
     }
 }
 
 /** Ink composer that opens the Log page with this meal preset, over the fade. Shows the logged-batch and delete snackbars. */
 @Composable
-internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot, modifier: Modifier = Modifier) {
-    val draft = vm.log.draft.isNotBlank()
+internal fun MealComposer(
+    log: LogComposer,
+    undo: UndoController,
+    confirmations: Confirmations,
+    scan: ScanSession,
+    settings: SettingsState,
+    target: MealSlot,
+    modifier: Modifier = Modifier,
+) {
+    val draft = log.draft.isNotBlank()
     val tick = rememberTick()
     ComposerFade(modifier) {
-        Reveal(vm.undo.loggedMessage) { Snackbar(it, UNDO, { tick(); vm.undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
-        Reveal(vm.undo.deletedEntry) { deleted -> Snackbar(deletedText(deleted), UNDO, { tick(); vm.undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
-        ConfirmationSnackbar(vm.confirmations.message)
+        Reveal(undo.loggedMessage) { Snackbar(it, UNDO, { tick(); undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
+        Reveal(undo.deletedEntry) { deleted -> Snackbar(deletedText(deleted), UNDO, { tick(); undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
+        ConfirmationSnackbar(confirmations.message)
         Composer(
-            placeholder = if (draft) vm.log.draft else "Add to ${target.label()}",
-            onClick = { vm.log.open(target) },
-            onScan = vm.scan::begin,
+            placeholder = if (draft) log.draft else "Add to ${target.label()}",
+            onClick = { log.open(target) },
+            onScan = scan::begin,
             draft = draft,
-            longDraft = vm.settings.longDraft,
+            longDraft = settings.longDraft,
         )
     }
 }
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel, motion: Motion) {
+private fun EntryRow(entry: MealEntry, food: FoodRecord?, undo: UndoController, entryEdit: EntryEdit, motion: Motion) {
     val colors = LocalBreakfastColors.current
     var revealOffset by remember(entry.id) { mutableFloatStateOf(0f) }
     // The row follows the finger; on release it settles open or shut ([Motion.swipe]), and a new touch stops that.
@@ -173,7 +203,7 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel
         // Swipe reveals the delete panel; the panel is the only place `bad` fills a surface. It shows as wide as the
         // row has moved, so it grows with the finger; the full panel under it keeps its width, and "Delete" its line.
         if (revealOffset < 0f) Box(
-            Modifier.align(Alignment.CenterEnd).width(with(density) { (-revealOffset.roundToInt()).toDp() }).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).clipToBounds().background(colors.bad).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { vm.undo.delete(entry) },
+            Modifier.align(Alignment.CenterEnd).width(with(density) { (-revealOffset.roundToInt()).toDp() }).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).clipToBounds().background(colors.bad).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { undo.delete(entry) },
         ) {
             Row(
                 Modifier.wrapContentWidth(Alignment.Start, unbounded = true).widthIn(min = with(density) { deleteWidth.toDp() }).fillMaxHeight(),
@@ -188,13 +218,13 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel
             quantityLine = quantity.plainLine(),
             calories = formatKcal(entry.nutritionSnapshot.calories),
             modifier = Modifier.offset { IntOffset(revealOffset.roundToInt(), 0) }.semantics {
-                onClick(label = "Open details for ${entry.foodName}") { vm.entryEdit.openDetail(entry); true }
+                onClick(label = "Open details for ${entry.foodName}") { entryEdit.openDetail(entry); true }
                 customActions = listOf(
-                    CustomAccessibilityAction("Quick edit amount") { vm.entryEdit.beginQuick(entry); true },
-                    CustomAccessibilityAction("Edit food and amount") { vm.entryEdit.beginFull(entry); true },
-                    CustomAccessibilityAction("Delete ${entry.foodName}") { vm.undo.delete(entry); true },
+                    CustomAccessibilityAction("Quick edit amount") { entryEdit.beginQuick(entry); true },
+                    CustomAccessibilityAction("Edit food and amount") { entryEdit.beginFull(entry); true },
+                    CustomAccessibilityAction("Delete ${entry.foodName}") { undo.delete(entry); true },
                 )
-            }.combinedClickable(onClick = { vm.entryEdit.openDetail(entry) }, onDoubleClick = { vm.entryEdit.beginQuick(entry) }, onLongClick = { vm.entryEdit.beginFull(entry) }).pointerInput(entry.id) {
+            }.combinedClickable(onClick = { entryEdit.openDetail(entry) }, onDoubleClick = { entryEdit.beginQuick(entry) }, onLongClick = { entryEdit.beginFull(entry) }).pointerInput(entry.id) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     settle?.cancel()
