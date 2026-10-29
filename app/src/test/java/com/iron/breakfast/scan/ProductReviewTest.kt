@@ -10,6 +10,8 @@ import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.TypedPart
+import com.iron.breakfast.domain.ServingConversion
+import com.iron.breakfast.domain.withServingsAdded
 import com.iron.breakfast.resolve.ResolveQueueView
 import com.iron.breakfast.today.OpenDiary
 import org.junit.Assert.assertEquals
@@ -19,12 +21,32 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ProductReviewTest {
-    private class FakeStore : ProductStore {
+    private inner class FakeStore : ProductStore {
         val calls = mutableListOf<String>()
+        /** The full product a fetch by barcode answers with; [fetchFails] makes it throw, [fetchHeld] keeps it out. */
+        var full: FoodRecord? = null
+        var fetchFails = false
+        var fetchHeld: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+        val fetches = mutableListOf<String>()
+        override suspend fun fullProduct(barcode: String): FoodRecord? {
+            fetches += barcode
+            fetchHeld?.await()
+            if (fetchFails) throw java.io.IOException("offline")
+            return full
+        }
+        override suspend fun addServings(expected: FoodRecord, servings: List<ServingConversion>): Boolean {
+            val merged = withServingsAdded(diary.foods.firstOrNull { it.id == expected.id }, expected, servings)
+            calls += "add servings ${servings.map { it.name }} to ${expected.id}: ${merged != null}"
+            if (merged != null) diary.foods = diary.foods.map { if (it.id == merged.id) merged else it }
+            return merged != null
+        }
         override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
             calls += "log ${food.name} $amount ${unit.label} $meal $dayKey"
         }
-        override suspend fun updateFood(food: FoodRecord) { calls += "update ${food.name} ${food.nutrition.values.calories}" }
+        override suspend fun updateFood(food: FoodRecord) {
+            calls += "update ${food.name} ${food.nutrition.values.calories}"
+            diary.foods = diary.foods.filterNot { it.id == food.id } + food
+        }
         override suspend fun cacheFood(food: FoodRecord): FoodRecord { calls += "cache ${food.name}"; return food.copy(id = "stored-${food.id}") }
     }
 
@@ -51,6 +73,8 @@ class ProductReviewTest {
         openSearch = { events += "search fromResolver=$it" },
         startScan = { events += "scan" },
         confirmLogged = { confirmed++ },
+        scope = diary.scope,
+        io = kotlinx.coroutines.Dispatchers.Unconfined,
     )
 
     /** A queue as the resolve flow builds it: its current part as the planner reads it ("nutella200g" is nutella, 200 g). */
@@ -63,6 +87,93 @@ class ProductReviewTest {
         "off-1", "Nutella", emptyList(), "Spreads", FoodOrigin.GENERIC,
         NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(539.0, 6.3, 57.5, 30.9)), barcode = "3017620422003",
     )
+
+    // ---- A search result's servings, fetched by its barcode ----
+
+    /** The full product as a barcode lookup gives it: a can, its package, and other numbers that are not taken. */
+    private val nutellaFull = nutella.copy(
+        nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(530.0, 6.0, 57.0, 31.0)),
+        conversions = listOf(
+            ServingConversion(MeasureUnit.GRAM, 15.0, "Open Food Facts serving size", label = "serving"),
+            ServingConversion(MeasureUnit.GRAM, 400.0, "Open Food Facts package", label = "package"),
+        ),
+    )
+
+    @Test fun aFetchThatArrivesBeforeTheSaveAddsItsServingsToTheProductQuietly() {
+        store.full = nutellaFull
+        review.choose(nutella)
+        assertEquals(listOf("3017620422003"), store.fetches)
+        // Only the servings: the search result's numbers, name and the rest stay.
+        assertEquals(listOf("serving", "package"), review.product!!.conversions.mapNotNull { it.name })
+        assertEquals(nutella.nutrition, review.product!!.nutrition)
+        assertEquals("539.0", review.calories)
+        assertNull(notices.message)
+        review.saveToLibrary()
+        assertEquals(listOf("serving", "package"), diary.foods.single().conversions.mapNotNull { it.name })
+        assertEquals(539.0, diary.foods.single().nutrition.values.calories, 0.0)
+    }
+
+    @Test fun aFetchThatArrivesAfterTheSaveAddsItsServingsToTheStoredFood() {
+        store.full = nutellaFull
+        store.fetchHeld = kotlinx.coroutines.CompletableDeferred()
+        review.choose(nutella)
+        // The save does not wait for it.
+        review.saveToLibrary()
+        assertTrue(diary.foods.single().conversions.isEmpty())
+        store.fetchHeld!!.complete(Unit)
+        assertEquals("add servings [serving, package] to off-1: true", store.calls.last())
+        assertEquals(listOf("serving", "package"), diary.foods.single().conversions.mapNotNull { it.name })
+        assertEquals(nutella.nutrition, diary.foods.single().nutrition)
+        assertEquals(listOf<DiaryChange>(DiaryChange.FoodsChanged), diary.published)
+    }
+
+    @Test fun aFetchThatFailsChangesNothing() {
+        store.fetchFails = true
+        review.choose(nutella)
+        assertEquals(nutella, review.product)
+        assertNull(notices.message)
+        review.saveToLibrary()
+        assertTrue(diary.foods.single().conversions.isEmpty())
+        assertTrue(store.calls.none { it.startsWith("add servings") })
+    }
+
+    @Test fun aFoodEditedBeforeTheFetchArrivesIsLeftAsTheUserMadeIt() {
+        store.full = nutellaFull
+        store.fetchHeld = kotlinx.coroutines.CompletableDeferred()
+        review.choose(nutella)
+        review.saveToLibrary()
+        // Edited in between: a serving of the user's own, and a new name.
+        val edited = diary.foods.single().copy(name = "My Nutella", conversions = listOf(ServingConversion(MeasureUnit.GRAM, 20.0, "personal serving", label = "spoon")))
+        diary.foods = listOf(edited)
+        diary.session.refresh()
+        store.fetchHeld!!.complete(Unit)
+        assertEquals("add servings [serving, package] to off-1: false", store.calls.last())
+        assertEquals(listOf(edited), diary.foods)
+    }
+
+    @Test fun leavingTheReviewCancelsItsFetch() {
+        store.full = nutellaFull
+        store.fetchHeld = kotlinx.coroutines.CompletableDeferred()
+        review.choose(nutella)
+        review.close()
+        store.fetchHeld!!.complete(Unit)
+        assertTrue(store.calls.none { it.startsWith("add servings") })
+        assertNull(review.product)
+        // A scanned product is the full one already: it is not fetched again.
+        store.fetches.clear()
+        review.choose(nutella, fromScan = true)
+        assertTrue(store.fetches.isEmpty())
+    }
+
+    @Test fun onlyServingsInTheProductsBasisAreTaken() {
+        val inMl = nutellaFull.copy(nutrition = NutritionBasis(100.0, MeasureUnit.MILLILITER, nutella.nutrition.values),
+            conversions = listOf(ServingConversion(MeasureUnit.MILLILITER, 330.0, "Open Food Facts serving size", label = "can")))
+        assertTrue(servingsToAdd(nutella, inMl).isEmpty())
+        val has = nutella.copy(conversions = listOf(ServingConversion(MeasureUnit.GRAM, 10.0, "personal serving", label = "Serving")))
+        assertEquals(listOf("package"), servingsToAdd(has, nutellaFull).map { it.name })
+        assertNull(withServingsAdded(null, nutella, nutellaFull.conversions))
+        assertNull("nothing to add", withServingsAdded(nutellaFull, nutellaFull, nutellaFull.conversions))
+    }
 
     @Test fun aReviewStartsFromTheProductAndWhereItOpened() {
         review.choose(nutella)

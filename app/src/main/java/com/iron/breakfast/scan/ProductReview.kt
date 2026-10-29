@@ -20,6 +20,13 @@ import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.domain.toMeasureUnit
 import com.iron.breakfast.resolve.ResolveQueueView
 import com.iron.breakfast.resolve.queueLogPlan
+import com.iron.breakfast.domain.ServingConversion
+import com.iron.breakfast.suspendRunCatching
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.iron.breakfast.ui.pretty
 
 /** The writes product review makes; the view model adapts `BreakfastEngine`. */
@@ -29,6 +36,13 @@ internal interface ProductStore {
     suspend fun updateFood(food: FoodRecord)
     /** Stores [food] without a log; returns it as stored. */
     suspend fun cacheFood(food: FoodRecord): FoodRecord
+    /** The full Open Food Facts product for [barcode] (a search result lacks its serving size); null when there is none. */
+    suspend fun fullProduct(barcode: String): FoodRecord? = null
+    /**
+     * Adds [servings] to the stored food [expected] names, those it has no serving by that name for, only while it is
+     * stored exactly as [expected] (nobody edited it since); nothing else of it changes. True when it added one.
+     */
+    suspend fun addServings(expected: FoodRecord, servings: List<ServingConversion>): Boolean = false
 }
 
 /**
@@ -40,6 +54,12 @@ internal interface ProductStore {
  * - **Writes:** [add] logs it to the chosen meal (the queue's own while a queue is being resolved, which then
  *   advances); [saveToLibrary] stores it, from the Library only. While a Log part is being resolved ([resolvingPart]),
  *   either stores it and hands the stored food to [onPartResolved] instead.
+ *
+ * - **Servings of a search result:** an Open Food Facts search result has no serving size, so a reviewed one with a
+ *   barcode also fetches its full product in [scope] on [io] ([ProductStore.fullProduct]). The review opens at once from
+ *   the search data and nothing waits on or shows the fetch: when it arrives, only its servings in the product's basis
+ *   are added, quietly ([servingsToAdd]): to the product while it is reviewed, or, once it was saved or logged, to the
+ *   stored food, unless that was edited since. Its nutrition is never taken. Leaving the review cancels it.
  *
  * Inputs from the screens around it are explicit: the day ([selectedDay]), the meal open beneath ([openMeal]) and the
  * resolve queue ([queue], with its current part as the Log read it). Closing tells the coordinator ([onClosed]); a log reports
@@ -62,6 +82,8 @@ internal class ProductReview(
     private val startScan: () -> Unit,
     /** Add logged the product to the meal the user chose: "Logged!" (see `Confirmations`). */
     private val confirmLogged: () -> Unit,
+    private val scope: CoroutineScope,
+    private val io: CoroutineDispatcher,
 ) {
     var product by mutableStateOf<FoodRecord?>(null); private set
     var fromScan by mutableStateOf(false); private set
@@ -74,6 +96,17 @@ internal class ProductReview(
     var carbs by mutableStateOf(""); private set
     var fat by mutableStateOf(""); private set
     private val calculator = NutritionCalculator()
+
+    /**
+     * The fetch of a reviewed search result's full product. [servings] are what it brought, once it arrived; [saved] the
+     * food as stored once the review saved or logged it, which they then go to.
+     */
+    private class ServingFetch(val productId: String) {
+        var job: Job? = null
+        var servings: List<ServingConversion>? = null
+        var saved: FoodRecord? = null
+    }
+    private var fetch: ServingFetch? = null
 
     /** Reviews [food]; [origin] defaults to where the review opens from. A queued part prefills its typed amount. */
     fun choose(food: FoodRecord, fromScan: Boolean = false, origin: ProductReviewOrigin? = null) {
@@ -89,10 +122,59 @@ internal class ProductReview(
         protein = food.nutrition.values.protein?.toString().orEmpty()
         carbs = food.nutrition.values.carbohydrates?.toString().orEmpty()
         fat = food.nutrition.values.fat?.toString().orEmpty()
+        leaveFetch()
+        // A scanned product is already the full one; a search result is fetched by its barcode for its servings.
+        food.barcode?.takeIf { !fromScan }?.let { startFetch(food, it) }
     }
+
+    private fun startFetch(food: FoodRecord, barcode: String) {
+        val started = ServingFetch(food.id)
+        fetch = started
+        started.job = scope.launch {
+            val full = withContext(io) { suspendRunCatching { store.fullProduct(barcode) }.getOrNull() } ?: return@launch
+            val servings = servingsToAdd(food, full)
+            if (servings.isEmpty()) return@launch
+            started.servings = servings
+            val saved = started.saved
+            val reviewed = product
+            when {
+                saved != null -> mergeInto(saved, servings)
+                fetch === started && reviewed?.id == started.productId -> product = reviewed.copy(conversions = reviewed.conversions + servingsToAdd(reviewed, full))
+            }
+        }
+    }
+
+    /** The review was left without a save: its fetch, if any, is cancelled. One that a save is waiting for goes on. */
+    private fun leaveFetch() {
+        fetch?.takeIf { it.saved == null }?.job?.cancel()
+        fetch = null
+    }
+
+    /**
+     * The review saved or logged [stored] (the food as the diary now has it): the fetch's servings go to it, now if
+     * they arrived without being added to the product, else when they arrive.
+     */
+    private fun fetchSaved(stored: FoodRecord?) {
+        val current = fetch ?: return
+        fetch = null
+        if (stored == null) { current.job?.cancel(); return }
+        current.saved = stored
+        current.servings?.let { servings -> if (servingsToAdd(stored, stored.copy(conversions = servings)).isNotEmpty()) mergeInto(stored, servings) }
+    }
+
+    /** Adds [servings] to the stored food, without a write of the user's own: it waits for one that runs. */
+    private fun mergeInto(stored: FoodRecord, servings: List<ServingConversion>) {
+        session.whenIdle(onSuccess = { added: Boolean -> if (added) session.refresh() }) {
+            suspendRunCatching { store.addServings(stored, servings) }.getOrDefault(false)
+        }
+    }
+
+    /** The food as the diary has it now, by [id]: what a fetch's servings go to after a save. */
+    private fun storedFood(id: String): FoodRecord? = session.foods.firstOrNull { it.id == id }
 
     /** The sheet or its backdrop closed: nothing is written; the coordinator decides what shows next. */
     fun close() {
+        leaveFetch()
         product = null
         fromScan = false
         origin = ProductReviewOrigin.LIBRARY
@@ -100,7 +182,7 @@ internal class ProductReview(
     }
 
     /** Another screen took the review's place (a resolved part returning to the Log). */
-    fun hide() { product = null }
+    fun hide() { leaveFetch(); product = null }
 
     /** A food was deleted: a review still showing it closes, so it cannot store that food again. */
     fun foodDeleted(foodId: String) { if (product?.id == foodId) close() }
@@ -150,6 +232,7 @@ internal class ProductReview(
         session.write(
             change = DiaryChange.FoodsLogged,
             onSuccess = {
+                fetchSaved(storedFood(draft.food.id))
                 product = null
                 offerContribution(contributionDraftAfterLocalSave(draft.food, scanned))
                 fromScan = false
@@ -172,6 +255,7 @@ internal class ProductReview(
         session.write(
             change = DiaryChange.FoodsChanged,
             onSuccess = {
+                fetchSaved(storedFood(draft.food.id))
                 product = null
                 fromScan = false
                 origin = ProductReviewOrigin.LIBRARY
@@ -193,6 +277,7 @@ internal class ProductReview(
         session.write(
             change = DiaryChange.FoodsChanged,
             onSuccess = { stored ->
+                fetchSaved(storedFood(stored.id))
                 offerContribution(contributionDraftAfterLocalSave(draft.food, scanned))
                 fromScan = false
                 onPartResolved(stored)
@@ -223,6 +308,17 @@ internal class ProductReview(
 }
 
 enum class ProductReviewOrigin { MEAL, LIBRARY, QUEUE }
+
+/**
+ * The servings a fetched [full] product adds to [food]: its named servings in [food]'s basis unit that [food] has no
+ * serving by that name for. Nothing else of [full] is taken, its nutrition least of all.
+ */
+internal fun servingsToAdd(food: FoodRecord, full: FoodRecord): List<ServingConversion> =
+    full.conversions.filter { serving ->
+        val name = serving.name ?: return@filter false
+        serving.unit == food.nutrition.unit && full.nutrition.unit == food.nutrition.unit &&
+            food.conversions.none { it.name?.equals(name, ignoreCase = true) == true }
+    }.distinctBy { it.name!!.lowercase() }
 
 internal data class ProductPrefill(val amount: Double, val unit: MeasureUnit)
 

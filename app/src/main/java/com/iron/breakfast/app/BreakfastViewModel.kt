@@ -120,6 +120,9 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
                 }
                 override suspend fun updateFood(food: FoodRecord) = engine.updateFood(food)
                 override suspend fun cacheFood(food: FoodRecord) = engine.cacheFood(food)
+                override suspend fun fullProduct(barcode: String) = (off.barcode(barcode) as? com.iron.breakfast.data.OffResult.Found)?.food
+                override suspend fun addServings(expected: FoodRecord, servings: List<com.iron.breakfast.domain.ServingConversion>) =
+                    engine.addServings(expected, servings)
             },
             barcodes = object : BarcodeLookup {
                 override suspend fun localFood(barcode: String) = engine.foodByBarcode(barcode)

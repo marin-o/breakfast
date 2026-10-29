@@ -386,6 +386,17 @@ class BreakfastEngine(
         return food
     }
 
+    /**
+     * Adds to the stored food [expected] the [servings] it has no serving by that name for, while it is stored exactly as
+     * [expected] (an edit since leaves it as the user made it). Nothing else of it changes. True when it added one.
+     */
+    suspend fun addServings(expected: FoodRecord, servings: List<ServingConversion>): Boolean {
+        val merged = withServingsAdded(store.foodById(expected.id), expected, servings) ?: return false
+        store.upsertFood(merged)
+        invalidateMatcher()
+        return true
+    }
+
     /** Stores a food for later logs without logging it: the food a Log part was picked as. Returns the food as it is stored. */
     suspend fun cacheFood(food: FoodRecord): FoodRecord {
         // A recipe is never stored as a food.

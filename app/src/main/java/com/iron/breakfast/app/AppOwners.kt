@@ -280,6 +280,8 @@ internal class AppOwners<D>(
         openSearch = { fromResolver -> search.open(fromResolver = fromResolver) },
         startScan = { scan.begin() },
         confirmLogged = confirmations::logged,
+        scope = threads.scope,
+        io = threads.io,
     )
     /** The Recipes tab: the list, the recipe page, logging one and Delete recipe (see [RecipeBook]). */
     val recipes: RecipeBook = RecipeBook(

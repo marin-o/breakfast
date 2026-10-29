@@ -180,3 +180,16 @@ private val NAMED_SIZE = Regex("(?iu)^(\\d+(?:\\.\\d+)?)\\s+(\\p{L}[\\p{L} ]*?)\
 
 /** "30 g", "250ml": a bare size. */
 private val BARE_SIZE = Regex("(?iu)^(\\d+(?:\\.\\d+)?)\\s*(g|ml)$")
+
+/**
+ * [stored] with the [servings] it has no serving by that name for, or null when there is nothing to add or [stored] is
+ * not exactly [expected] any more (gone, or edited since): a fetched serving never overwrites what the user made.
+ */
+internal fun withServingsAdded(stored: FoodRecord?, expected: FoodRecord, servings: List<ServingConversion>): FoodRecord? {
+    if (stored == null || stored != expected) return null
+    val missing = servings.filter { serving ->
+        val name = serving.name ?: return@filter false
+        stored.conversions.none { it.name?.equals(name, ignoreCase = true) == true }
+    }
+    return if (missing.isEmpty()) null else stored.copy(conversions = stored.conversions + missing)
+}
