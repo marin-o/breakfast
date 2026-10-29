@@ -81,7 +81,8 @@ internal fun RecipesScreen(recipes: RecipeBook, confirmations: Confirmations, on
             items(list, key = { it.id }) { recipe ->
                 RecipeRow(recipes, recipe, Modifier.animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem()))
             }
-            item { Hairline(Modifier.padding(top = 8.dp)) }
+            // The list's closing line, only under rows: an empty list keeps just the header's line.
+            if (list.isNotEmpty()) item { Hairline(Modifier.padding(top = 8.dp)) }
         }
         ConfirmationSnackbar(confirmations.message, Modifier.align(Alignment.BottomCenter).padding(horizontal = Gutter))
     }

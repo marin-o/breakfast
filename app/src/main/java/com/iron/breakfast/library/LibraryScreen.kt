@@ -145,7 +145,8 @@ internal fun LibraryScreen(
             items(library.foods, key = { it.id }) { food ->
                 LibraryFoodRow(library, automaticMeal, food, root, Modifier.animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem()))
             }
-            item {
+            // The list's closing line, only under rows: an empty list keeps just the header's line.
+            if (library.foods.isNotEmpty()) item {
                 Hairline(Modifier.padding(top = 8.dp))
             }
         }
@@ -401,11 +402,10 @@ internal fun FoodAmountSheet(
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(foodText(food.name), color = colors.ink, style = BreakfastType.Section)
             Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Secondary)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Field("Amount", amountText, { amountText = it.decimalInput() }, Modifier.widthIn(min = 96.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                Row(Modifier.weight(1f).padding(top = 22.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    units.forEach { candidate -> ChoiceOption(candidate.displayLabel(), unit == candidate, { unit = candidate }) }
-                }
+            // The field fills its row, so the units take their own line under it, as on the entry's quick edit.
+            Field("Amount", amountText, { amountText = it.decimalInput() }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                units.forEach { candidate -> ChoiceOption(candidate.displayLabel(), unit == candidate, { unit = candidate }) }
             }
             chosenMeal?.let { meal ->
                 Text("Meal", color = colors.soft, style = BreakfastType.Meta)
