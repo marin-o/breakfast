@@ -79,6 +79,7 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test:2.0.21")
+    testImplementation("org.jetbrains.kotlin:kotlin-reflect:2.0.21")
     testImplementation("androidx.room:room-testing:2.8.5")
 
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

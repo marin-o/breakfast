@@ -60,12 +60,16 @@ class DiaryChangeTest {
         DiaryChange.DiaryReplaced -> Effect(Undo.END, rowsChanged = true, refreshesLibrary = true)
     }
 
-    /** One change of each kind. */
+    /** One change of each kind; [everyKindOfChangeHasASample] fails when a kind is missing. */
     private val changes = listOf(
         DiaryChange.BatchLogged("1 food added to Breakfast", listOf(entry)), DiaryChange.FoodsLogged, DiaryChange.QueuedPartLogged,
         DiaryChange.EntryEdited, DiaryChange.EntryEditedAfterClose, DiaryChange.EntryDeleted(entry), DiaryChange.UndoApplied,
         DiaryChange.MatchCorrected, DiaryChange.MatchConfirmed, DiaryChange.FoodsChanged, DiaryChange.DiaryReplaced,
     )
+
+    @Test fun everyKindOfChangeHasASample() {
+        assertEquals(DiaryChange::class.sealedSubclasses.toSet(), changes.map { it::class }.toSet())
+    }
 
     @Test fun eachChangeDoesWhatItsCallSiteDidBefore() {
         for (change in changes) {
