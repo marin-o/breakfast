@@ -143,7 +143,7 @@ internal fun MealComposer(vm: BreakfastViewModel, target: MealSlot, modifier: Mo
     ComposerFade(modifier) {
         Reveal(vm.undo.loggedMessage) { Snackbar(it, "Undo", { tick(); vm.undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
         Reveal(vm.undo.deletedEntry) { deleted -> Snackbar("${deleted.foodName} deleted", "Undo", { tick(); vm.undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
-        ConfirmationSnackbar(vm.confirmations.message, Modifier.padding(bottom = 8.dp))
+        ConfirmationSnackbar(vm.confirmations.message)
         Composer(
             placeholder = if (draft) vm.log.draft else "Add to ${target.label()}",
             onClick = { vm.log.open(target) },

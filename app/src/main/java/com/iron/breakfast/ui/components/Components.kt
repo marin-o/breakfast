@@ -812,7 +812,8 @@ fun Snackbar(
  */
 @Composable
 internal fun ConfirmationSnackbar(message: String?, modifier: Modifier = Modifier) {
-    Reveal(message) { Snackbar(it, modifier = modifier) }
+    // [modifier] places the whole reveal (an align in a Box must sit on it); the 8dp gap comes and goes with the bar.
+    Reveal(message, modifier) { Snackbar(it, modifier = Modifier.padding(bottom = 8.dp)) }
 }
 
 /**

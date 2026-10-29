@@ -92,7 +92,7 @@ import com.iron.breakfast.ui.screens.matchDisplay
         // A part logged from a screen the resolver opened says "Logged!" here, while the queue goes on.
         ConfirmationSnackbar(
             vm.confirmations.message,
-            Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter).padding(bottom = 8.dp),
+            Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter),
         )
     } }
 }

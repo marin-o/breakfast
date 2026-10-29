@@ -134,7 +134,7 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
             }
         }
         // "Logged!" floats over the end of the list, just above the bar, as on Daily and Meal: nothing moves.
-        ConfirmationSnackbar(vm.confirmations.message, Modifier.align(Alignment.BottomCenter).padding(horizontal = Gutter).padding(bottom = 8.dp))
+        ConfirmationSnackbar(vm.confirmations.message, Modifier.align(Alignment.BottomCenter).padding(horizontal = Gutter))
     }
 }
 
