@@ -183,6 +183,26 @@ class RecipeSurfacesTest {
         shows("RECIPES")
     }
 
+    /** A recipe entry is edited against its recipe while it exists: its units are the recipe's, its preview follows it. */
+    @Test fun aRecipeEntryIsEditedAgainstItsRecipe() {
+        val eaten = entry("e1").copy(foodId = chili.id, foodName = chili.name, enteredUnit = com.iron.breakfast.domain.MeasureUnit.PORTION)
+        app.diaryHas(eaten)
+        val food = app.entryEdit.foodOf(chili.id)!!
+        assertEquals(chili.id, food.id)
+        assertEquals(
+            listOf(com.iron.breakfast.domain.MeasureUnit.PORTION, com.iron.breakfast.domain.MeasureUnit.GRAM),
+            com.iron.breakfast.entry.entryUnits(food),
+        )
+        assertTrue(app.entryEdit.amountEditable(eaten))
+        // 300 g of 1600 g of a 1250 kcal dish.
+        assertEquals(234.375, app.entryEdit.preview(eaten, chili.id, 300.0, com.iron.breakfast.domain.MeasureUnit.GRAM)!!.nutrition.calories, 1e-9)
+        // Deleted, the entry scales its own snapshot in its own unit only.
+        app.recipesAre()
+        assertNull(app.entryEdit.foodOf(chili.id))
+        assertNull(app.entryEdit.preview(eaten, chili.id, 300.0, com.iron.breakfast.domain.MeasureUnit.GRAM))
+        assertEquals(140.0, app.entryEdit.preview(eaten, chili.id, 2.0, com.iron.breakfast.domain.MeasureUnit.PORTION)!!.nutrition.calories, 1e-9)
+    }
+
     @Test fun aReplacedDiaryClosesTheRecipePage() {
         app.surfaces.openRecipes()
         app.recipes.openRecipe(chili)

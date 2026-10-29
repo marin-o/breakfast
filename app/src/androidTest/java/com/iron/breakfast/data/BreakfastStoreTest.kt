@@ -366,6 +366,33 @@ class BreakfastStoreTest {
         assertEquals(listOf(logged, byLibrary), store.entries().filter { it.foodId == chili.id })
     }
 
+    /**
+     * A recipe entry is edited against its recipe while it exists: quick edit from portions to grams and back, full
+     * edit as a live recipe. Once the recipe is deleted, its amount scales the entry's own snapshot, in its own unit.
+     */
+    @Test
+    fun aRecipeEntryIsEditedAgainstItsRecipeAndScalesOnceItIsGone() = runBlocking {
+        val engine = BreakfastEngine(store)
+        store.upsertFood(mince)
+        engine.saveRecipe(chili)
+        val logged = engine.save("1 portion chili", mealSlot = MealSlot.DINNER, dayKey = "2026-10-29").entries.single()
+        assertEquals(MeasureUnit.PORTION, logged.enteredUnit)
+        // (1250 + 300) kcal in 1200 g: 300 g is 387.5 kcal.
+        val grams = (engine.replaceEntryAmountUnit(logged.id, "300 g") as ReplacementResult.Success).entry
+        assertEquals(MeasureUnit.GRAM, grams.enteredUnit)
+        assertEquals(387.5, grams.nutritionSnapshot.calories, 1e-9)
+        val back = (engine.replaceEntryAmountUnit(logged.id, "2 portion") as ReplacementResult.Success).entry
+        assertEquals(775.0, back.nutritionSnapshot.calories, 1e-9)
+        val full = (engine.replaceEntryDraft(logged.id, chili.id, 600.0, MeasureUnit.GRAM, MealSlot.LUNCH, "2026-10-29") as ReplacementResult.Success).entry
+        assertEquals(775.0, full.nutritionSnapshot.calories, 1e-9)
+        assertEquals(MealSlot.LUNCH, full.mealSlot)
+
+        engine.deleteRecipe(chili.id)
+        val scaled = (engine.replaceEntryAmountUnit(logged.id, "300 g") as ReplacementResult.Success).entry
+        assertEquals(387.5, scaled.nutritionSnapshot.calories, 1e-9)
+        assertTrue(engine.replaceEntryAmountUnit(logged.id, "1 portion") is ReplacementResult.Failure)
+    }
+
     /** Export, Replace diary and Delete all carry or clear the recipes with everything else. */
     @Test
     fun recipesGoWithTheDiaryThroughImportAndDeleteAll() = runBlocking {

@@ -192,7 +192,8 @@ class BreakfastEngine(
         editEntry(entryId, "That entry is no longer available.") { old ->
             val parsed = parseStrictAmountUnit(text)
                 ?: return@editEntry ReplacementResult.Failure("Enter a positive amount and a supported unit, such as 100 g or 1 tbsp.")
-            val food = store.foods().firstOrNull { it.id == old.foodId }
+            // A recipe entry follows its recipe while it exists (portion and g both); a deleted one scales its snapshot.
+            val food = matchable().firstOrNull { it.id == old.foodId }
                 ?: return@editEntry snapshotScaled(old, parsed.amount, parsed.unit)?.let { ReplacementResult.Success(old.withScaled(parsed.amount, it)) }
                     ?: ReplacementResult.Failure("The original food for this entry is no longer available.")
             val calculation = calculator.calculate(food, parsed.amount, parsed.unit)
@@ -240,7 +241,8 @@ class BreakfastEngine(
         mealSlot: MealSlot,
         dayKey: String,
     ): ReplacementResult = editEntry(entryId, "That saved entry is no longer available.") { old ->
-        val food = store.foods().firstOrNull { it.id == foodId }
+        // A recipe that still exists is edited as a live recipe; a deleted one scales the entry's own snapshot.
+        val food = matchable().firstOrNull { it.id == foodId }
         // Its food deleted, an entry kept on it can still change its amount (in its own unit), meal and day.
         if (food == null) {
             val scaled = snapshotScaled(old, amount, unit).takeIf { foodId == old.foodId }
@@ -468,12 +470,15 @@ internal fun cachedFoodForLogging(candidate: FoodRecord, byId: FoodRecord?, byBa
 
 data class ParsedAmountUnit(val amount: Double, val unit: MeasureUnit)
 
+private val PORTION_UNIT = Regex("(?iu)portions?")
+
 /** Strict amount/unit parsing used by saved-entry quick edit. */
 fun parseStrictAmountUnit(text: String): ParsedAmountUnit? {
     val parsed = ShorthandParser().parse(text)
     val amount = parsed.amount
-    val unit = parsed.unit
-    if (parsed.foodPhrase.isNotBlank() || amount == null || unit == null ||
+    // "portion" is no unit word of the shorthand (a food's phrase keeps it): here, alone after the amount, it is one.
+    val unit = parsed.unit ?: MeasureUnit.PORTION.takeIf { PORTION_UNIT.matches(parsed.foodPhrase.trim()) }
+    if ((parsed.foodPhrase.isNotBlank() && parsed.unit != null) || amount == null || unit == null ||
         !amount.isFinite() || amount <= 0.0
     ) return null
     return ParsedAmountUnit(amount, unit)

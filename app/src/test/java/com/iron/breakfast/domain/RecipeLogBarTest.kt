@@ -81,6 +81,44 @@ class RecipeLogBarTest {
         assertEquals(listOf("egg", "recipe-chili"), planner.plan(chosen.input).entries.map { it.food.id })
     }
 
+    /** "portion" is no unit for a food: a food's phrase keeps the word and logs exactly as it did before recipes. */
+    @Test fun aFoodTypedWithPortionLogsAsBeforeRecipes() {
+        val parsed = ShorthandParser().parse("2 portions rice")
+        assertEquals("portions rice", parsed.foodPhrase)
+        assertNull(parsed.unit)
+        val portionCake = FoodRecord("custom-portion-cake", "Portion cake", emptyList(), "Personal food", FoodOrigin.CUSTOM,
+            NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(350.0, 5.0, 50.0, 15.0)), defaultAmount = 80.0, defaultUnit = MeasureUnit.GRAM)
+        val rice = FoodRecord("custom-rice", "Rice", emptyList(), "Personal food", FoodOrigin.CUSTOM,
+            NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(130.0, 2.7, 28.0, 0.3)), defaultAmount = 150.0, defaultUnit = MeasureUnit.GRAM)
+        val foods = FoodCatalog.fixtures + portionCake + rice
+        // A recipe that could take "cake" or "rice" as portions changes nothing for a food the part names as it reads.
+        val cake = Recipe("recipe-cake", "Cake", portions = 8.0, ingredients = listOf(ingredient))
+        val withRecipes = planner(listOf(cake, chili), foods)
+        val without = LogPlanner(FoodMatcher(foods))
+        fun logged(plan: LogPlan) = plan.entries.map { Triple(it.food.id, it.amount, it.unit) } to plan.unresolved
+        for (text in listOf("2 portion cake", "2 portions rice", "a portion of fries", "half portion pasta", "portion cake")) {
+            assertEquals(text, logged(without.plan(text)), logged(withRecipes.plan(text)))
+        }
+        val logged = withRecipes.plan("2 portion cake").entries.single()
+        assertEquals(portionCake.id, logged.food.id)
+        assertEquals(2.0 to MeasureUnit.GRAM, logged.amount to logged.unit)
+    }
+
+    @Test fun aRecipeWithPortionsTakesThemInAnyPhrasing() {
+        assertEquals(0.5 to MeasureUnit.PORTION, resolved("half portion chili").let { it.amount to it.unit })
+        assertEquals(1.0 to MeasureUnit.PORTION, resolved("a portion of chili").let { it.amount to it.unit })
+        assertEquals(1000.0, resolved("2 portions of chili").calculation.nutrition.calories, 1e-9)
+        assertEquals(250.0, resolved("half portion chili").calculation.nutrition.calories, 1e-9)
+        // A recipe without portions takes none.
+        assertTrue(planner().plan("2 portions lentil soup").entries.isEmpty())
+        // The quick edit reads a portion after an amount; a food phrase is still refused.
+        assertEquals(ParsedAmountUnit(1.5, MeasureUnit.PORTION), parseStrictAmountUnit("1.5 portion"))
+        assertEquals(ParsedAmountUnit(2.0, MeasureUnit.PORTION), parseStrictAmountUnit("2 portions"))
+        assertEquals(ParsedAmountUnit(300.0, MeasureUnit.GRAM), parseStrictAmountUnit("300 g"))
+        assertNull(parseStrictAmountUnit("2 portion rice"))
+        assertNull(parseStrictAmountUnit("portion"))
+    }
+
     @Test fun portionsReadAsTheyAreCounted() {
         assertEquals("1 portion", countedQuantity(1.0, MeasureUnit.PORTION))
         assertEquals("1.5 portions", countedQuantity(1.5, MeasureUnit.PORTION))

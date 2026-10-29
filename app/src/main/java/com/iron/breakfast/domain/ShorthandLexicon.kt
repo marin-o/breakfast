@@ -62,8 +62,6 @@ object ShorthandLexicon {
         "piece" to UnitSpec(MeasureUnit.PIECE), "pieces" to UnitSpec(MeasureUnit.PIECE), "pc" to UnitSpec(MeasureUnit.PIECE),
         "pcs" to UnitSpec(MeasureUnit.PIECE), "slice" to UnitSpec(MeasureUnit.PIECE), "slices" to UnitSpec(MeasureUnit.PIECE),
         "парче" to UnitSpec(MeasureUnit.PIECE), "парчиња" to UnitSpec(MeasureUnit.PIECE),
-        // A recipe's portion ("2 portions chili"); a food has no such unit, so for a food the part is not counted.
-        "portion" to UnitSpec(MeasureUnit.PORTION), "portions" to UnitSpec(MeasureUnit.PORTION),
     )
 
     /** The unit a word reads as, with its factor. Null for anything that is not a unit (cups, for one, stay unsupported). */

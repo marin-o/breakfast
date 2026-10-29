@@ -116,20 +116,51 @@ class LogPlanner(
 
     private fun computeResolution(raw: String): SegmentResolution? {
         pins[raw]?.let { picked ->
-            val (amount, unit) = quantityFor(reading(raw), picked)
+            val (amount, unit) = quantityFor(readingFor(raw, picked), picked)
             val ranked = RankedFood(picked, score = 1.0, reasons = listOf("picked"), fullMatch = true, wholeMatch = true)
             return SegmentResolution(raw, listOf(ranked), picked, amount, unit, calculator.calculate(picked, amount, unit))
         }
         val reading = reading(raw)
         // A word separator left inside one part ("Ben & Jerry's") names one food only when one food covers all of it.
         if (parser.hasWordSeparator(raw) && !matcher.covers(reading.phrase)) return null
-        val ranked = matcher.suggestions(reading.phrase, preferences, SUGGESTION_LIMIT)
+        val plain = resolutionOf(raw, reading, matcher.suggestions(reading.phrase, preferences, SUGGESTION_LIMIT))
+        if (plain != null && plain.supported && !plain.needsChoice) return plain
+        // Only when the part does not resolve as it reads: "2 portions chili" may be portions of a recipe. A food's
+        // phrase is never read this way, so "2 portions rice" logs exactly as it did before recipes.
+        val portions = portionReading(reading) ?: return plain
+        val recipes = matcher.suggestions(portions.phrase, preferences, SUGGESTION_LIMIT).filter { takesPortions(it.food) }
+        val recipe = resolutionOf(raw, portions, recipes)
+        return if (recipe != null && recipe.supported && !recipe.needsChoice) recipe else plain
+    }
+
+    private fun resolutionOf(raw: String, reading: Reading, ranked: List<RankedFood>): SegmentResolution? {
         val top = ranked.firstOrNull() ?: return null
         val (amount, unit) = quantityFor(reading, top.food)
         // A partial match (not every identity token matches) is only a choice, as is a weak typo or spelling match.
         val needsChoice = !top.fullMatch || (top.weakMatch && (ranked.size > 1 || top.firstLetterEdit))
         return SegmentResolution(raw, ranked, top.food, amount, unit, calculator.calculate(top.food, amount, unit), needsChoice)
     }
+
+    /**
+     * [reading] as portions of a recipe: a part whose food text starts with "portion" or "portions" (and an optional
+     * "of"), with no unit typed, reads as that many portions of the rest ("half portion chili", "a portion of chili").
+     * Null for any other part. Only a recipe that has portions ([takesPortions]) is ever matched this way.
+     */
+    private fun portionReading(reading: Reading): Reading? {
+        if (reading.wholeName || reading.parsed.unit != null) return null
+        val match = PORTION_WORDS.matchEntire(reading.parsed.foodPhrase.trim()) ?: return null
+        return Reading(reading.parsed.copy(foodPhrase = match.groupValues[1], unit = MeasureUnit.PORTION), wholeName = false)
+    }
+
+    /** How [raw] reads for [food]: as portions when [food] is a recipe with portions and the part names them, else as it reads. */
+    private fun readingFor(raw: String, food: FoodRecord): Reading {
+        val reading = reading(raw)
+        return if (takesPortions(food)) portionReading(reading) ?: reading else reading
+    }
+
+    /** A recipe with portions: the only thing a "portion" is ever counted for. */
+    private fun takesPortions(food: FoodRecord): Boolean = isRecipeId(food.id) &&
+        (food.nutrition.unit == MeasureUnit.PORTION || food.conversions.any { it.unit == MeasureUnit.PORTION })
 
     private fun reading(raw: String): Reading {
         val parsed = parser.parse(raw, probe)
@@ -153,7 +184,7 @@ class LogPlanner(
 
     /** The calories Add would log for [raw] matched to [food]. The Log's choices show exactly this. */
     fun calculationFor(raw: String, food: FoodRecord): Calculation {
-        val reading = reading(raw)
+        val reading = readingFor(raw, food)
         val (amount, unit) = quantityFor(reading, food)
         return calculator.calculate(food, amount, unit)
     }
@@ -173,7 +204,7 @@ class LogPlanner(
      * name. Re-resolving it gives the same food, amount and unit the choice showed.
      */
     fun chosenText(raw: String, food: FoodRecord): String {
-        val (amount, unit) = quantityFor(reading(raw), food)
+        val (amount, unit) = quantityFor(readingFor(raw, food), food)
         return partText(food, amount, unit)
     }
 
@@ -372,6 +403,8 @@ class LogPlanner(
         const val SUGGESTION_LIMIT = 4
         private val WHITESPACE = Regex("\\s+")
         private val LEADING_ARTICLE = Regex("(?iu)^(?:a|an)\\s+")
+        /** "portion chili", "portions of chili": the food text of a part that may name a recipe's portions. */
+        private val PORTION_WORDS = Regex("(?iu)^portions?(?:\\s+of)?\\s+(.+)$")
     }
 }
 

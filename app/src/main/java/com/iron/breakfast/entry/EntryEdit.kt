@@ -9,6 +9,7 @@ import com.iron.breakfast.domain.snapshotScalable
 import com.iron.breakfast.domain.snapshotScaled
 import com.iron.breakfast.domain.Calculation
 import com.iron.breakfast.domain.FoodRecord
+import com.iron.breakfast.domain.asFood
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
@@ -90,7 +91,11 @@ internal class EntryEdit(
     }
 
     /** "Edit amount" is offered: the food is stored, or the entry's own snapshot can be scaled ([snapshotScalable]). */
-    fun amountEditable(entry: MealEntry): Boolean = session.foods.any { it.id == entry.foodId } || snapshotScalable(entry)
+    fun amountEditable(entry: MealEntry): Boolean = foodOf(entry.foodId) != null || snapshotScalable(entry)
+
+    /** The food an entry is edited against: a stored food, or a recipe that still exists, as a food ([asFood]). */
+    fun foodOf(id: String): FoodRecord? =
+        session.foods.firstOrNull { it.id == id } ?: session.recipes.firstOrNull { it.id == id }?.asFood()
 
     fun beginFull(entry: MealEntry) {
         if (!begin(entry, EntryEditMode.FULL)) return
@@ -135,14 +140,14 @@ internal class EntryEdit(
     fun inputChanged() { if (mode != EntryEditMode.NONE) error = null }
 
     fun editingEntry(): MealEntry? = editingEntryId?.let { id -> session.entries.firstOrNull { it.id == id } }
-    fun editingFood(): FoodRecord? = editingFoodId?.let { id -> session.foods.firstOrNull { it.id == id } }
+    fun editingFood(): FoodRecord? = editingFoodId?.let(::foodOf)
 
     /**
      * What [entry] edited to [foodId], [amount] and [unit] comes to, for the preview. With its own food gone, its
      * snapshot scaled ([snapshotScaled]); null when that cannot be.
      */
     fun preview(entry: MealEntry, foodId: String, amount: Double, unit: MeasureUnit): Calculation? {
-        val food = session.foods.firstOrNull { it.id == foodId }
+        val food = foodOf(foodId)
         return if (food != null) calculator.calculate(food, amount, unit) else snapshotScaled(entry, amount, unit).takeIf { foodId == entry.foodId }
     }
 

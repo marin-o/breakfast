@@ -153,7 +153,7 @@ internal fun EntryQuickEditSheet(entryEdit: EntryEdit, session: DiarySession, en
     // Saveable: a dark-mode or font-size change recreates the activity and must not reset what was typed.
     var amount by rememberSaveable(entry.id) { mutableStateOf(editAmountText(entry.enteredAmount)) }
     var unit by rememberSaveable(entry.id) { mutableStateOf(entry.enteredUnit) }
-    val food = session.foods.firstOrNull { it.id == entry.foodId }
+    val food = entryEdit.foodOf(entry.foodId)
     val units = food?.let(::entryUnits).orEmpty().ifEmpty { listOf(entry.enteredUnit) }
     val preview = amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { entryEdit.preview(entry, entry.foodId, it, unit) }
     val changed = entryDraftNutritionChanged(entry, amount, unit, entry.foodId)
@@ -205,7 +205,7 @@ private fun entryDraftNutritionChanged(entry: MealEntry, amount: String, unit: M
 @Composable
 internal fun EntryFullEditScreen(entryEdit: EntryEdit, session: DiarySession, dayState: DayState, entry: MealEntry) {
     val colors = LocalBreakfastColors.current
-    val selectedFood = entryEdit.editingFood() ?: session.foods.firstOrNull { it.id == entry.foodId }
+    val selectedFood = entryEdit.editingFood() ?: entryEdit.foodOf(entry.foodId)
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     var amount by rememberSaveable(entry.id) { mutableStateOf(editAmountText(entry.enteredAmount)) }
     var unit by rememberSaveable(entry.id) { mutableStateOf(entry.enteredUnit) }
