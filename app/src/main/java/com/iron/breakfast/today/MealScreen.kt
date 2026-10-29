@@ -173,7 +173,7 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel
         // Swipe reveals the delete panel; the panel is the only place `bad` fills a surface. It shows as wide as the
         // row has moved, so it grows with the finger; the full panel under it keeps its width, and "Delete" its line.
         if (revealOffset < 0f) Box(
-            Modifier.align(Alignment.CenterEnd).width(with(density) { (-revealOffset).toDp() }).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).clipToBounds().background(colors.bad).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { vm.undo.delete(entry) },
+            Modifier.align(Alignment.CenterEnd).width(with(density) { (-revealOffset.roundToInt()).toDp() }).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).clipToBounds().background(colors.bad).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { vm.undo.delete(entry) },
         ) {
             Row(
                 Modifier.wrapContentWidth(Alignment.Start, unbounded = true).widthIn(min = with(density) { deleteWidth.toDp() }).fillMaxHeight(),
