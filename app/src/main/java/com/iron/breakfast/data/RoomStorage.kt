@@ -50,7 +50,9 @@ data class FoodEntity(
      * when the store opens ([BreakfastStore.initialize]); the app never writes true.
      */
     val archived: Boolean = false,
-    @ColumnInfo(name = "personal_override") val personalOverride: Boolean = false
+    @ColumnInfo(name = "personal_override") val personalOverride: Boolean = false,
+    /** Grams in 100 ml; null when unknown (every food before schema 9). */
+    @ColumnInfo(name = "density_g_per_100ml") val density: Double? = null,
 )
 
 @Entity(tableName = "food_aliases", primaryKeys = ["foodId", "alias"])
@@ -103,7 +105,9 @@ data class MealEntryEntity(
     @ColumnInfo(name = "saved_at_epoch_ms") val savedAtEpochMs: Long,
     @ColumnInfo(name = "source_phrase") val sourcePhrase: String,
     @ColumnInfo(name = "meal_slot") val mealSlot: String,
-    @ColumnInfo(name = "day_key") val dayKey: String
+    @ColumnInfo(name = "day_key") val dayKey: String,
+    /** The serving name or converted unit the entry was logged in (since schema 9); null for a plain unit. */
+    @ColumnInfo(name = "entered_unit_label") val enteredUnitLabel: String? = null,
 )
 
 /** A recipe: its yield in portions, grams or millilitres of the finished dish (at least one; see `domain/Recipes.kt`). */
@@ -336,7 +340,7 @@ interface RecipeIngredientDao {
         RecipeAliasEntity::class,
         RecipeIngredientEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true
 )
 abstract class BreakfastDatabase : RoomDatabase() {
@@ -431,6 +435,21 @@ val ROOM_MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
     }
 }
 
+/**
+ * Measurements: a food's density and an entry's unit label, both nullable, and every serving named by what it is
+ * matched by ("piece", "tbsp", "tsp" for the rows that had no name). Numbers are not touched; a row whose new name
+ * would clash with one already there keeps its blank name, which reads as the same name.
+ */
+val ROOM_MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `foods` ADD COLUMN `density_g_per_100ml` REAL")
+        db.execSQL("ALTER TABLE `meal_entries` ADD COLUMN `entered_unit_label` TEXT")
+        listOf("PIECE" to "piece", "TABLESPOON" to "tbsp", "TEASPOON" to "tsp").forEach { (unit, name) ->
+            db.execSQL("UPDATE OR IGNORE `serving_conversions` SET `label` = ? WHERE `unit` = ? AND `label` = ''", arrayOf<Any>(name, unit))
+        }
+    }
+}
+
 internal fun fixtureRowsMissingFrom(existingIds: Set<String>): List<FoodRecord> =
     FoodCatalog.fixtures.filterNot { it.id in existingIds }
 
@@ -454,7 +473,8 @@ fun FoodRecord.toEntity(): FoodEntity = FoodEntity(
     sourceDescription = sourceDescription,
     brand = brand,
     barcode = barcode,
-    personalOverride = personalOverride
+    personalOverride = personalOverride,
+    density = density,
 )
 
 fun FoodRecord.toAliasEntities(): List<FoodAliasEntity> = aliases.distinct().map { alias ->
@@ -468,7 +488,7 @@ fun FoodRecord.toConversionEntities(): List<ServingConversionEntity> = conversio
         baseUnitsPerServing = conversion.baseUnitsPerServing,
         provenance = conversion.provenance,
         approximate = conversion.approximate,
-        label = conversion.label.orEmpty()
+        label = conversion.name.orEmpty()
     )
 }
 
@@ -501,7 +521,8 @@ fun FoodEntity.toDomain(
         sourceDescription = sourceDescription,
         brand = brand,
         barcode = barcode,
-        personalOverride = personalOverride
+        personalOverride = personalOverride,
+        density = density,
     )
 
 fun Preference.toEntity() = PreferenceEntity(foodId, explicitCount, lastReinforcedEpochMs)
@@ -525,7 +546,8 @@ fun MealEntry.toEntity() = MealEntryEntity(
     savedAtEpochMs = savedAtEpochMs,
     sourcePhrase = sourcePhrase,
     mealSlot = mealSlot.name,
-    dayKey = dayKey.ifBlank { dayKeyForEpochMs(savedAtEpochMs) }
+    dayKey = dayKey.ifBlank { dayKeyForEpochMs(savedAtEpochMs) },
+    enteredUnitLabel = enteredUnitLabel,
 )
 
 fun MealEntryEntity.toDomain() = MealEntry(
@@ -547,7 +569,8 @@ fun MealEntryEntity.toDomain() = MealEntry(
     savedAtEpochMs = savedAtEpochMs,
     sourcePhrase = sourcePhrase,
     mealSlot = runCatching { MealSlot.valueOf(mealSlot) }.getOrDefault(MealSlot.BREAKFAST),
-    dayKey = dayKey.ifBlank { dayKeyForEpochMs(savedAtEpochMs) }
+    dayKey = dayKey.ifBlank { dayKeyForEpochMs(savedAtEpochMs) },
+    enteredUnitLabel = enteredUnitLabel,
 )
 
 

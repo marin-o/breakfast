@@ -29,13 +29,13 @@ object BuiltInCatalogSync {
     }
 
     /**
-     * A food as storage keeps it: aliases are a set (read back in table order, not typed order) and a blank serving
-     * label is no label. Comparing in this form keeps a row that only came back from the database differently
+     * A food as storage keeps it: aliases are a set (read back in table order, not typed order) and a serving is kept
+     * by its name ("piece" for a piece row with no label, as storage writes it). Comparing in this form keeps a row that only came back from the database differently
      * ordered from counting as changed, which rewrote (and moved to the end of the table) catalogue rows at every start.
      */
     private fun storedForm(food: FoodRecord): FoodRecord = food.copy(
         aliases = food.aliases.distinct().sorted(),
-        conversions = food.conversions.map { it.copy(label = it.label?.ifBlank { null }) }
+        conversions = food.conversions.map { it.copy(label = it.name) }
             .sortedWith(compareBy({ it.unit }, { it.label.orEmpty() })),
     )
 }

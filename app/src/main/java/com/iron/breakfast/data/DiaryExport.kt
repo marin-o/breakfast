@@ -37,7 +37,7 @@ internal const val DIARY_FORMAT = "breakfast-diary"
 internal const val DIARY_FORMAT_VERSION = 2
 
 /** The Room schema the rows were read from; a file from a newer schema is refused. Keep equal to [BreakfastDatabase]. */
-internal const val DIARY_SCHEMA_VERSION = 8
+internal const val DIARY_SCHEMA_VERSION = 9
 
 /** A file bigger than this is refused before it is parsed. A year of logging is well under 5 MB. */
 internal const val DIARY_MAX_BYTES = 32L * 1024 * 1024
@@ -102,6 +102,8 @@ internal data class FoodDto(
     val barcode: String?,
     val archived: Boolean,
     val personalOverride: Boolean,
+    // Since schema 9; an older file has none and reads as no density.
+    val density: Double? = null,
 )
 
 @Serializable
@@ -139,6 +141,8 @@ internal data class MealEntryDto(
     val sourcePhrase: String,
     val mealSlot: String,
     val dayKey: String,
+    // Since schema 9; an older file has none and reads as a plain unit.
+    val enteredUnitLabel: String? = null,
 )
 
 @Serializable
@@ -280,6 +284,7 @@ internal fun diaryProblem(file: DiaryFile): String? {
             !f.calories.nonNegative() -> return "$at: calories ${f.calories}"
             !f.protein.nonNegativeOrUnknown() || !f.carbohydrates.nonNegativeOrUnknown() || !f.fat.nonNegativeOrUnknown() -> return "$at: macros"
             !f.defaultAmount.nonNegative() -> return "$at: default amount ${f.defaultAmount}"
+            f.density != null && !f.density.positive() -> return "$at: density ${f.density}"
         }
     }
 
@@ -375,6 +380,7 @@ internal fun diaryProblem(file: DiaryFile): String? {
             !e.snapshotCalories.nonNegative() -> return "$at: calories ${e.snapshotCalories}"
             !e.snapshotProtein.nonNegativeOrUnknown() || !e.snapshotCarbohydrates.nonNegativeOrUnknown() || !e.snapshotFat.nonNegativeOrUnknown() -> return "$at: macros"
             e.savedAtEpochMs < 0 -> return "$at: time ${e.savedAtEpochMs}"
+            e.enteredUnitLabel != null && e.enteredUnitLabel.isBlank() -> return "$at: blank unit label"
         }
     }
     return null
@@ -444,11 +450,13 @@ internal fun diaryFileName(date: LocalDate): String = "breakfast-$date.json"
 private fun FoodEntity.toDto() = FoodDto(
     id, name, category, origin, nutritionAmount, nutritionUnit, calories, protein, carbohydrates, fat, defaultAmount,
     defaultUnit, sourceId, sourceName, sourceRelease, preparation, sourceDescription, brand, barcode, archived, personalOverride,
+    density,
 )
 
 private fun FoodDto.toEntity() = FoodEntity(
     id, name, category, origin, nutritionAmount, nutritionUnit, calories, protein, carbohydrates, fat, defaultAmount,
     defaultUnit, sourceId, sourceName, sourceRelease, preparation, sourceDescription, brand, barcode, archived, personalOverride,
+    density,
 )
 
 private fun ServingConversionEntity.toDto() = ServingConversionDto(foodId, unit, baseUnitsPerServing, provenance, approximate, label)
@@ -458,11 +466,13 @@ private fun ServingConversionDto.toEntity() = ServingConversionEntity(foodId, un
 private fun MealEntryEntity.toDto() = MealEntryDto(
     id, foodId, foodName, enteredAmount, enteredUnit, resolvedBaseAmount, resolvedBaseUnit, snapshotCalories, snapshotProtein,
     snapshotCarbohydrates, snapshotFat, conversionProvenance, approximateConversion, savedAtEpochMs, sourcePhrase, mealSlot, dayKey,
+    enteredUnitLabel,
 )
 
 private fun MealEntryDto.toEntity() = MealEntryEntity(
     id, foodId, foodName, enteredAmount, enteredUnit, resolvedBaseAmount, resolvedBaseUnit, snapshotCalories, snapshotProtein,
     snapshotCarbohydrates, snapshotFat, conversionProvenance, approximateConversion, savedAtEpochMs, sourcePhrase, mealSlot, dayKey,
+    enteredUnitLabel,
 )
 
 private fun RecipeIngredientEntity.toDto() = RecipeIngredientDto(

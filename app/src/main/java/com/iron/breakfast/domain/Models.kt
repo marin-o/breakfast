@@ -101,9 +101,15 @@ data class ServingConversion(
     val baseUnitsPerServing: Double,
     val provenance: String,
     val approximate: Boolean = false,
-    /** Optional printed name for a personal serving such as "bottle" or "jar". */
+    /**
+     * The serving's name, the key it is matched by ("bottle", "slice", "can"). A row without one is named by its unit
+     * ([name]); a row in the basis unit without one is the basis itself, not a serving.
+     */
     val label: String? = null
-)
+) {
+    /** The name the serving is matched and shown by: its label, else "piece", "tbsp" or "tsp" ([defaultServingName]). */
+    val name: String? get() = label?.trim()?.ifBlank { null } ?: defaultServingName(unit)
+}
 
 @Serializable
 data class FoodRecord(
@@ -124,7 +130,9 @@ data class FoodRecord(
     val brand: String? = null,
     val barcode: String? = null,
     /** Local edits take precedence over later imports of the same source record. */
-    val personalOverride: Boolean = false
+    val personalOverride: Boolean = false,
+    /** Grams in 100 ml ("100 ml = X g"), when known: with it both g and ml, and every unit of either, work. */
+    val density: Double? = null,
 ) {
     fun allNames(): List<String> = listOf(name) + aliases
 
@@ -163,7 +171,12 @@ data class MealEntry(
     val mealSlot: MealSlot = MealSlot.BREAKFAST,
     val dayKey: String = dayKeyForEpochMs(savedAtEpochMs),
     /** Immutable nutrition basis captured when this entry was saved. */
-    val resolvedBaseUnit: MeasureUnit = MeasureUnit.UNKNOWN
+    val resolvedBaseUnit: MeasureUnit = MeasureUnit.UNKNOWN,
+    /**
+     * What the amount was logged in, as shown: a serving's name for [MeasureUnit.SERVING] ("slice"), or a unit the
+     * shorthand converted ("kg", "oz", "dl", with [enteredAmount] in g or ml). Null for a plain unit.
+     */
+    val enteredUnitLabel: String? = null,
 )
 
 /** The calendar date of [epochMs], for stored entries that lack a day. A new log takes its day from [dayKeyFor]. */

@@ -223,7 +223,7 @@ class BreakfastDatabaseTest {
         migrated.close()
 
         // The app's own entities read the migrated file back: every old row, and the recipe as the store maps it.
-        val room = Room.databaseBuilder(context, BreakfastDatabase::class.java, name).addMigrations(ROOM_MIGRATION_6_7, ROOM_MIGRATION_7_8).build()
+        val room = Room.databaseBuilder(context, BreakfastDatabase::class.java, name).addMigrations(ROOM_MIGRATION_6_7, ROOM_MIGRATION_7_8, ROOM_MIGRATION_8_9).build()
         try {
             runBlocking {
                 assertEquals(listOf("e-3", "e-1", "e-2"), room.mealEntryDao().all().map { it.toDomain().id })
@@ -276,7 +276,7 @@ class BreakfastDatabaseTest {
         migrated.execSQL("UPDATE recipes SET total_volume_ml = 1500.0 WHERE id = 'recipe-soup'")
         migrated.close()
 
-        val room = Room.databaseBuilder(context, BreakfastDatabase::class.java, name).addMigrations(ROOM_MIGRATION_7_8).build()
+        val room = Room.databaseBuilder(context, BreakfastDatabase::class.java, name).addMigrations(ROOM_MIGRATION_7_8, ROOM_MIGRATION_8_9).build()
         try {
             runBlocking {
                 val recipes = recipesOf(room.recipeDao().all(), room.recipeAliasDao().all(), room.recipeIngredientDao().all()).associateBy { it.id }
@@ -299,9 +299,71 @@ class BreakfastDatabaseTest {
         deleteTestDatabase(context, name)
     }
 
+    /**
+     * Measurements, over the diary the phone has at schema 8: every row stays as it was, a food's density and an entry's
+     * unit label come in empty, and each serving is named by what it is matched by ("piece", "tbsp", "tsp"), its numbers
+     * kept. A named serving keeps its name; a piece row that would clash with one already named "piece" keeps its blank
+     * name (which reads the same).
+     */
+    @Test
+    fun migration8To9NamesTheServingsAndAddsEmptyDensityAndUnitLabel() {
+        val name = "migration-v9-${System.nanoTime()}.db".also(migrationNames::add)
+        val old = migrationHelper.createDatabase(name, 8)
+        old.execSQL("INSERT INTO foods VALUES ('banana','Banana','Fruit','GENERIC',100.0,'GRAM',89.0,1.1,22.8,0.3,1.0,'PIECE','fdc-1105314','USDA','2019-04',NULL,'Bananas, raw',NULL,NULL,0,0)")
+        old.execSQL("INSERT INTO foods VALUES ('custom-pb','Кикирики путер','Personal food','CUSTOM',100.0,'GRAM',588.0,25.1,20.0,50.0,1.0,'TABLESPOON',NULL,NULL,NULL,NULL,NULL,NULL,NULL,0,1)")
+        old.execSQL("INSERT INTO foods VALUES ('custom-kefir','Kefir','Personal food','CUSTOM',100.0,'MILLILITER',55.0,3.2,4.1,NULL,330.0,'MILLILITER',NULL,NULL,NULL,NULL,NULL,NULL,NULL,0,1)")
+        old.execSQL("INSERT INTO serving_conversions VALUES ('banana','PIECE',118.0,'USDA medium banana',1,'')")
+        old.execSQL("INSERT INTO serving_conversions VALUES ('custom-pb','TABLESPOON',16.0,'standard tablespoon',0,'')")
+        old.execSQL("INSERT INTO serving_conversions VALUES ('custom-pb','TEASPOON',5.3,'standard teaspoon',0,'')")
+        old.execSQL("INSERT INTO serving_conversions VALUES ('custom-pb','PIECE',40.0,'personal serving',0,'piece')")
+        old.execSQL("INSERT INTO serving_conversions VALUES ('custom-pb','PIECE',35.0,'personal serving',0,'')")
+        old.execSQL("INSERT INTO serving_conversions VALUES ('custom-kefir','MILLILITER',100.0,'custom basis',0,'')")
+        old.execSQL("INSERT INTO serving_conversions VALUES ('custom-kefir','MILLILITER',330.0,'personal serving',0,'bottle')")
+        old.execSQL("INSERT INTO meal_entries (id, food_id, food_name, entered_amount, entered_unit, resolved_base_amount, resolved_base_unit, snapshot_calories, snapshot_protein, snapshot_carbohydrates, snapshot_fat, conversion_provenance, approximate_conversion, saved_at_epoch_ms, source_phrase, meal_slot, day_key) VALUES ('e-banana','banana','Banana',2.0,'PIECE',236.0,'GRAM',210.04,2.6,53.8,0.7,'USDA medium banana',1,1761700000000,'2 bananas','BREAKFAST','2026-10-29')")
+        old.execSQL("INSERT INTO recipes VALUES ('recipe-soup','Супа',NULL,NULL,1500.0)")
+        old.close()
+
+        val migrated = migrationHelper.runMigrationsAndValidate(name, 9, true, ROOM_MIGRATION_8_9)
+        fun count(table: String) = migrated.query("SELECT COUNT(*) FROM $table").use { it.moveToFirst(); it.getInt(0) }
+        assertEquals(3, count("foods"))
+        assertEquals(7, count("serving_conversions"))
+        assertEquals(1, count("meal_entries"))
+        assertEquals(1, count("recipes"))
+        assertEquals(3, migrated.query("SELECT COUNT(*) FROM foods WHERE density_g_per_100ml IS NULL").use { it.moveToFirst(); it.getInt(0) })
+        assertEquals(1, migrated.query("SELECT COUNT(*) FROM meal_entries WHERE entered_unit_label IS NULL").use { it.moveToFirst(); it.getInt(0) })
+        fun label(food: String, unit: String, amount: Double) =
+            migrated.query("SELECT label FROM serving_conversions WHERE foodId = ? AND unit = ? AND base_units_per_serving = ?", arrayOf<Any>(food, unit, amount)).use { it.moveToFirst(); it.getString(0) }
+        assertEquals("piece", label("banana", "PIECE", 118.0))
+        assertEquals("tbsp", label("custom-pb", "TABLESPOON", 16.0))
+        assertEquals("tsp", label("custom-pb", "TEASPOON", 5.3))
+        assertEquals("piece", label("custom-pb", "PIECE", 40.0))
+        // Its new name would clash with the row already named "piece": it keeps its blank name, and its numbers.
+        assertEquals("", label("custom-pb", "PIECE", 35.0))
+        assertEquals("", label("custom-kefir", "MILLILITER", 100.0))
+        assertEquals("bottle", label("custom-kefir", "MILLILITER", 330.0))
+        migrated.close()
+
+        val room = Room.databaseBuilder(context, BreakfastDatabase::class.java, name).addMigrations(ROOM_MIGRATION_8_9).build()
+        try {
+            runBlocking {
+                val entry = room.mealEntryDao().all().single().toDomain()
+                assertEquals(MeasureUnit.PIECE, entry.enteredUnit)
+                assertEquals(null, entry.enteredUnitLabel)
+                assertEquals(210.04, entry.nutritionSnapshot.calories, 0.0)
+                val banana = room.foodDao().byId("banana")!!.toDomain(emptyList(), room.servingConversionDao().all().filter { it.foodId == "banana" }.map { it.toDomain() })
+                assertEquals(null, banana.density)
+                assertEquals(listOf("piece"), banana.conversions.map { it.name })
+                assertEquals(1500.0, recipesOf(room.recipeDao().all(), emptyList(), emptyList()).single().totalVolume!!, 0.0)
+            }
+        } finally {
+            room.close()
+        }
+        deleteTestDatabase(context, name)
+    }
+
     /** The whole chain from the first schema ends where a fresh install starts: the recipe tables included. */
     @Test
-    fun migration1To8RunsTheWholeChain() {
+    fun migration1To9RunsTheWholeChain() {
         val name = "migration-chain-${System.nanoTime()}.db".also(migrationNames::add)
         migrationHelper.createDatabase(name, 1).also { old ->
             old.execSQL("CREATE TABLE IF NOT EXISTS foods (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL, origin TEXT NOT NULL, nutrition_amount REAL NOT NULL, nutrition_unit TEXT NOT NULL, calories REAL NOT NULL, protein REAL, carbohydrates REAL, fat REAL, default_amount REAL NOT NULL, default_unit TEXT NOT NULL, source_id TEXT, source_name TEXT, source_release TEXT, preparation TEXT, source_description TEXT)")
@@ -314,8 +376,8 @@ class BreakfastDatabaseTest {
             old.close()
         }
         val migrated = migrationHelper.runMigrationsAndValidate(
-            name, 8, true, ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6, ROOM_MIGRATION_6_7,
-            ROOM_MIGRATION_7_8,
+            name, 9, true, ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6, ROOM_MIGRATION_6_7,
+            ROOM_MIGRATION_7_8, ROOM_MIGRATION_8_9,
         )
         assertEquals(1, migrated.query("SELECT COUNT(*) FROM meal_entries").use { it.moveToFirst(); it.getInt(0) })
         assertEquals(0, migrated.query("SELECT COUNT(*) FROM recipes").use { it.moveToFirst(); it.getInt(0) })

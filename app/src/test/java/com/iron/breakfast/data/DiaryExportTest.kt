@@ -34,7 +34,7 @@ class DiaryExportTest {
     )
 
     private fun rows() = DiaryRows(
-        foods = listOf(food("custom-1"), food("archived-1", archived = true), food("edited-builtin", override = true)),
+        foods = listOf(food("custom-1"), food("archived-1", archived = true), food("edited-builtin", override = true).copy(density = 103.0)),
         aliases = listOf(FoodAliasEntity("custom-1", "бурек"), FoodAliasEntity("custom-1", "burek")),
         conversions = listOf(
             ServingConversionEntity("custom-1", "PIECE", 60.0, "user", approximate = true, label = ""),
@@ -42,7 +42,10 @@ class DiaryExportTest {
         ),
         preferences = listOf(PreferenceEntity("custom-1", 3, 1_700_000_000_000L), PreferenceEntity("recipe-chili", 2, 1_700_000_000_000L)),
         // The second entry's food is gone: its snapshot keeps it readable, so it must survive the round trip.
-        entries = listOf(entry("e-1", "custom-1", 2_000L), entry("e-2", "deleted-food", 1_000L), entry("e-3", "archived-1", 3_000L)),
+        entries = listOf(
+            entry("e-1", "custom-1", 2_000L), entry("e-2", "deleted-food", 1_000L), entry("e-3", "archived-1", 3_000L),
+            entry("e-4", "custom-1", 4_000L).copy(enteredUnit = "PIECE", enteredUnitLabel = "slice"),
+        ),
         recipes = listOf(RecipeEntity("recipe-chili", "Чили", 4.0, 1200.0), RecipeEntity("recipe-soup", "Soup", null, 900.0), RecipeEntity("recipe-broth", "Broth", null, null, 1500.0)),
         recipeAliases = listOf(RecipeAliasEntity("recipe-chili", "chili")),
         // The second ingredient's food is gone: it keeps its own numbers, as an entry does.
@@ -89,7 +92,7 @@ class DiaryExportTest {
 
     @Test fun theFileNamesItsVersionsAndFields() {
         val text = encodeDiary(file())
-        assertTrue(text.startsWith("{\"format\":\"breakfast-diary\",\"formatVersion\":2,\"schemaVersion\":8,\"exportedAtEpochMs\":5000,"))
+        assertTrue(text.startsWith("{\"format\":\"breakfast-diary\",\"formatVersion\":2,\"schemaVersion\":9,\"exportedAtEpochMs\":5000,"))
         assertTrue("\"foodName\":\"Snapshot name e-1\"" in text)
         assertTrue("\"settings\":{\"dayStartHour\":4,\"longDraft\":\"TWO_LINES\"}" in text)
         assertTrue("\"snapshotCarbohydrates\":null" in text)
@@ -107,8 +110,26 @@ class DiaryExportTest {
         assertTrue("recipe" !in text)
         val imported = valid(text)
         assertEquals(3, imported.rows.foods.size)
-        assertEquals(3, imported.rows.entries.size)
+        assertEquals(4, imported.rows.entries.size)
         assertTrue(imported.rows.recipes.isEmpty() && imported.rows.recipeIngredients.isEmpty())
+    }
+
+    /** A file from before schema 9 has no density and no unit label: it imports with none. */
+    @Test fun aFileFromBeforeMeasurementsStillImports() {
+        val text = encodeDiary(file().copy(schemaVersion = 8, mealEntries = file().mealEntries.filter { it.enteredUnitLabel == null }))
+            .replace(",\"density\":null", "").replace(",\"density\":103.0", "").replace(",\"enteredUnitLabel\":null", "")
+        assertTrue("density" !in text && "enteredUnitLabel" !in text)
+        val imported = valid(text)
+        assertTrue(imported.rows.foods.all { it.density == null })
+        assertTrue(imported.rows.entries.all { it.enteredUnitLabel == null })
+    }
+
+    @Test fun measurementFieldsAreChecked() {
+        val f = file()
+        refused(f.copy(foods = f.foods.map { it.copy(density = 0.0) }))
+        refused(f.copy(mealEntries = f.mealEntries.map { it.copy(enteredUnitLabel = " ") }))
+        assertTrue(encodeDiary(f).contains("\"density\":103.0"))
+        assertTrue(encodeDiary(f).contains("\"enteredUnitLabel\":\"slice\""))
     }
 
     /** A format 2 file from schema 7 has no total volume: it imports with none. */
@@ -138,7 +159,7 @@ class DiaryExportTest {
         refused(f.copy(recipeAliases = f.recipeAliases + f.recipeAliases.first()))
         refused(f.copy(recipeIngredients = f.recipeIngredients + f.recipeIngredients.first()))
         refused(f.copy(recipeIngredients = f.recipeIngredients.map { it.copy(recipeId = "recipe-missing") }))
-        refused(f.copy(recipeIngredients = f.recipeIngredients.map { it.copy(enteredUnit = "CUP") }))
+        refused(f.copy(recipeIngredients = f.recipeIngredients.map { it.copy(enteredUnit = "QUART") }))
         refused(f.copy(recipeIngredients = f.recipeIngredients.map { it.copy(snapshotCalories = -1.0) }))
         refused(f.copy(recipeIngredients = f.recipeIngredients.map { it.copy(snapshotProtein = -1.0) }))
         refused(f.copy(preferences = f.preferences + PreferenceDto("recipe-missing", 1, 1L)))
@@ -232,8 +253,8 @@ class DiaryExportTest {
         refused(f.copy(foods = f.foods.mapIndexed { i, it -> if (i == 0) it.copy(origin = "IMPORTED") else it }))
         refused(f.copy(foods = f.foods.mapIndexed { i, it -> if (i == 0) it.copy(nutritionUnit = "OUNCE") else it }))
         refused(f.copy(mealEntries = f.mealEntries.mapIndexed { i, it -> if (i == 0) it.copy(mealSlot = "BRUNCH") else it }))
-        refused(f.copy(mealEntries = f.mealEntries.mapIndexed { i, it -> if (i == 0) it.copy(resolvedBaseUnit = "cup") else it }))
-        refused(f.copy(servingConversions = f.servingConversions.mapIndexed { i, it -> if (i == 0) it.copy(unit = "CUP") else it }))
+        refused(f.copy(mealEntries = f.mealEntries.mapIndexed { i, it -> if (i == 0) it.copy(resolvedBaseUnit = "QUART") else it }))
+        refused(f.copy(servingConversions = f.servingConversions.mapIndexed { i, it -> if (i == 0) it.copy(unit = "QUART") else it }))
         refused(f.copy(settings = DiarySettingsDto(4, "MIDDLE")))
         refused(f.copy(settings = DiarySettingsDto(24, "END")))
     }
