@@ -141,8 +141,10 @@ internal class ProductReview(
             return
         }
         val resolveQueue = queue()
-        // Never null: [chosen] is a meal, and an active queue has its own ([queueLogPlan]).
-        val plan = queueLogPlan(queueActive = resolveQueue != null, resolveQueue?.meal, chosen) ?: return
+        // Never null: [chosen] is a meal, and an active queue has its own ([queueLogPlan]). If that ever breaks, crash
+        // loudly rather than ignore the tap.
+        val plan = queueLogPlan(queueActive = resolveQueue != null, resolveQueue?.meal, chosen)
+            ?: error("Resolve queue is active but has no meal")
         val target = plan.meal
         val scanned = fromScan
         val day = selectedDay()
