@@ -41,6 +41,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
 
@@ -64,6 +65,8 @@ internal class AppStores<D>(
     val transferLog: TransferLog,
     val contributions: OffContributions,
     val offSearch: OffSearchService,
+    /** About, Licences: the bundled licence as text (an app asset); throws when it cannot be read. */
+    val licence: () -> String,
 )
 
 /**
@@ -88,11 +91,11 @@ internal class AppThreads(
  * (stop, start, the 60-second loop) and the log tag.
  */
 internal class AppOwners<D>(
-    stores: AppStores<D>,
+    private val stores: AppStores<D>,
     /** Every user setting and the open Settings page; the effects that are not settings are wired in [init]. */
     val settings: SettingsState,
     private val savedState: SavedStateHandle,
-    threads: AppThreads,
+    private val threads: AppThreads,
     private val clock: () -> Long,
     private val zone: () -> ZoneId,
     onOpenFailed: (Throwable) -> Unit,
@@ -192,6 +195,7 @@ internal class AppOwners<D>(
         afterSave = resolve::afterSave,
         resolvePart = resolve::beginPart,
         // Typed work comes back after the process was killed: the log draft (and an open food form, in [init]).
+        compute = threads.compute,
         initial = restoreLogDraft(savedState),
     )
     /** The Library list, its bar, the food page and logging from it (see [LibraryState]). */
@@ -324,6 +328,9 @@ internal class AppOwners<D>(
         if (!session.damagedNoticePending() || notices.message == DIARY_DAMAGED) return
         notices.show(DIARY_DAMAGED, onDismiss = session::damagedNoticeSeen)
     }
+
+    /** About, Licences: the bundled licence, read on [AppThreads.io]; empty when it cannot be read. */
+    suspend fun licenceText(): String = withContext(threads.io) { runCatching { stores.licence() }.getOrDefault("") }
 
     /** The meal of the screen on show ([Surfaces.mealOnScreen]), for the owners that log to it. */
     private fun mealOnScreen(): MealSlot? = surfaces.mealOnScreen()

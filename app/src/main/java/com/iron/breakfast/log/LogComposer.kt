@@ -23,6 +23,8 @@ import com.iron.breakfast.logTargetMealOf
 import com.iron.breakfast.resolve.LogResolveRequest
 import com.iron.breakfast.resolve.ResolveSource
 import com.iron.breakfast.rowStillInDraft
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withContext
 
 /** What the Log reads and writes; the view model adapts `BreakfastEngine`. */
 internal interface LogStore {
@@ -60,6 +62,8 @@ internal class LogComposer(
     private val afterSave: (unresolved: List<String>, meal: MealSlot, source: ResolveSource, typedAtSave: String) -> Unit,
     /** A part sent to the Library, opened on [meal] and searching [query] (see `ResolveFlow.beginPart`). */
     private val resolvePart: (request: LogResolveRequest, meal: MealSlot, query: String) -> Unit,
+    /** Where the Log page's draft is planned ([computeDraftView]): off the main thread in the app. */
+    private val compute: CoroutineDispatcher,
     initial: SavedLogDraft = SavedLogDraft("", false),
 ) : ResolveSource {
     var draft by mutableStateOf(initial.text); private set
@@ -137,6 +141,10 @@ internal class LogComposer(
      * Everything the Log page shows for the current draft, computed in one pass from one planner, so the rows,
      * the choices and the add-bar sum all come from the same resolution.
      */
+    /** [draftView] on [compute], so typing never waits on matching; the Log page shows the last one until the next is ready. */
+    suspend fun computeDraftView(text: String, committed: Boolean, pins: Map<String, FoodRecord>): LogDraftView =
+        withContext(compute) { draftView(text, committed, pins) }
+
     fun draftView(text: String = draft, committed: Boolean = this.committed, pins: Map<String, FoodRecord> = pinsSnapshot()): LogDraftView {
         val planner = store.planner(pins)
         // One planner draft: rows, the choice group, suggestions and the add-bar sum all come from the same resolution.

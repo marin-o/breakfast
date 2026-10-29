@@ -34,12 +34,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.semantics
 import com.iron.breakfast.app.BreakfastViewModel
 import com.iron.breakfast.BuildConfig
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import com.iron.breakfast.transfer.DiaryPicker
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.ui.components.AddCircle
@@ -73,7 +70,7 @@ internal fun SettingsScreen(vm: BreakfastViewModel) {
                 SettingsPage.SCANNER -> ScannerPage(vm)
                 SettingsPage.DATA -> DataPage(vm)
                 SettingsPage.ABOUT -> AboutPage(vm)
-                SettingsPage.LICENCES -> LicencesPage()
+                SettingsPage.LICENCES -> LicencesPage(vm)
             }
         }
     }
@@ -164,13 +161,10 @@ private fun ColumnScope.AboutPage(vm: BreakfastViewModel) {
 
 /** The bundled licence as plain scrolling text, read off the main thread. */
 @Composable
-private fun LicencesPage() {
+private fun LicencesPage(vm: BreakfastViewModel) {
     val colors = LocalBreakfastColors.current
-    val assets = LocalContext.current.assets
     var text by remember { mutableStateOf("") }
-    LaunchedEffect(assets) {
-        text = withContext(Dispatchers.IO) { runCatching { assets.open(LICENCES_ASSET).bufferedReader().use { it.readText() } }.getOrDefault("") }
-    }
+    LaunchedEffect(Unit) { text = vm.licenceText() }
     Text(text, Modifier.fillMaxWidth().padding(vertical = 16.dp), color = colors.ink, style = BreakfastType.Body)
 }
 

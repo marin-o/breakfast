@@ -152,6 +152,7 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
                 override fun contribute(draft: OffContributionDraft, username: String, password: String) = OffContributionResult.Success
             },
             offSearch = object : OffSearchService { override suspend fun search(query: String) = OffSearchResult.Success(emptyList()) },
+            licence = { "SIL Open Font License" },
         ),
         settings = SettingsState(AppSettings(FakeSettingsStore())) { now },
         savedState = savedState,

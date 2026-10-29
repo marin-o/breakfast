@@ -15,6 +15,7 @@ import com.iron.breakfast.resolve.ResolveSource
 import com.iron.breakfast.resolve.food
 import com.iron.breakfast.today.OpenDiary
 import com.iron.breakfast.today.entry
+import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -53,6 +54,7 @@ class LogComposerTest {
         editing = { editing },
         afterSave = { unresolved, meal, source, typed -> afterSaves += AfterSave(unresolved, meal, source, typed) },
         resolvePart = { request, meal, query -> sentRequest = request; parts += "${request.part} -> $meal \"$query\"" },
+        compute = Dispatchers.Unconfined,
         initial = initial,
     )
     private val log = composer()

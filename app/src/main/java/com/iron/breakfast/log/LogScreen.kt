@@ -34,8 +34,6 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
@@ -91,7 +89,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
     LaunchedEffect(vm.log.draft, vm.log.committed, pins, vm.foods, vm.ready, vm.settings.countTyping, vm.settings.learnFromPicks) {
         val input = vm.log.draft
         val committed = vm.log.committed
-        draft = withContext(Dispatchers.Default) { vm.log.draftView(input, committed, pins) }
+        draft = vm.log.computeDraftView(input, committed, pins)
     }
     val suggestions = draft.choices
     val target = vm.log.targetMeal()

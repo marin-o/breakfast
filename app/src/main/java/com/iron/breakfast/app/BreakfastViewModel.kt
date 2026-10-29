@@ -24,6 +24,7 @@ import com.iron.breakfast.entry.EntryEditStore
 import com.iron.breakfast.log.LogStore
 import com.iron.breakfast.library.LibraryStore
 import com.iron.breakfast.settings.SettingsState
+import com.iron.breakfast.settings.LICENCES_ASSET
 import com.iron.breakfast.today.MatchStore
 import com.iron.breakfast.today.UndoStore
 import com.iron.breakfast.transfer.ContentDiaryFiles
@@ -39,10 +40,12 @@ import com.iron.breakfast.data.DiaryRows
 class BreakfastViewModel(application: Application, savedState: SavedStateHandle) : AndroidViewModel(application) {
     private val clock: () -> Long = System::currentTimeMillis
     private val settingsState = SettingsState(AppSettings(application), clock)
+    private val threads = AppThreads(viewModelScope, io = Dispatchers.IO, main = Dispatchers.Main, compute = Dispatchers.Default)
     private val engine = BreakfastEngine(
         BreakfastStore(application),
         countTypingSetting = { settingsState.countTyping },
         learnFromPicksSetting = { settingsState.learnFromPicks },
+        compute = threads.compute,
     )
     private val off = OpenFoodFactsClient()
     private val app = AppOwners(
@@ -130,10 +133,11 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
             },
             contributions = off,
             offSearch = off,
+            licence = { application.assets.open(LICENCES_ASSET).bufferedReader().use { it.readText() } },
         ),
         settings = settingsState,
         savedState = savedState,
-        threads = AppThreads(viewModelScope, io = Dispatchers.IO, main = Dispatchers.Main, compute = Dispatchers.Default),
+        threads = threads,
         clock = clock,
         zone = { ZoneId.systemDefault() },
         // The "Storage unavailable" dialog offers [retryStorage]; the cause goes to the log only.
@@ -188,6 +192,8 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
     }
     /** The meal the "Meal" setting gives a log now ([AppOwners.automaticMealNow]); null for Ask. */
     internal fun automaticMealNow(): MealSlot? = app.automaticMealNow()
+    /** About, Licences ([AppOwners.licenceText]). */
+    internal suspend fun licenceText(): String = app.licenceText()
 }
 
 internal const val LOG_TAG = "Breakfast"

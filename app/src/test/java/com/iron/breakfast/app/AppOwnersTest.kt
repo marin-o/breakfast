@@ -100,6 +100,11 @@ class AppOwnersTest {
         assertNull(app.notices.message)
     }
 
+    /** About, Licences: read by the owners on their IO dispatcher, not by the screen. */
+    @Test fun theLicenceIsReadByTheOwners() = kotlinx.coroutines.runBlocking {
+        assertEquals("SIL Open Font License", AppKit().owners.licenceText())
+    }
+
     @Test fun aLogAddOffersItsUndoAndANewDayStartMovesAFollowerOfToday() {
         val app = AppKit()
         app.log.open(MealSlot.LUNCH)

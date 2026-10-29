@@ -76,6 +76,7 @@ class ResolveFrameTest {
         editing = { false },
         afterSave = resolve::afterSave,
         resolvePart = resolve::beginPart,
+        compute = Dispatchers.Unconfined,
     )
     private val library: LibraryState = LibraryState(
         diary.session,

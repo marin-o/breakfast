@@ -2,6 +2,7 @@ package com.iron.breakfast.domain
 
 import com.iron.breakfast.data.BreakfastStore
 import com.iron.breakfast.data.DiaryRows
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -12,6 +13,8 @@ class BreakfastEngine(
     private val countTypingSetting: () -> Boolean = { true },
     /** Settings, "Learn from my picks", read at each use. */
     private val learnFromPicksSetting: () -> Boolean = { true },
+    /** Where [save] plans, off the caller's (main) thread: the app's compute dispatcher (`AppThreads.compute`). */
+    private val compute: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private val parser = ShorthandParser()
     private val calculator = NutritionCalculator()
@@ -79,7 +82,7 @@ class BreakfastEngine(
     ): SavedMeal {
         // Planning is CPU work (tens of ms on a phone with a year of foods): off the caller's (main) thread, before
         // the store's lock is taken.
-        val plan = withContext(Dispatchers.Default) { planner(pins).plan(input) }
+        val plan = withContext(compute) { planner(pins).plan(input) }
         val entries = plan.entries.mapIndexed { index, resolved ->
             MealEntry(
                 id = UUID.randomUUID().toString(),
