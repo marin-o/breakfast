@@ -40,7 +40,8 @@ The diary, search and food-detail patterns follow MyFitnessPal so the app feels 
 - Kotlin, Jetpack Compose and Material 3 on Android (minSdk 26, targetSdk 35). Storage is local Room through 1.0, and cloud sync is out of scope before then. Barcodes are scanned with CameraX and ML Kit.
 - A bundled catalogue of USDA FoodData Central generic foods (pinned build-time snapshots, no runtime USDA dependency or API key) plus OFF for packaged and regional products. Unqualified meat resolves to raw records.
 - Calories are required to create a personal food; protein, carbs and fat may be unknown. Uncertain serving conversions are visibly marked as approximate.
-- Out of scope: recipes, saved meals, goals, weight, progress, reports, exercise, water, onboarding or profile, accounts, subscriptions or premium gating, and configurable meal names. Recipes and saved meals may come later.
+- Out of scope: saved meals, goals, weight, progress, reports, exercise, water, onboarding or profile, accounts, subscriptions or premium gating, and configurable meal names. Saved meals may come later.
+- Planned next (owner, 2026-10-29): recipes, an important feature to the owner. To be planned with the owner before any build; no scope is decided yet.
 - This is a personal, open-source project with limited engineering capacity. Reuse existing components before adding dependencies.
 - Decided (2026-10-29): Delete food deletes a personal food for good, after a confirmation; past entries keep their own name and numbers. There is no archive. Undecided: whether OFF results are cached automatically or saved explicitly (the recommended default is to keep the current automatic save, with a source label); and whether to keep a contribution history (the recommended default is to defer it). A preparation-preference setting has been postponed.
 
