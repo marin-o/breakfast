@@ -283,6 +283,80 @@ class BreakfastStoreTest {
         assertEquals(fresh.foods(), store.foods())
         assertEquals(fresh.entries(), store.entries())
         assertEquals(fresh.preferenceMap(), store.preferenceMap())
+        assertEquals(fresh.recipes(), store.recipes())
+    }
+
+    private val mince = FoodRecord(
+        id = "custom-mince", name = "Beef mince", aliases = emptyList(), category = "Personal food", origin = FoodOrigin.CUSTOM,
+        nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(250.0, 20.0, 0.0, 18.0)),
+        defaultAmount = 100.0, defaultUnit = MeasureUnit.GRAM, personalOverride = true,
+    )
+
+    private val chili = com.iron.breakfast.domain.Recipe(
+        id = "recipe-chili", name = "Чили", aliases = listOf("chili"), portions = 4.0, totalWeight = 1200.0,
+        ingredients = listOf(
+            com.iron.breakfast.domain.RecipeIngredient("custom-mince", "Beef mince", 500.0, MeasureUnit.GRAM, 500.0, MeasureUnit.GRAM, NutritionValues(1250.0, 100.0, 0.0, 90.0)),
+            com.iron.breakfast.domain.RecipeIngredient("gone", "Kidney beans", 1.0, MeasureUnit.PIECE, 240.0, MeasureUnit.GRAM, NutritionValues(300.0, 20.0, null, 1.0)),
+        ),
+    )
+
+    /** A recipe is saved, edited and deleted with its aliases, ingredients and learned pick; entries keep their own numbers. */
+    @Test
+    fun aRecipeIsSavedEditedAndDeletedWithItsRows() = runBlocking {
+        store.saveRecipe(chili)
+        assertEquals(listOf(chili), store.recipes())
+        val edited = chili.copy(name = "Chili", aliases = emptyList(), ingredients = chili.ingredients.take(1))
+        store.saveRecipe(edited)
+        assertEquals(listOf(edited), store.recipes())
+        assertEquals(1, database.recipeIngredientDao().all().size)
+        assertTrue(database.recipeAliasDao().all().isEmpty())
+        val logged = entry("chili-entry").copy(foodId = chili.id, foodName = "Chili")
+        store.saveEntries(listOf(logged))
+        store.reinforce(chili.id)
+
+        store.deleteRecipe(chili.id)
+
+        assertTrue(store.recipes().isEmpty())
+        assertTrue(database.recipeDao().all().isEmpty() && database.recipeIngredientDao().all().isEmpty())
+        assertNull(database.preferenceDao().byFood(chili.id))
+        assertEquals(listOf(logged), store.entries().filter { it.id == "chili-entry" })
+        assertEqualsFullRead()
+    }
+
+    /** A deleted food leaves its ingredient with the numbers it counted last: the food as it was edited, not as first saved. */
+    @Test
+    fun aDeletedFoodLeavesItsIngredientWithItsLastNumbers() = runBlocking {
+        store.upsertFood(mince)
+        store.saveRecipe(chili)
+        // Edited after the recipe was saved: the recipe follows it, and keeps that once the food is gone.
+        store.upsertFood(mince.copy(name = "Lean mince", nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(150.0, 22.0, 0.0, 5.0))))
+        store.deleteFood(mince.id)
+
+        val kept = store.recipes().single().ingredients
+        assertEquals("Lean mince", kept[0].foodName)
+        assertEquals(750.0, kept[0].nutritionSnapshot.calories, 1e-9)
+        assertEquals(110.0, kept[0].nutritionSnapshot.protein!!, 1e-9)
+        assertEquals(chili.ingredients[1], kept[1])
+        assertEqualsFullRead()
+    }
+
+    /** Export, Replace diary and Delete all carry or clear the recipes with everything else. */
+    @Test
+    fun recipesGoWithTheDiaryThroughImportAndDeleteAll() = runBlocking {
+        store.upsertFood(mince)
+        store.saveRecipe(chili)
+        val rows = store.exportRows()
+        assertEquals(1, rows.recipes.size)
+        assertEquals(2, rows.recipeIngredients.size)
+        assertEquals(1, rows.recipeAliases.size)
+        store.deleteRecipe(chili.id)
+        store.replaceDiary(rows)
+        assertEquals(listOf(chili), store.recipes())
+        assertEqualsFullRead()
+
+        store.deleteAllData(alsoPreferences = false)
+        assertTrue(store.recipes().isEmpty())
+        assertTrue(database.recipeIngredientDao().all().isEmpty() && database.recipeAliasDao().all().isEmpty())
     }
 
     /**

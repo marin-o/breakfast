@@ -29,11 +29,14 @@ import java.time.LocalDate
 /** Marks the file as a Breakfast diary, so another JSON file is refused before its rows are read. */
 internal const val DIARY_FORMAT = "breakfast-diary"
 
-/** The layout of the file below. Bump it (and keep reading the old one) when a field changes. */
-internal const val DIARY_FORMAT_VERSION = 1
+/**
+ * The layout of the file below. Bump it (and keep reading the old one) when a field changes. 2 added the recipes; a
+ * version 1 file has none, and reads as a diary without recipes.
+ */
+internal const val DIARY_FORMAT_VERSION = 2
 
 /** The Room schema the rows were read from; a file from a newer schema is refused. Keep equal to [BreakfastDatabase]. */
-internal const val DIARY_SCHEMA_VERSION = 6
+internal const val DIARY_SCHEMA_VERSION = 7
 
 /** A file bigger than this is refused before it is parsed. A year of logging is well under 5 MB. */
 internal const val DIARY_MAX_BYTES = 32L * 1024 * 1024
@@ -45,6 +48,9 @@ internal data class DiaryRows(
     val conversions: List<ServingConversionEntity>,
     val preferences: List<PreferenceEntity>,
     val entries: List<MealEntryEntity>,
+    val recipes: List<RecipeEntity> = emptyList(),
+    val recipeAliases: List<RecipeAliasEntity> = emptyList(),
+    val recipeIngredients: List<RecipeIngredientEntity> = emptyList(),
 )
 
 /** The settings stored in the file; [longDraft] is a [LongDraft] name. */
@@ -66,6 +72,10 @@ internal data class DiaryFile(
     val servingConversions: List<ServingConversionDto>,
     val preferences: List<PreferenceDto>,
     val mealEntries: List<MealEntryDto>,
+    // Since format 2; a version 1 file has none of these and reads with them empty.
+    val recipes: List<RecipeDto> = emptyList(),
+    val recipeAliases: List<RecipeAliasDto> = emptyList(),
+    val recipeIngredients: List<RecipeIngredientDto> = emptyList(),
 )
 
 @Serializable
@@ -130,6 +140,28 @@ internal data class MealEntryDto(
     val dayKey: String,
 )
 
+@Serializable
+internal data class RecipeDto(val id: String, val name: String, val portions: Double?, val totalWeight: Double?)
+
+@Serializable
+internal data class RecipeAliasDto(val recipeId: String, val alias: String)
+
+@Serializable
+internal data class RecipeIngredientDto(
+    val recipeId: String,
+    val position: Int,
+    val foodId: String,
+    val foodName: String,
+    val enteredAmount: Double,
+    val enteredUnit: String,
+    val resolvedBaseAmount: Double,
+    val resolvedBaseUnit: String,
+    val snapshotCalories: Double,
+    val snapshotProtein: Double?,
+    val snapshotCarbohydrates: Double?,
+    val snapshotFat: Double?,
+)
+
 /** Strict: an unknown or missing field, or a null where a value is required, fails the parse. */
 private val diaryJson = Json {
     ignoreUnknownKeys = false
@@ -146,11 +178,13 @@ internal sealed interface DiaryImport {
 }
 
 /**
- * The file for [rows] and [settings]. Child rows (aliases, conversions, preferences) whose food is not stored are left
- * out: the app never shows them, and the file would otherwise be refused on import.
+ * The file for [rows] and [settings]. Child rows (aliases, conversions, preferences, a recipe's aliases and ingredients)
+ * whose food or recipe is not stored are left out: the app never shows them, and the file would otherwise be refused
+ * on import. A preference names a food or a recipe.
  */
 internal fun diaryFileOf(rows: DiaryRows, settings: DiarySettings, exportedAtEpochMs: Long): DiaryFile {
     val foodIds = rows.foods.mapTo(HashSet()) { it.id }
+    val recipeIds = rows.recipes.mapTo(HashSet()) { it.id }
     return DiaryFile(
         format = DIARY_FORMAT,
         formatVersion = DIARY_FORMAT_VERSION,
@@ -160,8 +194,13 @@ internal fun diaryFileOf(rows: DiaryRows, settings: DiarySettings, exportedAtEpo
         foods = rows.foods.sortedBy { it.id }.map { it.toDto() },
         foodAliases = rows.aliases.filter { it.foodId in foodIds }.sortedWith(compareBy({ it.foodId }, { it.alias })).map { FoodAliasDto(it.foodId, it.alias) },
         servingConversions = rows.conversions.filter { it.foodId in foodIds }.sortedWith(compareBy({ it.foodId }, { it.unit }, { it.label })).map { it.toDto() },
-        preferences = rows.preferences.filter { it.foodId in foodIds }.sortedBy { it.foodId }.map { PreferenceDto(it.foodId, it.explicitCount, it.lastReinforcedEpochMs) },
+        preferences = rows.preferences.filter { it.foodId in foodIds || it.foodId in recipeIds }.sortedBy { it.foodId }.map { PreferenceDto(it.foodId, it.explicitCount, it.lastReinforcedEpochMs) },
         mealEntries = rows.entries.sortedWith(compareBy({ it.savedAtEpochMs }, { it.id })).map { it.toDto() },
+        recipes = rows.recipes.sortedBy { it.id }.map { RecipeDto(it.id, it.name, it.portions, it.totalWeight) },
+        recipeAliases = rows.recipeAliases.filter { it.recipeId in recipeIds }.sortedWith(compareBy({ it.recipeId }, { it.alias }))
+            .map { RecipeAliasDto(it.recipeId, it.alias) },
+        recipeIngredients = rows.recipeIngredients.filter { it.recipeId in recipeIds }.sortedWith(compareBy({ it.recipeId }, { it.position }))
+            .map { it.toDto() },
     )
 }
 
@@ -192,6 +231,9 @@ internal fun validateDiary(file: DiaryFile): DiaryImport {
             conversions = file.servingConversions.map { it.toEntity() },
             preferences = file.preferences.map { PreferenceEntity(it.foodId, it.explicitCount, it.lastReinforcedEpochMs) },
             entries = file.mealEntries.map { it.toEntity() },
+            recipes = file.recipes.map { RecipeEntity(it.id, it.name, it.portions, it.totalWeight) },
+            recipeAliases = file.recipeAliases.map { RecipeAliasEntity(it.recipeId, it.alias) },
+            recipeIngredients = file.recipeIngredients.map { it.toEntity() },
         ),
     )
 }
@@ -209,7 +251,7 @@ private fun isDayKey(value: String) = value.length == 10 && runCatching { LocalD
 /** The first rule [file] breaks, or null when it passes them all. */
 internal fun diaryProblem(file: DiaryFile): String? {
     if (file.format != DIARY_FORMAT) return "format is ${file.format}"
-    if (file.formatVersion != DIARY_FORMAT_VERSION) return "unknown format version ${file.formatVersion}"
+    if (file.formatVersion !in 1..DIARY_FORMAT_VERSION) return "unknown format version ${file.formatVersion}"
     if (file.schemaVersion !in 1..DIARY_SCHEMA_VERSION) return "schema version ${file.schemaVersion}"
     if (file.settings.dayStartHour !in 0..23) return "day start hour ${file.settings.dayStartHour}"
     if (file.settings.longDraft !in LONG_DRAFT_NAMES) return "long draft ${file.settings.longDraft}"
@@ -252,11 +294,51 @@ internal fun diaryProblem(file: DiaryFile): String? {
         }
     }
 
+    val recipeIds = HashSet<String>()
+    file.recipes.forEachIndexed { i, r ->
+        val at = "recipe $i"
+        when {
+            r.id.isBlank() -> return "$at: blank id"
+            !recipeIds.add(r.id) || r.id in foodIds -> return "$at: duplicate id ${r.id}"
+            r.name.isBlank() -> return "$at: blank name"
+            r.portions != null && !r.portions.positive() -> return "$at: portions ${r.portions}"
+            r.totalWeight != null && !r.totalWeight.positive() -> return "$at: total weight ${r.totalWeight}"
+            r.portions == null && r.totalWeight == null -> return "$at: no portions or total weight"
+        }
+    }
+
+    val recipeAliasKeys = HashSet<Pair<String, String>>()
+    file.recipeAliases.forEachIndexed { i, a ->
+        val at = "recipe alias $i"
+        when {
+            a.recipeId !in recipeIds -> return "$at: unknown recipe ${a.recipeId}"
+            a.alias.isBlank() -> return "$at: blank alias"
+            !recipeAliasKeys.add(a.recipeId to a.alias) -> return "$at: duplicate"
+        }
+    }
+
+    // An ingredient keeps its own food name and snapshot; its food id need not name a stored food, as an entry's.
+    val ingredientKeys = HashSet<Pair<String, Int>>()
+    file.recipeIngredients.forEachIndexed { i, g ->
+        val at = "ingredient $i"
+        when {
+            g.recipeId !in recipeIds -> return "$at: unknown recipe ${g.recipeId}"
+            g.position < 0 || !ingredientKeys.add(g.recipeId to g.position) -> return "$at: position ${g.position}"
+            g.foodId.isBlank() -> return "$at: blank food id"
+            g.enteredUnit !in UNIT_NAMES -> return "$at: unit ${g.enteredUnit}"
+            g.resolvedBaseUnit !in UNIT_NAMES -> return "$at: base unit ${g.resolvedBaseUnit}"
+            !g.enteredAmount.nonNegative() -> return "$at: amount ${g.enteredAmount}"
+            !g.resolvedBaseAmount.nonNegative() -> return "$at: base amount ${g.resolvedBaseAmount}"
+            !g.snapshotCalories.nonNegative() -> return "$at: calories ${g.snapshotCalories}"
+            !g.snapshotProtein.nonNegativeOrUnknown() || !g.snapshotCarbohydrates.nonNegativeOrUnknown() || !g.snapshotFat.nonNegativeOrUnknown() -> return "$at: macros"
+        }
+    }
+
     val preferenceIds = HashSet<String>()
     file.preferences.forEachIndexed { i, p ->
         val at = "preference $i"
         when {
-            p.foodId !in foodIds -> return "$at: unknown food ${p.foodId}"
+            p.foodId !in foodIds && p.foodId !in recipeIds -> return "$at: unknown food ${p.foodId}"
             !preferenceIds.add(p.foodId) -> return "$at: duplicate"
             p.explicitCount < 0 -> return "$at: count ${p.explicitCount}"
             p.lastReinforcedEpochMs < 0 -> return "$at: time ${p.lastReinforcedEpochMs}"
@@ -368,4 +450,14 @@ private fun MealEntryEntity.toDto() = MealEntryDto(
 private fun MealEntryDto.toEntity() = MealEntryEntity(
     id, foodId, foodName, enteredAmount, enteredUnit, resolvedBaseAmount, resolvedBaseUnit, snapshotCalories, snapshotProtein,
     snapshotCarbohydrates, snapshotFat, conversionProvenance, approximateConversion, savedAtEpochMs, sourcePhrase, mealSlot, dayKey,
+)
+
+private fun RecipeIngredientEntity.toDto() = RecipeIngredientDto(
+    recipeId, position, foodId, foodName, enteredAmount, enteredUnit, resolvedBaseAmount, resolvedBaseUnit, snapshotCalories,
+    snapshotProtein, snapshotCarbohydrates, snapshotFat,
+)
+
+private fun RecipeIngredientDto.toEntity() = RecipeIngredientEntity(
+    recipeId, position, foodId, foodName, enteredAmount, enteredUnit, resolvedBaseAmount, resolvedBaseUnit, snapshotCalories,
+    snapshotProtein, snapshotCarbohydrates, snapshotFat,
 )

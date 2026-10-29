@@ -19,6 +19,8 @@ import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.Preference
+import com.iron.breakfast.domain.Recipe
+import com.iron.breakfast.domain.RecipeIngredient
 import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.dayKeyForEpochMs
 
@@ -102,6 +104,45 @@ data class MealEntryEntity(
     @ColumnInfo(name = "source_phrase") val sourcePhrase: String,
     @ColumnInfo(name = "meal_slot") val mealSlot: String,
     @ColumnInfo(name = "day_key") val dayKey: String
+)
+
+/** A recipe: its yield in portions, in grams of the finished dish, or both (at least one; see `domain/Recipes.kt`). */
+@Entity(tableName = "recipes")
+data class RecipeEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val portions: Double?,
+    @ColumnInfo(name = "total_weight") val totalWeight: Double?,
+)
+
+@Entity(tableName = "recipe_aliases", primaryKeys = ["recipe_id", "alias"])
+data class RecipeAliasEntity(
+    @ColumnInfo(name = "recipe_id") val recipeId: String,
+    val alias: String,
+)
+
+/**
+ * One ingredient of a recipe, in typed order ([position]): its food, the amount as entered and as resolved, and the
+ * nutrition snapshot it keeps once the food is deleted (while the food exists, the recipe follows it).
+ */
+@Entity(
+    tableName = "recipe_ingredients",
+    primaryKeys = ["recipe_id", "position"],
+    indices = [androidx.room.Index(value = ["food_id"])],
+)
+data class RecipeIngredientEntity(
+    @ColumnInfo(name = "recipe_id") val recipeId: String,
+    val position: Int,
+    @ColumnInfo(name = "food_id") val foodId: String,
+    @ColumnInfo(name = "food_name") val foodName: String,
+    @ColumnInfo(name = "entered_amount") val enteredAmount: Double,
+    @ColumnInfo(name = "entered_unit") val enteredUnit: String,
+    @ColumnInfo(name = "resolved_base_amount") val resolvedBaseAmount: Double,
+    @ColumnInfo(name = "resolved_base_unit") val resolvedBaseUnit: String,
+    @ColumnInfo(name = "snapshot_calories") val snapshotCalories: Double,
+    @ColumnInfo(name = "snapshot_protein") val snapshotProtein: Double?,
+    @ColumnInfo(name = "snapshot_carbohydrates") val snapshotCarbohydrates: Double?,
+    @ColumnInfo(name = "snapshot_fat") val snapshotFat: Double?,
 )
 
 @Dao
@@ -225,15 +266,75 @@ interface MealEntryDao {
     suspend fun deleteAll()
 }
 
+@Dao
+interface RecipeDao {
+    @Query("SELECT * FROM recipes ORDER BY rowid")
+    suspend fun all(): List<RecipeEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(recipe: RecipeEntity)
+
+    @Query("DELETE FROM recipes WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAllOrAbort(recipes: List<RecipeEntity>)
+
+    @Query("DELETE FROM recipes")
+    suspend fun deleteAll()
+}
+
+@Dao
+interface RecipeAliasDao {
+    @Query("SELECT * FROM recipe_aliases ORDER BY rowid")
+    suspend fun all(): List<RecipeAliasEntity>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(aliases: List<RecipeAliasEntity>)
+
+    @Query("DELETE FROM recipe_aliases WHERE recipe_id = :recipeId")
+    suspend fun deleteForRecipe(recipeId: String)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAllOrAbort(aliases: List<RecipeAliasEntity>)
+
+    @Query("DELETE FROM recipe_aliases")
+    suspend fun deleteAll()
+}
+
+@Dao
+interface RecipeIngredientDao {
+    @Query("SELECT * FROM recipe_ingredients ORDER BY recipe_id, position")
+    suspend fun all(): List<RecipeIngredientEntity>
+
+    @Query("SELECT * FROM recipe_ingredients WHERE food_id = :foodId")
+    suspend fun byFood(foodId: String): List<RecipeIngredientEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(ingredients: List<RecipeIngredientEntity>)
+
+    @Query("DELETE FROM recipe_ingredients WHERE recipe_id = :recipeId")
+    suspend fun deleteForRecipe(recipeId: String)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAllOrAbort(ingredients: List<RecipeIngredientEntity>)
+
+    @Query("DELETE FROM recipe_ingredients")
+    suspend fun deleteAll()
+}
+
 @Database(
     entities = [
         FoodEntity::class,
         FoodAliasEntity::class,
         ServingConversionEntity::class,
         PreferenceEntity::class,
-        MealEntryEntity::class
+        MealEntryEntity::class,
+        RecipeEntity::class,
+        RecipeAliasEntity::class,
+        RecipeIngredientEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 abstract class BreakfastDatabase : RoomDatabase() {
@@ -242,6 +343,9 @@ abstract class BreakfastDatabase : RoomDatabase() {
     abstract fun servingConversionDao(): ServingConversionDao
     abstract fun preferenceDao(): PreferenceDao
     abstract fun mealEntryDao(): MealEntryDao
+    abstract fun recipeDao(): RecipeDao
+    abstract fun recipeAliasDao(): RecipeAliasDao
+    abstract fun recipeIngredientDao(): RecipeIngredientDao
 }
 
 val ROOM_MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
@@ -300,6 +404,21 @@ val ROOM_MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
         """.trimIndent())
         db.execSQL("DROP TABLE serving_conversions")
         db.execSQL("ALTER TABLE serving_conversions_new RENAME TO serving_conversions")
+    }
+}
+
+/** Recipes: three new tables; nothing that exists is touched. */
+val ROOM_MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `recipes` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `portions` REAL, `total_weight` REAL, PRIMARY KEY(`id`))")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `recipe_aliases` (`recipe_id` TEXT NOT NULL, `alias` TEXT NOT NULL, PRIMARY KEY(`recipe_id`, `alias`))")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `recipe_ingredients` (`recipe_id` TEXT NOT NULL, `position` INTEGER NOT NULL, " +
+                "`food_id` TEXT NOT NULL, `food_name` TEXT NOT NULL, `entered_amount` REAL NOT NULL, `entered_unit` TEXT NOT NULL, " +
+                "`resolved_base_amount` REAL NOT NULL, `resolved_base_unit` TEXT NOT NULL, `snapshot_calories` REAL NOT NULL, " +
+                "`snapshot_protein` REAL, `snapshot_carbohydrates` REAL, `snapshot_fat` REAL, PRIMARY KEY(`recipe_id`, `position`))"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_recipe_ingredients_food_id` ON `recipe_ingredients` (`food_id`)")
     }
 }
 
@@ -422,3 +541,55 @@ fun MealEntryEntity.toDomain() = MealEntry(
     dayKey = dayKey.ifBlank { dayKeyForEpochMs(savedAtEpochMs) }
 )
 
+
+
+fun Recipe.toEntity() = RecipeEntity(id = id, name = name, portions = portions, totalWeight = totalWeight)
+
+fun Recipe.toAliasEntities(): List<RecipeAliasEntity> = aliases.distinct().map { RecipeAliasEntity(recipeId = id, alias = it) }
+
+fun Recipe.toIngredientEntities(): List<RecipeIngredientEntity> = ingredients.mapIndexed { position, it -> it.toEntity(id, position) }
+
+fun RecipeIngredient.toEntity(recipeId: String, position: Int) = RecipeIngredientEntity(
+    recipeId = recipeId,
+    position = position,
+    foodId = foodId,
+    foodName = foodName,
+    enteredAmount = enteredAmount,
+    enteredUnit = enteredUnit.name,
+    resolvedBaseAmount = resolvedBaseAmount,
+    resolvedBaseUnit = resolvedBaseUnit.name,
+    snapshotCalories = nutritionSnapshot.calories,
+    snapshotProtein = nutritionSnapshot.protein,
+    snapshotCarbohydrates = nutritionSnapshot.carbohydrates,
+    snapshotFat = nutritionSnapshot.fat,
+)
+
+fun RecipeIngredientEntity.toDomain() = RecipeIngredient(
+    foodId = foodId,
+    foodName = foodName,
+    enteredAmount = enteredAmount,
+    enteredUnit = runCatching { MeasureUnit.valueOf(enteredUnit) }.getOrDefault(MeasureUnit.UNKNOWN),
+    resolvedBaseAmount = resolvedBaseAmount,
+    resolvedBaseUnit = runCatching { MeasureUnit.valueOf(resolvedBaseUnit) }.getOrDefault(MeasureUnit.UNKNOWN),
+    nutritionSnapshot = NutritionValues(snapshotCalories, snapshotProtein, snapshotCarbohydrates, snapshotFat),
+)
+
+/** The recipes with their aliases and ingredients (in typed order), in the order the recipes are stored. */
+internal fun recipesOf(
+    recipes: List<RecipeEntity>,
+    aliases: List<RecipeAliasEntity>,
+    ingredients: List<RecipeIngredientEntity>,
+): List<Recipe> {
+    val aliasesBy = aliases.groupBy { it.recipeId }
+    val ingredientsBy = ingredients.groupBy { it.recipeId }
+    return recipes.map { entity ->
+        Recipe(
+            id = entity.id,
+            name = entity.name,
+            aliases = aliasesBy[entity.id].orEmpty().map { it.alias },
+            portions = entity.portions,
+            totalWeight = entity.totalWeight,
+            ingredients = ingredientsBy[entity.id].orEmpty().sortedBy { it.position }.map { it.toDomain() },
+        )
+    }
+}

@@ -12,6 +12,8 @@ import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.Preference
+import com.iron.breakfast.domain.Recipe
+import com.iron.breakfast.domain.following
 import com.iron.breakfast.domain.barcodeForms
 import com.iron.breakfast.domain.canonicalBarcode
 import com.iron.breakfast.domain.sameBarcode
@@ -26,7 +28,8 @@ import java.io.File
 private data class StoreSnapshot(
     val foods: List<FoodRecord> = emptyList(),
     val entries: List<MealEntry> = emptyList(),
-    val preferences: List<Preference> = emptyList()
+    val preferences: List<Preference> = emptyList(),
+    val recipes: List<Recipe> = emptyList(),
 )
 
 /**
@@ -37,7 +40,7 @@ private data class StoreSnapshot(
 internal fun openBreakfastDatabase(context: Context, name: String, damaged: DamagedDiaries): BreakfastDatabase =
     Room.databaseBuilder(context.applicationContext, BreakfastDatabase::class.java, name)
         .openHelperFactory(DamageSafeOpenHelperFactory(damaged))
-        .addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6)
+        .addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6, ROOM_MIGRATION_6_7)
         .build()
 
 /** A write refused because the diary was found damaged and the fresh one is not open yet (see [BreakfastStore]). */
@@ -157,6 +160,9 @@ class BreakfastStore internal constructor(
 
     fun entries(): List<MealEntry> = model.entries
 
+    /** The recipes as stored, each ingredient with the numbers it keeps (see [Recipe]); the same list until a recipe write. */
+    fun recipes(): List<Recipe> = model.recipes
+
     private var preferenceMapSource: List<Preference>? = null
     private var cachedPreferenceMap: Map<String, Preference> = emptyMap()
 
@@ -251,7 +257,7 @@ class BreakfastStore internal constructor(
      */
     suspend fun deleteFood(id: String) {
         requireReady()
-        write(FOODS + PREFERENCES) {
+        write(FOODS + PREFERENCES + RECIPES) {
             // Only a personal food: a bundled one would come back at the next start, an Open Food Facts one is a cache.
             val stored = database.foodDao().byId(id) ?: return@write
             require(stored.origin == FoodOrigin.CUSTOM.name) { "Only a personal food can be deleted." }
@@ -275,6 +281,29 @@ class BreakfastStore internal constructor(
             val ids = unchangedEntryIds(expected, database.mealEntryDao().byIds(expected.map { it.id }))
             if (ids.isNotEmpty()) database.mealEntryDao().deleteByIds(ids)
             ids
+        }
+    }
+
+    /** Saves a new or edited recipe with its aliases and ingredients, replacing any stored ones. */
+    suspend fun saveRecipe(recipe: Recipe) {
+        requireReady()
+        write(RECIPES) {
+            database.recipeDao().upsert(recipe.toEntity())
+            database.recipeAliasDao().deleteForRecipe(recipe.id)
+            database.recipeIngredientDao().deleteForRecipe(recipe.id)
+            database.recipeAliasDao().insertAll(recipe.toAliasEntities())
+            database.recipeIngredientDao().insertAll(recipe.toIngredientEntities())
+        }
+    }
+
+    /** Deletes a recipe for good, with its aliases, ingredients and learned pick; past entries keep their own numbers. */
+    suspend fun deleteRecipe(id: String) {
+        requireReady()
+        write(RECIPES + PREFERENCES) {
+            database.recipeDao().deleteById(id)
+            database.recipeAliasDao().deleteForRecipe(id)
+            database.recipeIngredientDao().deleteForRecipe(id)
+            database.preferenceDao().deleteForFood(id)
         }
     }
 
@@ -304,6 +333,9 @@ class BreakfastStore internal constructor(
                         conversions = database.servingConversionDao().all(),
                         preferences = database.preferenceDao().all(),
                         entries = database.mealEntryDao().all(),
+                        recipes = database.recipeDao().all(),
+                        recipeAliases = database.recipeAliasDao().all(),
+                        recipeIngredients = database.recipeIngredientDao().all(),
                     )
                 }
             }
@@ -318,6 +350,7 @@ class BreakfastStore internal constructor(
     internal suspend fun replaceDiary(rows: DiaryRows) {
         requireReady()
         write(ALL_TABLES) {
+            deleteRecipeRows()
             database.mealEntryDao().deleteAll()
             database.preferenceDao().deleteAll()
             database.servingConversionDao().deleteAll()
@@ -328,6 +361,9 @@ class BreakfastStore internal constructor(
             database.servingConversionDao().insertAllOrAbort(rows.conversions)
             database.preferenceDao().insertAllOrAbort(rows.preferences)
             database.mealEntryDao().insertAllOrAbort(rows.entries)
+            database.recipeDao().insertAllOrAbort(rows.recipes)
+            database.recipeAliasDao().insertAllOrAbort(rows.recipeAliases)
+            database.recipeIngredientDao().insertAllOrAbort(rows.recipeIngredients)
             deleteArchivedFoods()
             seedMissingFixtures()
             syncBuiltInFoods()
@@ -335,7 +371,7 @@ class BreakfastStore internal constructor(
     }
 
     /**
-     * Delete all data: in one transaction, every entry and every food (with its aliases and conversions) is deleted and
+     * Delete all data: in one transaction, every entry, every recipe and every food (with its aliases and conversions) is deleted and
      * the built-in catalogue is seeded again, as on a first start. [alsoPreferences] also deletes the learned
      * preferences; otherwise they stay. Any failure rolls the whole transaction back. [beforeSeed] runs inside the
      * transaction after the deletes (tests make it throw).
@@ -343,6 +379,7 @@ class BreakfastStore internal constructor(
     internal suspend fun deleteAllData(alsoPreferences: Boolean, beforeSeed: suspend () -> Unit = {}) {
         requireReady()
         write(ALL_TABLES) {
+            deleteRecipeRows()
             database.mealEntryDao().deleteAll()
             if (alsoPreferences) database.preferenceDao().deleteAll()
             database.servingConversionDao().deleteAll()
@@ -410,12 +447,34 @@ class BreakfastStore internal constructor(
         database.servingConversionDao().insertAll(food.toConversionEntities())
     }
 
-    /** A food's rows: the food, its aliases and conversions, and its learned pick. Runs inside a transaction. */
+    /**
+     * A food's rows: the food, its aliases and conversions, and its learned pick. Runs inside a transaction. A recipe that
+     * uses it keeps that ingredient's last numbers: the snapshot is brought up to the food as it is now, first.
+     */
     private suspend fun deleteFoodRows(id: String) {
+        keepIngredientNumbers(id)
         database.foodDao().deleteById(id)
         database.foodAliasDao().deleteForFood(id)
         database.servingConversionDao().deleteForFood(id)
         database.preferenceDao().deleteForFood(id)
+    }
+
+    /** The ingredients made of food [foodId] store what they count now, so they keep those numbers once it is gone. */
+    private suspend fun keepIngredientNumbers(foodId: String) {
+        val ingredients = database.recipeIngredientDao().byFood(foodId)
+        if (ingredients.isEmpty()) return
+        val entity = database.foodDao().byId(foodId) ?: return
+        val food = entity.toDomain(
+            aliases = emptyList(),
+            conversions = database.servingConversionDao().all().filter { it.foodId == foodId }.map { it.toDomain() },
+        )
+        database.recipeIngredientDao().insertAll(ingredients.map { it.toDomain().following(food).toEntity(it.recipeId, it.position) })
+    }
+
+    private suspend fun deleteRecipeRows() {
+        database.recipeIngredientDao().deleteAll()
+        database.recipeAliasDao().deleteAll()
+        database.recipeDao().deleteAll()
     }
 
     /**
@@ -455,6 +514,11 @@ class BreakfastStore internal constructor(
         foods = if (StoreTable.FOODS in tables) readFoods() else current.foods,
         entries = if (StoreTable.ENTRIES in tables) database.mealEntryDao().all().map { it.toDomain() } else current.entries,
         preferences = if (StoreTable.PREFERENCES in tables) database.preferenceDao().all().map { it.toDomain() } else current.preferences,
+        recipes = if (StoreTable.RECIPES in tables) readRecipes() else current.recipes,
+    )
+
+    private suspend fun readRecipes(): List<Recipe> = recipesOf(
+        database.recipeDao().all(), database.recipeAliasDao().all(), database.recipeIngredientDao().all(),
     )
 
     /** The foods with their aliases and conversions. */
@@ -476,12 +540,13 @@ class BreakfastStore internal constructor(
     }
 }
 
-/** The groups of tables a write can touch: foods (with aliases and conversions), entries, preferences. */
-internal enum class StoreTable { FOODS, ENTRIES, PREFERENCES }
+/** The groups of tables a write can touch: foods (with aliases and conversions), entries, preferences, recipes (with theirs). */
+internal enum class StoreTable { FOODS, ENTRIES, PREFERENCES, RECIPES }
 
 private val FOODS = setOf(StoreTable.FOODS)
 private val ENTRIES = setOf(StoreTable.ENTRIES)
 private val PREFERENCES = setOf(StoreTable.PREFERENCES)
+private val RECIPES = setOf(StoreTable.RECIPES)
 internal val ALL_TABLES: Set<StoreTable> = StoreTable.entries.toSet()
 
 /**

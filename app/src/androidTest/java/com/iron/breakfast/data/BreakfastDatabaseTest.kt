@@ -171,6 +171,100 @@ class BreakfastDatabaseTest {
         migrated.close(); deleteTestDatabase(context, name)
     }
 
+    /**
+     * The phone's diary is installed over (`adb install -r`), so 6 to 7 must keep every row as it was: a diary as the
+     * owner has it (personal and edited foods, Cyrillic names and aliases, labelled servings, learned picks, entries
+     * whose food was deleted) comes through unchanged, and the three recipe tables start empty and take rows.
+     */
+    @Test
+    fun migration6To7KeepsTheWholeDiaryAndAddsEmptyRecipeTables() {
+        val name = "migration-v7-${System.nanoTime()}.db".also(migrationNames::add)
+        val old = migrationHelper.createDatabase(name, 6)
+        old.execSQL("INSERT INTO foods VALUES ('custom-burek','Бурек со сирење','Personal food','CUSTOM',100.0,'GRAM',282.0,9.4,26.1,15.2,100.0,'GRAM',NULL,NULL,NULL,NULL,NULL,NULL,NULL,0,1)")
+        old.execSQL("INSERT INTO foods VALUES ('custom-kefir','Kefir 2.8%','Personal food','CUSTOM',100.0,'MILLILITER',55.0,3.2,4.1,NULL,330.0,'MILLILITER','5310382009733','Open Food Facts',NULL,NULL,'Saved from an incomplete Open Food Facts barcode result','Bitola','5310382009733',0,1)")
+        old.execSQL("INSERT INTO foods VALUES ('egg','Egg','Eggs','GENERIC',100.0,'GRAM',143.0,12.6,0.7,9.5,1.0,'PIECE','fdc-748967','USDA','2019-04',NULL,'Egg, whole, raw, fresh',NULL,NULL,0,1)")
+        old.execSQL("INSERT INTO food_aliases VALUES ('custom-burek','бурек')")
+        old.execSQL("INSERT INTO food_aliases VALUES ('custom-burek','burek')")
+        old.execSQL("INSERT INTO serving_conversions VALUES ('custom-kefir','MILLILITER',330.0,'personal serving',0,'bottle')")
+        old.execSQL("INSERT INTO serving_conversions VALUES ('custom-kefir','MILLILITER',100.0,'custom basis',0,'')")
+        old.execSQL("INSERT INTO serving_conversions VALUES ('egg','PIECE',50.0,'USDA medium egg',1,'')")
+        old.execSQL("INSERT INTO preferences VALUES ('custom-burek',7,1761650000000)")
+        old.execSQL("INSERT INTO meal_entries (id, food_id, food_name, entered_amount, entered_unit, resolved_base_amount, snapshot_calories, snapshot_protein, snapshot_carbohydrates, snapshot_fat, conversion_provenance, approximate_conversion, saved_at_epoch_ms, source_phrase, meal_slot, day_key, resolved_base_unit) VALUES ('e-1','custom-burek','Бурек со сирење',250.0,'GRAM',250.0,705.0,23.5,65.25,38.0,'entered g on 100.0g basis',0,1761650000000,'250 g бурек','BREAKFAST','2026-10-28','GRAM')")
+        old.execSQL("INSERT INTO meal_entries (id, food_id, food_name, entered_amount, entered_unit, resolved_base_amount, snapshot_calories, snapshot_protein, snapshot_carbohydrates, snapshot_fat, conversion_provenance, approximate_conversion, saved_at_epoch_ms, source_phrase, meal_slot, day_key, resolved_base_unit) VALUES ('e-2','custom-kefir','Kefir 2.8%',1.0,'PIECE',330.0,181.5,10.56,13.53,NULL,'personal serving',0,1761650000001,'1 bottle kefir','BREAKFAST','2026-10-28','MILLILITER')")
+        old.execSQL("INSERT INTO meal_entries (id, food_id, food_name, entered_amount, entered_unit, resolved_base_amount, snapshot_calories, snapshot_protein, snapshot_carbohydrates, snapshot_fat, conversion_provenance, approximate_conversion, saved_at_epoch_ms, source_phrase, meal_slot, day_key, resolved_base_unit) VALUES ('e-3','custom-gone','Ајвар',2.0,'TABLESPOON',30.0,60.0,NULL,NULL,NULL,'Approximate fallback',1,1761600000000,'2 tbsp ајвар','DINNER','2026-10-27','GRAM')")
+        old.close()
+
+        val migrated = migrationHelper.runMigrationsAndValidate(name, 7, true, ROOM_MIGRATION_6_7)
+        fun count(table: String) = migrated.query("SELECT COUNT(*) FROM $table").use { it.moveToFirst(); it.getInt(0) }
+        assertEquals(3, count("foods"))
+        assertEquals(2, count("food_aliases"))
+        assertEquals(3, count("serving_conversions"))
+        assertEquals(1, count("preferences"))
+        assertEquals(3, count("meal_entries"))
+        assertEquals(0, count("recipes"))
+        assertEquals(0, count("recipe_aliases"))
+        assertEquals(0, count("recipe_ingredients"))
+        assertEquals("Бурек со сирење", migrated.query("SELECT name FROM foods WHERE id = 'custom-burek'").use { it.moveToFirst(); it.getString(0) })
+        assertEquals("bottle", migrated.query("SELECT label FROM serving_conversions WHERE foodId = 'custom-kefir' AND base_units_per_serving = 330.0").use { it.moveToFirst(); it.getString(0) })
+        assertEquals(7, migrated.query("SELECT explicit_count FROM preferences WHERE foodId = 'custom-burek'").use { it.moveToFirst(); it.getInt(0) })
+        migrated.query("SELECT food_name, snapshot_calories, snapshot_protein, snapshot_fat, meal_slot, day_key FROM meal_entries WHERE id = 'e-3'").use {
+            it.moveToFirst()
+            assertEquals("Ајвар", it.getString(0))
+            assertEquals(60.0, it.getDouble(1), 0.0)
+            assertTrue(it.isNull(2) && it.isNull(3))
+            assertEquals("DINNER", it.getString(4))
+            assertEquals("2026-10-27", it.getString(5))
+        }
+        // The new tables take rows, a portion-less recipe and a missing macro included.
+        migrated.execSQL("INSERT INTO recipes VALUES ('recipe-chili','Чили',4.0,NULL)")
+        migrated.execSQL("INSERT INTO recipe_aliases VALUES ('recipe-chili','chili')")
+        migrated.execSQL("INSERT INTO recipe_ingredients VALUES ('recipe-chili',0,'custom-burek','Бурек со сирење',500.0,'GRAM',500.0,'GRAM',1410.0,47.0,130.5,NULL)")
+        assertEquals(1, count("recipe_ingredients"))
+        migrated.close()
+
+        // The app's own entities read the migrated file back: every old row, and the recipe as the store maps it.
+        val room = Room.databaseBuilder(context, BreakfastDatabase::class.java, name).addMigrations(ROOM_MIGRATION_6_7).build()
+        try {
+            runBlocking {
+                assertEquals(listOf("e-3", "e-1", "e-2"), room.mealEntryDao().all().map { it.toDomain().id })
+                assertEquals(MeasureUnit.PIECE, room.mealEntryDao().all().single { it.id == "e-2" }.toDomain().enteredUnit)
+                assertEquals(setOf("custom-burek", "custom-kefir", "egg"), room.foodDao().all().map { it.id }.toSet())
+                val recipe = recipesOf(room.recipeDao().all(), room.recipeAliasDao().all(), room.recipeIngredientDao().all()).single()
+                assertEquals("Чили", recipe.name)
+                assertEquals(listOf("chili"), recipe.aliases)
+                assertEquals(4.0, recipe.portions!!, 0.0)
+                assertEquals(null, recipe.totalWeight)
+                assertEquals(1410.0, recipe.ingredients.single().nutritionSnapshot.calories, 0.0)
+                assertEquals(null, recipe.ingredients.single().nutritionSnapshot.fat)
+            }
+        } finally {
+            room.close()
+        }
+        deleteTestDatabase(context, name)
+    }
+
+    /** The whole chain from the first schema ends where a fresh install starts: the recipe tables included. */
+    @Test
+    fun migration1To7RunsTheWholeChain() {
+        val name = "migration-chain-${System.nanoTime()}.db".also(migrationNames::add)
+        migrationHelper.createDatabase(name, 1).also { old ->
+            old.execSQL("CREATE TABLE IF NOT EXISTS foods (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL, origin TEXT NOT NULL, nutrition_amount REAL NOT NULL, nutrition_unit TEXT NOT NULL, calories REAL NOT NULL, protein REAL, carbohydrates REAL, fat REAL, default_amount REAL NOT NULL, default_unit TEXT NOT NULL, source_id TEXT, source_name TEXT, source_release TEXT, preparation TEXT, source_description TEXT)")
+            old.execSQL("CREATE TABLE IF NOT EXISTS food_aliases (foodId TEXT NOT NULL, alias TEXT NOT NULL, PRIMARY KEY(foodId, alias))")
+            old.execSQL("CREATE TABLE IF NOT EXISTS serving_conversions (foodId TEXT NOT NULL, unit TEXT NOT NULL, base_units_per_serving REAL NOT NULL, provenance TEXT NOT NULL, approximate INTEGER NOT NULL, PRIMARY KEY(foodId, unit))")
+            old.execSQL("CREATE TABLE IF NOT EXISTS preferences (foodId TEXT NOT NULL PRIMARY KEY, explicit_count INTEGER NOT NULL, last_reinforced_epoch_ms INTEGER NOT NULL)")
+            old.execSQL("CREATE TABLE IF NOT EXISTS meal_entries (id TEXT NOT NULL PRIMARY KEY, food_id TEXT NOT NULL, food_name TEXT NOT NULL, entered_amount REAL NOT NULL, entered_unit TEXT NOT NULL, resolved_base_amount REAL NOT NULL, snapshot_calories REAL NOT NULL, snapshot_protein REAL, snapshot_carbohydrates REAL, snapshot_fat REAL, conversion_provenance TEXT NOT NULL, approximate_conversion INTEGER NOT NULL, saved_at_epoch_ms INTEGER NOT NULL, source_phrase TEXT NOT NULL, meal_slot TEXT NOT NULL, day_key TEXT NOT NULL)")
+            old.execSQL("INSERT INTO foods VALUES ('legacy','Legacy food','test','CUSTOM',100.0,'GRAM',250.0,NULL,12.0,5.0,100.0,'GRAM',NULL,NULL,NULL,NULL,NULL)")
+            old.execSQL("INSERT INTO meal_entries VALUES ('entry','legacy','Legacy food',100.0,'GRAM',100.0,250.0,NULL,12.0,5.0,'legacy',0,1234,'legacy','LUNCH','1970-01-01')")
+            old.close()
+        }
+        val migrated = migrationHelper.runMigrationsAndValidate(
+            name, 7, true, ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6, ROOM_MIGRATION_6_7,
+        )
+        assertEquals(1, migrated.query("SELECT COUNT(*) FROM meal_entries").use { it.moveToFirst(); it.getInt(0) })
+        assertEquals(0, migrated.query("SELECT COUNT(*) FROM recipes").use { it.moveToFirst(); it.getInt(0) })
+        migrated.close(); deleteTestDatabase(context, name)
+    }
+
     private suspend fun seed(foods: List<com.iron.breakfast.domain.FoodRecord>) {
         database.withTransaction {
             database.foodDao().insertAll(foods.map { it.toEntity() })

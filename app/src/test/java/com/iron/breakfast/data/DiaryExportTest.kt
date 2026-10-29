@@ -40,9 +40,19 @@ class DiaryExportTest {
             ServingConversionEntity("custom-1", "PIECE", 60.0, "user", approximate = true, label = ""),
             ServingConversionEntity("custom-1", "PIECE", 250.0, "user", approximate = false, label = "jar"),
         ),
-        preferences = listOf(PreferenceEntity("custom-1", 3, 1_700_000_000_000L)),
+        preferences = listOf(PreferenceEntity("custom-1", 3, 1_700_000_000_000L), PreferenceEntity("recipe-chili", 2, 1_700_000_000_000L)),
         // The second entry's food is gone: its snapshot keeps it readable, so it must survive the round trip.
         entries = listOf(entry("e-1", "custom-1", 2_000L), entry("e-2", "deleted-food", 1_000L), entry("e-3", "archived-1", 3_000L)),
+        recipes = listOf(RecipeEntity("recipe-chili", "Чили", 4.0, 1200.0), RecipeEntity("recipe-soup", "Soup", null, 900.0)),
+        recipeAliases = listOf(RecipeAliasEntity("recipe-chili", "chili")),
+        // The second ingredient's food is gone: it keeps its own numbers, as an entry does.
+        recipeIngredients = listOf(ingredient("recipe-chili", 0, "custom-1"), ingredient("recipe-chili", 1, "deleted-food"), ingredient("recipe-soup", 0, "custom-1")),
+    )
+
+    private fun ingredient(recipeId: String, position: Int, foodId: String) = RecipeIngredientEntity(
+        recipeId = recipeId, position = position, foodId = foodId, foodName = "Ingredient $foodId", enteredAmount = 500.0,
+        enteredUnit = "GRAM", resolvedBaseAmount = 500.0, resolvedBaseUnit = "GRAM", snapshotCalories = 1250.0,
+        snapshotProtein = 52.5, snapshotCarbohydrates = null, snapshotFat = 0.0,
     )
 
     private fun sorted(rows: DiaryRows) = DiaryRows(
@@ -51,6 +61,9 @@ class DiaryExportTest {
         rows.conversions.sortedWith(compareBy({ it.foodId }, { it.unit }, { it.label })),
         rows.preferences.sortedBy { it.foodId },
         rows.entries.sortedBy { it.id },
+        rows.recipes.sortedBy { it.id },
+        rows.recipeAliases.sortedWith(compareBy({ it.recipeId }, { it.alias })),
+        rows.recipeIngredients.sortedWith(compareBy({ it.recipeId }, { it.position })),
     )
 
     private fun valid(text: String) = assertIs<DiaryImport.Valid>(decodeDiary(text))
@@ -76,10 +89,45 @@ class DiaryExportTest {
 
     @Test fun theFileNamesItsVersionsAndFields() {
         val text = encodeDiary(file())
-        assertTrue(text.startsWith("{\"format\":\"breakfast-diary\",\"formatVersion\":1,\"schemaVersion\":6,\"exportedAtEpochMs\":5000,"))
+        assertTrue(text.startsWith("{\"format\":\"breakfast-diary\",\"formatVersion\":2,\"schemaVersion\":7,\"exportedAtEpochMs\":5000,"))
         assertTrue("\"foodName\":\"Snapshot name e-1\"" in text)
         assertTrue("\"settings\":{\"dayStartHour\":4,\"longDraft\":\"TWO_LINES\"}" in text)
         assertTrue("\"snapshotCarbohydrates\":null" in text)
+        assertTrue("\"recipes\":[{\"id\":\"recipe-chili\",\"name\":\"Чили\",\"portions\":4.0,\"totalWeight\":1200.0}," in text)
+        assertTrue("\"totalWeight\":900.0" in text && "\"portions\":null" in text)
+    }
+
+    /** A file from before recipes (format 1, schema 6) has no recipe fields: it still imports, as a diary without recipes. */
+    @Test fun aFileFromBeforeRecipesStillImports() {
+        val old = diaryFileOf(rows().copy(recipes = emptyList(), recipeAliases = emptyList(), recipeIngredients = emptyList()), settings, 5_000L)
+            .copy(formatVersion = 1, schemaVersion = 6, preferences = listOf(PreferenceDto("custom-1", 3, 1_700_000_000_000L)))
+        val text = encodeDiary(old)
+            .replace(",\"recipes\":[]", "").replace(",\"recipeAliases\":[]", "").replace(",\"recipeIngredients\":[]", "")
+        assertTrue("recipe" !in text)
+        val imported = valid(text)
+        assertEquals(3, imported.rows.foods.size)
+        assertEquals(3, imported.rows.entries.size)
+        assertTrue(imported.rows.recipes.isEmpty() && imported.rows.recipeIngredients.isEmpty())
+    }
+
+    @Test fun recipeRowsAreChecked() {
+        val f = file()
+        refused(f.copy(recipes = f.recipes + f.recipes.first()))
+        refused(f.copy(recipes = f.recipes + RecipeDto("custom-1", "Clash with a food", 1.0, null)))
+        refused(f.copy(recipes = f.recipes.map { it.copy(name = " ") }))
+        refused(f.copy(recipes = f.recipes.map { it.copy(portions = 0.0) }))
+        refused(f.copy(recipes = f.recipes.map { it.copy(totalWeight = -1.0) }))
+        refused(f.copy(recipes = f.recipes.map { it.copy(portions = null, totalWeight = null) }))
+        refused(f.copy(recipeAliases = f.recipeAliases + RecipeAliasDto("recipe-missing", "x")))
+        refused(f.copy(recipeAliases = f.recipeAliases + f.recipeAliases.first()))
+        refused(f.copy(recipeIngredients = f.recipeIngredients + f.recipeIngredients.first()))
+        refused(f.copy(recipeIngredients = f.recipeIngredients.map { it.copy(recipeId = "recipe-missing") }))
+        refused(f.copy(recipeIngredients = f.recipeIngredients.map { it.copy(enteredUnit = "CUP") }))
+        refused(f.copy(recipeIngredients = f.recipeIngredients.map { it.copy(snapshotCalories = -1.0) }))
+        refused(f.copy(recipeIngredients = f.recipeIngredients.map { it.copy(snapshotProtein = -1.0) }))
+        refused(f.copy(preferences = f.preferences + PreferenceDto("recipe-missing", 1, 1L)))
+        // An ingredient's food need not be in the file: it keeps its own name and numbers.
+        assertNull(diaryProblem(f.copy(recipeIngredients = f.recipeIngredients.map { it.copy(foodId = "missing") })))
     }
 
     /** A new schema version or table must reach the file too: this fails until [DIARY_SCHEMA_VERSION] and [DiaryRows] follow. */
@@ -89,7 +137,10 @@ class DiaryExportTest {
         assertEquals(latest, DIARY_SCHEMA_VERSION)
         val schema = Json.parseToJsonElement(File(dir, "$latest.json").readText()).jsonObject
         val tables = schema["database"]!!.jsonObject["entities"]!!.jsonArray.map { it.jsonObject["tableName"]!!.jsonPrimitive.content }.toSet()
-        assertEquals(setOf("foods", "food_aliases", "serving_conversions", "preferences", "meal_entries"), tables)
+        assertEquals(
+            setOf("foods", "food_aliases", "serving_conversions", "preferences", "meal_entries", "recipes", "recipe_aliases", "recipe_ingredients"),
+            tables,
+        )
     }
 
     @Test fun exportIsTheSameEveryTime() {
@@ -103,6 +154,8 @@ class DiaryExportTest {
                 aliases = it.aliases + FoodAliasEntity("gone", "x"),
                 conversions = it.conversions + ServingConversionEntity("gone", "GRAM", 1.0, "p", false, ""),
                 preferences = it.preferences + PreferenceEntity("gone", 1, 1L),
+                recipeAliases = it.recipeAliases + RecipeAliasEntity("recipe-gone", "x"),
+                recipeIngredients = it.recipeIngredients + ingredient("recipe-gone", 0, "custom-1"),
             )
         }
         val imported = valid(encodeDiary(diaryFileOf(withOrphans, settings, 0L)))
@@ -131,7 +184,7 @@ class DiaryExportTest {
     }
 
     @Test fun anUnknownFormatOrNewerSchemaIsRefused() {
-        refused(file().copy(formatVersion = 2))
+        refused(file().copy(formatVersion = DIARY_FORMAT_VERSION + 1))
         refused(file().copy(formatVersion = 0))
         refused(file().copy(schemaVersion = DIARY_SCHEMA_VERSION + 1))
         refused(file().copy(schemaVersion = 0))
