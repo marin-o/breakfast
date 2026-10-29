@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import com.iron.breakfast.app.Confirmations
 import com.iron.breakfast.app.Surfaces
 import com.iron.breakfast.domain.MacroTotal
+import com.iron.breakfast.domain.Measure
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.Recipe
@@ -173,9 +174,9 @@ internal fun RecipeLogSheet(recipes: RecipeBook, surfaces: Surfaces, automaticMe
     FoodAmountSheet(
         food = food,
         startAmount = last?.enteredAmount ?: food.defaultAmount,
-        startUnit = last?.enteredUnit ?: food.defaultUnit,
+        startMeasure = Measure(last?.enteredUnit ?: food.defaultUnit),
         startMeal = libraryPresetMeal(surfaces.mealOnScreen(), automaticMeal()),
-        onAdd = { amount, unit, meal -> recipes.log(recipe, meal!!, amount, unit) },
+        onAdd = { amount, measure, meal -> recipes.log(recipe, meal!!, amount, measure.unit) },
         onInvalid = {},
         onDismiss = recipes::dismissLog,
     )

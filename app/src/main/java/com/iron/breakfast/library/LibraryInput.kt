@@ -18,11 +18,13 @@ internal data class LibraryLogDraft(
     val food: FoodRecord,
     val amount: Double,
     val unit: MeasureUnit,
-    val target: MealSlot? = null
+    val target: MealSlot? = null,
+    /** The serving's name for [MeasureUnit.SERVING]. */
+    val servingName: String? = null,
 )
 
-internal fun libraryLogDraft(food: FoodRecord, target: MealSlot, amount: Double, unit: MeasureUnit): LibraryLogDraft =
-    LibraryLogDraft(food, amount, unit, target)
+internal fun libraryLogDraft(food: FoodRecord, target: MealSlot, amount: Double, unit: MeasureUnit, servingName: String? = null): LibraryLogDraft =
+    LibraryLogDraft(food, amount, unit, target, servingName)
 
 internal data class LibraryInputSegment(
     val raw: String,

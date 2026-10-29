@@ -32,8 +32,8 @@ class LibraryStateTest {
         override suspend fun foodsMatching(query: String) = library.filter { it.name.contains(query, ignoreCase = true) }
         override fun planner() = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
         override fun search(phrase: String) = FoodCatalog.fixtures.filter { phrase in it.aliases || phrase == it.id }.map { RankedFood(it, 1.0, emptyList()) }
-        override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
-            calls += "log ${food.id} $amount ${unit.name} $meal $dayKey"
+        override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String, servingName: String?) {
+            calls += "log ${food.id} $amount ${unit.name} $meal $dayKey" + (servingName?.let { " $it" } ?: "")
         }
         override suspend fun save(text: String, meal: MealSlot, dayKey: String): SavedMeal { calls += "save \"$text\" $meal $dayKey"; return saved }
         var failDelete = false
@@ -100,6 +100,13 @@ class LibraryStateTest {
         assertEquals(listOf<DiaryChange>(DiaryChange.FoodsLogged), diary.published)
         assertEquals("\"Logged!\", not a dialog naming the meal and day just chosen", 1, confirmed)
         assertNull(notices.message)
+    }
+
+    /** The amount sheet's serving is logged by its name, so the day reads "2 slices". */
+    @Test fun aServingIsLoggedByItsName() {
+        library.show(MealSlot.LUNCH, "")
+        library.log(kefir, MealSlot.LUNCH, 2.0, MeasureUnit.SERVING, "bottle")
+        assertEquals(listOf("log kefir 2.0 SERVING LUNCH 2026-10-28 bottle"), store.calls)
     }
 
     @Test fun whileAPartIsResolvedATapOrAnAddIsThePickAndDoneOnlySearches() {

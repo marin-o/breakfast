@@ -34,6 +34,7 @@ import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.asciiDigits
 import com.iron.breakfast.domain.displayLabel
+import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.library.servingRowName
 import com.iron.breakfast.ui.components.AddCircle
 import com.iron.breakfast.ui.components.ChoiceOption
@@ -118,6 +119,14 @@ internal fun EditFoodScreen(form: FoodForm, session: DiarySession, library: Libr
                 draft.openServing(food.nutrition.unit.takeIf { it == MeasureUnit.GRAM || it == MeasureUnit.MILLILITER } ?: MeasureUnit.GRAM)
             })
         }
+        // Beside the servings: with it, g and ml both work for the food, and a serving may be in either.
+        Field(
+            "100 ml =", draft.density, { draft.density = it.decimalInput() },
+            hint = "g",
+            error = draft.densityError(),
+            errorMessage = if (draft.densityError()) "Enter a positive amount." else null,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        )
         SectionHeading("Aliases")
         draft.aliases.forEach { alias ->
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {

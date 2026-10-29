@@ -27,8 +27,8 @@ class EntryEditTest {
             calls += "quick $entryId $text"
             return CompletableDeferred<ReplacementResult>().also { answer = it }.await()
         }
-        override suspend fun replaceEntry(entryId: String, foodId: String, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String): ReplacementResult {
-            calls += "full $entryId $foodId $amount ${unit.label} $meal $dayKey"
+        override suspend fun replaceEntry(entryId: String, foodId: String, amount: Double, unit: MeasureUnit, servingName: String?, meal: MealSlot, dayKey: String): ReplacementResult {
+            calls += "full $entryId $foodId $amount ${unit.label} $meal $dayKey" + (servingName?.let { " $it" } ?: "")
             return CompletableDeferred<ReplacementResult>().also { answer = it }.await()
         }
         fun answer(result: ReplacementResult) { answer!!.complete(result) }
@@ -171,6 +171,17 @@ class EntryEditTest {
         edit.saveFull("", "50", MeasureUnit.GRAM, MealSlot.LUNCH, "2026-10-27")
         assertEquals("Enter a positive amount and choose a food.", edit.error)
         assertTrue(store.calls.isEmpty())
+    }
+
+    /** A serving chosen in the full edit is saved by its name; a unit carries none. */
+    @Test fun aFullEditSavesAServingByItsName() {
+        edit.beginFull(e1)
+        edit.saveFull("oats", "2", MeasureUnit.SERVING, MealSlot.LUNCH, "2026-10-27", servingName = "scoop")
+        assertEquals(listOf("full e1 oats 2.0  LUNCH 2026-10-27 scoop"), store.calls)
+        store.answer(ReplacementResult.Success(e1))
+        edit.beginFull(e1)
+        edit.saveFull("oats", "50", MeasureUnit.GRAM, MealSlot.LUNCH, "2026-10-27", servingName = "scoop")
+        assertEquals("full e1 oats 50.0 g LUNCH 2026-10-27", store.calls.last())
     }
 
     @Test fun aFullEditOwnsItsEditUntilItsSaveEnds() {

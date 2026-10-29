@@ -74,6 +74,10 @@ import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionCalculator
 import com.iron.breakfast.domain.ServingConversion
+import com.iron.breakfast.domain.Measure
+import com.iron.breakfast.domain.measures
+import com.iron.breakfast.log.previewQuantityLine
+import androidx.compose.foundation.layout.FlowRow
 import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.ui.label
@@ -161,28 +165,32 @@ private fun LibraryFoodRow(library: LibraryState, automaticMeal: () -> MealSlot?
     val last = library.lastLoggedEntry(food)
     val repeatAmount = last?.enteredAmount ?: food.defaultAmount
     val repeatUnit = last?.enteredUnit ?: food.defaultUnit
+    // A serving logged last is repeated by its name ("2 slices"); a converted unit ("kg") reads as typed.
+    val repeatLabel = last?.enteredUnitLabel
+    val repeatName = repeatLabel.takeIf { repeatUnit == MeasureUnit.SERVING }
+    val repeatLine = previewQuantityLine(repeatAmount, repeatUnit, approximate = false, label = repeatLabel)
     val expanded = root && library.expandedFoodId == food.id
     val target = library.target
     Column(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             FoodRow(
                 name = food.name,
-                quantityLine = if (last == null) "${repeatAmount.pretty()} ${repeatUnit.displayLabel()}" else "last ${repeatAmount.pretty()} ${repeatUnit.displayLabel()}",
+                quantityLine = if (last == null) repeatLine else "last $repeatLine",
                 calories = last?.let { formatKcal(it.nutritionSnapshot.calories) } ?: defaultServingCalories(food),
                 modifier = Modifier.weight(1f),
                 onClick = { library.openFood(food) },
             )
             AddCircle(
                 contentDescription = if (target == null) "Add ${food.name} to a meal" else "Add ${food.name} to ${target.label()}",
-                onClick = { if (root) library.toggleFoodPicker(food) else library.log(food, target!!, repeatAmount, repeatUnit) },
+                onClick = { if (root) library.toggleFoodPicker(food) else library.log(food, target!!, repeatAmount, repeatUnit, repeatName) },
                 icon = if (expanded) Icons.Outlined.Close else Icons.Outlined.Add,
             )
         }
         if (expanded) {
             Column(Modifier.padding(bottom = 8.dp)) {
-                Text("Add ${repeatAmount.pretty()} ${repeatUnit.displayLabel()} to", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(bottom = 6.dp))
+                Text("Add $repeatLine to", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(bottom = 6.dp))
                 // The Meal setting's meal shows selected (none for Ask): one tap logs it, or another meal is tapped.
-                MealChoices(selected = automaticMeal(), onSelect = { meal -> library.log(food, meal, repeatAmount, repeatUnit); library.collapseFoodPicker() }, singleRow = true)
+                MealChoices(selected = automaticMeal(), onSelect = { meal -> library.log(food, meal, repeatAmount, repeatUnit, repeatName); library.collapseFoodPicker() }, singleRow = true)
             }
         }
     }
@@ -367,17 +375,17 @@ private fun LibraryAmountSheet(library: LibraryState, food: FoodRecord, target: 
     FoodAmountSheet(
         food = food,
         startAmount = last?.enteredAmount ?: food.defaultAmount,
-        startUnit = last?.enteredUnit ?: food.defaultUnit,
+        startMeasure = last?.let { Measure(it.enteredUnit, it.enteredUnitLabel.takeIf { _ -> it.enteredUnit == MeasureUnit.SERVING }) } ?: Measure(food.defaultUnit),
         startMeal = target,
-        onAdd = { amount, unit, meal -> library.log(food, meal!!, amount, unit); onDismiss() },
+        onAdd = { amount, measure, meal -> library.log(food, meal!!, amount, measure.unit, measure.name); onDismiss() },
         onInvalid = library::invalidAmount,
         onDismiss = onDismiss,
     )
 }
 
 /**
- * The amount sheet: the food's name and source, the amount and its units (the food's default, its basis and its
- * servings), the meal ([startMeal]; none for a recipe's ingredient, which has no meal), the kcal and macros it comes
+ * The amount sheet: the food's name and source, the amount and what it counts (the food's [measures]: its default and
+ * basis, the other of g and ml with a density, its named servings; the row wraps), the meal ([startMeal]; none for a recipe's ingredient, which has no meal), the kcal and macros it comes
  * to, and Add. The Library logs through it, a recipe is logged through it, and a recipe's ingredient is added through
  * it. Its values are saveable, so a configuration change keeps the open sheet as it was.
  */
@@ -386,26 +394,31 @@ private fun LibraryAmountSheet(library: LibraryState, food: FoodRecord, target: 
 internal fun FoodAmountSheet(
     food: FoodRecord,
     startAmount: Double,
-    startUnit: MeasureUnit,
+    startMeasure: Measure,
     startMeal: MealSlot?,
-    onAdd: (amount: Double, unit: MeasureUnit, meal: MealSlot?) -> Unit,
+    onAdd: (amount: Double, measure: Measure, meal: MealSlot?) -> Unit,
     onInvalid: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val colors = LocalBreakfastColors.current
     var amountText by rememberSaveable(food.id, startMeal) { mutableStateOf(startAmount.plain()) }
-    var unit by rememberSaveable(food.id, startMeal) { mutableStateOf(startUnit) }
+    val measures = food.measures()
+    // The unit and a serving's name, saved apart (a Measure is not a Bundle value).
+    var unit by rememberSaveable(food.id, startMeal) { mutableStateOf(startMeasure.unit) }
+    var servingName by rememberSaveable(food.id, startMeal) { mutableStateOf(startMeasure.name.takeIf { startMeasure.unit == MeasureUnit.SERVING }) }
+    val measure = Measure(unit, servingName)
     var chosenMeal by rememberSaveable(food.id, startMeal) { mutableStateOf(startMeal) }
-    val units = (listOf(food.defaultUnit, food.nutrition.unit) + food.conversions.map { it.unit }).filter { it != MeasureUnit.UNKNOWN }.distinct()
-    val calc = amountText.toDoubleOrNull()?.takeIf { it > 0 }?.let { NutritionCalculator().calculate(food, it, unit) }
+    val calc = amountText.toDoubleOrNull()?.takeIf { it > 0 }?.let { NutritionCalculator().calculate(food, it, unit, servingName) }
     Sheet(onDismissRequest = onDismiss, skipPartiallyExpanded = true) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(foodText(food.name), color = colors.ink, style = BreakfastType.Section)
             Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Secondary)
             // The field fills its row, so the units take their own line under it, as on the entry's quick edit.
             Field("Amount", amountText, { amountText = it.decimalInput() }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                units.forEach { candidate -> ChoiceOption(candidate.displayLabel(), unit == candidate, { unit = candidate }) }
+            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                measures.forEach { candidate ->
+                    ChoiceOption(candidate.label, measure == candidate, { unit = candidate.unit; servingName = candidate.name })
+                }
             }
             chosenMeal?.let { meal ->
                 Text("Meal", color = colors.soft, style = BreakfastType.Meta)
@@ -418,7 +431,7 @@ internal fun FoodAmountSheet(
                 chosenMeal?.let { "Add to ${it.label()}" } ?: "Add",
                 onClick = {
                     val amount = amountText.toDoubleOrNull()
-                    if (amount != null && amount > 0 && calc?.supported == true) onAdd(amount, unit, chosenMeal) else onInvalid()
+                    if (amount != null && amount > 0 && calc?.supported == true) onAdd(amount, measure, chosenMeal) else onInvalid()
                 },
                 enabled = calc?.supported == true,
             )

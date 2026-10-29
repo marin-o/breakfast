@@ -37,7 +37,7 @@ class RecipeFormTest {
         form.openNew()
         form.onName(name)
         form.onPortions(portions)
-        form.onTotalWeight(weight)
+        form.onTotal(weight)
         form.onIngredients(ingredients)
         form.commitIngredients()
     }
@@ -76,12 +76,12 @@ class RecipeFormTest {
             RecipeFields(name = "", portions = "2", ingredients = "2 eggs"),
             RecipeFields(name = "Bowl", ingredients = "2 eggs"),
             RecipeFields(name = "Bowl", portions = "0", ingredients = "2 eggs"),
-            RecipeFields(name = "Bowl", portions = "2", totalWeight = "x", ingredients = "2 eggs"),
+            RecipeFields(name = "Bowl", portions = "2", total = "x", ingredients = "2 eggs"),
             RecipeFields(name = "Bowl", portions = "2", ingredients = ""),
             RecipeFields(name = "Bowl", portions = "2", ingredients = "2 eggs, ayranxyz"),
         )) {
             form.openNew()
-            form.onName(fields.name); form.onPortions(fields.portions); form.onTotalWeight(fields.totalWeight); form.onIngredients(fields.ingredients)
+            form.onName(fields.name); form.onPortions(fields.portions); form.onTotal(fields.total); form.onIngredients(fields.ingredients)
             form.save()
             assertTrue("$fields", store.calls.isEmpty())
             assertTrue("$fields stays open", form.open)
@@ -169,7 +169,7 @@ class RecipeFormTest {
         form.openEdit(recipe)
         assertEquals("Chili", form.fields.name)
         assertEquals("4", form.fields.portions)
-        assertEquals("1600", form.fields.totalWeight)
+        assertEquals("1600", form.fields.total)
         assertEquals("чили", form.fields.aliases)
         assertEquals("2 piece ${egg.name}, 500 g Old mince", form.fields.ingredients)
         assertTrue(form.ingredientsView().complete)

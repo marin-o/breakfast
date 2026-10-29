@@ -84,7 +84,7 @@ class ResolveFrameTest {
             override suspend fun foodsMatching(query: String) = emptyList<FoodRecord>()
             override fun planner() = plannerFor(emptyMap())
             override fun search(phrase: String) = emptyList<RankedFood>()
-            override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
+            override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String, servingName: String?) {
                 calls += "library log ${food.id}"
             }
             override suspend fun save(text: String, meal: MealSlot, dayKey: String): SavedMeal {

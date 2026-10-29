@@ -189,6 +189,9 @@ internal class FoodForm(
             return
         }
         val kcal = resolved.calories ?: return
+        // "100 ml =" a number that is not a positive one: the field shows it, and nothing is saved.
+        if (draft.densityError()) { notices.show("Enter a positive amount."); return }
+        val density = draft.densityValue()
         // A new or changed code is stored in its canonical form; an unchanged one keeps the spelling it has.
         val storedBarcode = if (barcodeUnchanged && originalBarcode != null) originalBarcode else canonicalBarcode(barcode) ?: barcode
         val basisAmount = resolved.basisAmount
@@ -235,7 +238,7 @@ internal class FoodForm(
         ) {
             if (editingId != null) {
                 val original = session.foods.firstOrNull { it.id == editingId } ?: error("That personal food is no longer available.")
-                store.updateFood(editedCustomFoodRecord(original, name, brand, storedBarcode, newFood.aliases, nutrition, basisAmount, basisUnit, aliases = aliasList, servings = servingList))
+                store.updateFood(editedCustomFoodRecord(original, name, brand, storedBarcode, newFood.aliases, nutrition, basisAmount, basisUnit, aliases = aliasList, servings = servingList, density = density))
                 original
             } else if (saveTarget != null) store.saveFoodAndLog(newFood, saveTarget, day)
             else store.saveFood(newFood)

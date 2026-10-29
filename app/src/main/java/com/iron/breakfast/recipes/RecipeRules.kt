@@ -4,10 +4,13 @@ import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.LogPlan
 import com.iron.breakfast.domain.LogPlanner
+import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.Recipe
 import com.iron.breakfast.domain.RecipeIngredient
 import com.iron.breakfast.domain.parseDecimal
+import com.iron.breakfast.domain.millilitresIn
+import com.iron.breakfast.domain.parseStrictAmountUnit
 import com.iron.breakfast.domain.splitAliases
 import com.iron.breakfast.domain.validYield
 import com.iron.breakfast.ui.screens.editableNumber
@@ -21,8 +24,10 @@ import kotlinx.serialization.Serializable
 internal data class RecipeFields(
     val name: String = "",
     val portions: String = "",
-    val totalWeight: String = "",
-    val totalVolume: String = "",
+    /** The whole dish, typed in any weight or volume unit ("1.6 kg", "1.5 l"), or a bare number in [totalUnit]. */
+    val total: String = "",
+    /** g or ml: what a bare [total] is in. */
+    val totalUnit: MeasureUnit = MeasureUnit.GRAM,
     val aliases: String = "",
     val ingredients: String = "",
 )
@@ -34,25 +39,43 @@ internal fun yieldOf(text: String): Double? = parseDecimal(text)?.takeIf(::valid
 internal fun yieldError(text: String): Boolean = text.isNotBlank() && yieldOf(text) == null
 
 /**
- * Save is offered once the recipe is whole: a name, portions, a total weight or a total volume (at least one, and none
- * typed wrong),
- * and ingredients that all resolve ([ingredientsComplete]: at least one, none "Not in your foods" or still a choice).
+ * The Total as g or ml of the dish: a bare number in [unit], or an amount typed in any weight unit (as g) or volume
+ * unit (as ml): "1.6 kg" is 1600 g, "1.5 l" 1500 ml, "2 cups" 480 ml. Null when blank or not one.
+ */
+internal fun totalOf(text: String, unit: MeasureUnit): Pair<MeasureUnit, Double>? {
+    yieldOf(text)?.let { return unit to it }
+    val typed = parseStrictAmountUnit(text) ?: return null
+    val ml = millilitresIn(typed.unit)
+    return when {
+        typed.unit == MeasureUnit.GRAM -> MeasureUnit.GRAM to typed.amount
+        ml != null -> MeasureUnit.MILLILITER to typed.amount * ml
+        else -> null
+    }
+}
+
+/** A Total typed that is no weight or volume: it shows as an error. */
+internal fun totalError(fields: RecipeFields): Boolean = fields.total.isNotBlank() && totalOf(fields.total, fields.totalUnit) == null
+
+/**
+ * Save is offered once the recipe is whole: a name, portions or a total (at least one, and neither typed wrong), and
+ * ingredients that all resolve ([ingredientsComplete]: at least one, none "Not in your foods" or still a choice).
  */
 internal fun recipeCanSave(fields: RecipeFields, ingredientsComplete: Boolean): Boolean =
-    fields.name.isNotBlank() && listOf(fields.portions, fields.totalWeight, fields.totalVolume).let { yields ->
-        yields.none(::yieldError) && yields.any { yieldOf(it) != null }
-    } && ingredientsComplete
+    fields.name.isNotBlank() && !yieldError(fields.portions) && !totalError(fields) &&
+        (yieldOf(fields.portions) != null || totalOf(fields.total, fields.totalUnit) != null) && ingredientsComplete
 
 /** Every part of the finished ingredients resolves, and there is at least one. */
 internal fun ingredientsComplete(plan: LogPlan): Boolean = plan.entries.isNotEmpty() && plan.unresolved.isEmpty()
 
 /** The ingredients a finished [plan] saves: each part's food, its amount as entered and as resolved, and its numbers. */
 internal fun ingredientsOf(plan: LogPlan): List<RecipeIngredient> = plan.entries.map { part ->
+    // An ingredient has no serving name of its own: a serving ("2 slices") is kept as what it weighs on the food's basis.
+    val serving = part.unit == MeasureUnit.SERVING
     RecipeIngredient(
         foodId = part.food.id,
         foodName = part.food.name,
-        enteredAmount = part.amount,
-        enteredUnit = part.unit,
+        enteredAmount = if (serving) part.calculation.resolvedBaseAmount else part.amount,
+        enteredUnit = if (serving) part.food.nutrition.unit else part.unit,
         resolvedBaseAmount = part.calculation.resolvedBaseAmount,
         resolvedBaseUnit = part.food.nutrition.unit,
         nutritionSnapshot = part.calculation.nutrition,
@@ -60,15 +83,19 @@ internal fun ingredientsOf(plan: LogPlan): List<RecipeIngredient> = plan.entries
 }
 
 /** The recipe the form saves: [id] blank for a new one. Call only when [recipeCanSave]. */
-internal fun recipeOf(id: String?, fields: RecipeFields, plan: LogPlan): Recipe = Recipe(
-    id = id.orEmpty(),
-    name = fields.name.trim(),
-    aliases = splitAliases(fields.aliases).distinct(),
-    portions = yieldOf(fields.portions),
-    totalWeight = yieldOf(fields.totalWeight),
-    totalVolume = yieldOf(fields.totalVolume),
-    ingredients = ingredientsOf(plan),
-)
+internal fun recipeOf(id: String?, fields: RecipeFields, plan: LogPlan): Recipe {
+    // One total, as g (total weight) or ml (total volume); the other stays empty.
+    val total = totalOf(fields.total, fields.totalUnit)
+    return Recipe(
+        id = id.orEmpty(),
+        name = fields.name.trim(),
+        aliases = splitAliases(fields.aliases).distinct(),
+        portions = yieldOf(fields.portions),
+        totalWeight = total?.takeIf { it.first == MeasureUnit.GRAM }?.second,
+        totalVolume = total?.takeIf { it.first == MeasureUnit.MILLILITER }?.second,
+        ingredients = ingredientsOf(plan),
+    )
+}
 
 /** What Edit opens with: the recipe's fields, its ingredients typed back as the Log writes a choice, and their pins. */
 internal data class RecipeEdit(val fields: RecipeFields, val pins: Map<String, FoodRecord>)
@@ -88,8 +115,9 @@ internal fun recipeEdit(recipe: Recipe, foods: List<FoodRecord>, planner: LogPla
     val fields = RecipeFields(
         name = recipe.name,
         portions = editableNumber(recipe.portions),
-        totalWeight = editableNumber(recipe.totalWeight),
-        totalVolume = editableNumber(recipe.totalVolume),
+        // One total: the weight when it has one, else the volume.
+        total = editableNumber(recipe.totalWeight ?: recipe.totalVolume),
+        totalUnit = if (recipe.totalWeight == null && recipe.totalVolume != null) MeasureUnit.MILLILITER else MeasureUnit.GRAM,
         aliases = recipe.aliases.joinToString(", "),
         ingredients = parts.joinToString(", "),
     )

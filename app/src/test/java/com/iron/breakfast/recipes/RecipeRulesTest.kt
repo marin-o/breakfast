@@ -33,14 +33,16 @@ class RecipeRulesTest {
     @Test fun saveNeedsANameAYieldAndIngredientsThatAllResolve() {
         val whole = RecipeFields(name = "Bowl", portions = "2", ingredients = "2 eggs")
         assertTrue(recipeCanSave(whole, ingredientsComplete = true))
-        assertTrue(recipeCanSave(whole.copy(portions = "", totalWeight = "300"), true))
-        assertTrue("a volume alone", recipeCanSave(whole.copy(portions = "", totalVolume = "1500"), true))
-        assertFalse("a volume typed wrong", recipeCanSave(whole.copy(totalVolume = "0"), true))
-        assertFalse(recipeCanSave(whole.copy(portions = "", totalVolume = "x"), true))
+        assertTrue(recipeCanSave(whole.copy(portions = "", total = "300"), true))
+        assertTrue("a volume alone", recipeCanSave(whole.copy(portions = "", total = "1500", totalUnit = MeasureUnit.MILLILITER), true))
+        assertTrue("any weight unit typed", recipeCanSave(whole.copy(portions = "", total = "1.6 kg"), true))
+        assertFalse("a total typed wrong", recipeCanSave(whole.copy(total = "0"), true))
+        assertFalse(recipeCanSave(whole.copy(portions = "", total = "x"), true))
+        assertFalse("no weight or volume", recipeCanSave(whole.copy(portions = "", total = "2 pieces"), true))
         assertFalse(recipeCanSave(whole, ingredientsComplete = false))
         assertFalse(recipeCanSave(whole.copy(name = " "), true))
         assertFalse(recipeCanSave(whole.copy(portions = ""), true))
-        assertFalse("a weight typed wrong", recipeCanSave(whole.copy(totalWeight = "0"), true))
+        assertFalse("a weight typed wrong", recipeCanSave(whole.copy(total = "0 g"), true))
         assertTrue(ingredientsComplete(planner.plan("2 eggs, 40 g rolled oats")))
         assertFalse(ingredientsComplete(planner.plan("2 eggs, ayranxyz")))
         assertFalse(ingredientsComplete(LogPlan(emptyList(), emptyList())))
@@ -48,7 +50,7 @@ class RecipeRulesTest {
 
     @Test fun theSavedRecipeTakesTheFieldsAndEachPartAsResolved() {
         val plan = planner.plan("2 eggs")
-        val recipe = recipeOf(null, RecipeFields(name = " Bowl ", portions = "2", totalWeight = "", aliases = "b, бол, b", ingredients = "2 eggs"), plan)
+        val recipe = recipeOf(null, RecipeFields(name = " Bowl ", portions = "2", total = "", aliases = "b, бол, b", ingredients = "2 eggs"), plan)
         assertEquals("", recipe.id)
         assertEquals("Bowl", recipe.name)
         assertEquals(listOf("b", "бол"), recipe.aliases)
@@ -77,11 +79,25 @@ class RecipeRulesTest {
         assertEquals(gone.nutritionSnapshot, again[1].nutritionSnapshot)
         assertEquals(gone.foodName, again[1].foodName)
         assertEquals(egg.id, again[0].foodId)
-        assertEquals("1600", edit.fields.totalWeight)
-        assertEquals("", edit.fields.totalVolume)
-        assertEquals("1500", recipeEdit(recipe.copy(totalVolume = 1500.0), FoodCatalog.fixtures, planner).fields.totalVolume)
-        assertEquals(750.0, recipeOf(null, RecipeFields(name = "Soup", totalVolume = "750", ingredients = "2 eggs"), planner.plan("2 eggs")).totalVolume!!, 0.0)
+        assertEquals("1600" to MeasureUnit.GRAM, edit.fields.total to edit.fields.totalUnit)
+        // One total: the weight, else the volume.
+        assertEquals("1600", recipeEdit(recipe.copy(totalVolume = 1500.0), FoodCatalog.fixtures, planner).fields.total)
+        assertEquals("1500" to MeasureUnit.MILLILITER, recipeEdit(recipe.copy(totalWeight = null, totalVolume = 1500.0), FoodCatalog.fixtures, planner).fields.let { it.total to it.totalUnit })
         assertEquals("4", edit.fields.portions)
+        val soup = recipeOf(null, RecipeFields(name = "Soup", total = "750", totalUnit = MeasureUnit.MILLILITER, ingredients = "2 eggs"), planner.plan("2 eggs"))
+        assertEquals(750.0, soup.totalVolume!!, 0.0)
+        assertNull(soup.totalWeight)
+    }
+
+    @Test fun theTotalTakesAnyWeightOrVolumeUnit() {
+        assertEquals(MeasureUnit.GRAM to 1600.0, totalOf("1600", MeasureUnit.GRAM))
+        assertEquals(MeasureUnit.MILLILITER to 1600.0, totalOf("1600", MeasureUnit.MILLILITER))
+        assertEquals(MeasureUnit.GRAM to 1600.0, totalOf("1.6 kg", MeasureUnit.MILLILITER))
+        assertEquals(MeasureUnit.MILLILITER to 1500.0, totalOf("1.5 l", MeasureUnit.GRAM))
+        assertEquals(MeasureUnit.MILLILITER to 480.0, totalOf("2 cups", MeasureUnit.GRAM))
+        assertEquals(MeasureUnit.GRAM to 453.6, totalOf("1 lb", MeasureUnit.GRAM))
+        assertNull(totalOf("2 pieces", MeasureUnit.GRAM))
+        assertNull(totalOf("", MeasureUnit.GRAM))
     }
 
     @Test fun aPartAddedComesAfterTheLastWithAComma() {

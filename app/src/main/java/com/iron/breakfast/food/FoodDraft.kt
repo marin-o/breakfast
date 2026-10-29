@@ -8,6 +8,7 @@ import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionInput
 import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.splitAliases
+import com.iron.breakfast.domain.parseDecimal
 import kotlinx.serialization.Serializable
 
 /**
@@ -41,6 +42,8 @@ class FoodDraft {
     var servingUnit by mutableStateOf(MeasureUnit.PIECE)
     var servingAmount by mutableStateOf("")
     var servingLabel by mutableStateOf("")
+    /** "100 ml =" this many g: the food's density, as typed; blank when unknown. */
+    var density by mutableStateOf("")
     /** What the serving form showed when Add serving opened it; until it changes, nothing was typed there. */
     private var servingOpenedWith by mutableStateOf<PendingServing?>(null)
 
@@ -60,8 +63,15 @@ class FoodDraft {
         caloriesEdited = false; proteinEdited = false; carbsEdited = false; fatEdited = false; basisEdited = false
         aliases = food?.aliases.orEmpty(); aliasInput = ""; aliasFieldOpen = false
         servings = food?.householdServings().orEmpty()
+        density = food?.density?.fieldText().orEmpty()
         servingFormOpen = false; servingUnit = MeasureUnit.PIECE; servingAmount = ""; servingLabel = ""; servingOpenedWith = null
     }
+
+    /** The density typed: a positive number, or null (blank, or not one). */
+    fun densityValue(): Double? = parseDecimal(density)?.takeIf { it.isFinite() && it > 0.0 }
+
+    /** Something typed as the density that is not a positive number: it shows as an error and Save refuses it. */
+    fun densityError(): Boolean = density.isNotBlank() && densityValue() == null
 
     /** Aliases already added plus any typed but not yet confirmed in the alias field. */
     fun allAliases(): List<String> =
@@ -72,8 +82,10 @@ class FoodDraft {
     }
 
     fun commitServing(): Boolean {
-        val base = servingAmount.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 } ?: return false
+        val amount = servingAmount.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 } ?: return false
         val label = servingLabel.trim().ifBlank { null }
+        // A serving is kept in the food's basis units: one typed in the other of g and ml goes through the density.
+        val base = servingInBasis(amount, servingUnit, if (basisUnit == MeasureUnit.MILLILITER.label) MeasureUnit.MILLILITER else MeasureUnit.GRAM, densityValue())
         servings = servings.filterNot { it.unit == servingUnit && it.label == label } + ServingConversion(servingUnit, base, "personal serving", label = label)
         closeServing()
         return true
@@ -99,7 +111,7 @@ class FoodDraft {
     /** The values typed into the form, as they are now. */
     fun fields() = FoodDraftFields(
         name, brand, barcode, shorthand, calories, protein, carbs, fat, basisAmount, basisUnit,
-        aliases, aliasInput, servings, servingUnit, servingAmount, servingLabel,
+        aliases, aliasInput, servings, servingUnit, servingAmount, servingLabel, density,
     )
 
     /**
@@ -122,6 +134,7 @@ class FoodDraft {
         basisAmount = f.basisAmount; basisUnit = f.basisUnit
         aliases = f.aliases; aliasInput = f.aliasInput
         servings = f.servings; servingUnit = f.servingUnit; servingAmount = f.servingAmount; servingLabel = f.servingLabel
+        density = f.density
         barcodeFromScan = state.barcodeFromScan; fromOff = state.fromOff
         caloriesEdited = state.caloriesEdited; proteinEdited = state.proteinEdited; carbsEdited = state.carbsEdited
         fatEdited = state.fatEdited; basisEdited = state.basisEdited
@@ -154,7 +167,19 @@ data class FoodDraftFields(
     val servingUnit: MeasureUnit = MeasureUnit.PIECE,
     val servingAmount: String = "",
     val servingLabel: String = "",
+    val density: String = "",
 )
+
+/**
+ * [amount] of [unit] in a food's [basis] unit: as it is in the same unit, through [density] (g in 100 ml) between g and
+ * ml, else as typed (no density to convert with).
+ */
+internal fun servingInBasis(amount: Double, unit: MeasureUnit, basis: MeasureUnit, density: Double?): Double = when {
+    unit == basis || density == null -> amount
+    unit == MeasureUnit.GRAM && basis == MeasureUnit.MILLILITER -> amount * 100.0 / density
+    unit == MeasureUnit.MILLILITER && basis == MeasureUnit.GRAM -> amount * density / 100.0
+    else -> amount
+}
 
 /** [FoodDraftFields] plus the form's own flags: what [FoodDraft.restore] needs to show the form as it was. */
 @Serializable

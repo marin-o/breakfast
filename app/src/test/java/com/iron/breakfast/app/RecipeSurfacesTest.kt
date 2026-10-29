@@ -163,7 +163,7 @@ class RecipeSurfacesTest {
         app.surfaces.openRecipes()
         app.recipeForm.openNew()
         app.recipeForm.onName("Soup")
-        app.recipeForm.onTotalWeight("900")
+        app.recipeForm.onTotal("900")
         // What the main thread's frame does on Android: the changes reach the mirrors.
         androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
         val again = AppKit(app.savedState).apply { recipesAre(chili) }

@@ -10,6 +10,8 @@ import com.iron.breakfast.domain.snapshotScaled
 import com.iron.breakfast.domain.Calculation
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.asFood
+import com.iron.breakfast.domain.Measure
+import com.iron.breakfast.domain.measures
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
@@ -22,7 +24,7 @@ internal interface EntryEditStore {
     /** Quick edit: [text] is "amount unit", read strictly; a text that does not read is a [ReplacementResult.Failure]. */
     suspend fun replaceAmountUnit(entryId: String, text: String): ReplacementResult
     /** Full edit: every editable field at once. */
-    suspend fun replaceEntry(entryId: String, foodId: String, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String): ReplacementResult
+    suspend fun replaceEntry(entryId: String, foodId: String, amount: Double, unit: MeasureUnit, servingName: String?, meal: MealSlot, dayKey: String): ReplacementResult
 }
 
 /**
@@ -146,9 +148,10 @@ internal class EntryEdit(
      * What [entry] edited to [foodId], [amount] and [unit] comes to, for the preview. With its own food gone, its
      * snapshot scaled ([snapshotScaled]); null when that cannot be.
      */
-    fun preview(entry: MealEntry, foodId: String, amount: Double, unit: MeasureUnit): Calculation? {
+    fun preview(entry: MealEntry, foodId: String, amount: Double, unit: MeasureUnit, servingName: String? = null): Calculation? {
         val food = foodOf(foodId)
-        return if (food != null) calculator.calculate(food, amount, unit) else snapshotScaled(entry, amount, unit).takeIf { foodId == entry.foodId }
+        return if (food != null) calculator.calculate(food, amount, unit, servingName)
+        else snapshotScaled(entry, amount, unit, servingName).takeIf { foodId == entry.foodId }
     }
 
     fun openFoodPicker() { pickerOpen = true }
@@ -181,7 +184,7 @@ internal class EntryEdit(
     }
 
     /** Save in full edit. */
-    fun saveFull(foodId: String, amount: String, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
+    fun saveFull(foodId: String, amount: String, unit: MeasureUnit, meal: MealSlot, dayKey: String, servingName: String? = null) {
         val id = editingEntryId ?: return
         val edit = editSession
         // A tap while the save runs is ignored, not reported as invalid.
@@ -205,7 +208,7 @@ internal class EntryEdit(
                 }
             },
             onFailure = { failure -> if (stillEditing()) error = failure.message ?: "Could not save this entry." },
-        ) { store.replaceEntry(id, foodId, parsedAmount, unit, meal, dayKey) }
+        ) { store.replaceEntry(id, foodId, parsedAmount, unit, servingName.takeIf { unit == MeasureUnit.SERVING }, meal, dayKey) }
     }
 
     /** What a saved edit committed: nothing when refused; an edit, or one whose edit had closed meanwhile. */
@@ -216,6 +219,8 @@ internal class EntryEdit(
     }
 }
 
-/** The units an entry of [food] can be edited in: its default, its basis and its servings. */
-internal fun entryUnits(food: FoodRecord): List<MeasureUnit> =
-    (listOf(food.defaultUnit, food.nutrition.unit) + food.conversions.map { it.unit }).filter { it != MeasureUnit.UNKNOWN }.distinct()
+/** The units an entry of [food] can be edited in: as the amount sheet offers them ([measures]). */
+internal fun entryUnits(food: FoodRecord): List<MeasureUnit> = food.measures().map { it.unit }.distinct()
+
+/** What an entry is counted in, as a measure: a serving with its name, else its unit. */
+internal fun MealEntry.measure(): Measure = Measure(enteredUnit, enteredUnitLabel.takeIf { enteredUnit == MeasureUnit.SERVING })

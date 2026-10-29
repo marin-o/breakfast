@@ -88,16 +88,16 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
                 override suspend fun foodsMatching(query: String) = engine.foodsMatching(query)
                 override fun planner() = engine.planner()
                 override fun search(phrase: String) = engine.search(phrase)
-                override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
-                    engine.cacheFoodAndLog(food, amount, unit, meal, dayKey)
+                override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String, servingName: String?) {
+                    engine.cacheFoodAndLog(food, amount, unit, meal, dayKey, servingName)
                 }
                 override suspend fun save(text: String, meal: MealSlot, dayKey: String) = engine.save(text, mealSlot = meal, dayKey = dayKey)
                 override suspend fun deleteFood(id: String) { engine.deleteFood(id) }
             },
             entryEdit = object : EntryEditStore {
                 override suspend fun replaceAmountUnit(entryId: String, text: String) = engine.replaceEntryAmountUnit(entryId, text)
-                override suspend fun replaceEntry(entryId: String, foodId: String, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) =
-                    engine.replaceEntryDraft(entryId, foodId, amount, unit, meal, dayKey)
+                override suspend fun replaceEntry(entryId: String, foodId: String, amount: Double, unit: MeasureUnit, servingName: String?, meal: MealSlot, dayKey: String) =
+                    engine.replaceEntryDraft(entryId, foodId, amount, unit, meal, dayKey, servingName)
             },
             foodForm = object : FoodFormStore {
                 override suspend fun updateFood(food: FoodRecord) = engine.updateFood(food)

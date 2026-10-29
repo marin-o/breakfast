@@ -113,7 +113,7 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
                 override suspend fun foodsMatching(query: String) = libraryFoods
                 override fun planner() = plannerFor(emptyMap())
                 override fun search(phrase: String) = emptyList<RankedFood>()
-                override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
+                override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String, servingName: String?) {
                     calls += "library log ${food.id} $meal"
                 }
                 override suspend fun save(text: String, meal: MealSlot, dayKey: String): SavedMeal {
@@ -124,7 +124,7 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
             },
             entryEdit = object : EntryEditStore {
                 override suspend fun replaceAmountUnit(entryId: String, text: String) = ReplacementResult.Failure("not in these tests")
-                override suspend fun replaceEntry(entryId: String, foodId: String, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) =
+                override suspend fun replaceEntry(entryId: String, foodId: String, amount: Double, unit: MeasureUnit, servingName: String?, meal: MealSlot, dayKey: String) =
                     ReplacementResult.Failure("not in these tests")
             },
             foodForm = object : FoodFormStore {

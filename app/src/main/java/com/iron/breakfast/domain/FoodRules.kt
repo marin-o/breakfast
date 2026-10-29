@@ -29,6 +29,8 @@ internal fun editedCustomFoodRecord(
     basisUnit: MeasureUnit,
     aliases: List<String>? = null,
     servings: List<ServingConversion>? = null,
+    /** Grams in 100 ml ("100 ml = X g"); null when not known. */
+    density: Double? = original.density,
 ): FoodRecord {
     val editedAliases = aliases ?: aliasText.trim().takeIf { it.isNotBlank() }
         ?.let(::splitAliases)
@@ -52,7 +54,8 @@ internal fun editedCustomFoodRecord(
         conversions = conversions,
         defaultAmount = if (keepDefault) original.defaultAmount else basisAmount,
         defaultUnit = if (keepDefault) original.defaultUnit else basisUnit,
-        personalOverride = true
+        personalOverride = true,
+        density = density,
     )
 }
 

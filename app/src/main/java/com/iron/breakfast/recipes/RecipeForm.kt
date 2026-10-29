@@ -9,6 +9,7 @@ import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.app.Notices
 import com.iron.breakfast.domain.DraftRow
 import com.iron.breakfast.domain.FoodRecord
+import com.iron.breakfast.domain.Measure
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.Recipe
 import com.iron.breakfast.domain.libraryRecencyOrder
@@ -41,7 +42,7 @@ internal data class SavedRecipeForm(
 /**
  * New recipe and Edit: one form over [fields].
  *
- * - **Fields:** the name, portions, total weight and total volume (at least one), the aliases, and the ingredients, typed like the
+ * - **Fields:** the name, portions and one total in g or ml (at least one of the two), the aliases, and the ingredients, typed like the
  *   Log bar and read by the same planner, over the foods alone ([RecipeStore.ingredientPlanner]): the same rows, "which
  *   one?" choices and "Not in your foods". A choice or a pick pins its food to the part text, as on the Log, for as long
  *   as the form is open.
@@ -110,8 +111,8 @@ internal class RecipeForm(
 
     fun onName(value: String) { fields = fields.copy(name = value) }
     fun onPortions(value: String) { fields = fields.copy(portions = value) }
-    fun onTotalWeight(value: String) { fields = fields.copy(totalWeight = value) }
-    fun onTotalVolume(value: String) { fields = fields.copy(totalVolume = value) }
+    fun onTotal(value: String) { fields = fields.copy(total = value) }
+    fun onTotalUnit(unit: MeasureUnit) { fields = fields.copy(totalUnit = unit) }
     fun onAliases(value: String) { fields = fields.copy(aliases = value) }
 
     /** The ingredients' typing. Clearing them also drops the foods picked for them. */
@@ -206,9 +207,12 @@ internal class RecipeForm(
     fun dismissAdding() { adding = null }
 
     /** The sheet's Add: [amount] [unit] of [food] is the last ingredient, pinned to it, and the form shows again. */
-    fun addIngredient(food: FoodRecord, amount: Double, unit: MeasureUnit) {
+    fun addIngredient(food: FoodRecord, amount: Double, unit: MeasureUnit) = addIngredient(food, amount, Measure(unit))
+
+    /** The sheet's Add: [amount] of [measure] of [food] ("2 slices") is the last ingredient, pinned to it. */
+    fun addIngredient(food: FoodRecord, amount: Double, measure: Measure) {
         val planner = store.ingredientPlanner(pins.toMap())
-        val text = planner.partText(food, amount, unit)
+        val text = planner.partText(food, amount, measure)
         pins[text] = food
         fields = fields.copy(ingredients = planner.withPartAdded(fields.ingredients, text))
         endSearch()

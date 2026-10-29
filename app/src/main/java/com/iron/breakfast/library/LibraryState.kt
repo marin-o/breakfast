@@ -33,8 +33,8 @@ internal interface LibraryStore {
     fun planner(): LogPlanner
     /** The local matches for a food phrase, best first. */
     fun search(phrase: String): List<RankedFood>
-    /** Stores [food] as needed and logs it. */
-    suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String)
+    /** Stores [food] as needed and logs it; [servingName] names the serving for [MeasureUnit.SERVING]. */
+    suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String, servingName: String?)
     /** Saves typed [text] to [meal] on [dayKey]: what resolves is logged, the rest comes back unresolved. */
     suspend fun save(text: String, meal: MealSlot, dayKey: String): SavedMeal
     /** Deletes the food for good; entries keep their own name and numbers. */
@@ -178,11 +178,14 @@ internal class LibraryState(
 
     fun invalidAmount() { notices.show("Enter a positive amount and a supported unit such as g, ml, tbsp, tsp, or piece.") }
 
-    /** Logs [food] to [target]; while resolving, it is the part's pick instead and keeps the part's typed amount and meal. */
-    fun log(food: FoodRecord, target: MealSlot, amount: Double, unit: MeasureUnit) {
+    /**
+     * Logs [food] to [target], in [unit] ([servingName] names the serving for [MeasureUnit.SERVING]); while resolving, it
+     * is the part's pick instead and keeps the part's typed amount and meal.
+     */
+    fun log(food: FoodRecord, target: MealSlot, amount: Double, unit: MeasureUnit, servingName: String? = null) {
         if (!session.canWrite) return
         if (resolvingPart()) { onPartPicked(food); return }
-        logBatch(listOf(libraryLogDraft(food, target, amount, unit)), target)
+        logBatch(listOf(libraryLogDraft(food, target, amount, unit, servingName)), target)
     }
 
     private fun pick(food: FoodRecord) {
@@ -198,7 +201,7 @@ internal class LibraryState(
             change = DiaryChange.FoodsLogged,
             onSuccess = { confirmLogged() },
             onFailure = { notices.show(it.message ?: "Could not log this food.") },
-        ) { drafts.forEach { draft -> store.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, day) } }
+        ) { drafts.forEach { draft -> store.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, day, draft.servingName) } }
     }
 
     fun chooseBatchMeal(target: MealSlot) {

@@ -3,7 +3,9 @@ package com.iron.breakfast.recipes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.Alignment
+import com.iron.breakfast.domain.MeasureUnit
+import com.iron.breakfast.ui.components.ChoiceOption
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,6 +39,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.domain.FoodRecord
+import com.iron.breakfast.domain.Measure
 import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.library.FoodAmountSheet
@@ -82,15 +85,8 @@ internal fun RecipeFormScreen(form: RecipeForm, recipes: RecipeBook, session: Di
                 TopBar(if (form.editingRecipeId != null) "Edit recipe" else "New recipe", form::leave, Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
                 Column(Modifier.padding(horizontal = Gutter).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Field("Name", fields.name, form::onName, required = true)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        YieldField("Portions", fields.portions, form::onPortions, hint = null, Modifier.weight(1f))
-                        YieldField("Total weight", fields.totalWeight, form::onTotalWeight, hint = "g", Modifier.weight(1f))
-                    }
-                    // Under Total weight, as its counterpart in ml.
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Spacer(Modifier.weight(1f))
-                        YieldField("Total volume", fields.totalVolume, form::onTotalVolume, hint = "ml", Modifier.weight(1f))
-                    }
+                    YieldField("Portions", fields.portions, form::onPortions, hint = null, Modifier.fillMaxWidth())
+                    TotalField(form)
                     Column {
                         IngredientsField(form)
                         // The Log's rows and choices: a tapped choice pins its food; "Not in your foods" opens the search.
@@ -107,7 +103,28 @@ internal fun RecipeFormScreen(form: RecipeForm, recipes: RecipeBook, session: Di
     }
 }
 
-/** Portions, Total weight or Total volume: a decimal field whose typed value that is not a positive number shows as an error. */
+/**
+ * The Total, laid out as New food's basis: the amount, then g and ml. It takes any weight or volume unit typed ("1.6 kg"),
+ * and the choice shows the family it reads as.
+ */
+@Composable
+private fun TotalField(form: RecipeForm) {
+    val fields = form.fields
+    val error = totalError(fields)
+    val unit = totalOf(fields.total, fields.totalUnit)?.first ?: fields.totalUnit
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
+        Field(
+            "Total", fields.total, form::onTotal, Modifier.weight(1.6f),
+            error = error,
+            errorMessage = if (error) "Enter a positive amount." else null,
+        )
+        listOf(MeasureUnit.GRAM, MeasureUnit.MILLILITER).forEach { candidate ->
+            ChoiceOption(candidate.label, unit == candidate, { form.onTotalUnit(candidate) }, Modifier.weight(1f))
+        }
+    }
+}
+
+/** Portions: a decimal field whose typed value that is not a positive number shows as an error. */
 @Composable
 private fun YieldField(label: String, value: String, onValue: (String) -> Unit, hint: String?, modifier: Modifier) {
     val error = yieldError(value)
@@ -190,9 +207,9 @@ internal fun IngredientAmountSheet(form: RecipeForm, food: FoodRecord) {
     FoodAmountSheet(
         food = food,
         startAmount = food.defaultAmount,
-        startUnit = food.defaultUnit,
+        startMeasure = Measure(food.defaultUnit),
         startMeal = null,
-        onAdd = { amount, unit, _ -> form.addIngredient(food, amount, unit) },
+        onAdd = { amount, measure, _ -> form.addIngredient(food, amount, measure) },
         onInvalid = {},
         onDismiss = form::dismissAdding,
     )
