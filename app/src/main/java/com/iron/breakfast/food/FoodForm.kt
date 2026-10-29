@@ -144,6 +144,9 @@ internal class FoodForm(
     /** Another screen took the form's place (a resolve ending, the search): it stops showing, nothing else. */
     fun hide() { open = false; discardOpen = false }
 
+    /** [foodId] was deleted: an Edit food of it closes, so it cannot store the food again; another form stays. */
+    fun foodDeleted(foodId: String) { if (editingFoodId == foodId) close() }
+
     /** A restored Edit food whose food is gone has nothing to edit. */
     fun closeIfFoodGone() {
         if (open && editingFoodId?.let { id -> session.foods.none { it.id == id } } == true) close()

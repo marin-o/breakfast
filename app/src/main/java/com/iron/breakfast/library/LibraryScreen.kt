@@ -108,7 +108,7 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
     val root = library.target == null
     // A part being resolved is searched for, not added to a meal the user did not choose here.
     val title = if (vm.resolve.resolvingPart) "Search" else if (root) "Library" else "Add to ${library.target!!.label()}"
-    val subtitle = if (root) "${library.foods.size} foods, by last logged" else entryDateLabel(vm.selectedDayKey)
+    val subtitle = if (root) "${library.foods.size} foods, by last logged" else entryDateLabel(vm.day.selectedDayKey)
     LazyColumn(modifier.fillMaxSize().background(colors.bg).padding(horizontal = Gutter)) {
         item {
             Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {

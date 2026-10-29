@@ -1,26 +1,20 @@
 package com.iron.breakfast.app
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import android.app.Application
 import android.util.Log
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.time.LocalDate
 import java.time.ZoneId
 import com.iron.breakfast.settings.AppSettings
-import com.iron.breakfast.domain.dayKeyFor
 import com.iron.breakfast.domain.BreakfastEngine
 import com.iron.breakfast.data.BreakfastStore
 import com.iron.breakfast.data.OpenFoodFactsClient
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
-import com.iron.breakfast.resolveSelectedDay
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.food.FoodForm
 import com.iron.breakfast.scan.BarcodeLookup
@@ -44,6 +38,7 @@ import com.iron.breakfast.library.LibraryStore
 import com.iron.breakfast.lastUsedMeal
 import com.iron.breakfast.settings.undoWindowMs
 import com.iron.breakfast.settings.SettingsState
+import com.iron.breakfast.today.DayState
 import com.iron.breakfast.today.MatchFeedback
 import com.iron.breakfast.today.MatchStore
 import com.iron.breakfast.today.UndoController
@@ -62,8 +57,15 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     /** Every user setting and the open Settings page; the effects that are not settings are wired in [init]. */
     internal val settings = SettingsState(AppSettings(application), clock)
     private val zone: ZoneId get() = ZoneId.systemDefault()
-    /** Today's day by the clock and the day start setting. The 60-second loop and every return keep it current. */
-    var todayKey by mutableStateOf(dayKeyFor(clock(), zone, settings.dayStartHour)); private set
+    /** Today and the day on show (see [DayState]); a day picked stops a scan looking up for the old one. */
+    internal val day = DayState(
+        clock = clock,
+        zone = { zone },
+        dayStartHour = { settings.dayStartHour },
+        restored = restoreSelectedDay(savedState),
+        save = { saveSelectedDay(savedState, it) },
+        onSelected = { scan.invalidateLookup() },
+    )
     private val engine = BreakfastEngine(
         BreakfastStore(application),
         countTypingSetting = { settings.countTyping },
@@ -146,12 +148,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     internal val reminders: ExportReminders = ExportReminders(settings, session, clock, requestExport = { transfer.requestPicker(DiaryPicker.EXPORT) })
     val foods: List<FoodRecord> get() = session.foods
     val entries: List<MealEntry> get() = session.entries
-    /** True while the user is on today, not on a day they picked: a return from the background then opens the new today. */
-    private var followingToday = restoreSelectedDay(savedState).followingToday
-    /** Opened or restored after being closed: a user following today lands on today; a past day they picked stays. */
-    var selectedDayKey by mutableStateOf(
-        restoreSelectedDay(savedState).let { resolveSelectedDay(it.dayKey, it.followingToday, returning = true, clock(), zone, settings.dayStartHour) }
-    ); private set
     /** "Not in your foods": the Log ↔ Library resolve frame, the unknown queue and the resolver (see [ResolveFlow]). */
     internal val resolve: ResolveFlow = ResolveFlow(
         session = session,
@@ -165,7 +161,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         notices = notices,
         scope = viewModelScope,
         compute = Dispatchers.Default,
-        selectedDay = { selectedDayKey },
+        selectedDay = { day.selectedDayKey },
         openLibrary = { meal, query -> surfaces.openFocusedLibrary(meal, query) },
         returnToLog = { request, pick -> surfaces.returnToLog(request, pick) },
     )
@@ -177,7 +173,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             override suspend fun save(text: String, meal: MealSlot, dayKey: String, pins: Map<String, FoodRecord>) =
                 engine.save(text, mealSlot = meal, dayKey = dayKey, pins = pins)
         },
-        selectedDay = { selectedDayKey },
+        selectedDay = { day.selectedDayKey },
         automaticMeal = ::automaticMealNow,
         openMeal = ::mealOnScreen,
         editing = { entryEdit.mode != EntryEditMode.NONE },
@@ -204,12 +200,12 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         io = Dispatchers.IO,
         main = Dispatchers.Main,
         compute = Dispatchers.Default,
-        selectedDay = { selectedDayKey },
+        selectedDay = { day.selectedDayKey },
         resolvingPart = { resolve.resolvingPart },
         onPartPicked = resolve::finishPart,
         // Nothing that still holds the deleted food can store it again: its form, a Log pin, an open review.
         onDeleted = { food ->
-            if (foodForm.editingFoodId == food.id) foodForm.close()
+            foodForm.foodDeleted(food.id)
             log.dropPinsOf(food.id)
             review.foodDeleted(food.id)
         },
@@ -248,7 +244,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             }
         },
         notices = notices,
-        selectedDay = { selectedDayKey },
+        selectedDay = { day.selectedDayKey },
         openMeal = ::mealOnScreen,
         queue = resolve::queueView,
         resolvingPart = { resolve.resolvingPart },
@@ -268,7 +264,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         scope = viewModelScope,
         io = Dispatchers.IO,
         lookUpBarcodes = { settings.lookUpBarcodes },
-        selectedDay = { selectedDayKey },
+        selectedDay = { day.selectedDayKey },
         targetMeal = ::mealOnScreen,
         queueActive = { resolve.queueActive },
         onProduct = { food, origin -> surfaces.productScanned(food, origin) },
@@ -285,7 +281,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
             override suspend fun cacheFood(food: FoodRecord) = engine.cacheFood(food)
         },
         notices = notices,
-        selectedDay = { selectedDayKey },
+        selectedDay = { day.selectedDayKey },
         openMeal = ::mealOnScreen,
         queue = resolve::queueView,
         resolvingPart = { resolve.resolvingPart },
@@ -308,8 +304,6 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     val storageUnavailable: Boolean get() = session.storageUnavailable
 
     init {
-        if (selectedDayKey == todayKey) followingToday = true
-        saveSelectedDay(savedState, SavedDay(selectedDayKey, followingToday))
         restoreFoodForm(savedState)?.let(foodForm::restore)
         // Every change is mirrored, so an added or cleared draft and a closed or saved form drop their keys.
         viewModelScope.launch { snapshotFlow { log.savedDraft() }.collect { saveLogDraft(savedState, it) } }
@@ -323,7 +317,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         // Import and Delete all: one reset of everything that referred to the old diary (see [SessionReset]).
         session.onChange(SessionReset(sessionResetSteps(log, contribution, resolve, entryEdit))::onChange)
         // A new day start: today follows it at once, and a user on today stays on today (it counts as a return).
-        settings.dayStartHourSetting.observe { checkDay(returning = true) }
+        settings.dayStartHourSetting.observe { day.check(returning = true) }
         // An Undo offer showing now follows the new window from the moment it was made.
         settings.undoWindowSetting.observe { undo.windowChanged() }
         settings.exportReminderSetting.observe(reminders::settingChanged)
@@ -339,7 +333,7 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     /** "Try again" on the storage dialog: runs the same open again. */
     fun retryStorage() = openStore()
     /** The 60-second loop: today is recomputed, while the selected day stays where it is. */
-    fun reloadToday() { checkDay(returning = false); if (ready) session.refresh() }
+    fun reloadToday() { day.check(returning = false); if (ready) session.refresh() }
     private var stopped = false
     /** The activity left the screen (backgrounded or closed). */
     fun onAppStopped() { stopped = true; reminders.hide() }
@@ -347,31 +341,9 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
     fun onAppStarted() {
         if (!stopped) return
         stopped = false
-        checkDay(returning = true)
+        day.check(returning = true)
         if (ready) session.refresh()
         reminders.check()
-    }
-    /** Recomputes today and applies [resolveSelectedDay]; the selection moves only when [returning]. */
-    private fun checkDay(returning: Boolean) {
-        val now = clock()
-        todayKey = dayKeyFor(now, zone, settings.dayStartHour)
-        val day = resolveSelectedDay(selectedDayKey, followingToday, returning, now, zone, settings.dayStartHour)
-        if (day != selectedDayKey) selectDay(day, following = true)
-    }
-    private fun todayNow(): String = dayKeyFor(clock(), zone, settings.dayStartHour).also { todayKey = it }
-    private fun selectDay(value: String, following: Boolean) {
-        selectedDayKey = value
-        followingToday = following
-        saveSelectedDay(savedState, SavedDay(value, following))
-        scan.invalidateLookup()
-    }
-    fun shiftSelectedDay(delta: Long) { goToDay(runCatching { LocalDate.parse(selectedDayKey).plusDays(delta).toString() }.getOrDefault(selectedDayKey)) }
-    fun goToday() = goToDay(todayNow())
-    /** Selects a day from the arrows, swipe or date picker. Days after today are refused, so Next stops at today. */
-    fun goToDay(dayKey: String) {
-        val today = todayNow()
-        if (dayKey > today) return
-        selectDay(dayKey, following = dayKey == today)
     }
     /**
      * The meal the "Meal" setting gives a log with no chosen, typed or preset meal, at this moment; null for Ask. The

@@ -272,6 +272,20 @@ class FoodFormTest {
         assertFalse(form.open)
     }
 
+    @Test fun deletingTheFoodBeingEditedClosesItsFormAndNoOtherForm() {
+        form.openEdit(kefir)
+        form.foodDeleted("ayran")
+        assertTrue("another food's delete leaves the edit open", form.open)
+        form.foodDeleted(kefir.id)
+        assertFalse(form.open)
+        assertNull(form.editingFoodId)
+        assertEquals("close", events.last())
+        // A New food edits no stored food, so no delete closes it.
+        form.open("Kefir")
+        form.foodDeleted(kefir.id)
+        assertTrue(form.open)
+    }
+
     @Test fun anOpenFoodFactsProductSavedHereBecomesAContributionCandidate() {
         form.open("Ayran", "Dukat", "036000291452", fromOff = true)
         form.draft.calories = "40"

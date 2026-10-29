@@ -89,16 +89,16 @@ import com.iron.breakfast.ui.screens.plainLine
 
 @Composable
 internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
-    val selected = vm.entries.filter { it.dayKey == vm.selectedDayKey }
+    val selected = vm.entries.filter { it.dayKey == vm.day.selectedDayKey }
     val foods = vm.foods.associateBy { it.id }
     val total = selected.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
-    val isToday = vm.selectedDayKey == vm.todayKey
+    val isToday = vm.day.selectedDayKey == vm.day.todayKey
     val colors = LocalBreakfastColors.current
     val touchSlop = LocalViewConfiguration.current.touchSlop
     val swipeThreshold = with(androidx.compose.ui.platform.LocalDensity.current) { 96.dp.toPx() }
     var pickerOpen by remember { mutableStateOf(false) }
     val motion = rememberMotion()
-    val daySlide = rememberDaySlide(vm.selectedDayKey, motion)
+    val daySlide = rememberDaySlide(vm.day.selectedDayKey, motion)
 
     Box(modifier.fillMaxSize().background(colors.bg)) {
         LazyColumn(
@@ -106,7 +106,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                 // Another day comes in from the side it lies on: a later day from the right.
                 translationX = daySlide.offset * motion.screenSlidePx
                 alpha = 1f - abs(daySlide.offset)
-            }.pointerInput(vm.selectedDayKey) {
+            }.pointerInput(vm.day.selectedDayKey) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     var dx = 0f
@@ -124,7 +124,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
                         if (horizontal) change.consume()
                         if (!change.pressed) break
                     }
-                    if (horizontal && abs(dx) >= swipeThreshold) vm.shiftSelectedDay(if (dx < 0f) 1 else -1)
+                    if (horizontal && abs(dx) >= swipeThreshold) vm.day.shift(if (dx < 0f) 1 else -1)
                 }
             },
             // Room for the composer and nav that float over the end of the list.
@@ -132,12 +132,12 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
         ) {
             item {
                 DayHeader(
-                    title = shortDateLabel(vm.selectedDayKey),
-                    onPrevious = { vm.shiftSelectedDay(-1) },
-                    onNext = { vm.shiftSelectedDay(1) },
+                    title = shortDateLabel(vm.day.selectedDayKey),
+                    onPrevious = { vm.day.shift(-1) },
+                    onNext = { vm.day.shift(1) },
                     modifier = Modifier.padding(top = 8.dp),
                     showToday = !isToday,
-                    onToday = vm::goToday,
+                    onToday = vm.day::goToday,
                     nextEnabled = !isToday,
                     onTitleClick = { pickerOpen = true },
                 )
@@ -151,7 +151,7 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
             }
             vm.log.error?.let { message -> item { Text(message, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(vertical = 6.dp)) } }
             items(MealSlot.entries) { slot ->
-                DailyMealSection(slot, selected.filter { it.mealSlot == slot }, foods, vm, rows = vm.selectedDayKey to vm.ready)
+                DailyMealSection(slot, selected.filter { it.mealSlot == slot }, foods, vm, rows = vm.day.selectedDayKey to vm.ready)
             }
             item {
                 if (contributionShown(vm.settings.showContribute, vm.contribution.pending != null)) ContributionAction(vm)
@@ -161,10 +161,10 @@ internal fun DailyScreen(vm: BreakfastViewModel, modifier: Modifier) {
         if (vm.entryEdit.mode == EntryEditMode.NONE) DailyComposer(vm, Modifier.align(Alignment.BottomCenter))
     }
     if (pickerOpen) DayPickerDialog(
-        dayKey = vm.selectedDayKey,
-        todayKey = vm.todayKey,
+        dayKey = vm.day.selectedDayKey,
+        todayKey = vm.day.todayKey,
         onDismiss = { pickerOpen = false },
-        onPick = { dayKey -> vm.goToDay(dayKey); pickerOpen = false },
+        onPick = { dayKey -> vm.day.goTo(dayKey); pickerOpen = false },
     )
 }
 

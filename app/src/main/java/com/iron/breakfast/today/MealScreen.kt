@@ -79,7 +79,7 @@ import com.iron.breakfast.ui.screens.plainLine
 @Composable
 internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
     val target = vm.surfaces.meal ?: return
-    val entries = vm.entries.filter { it.dayKey == vm.selectedDayKey && it.mealSlot == target }
+    val entries = vm.entries.filter { it.dayKey == vm.day.selectedDayKey && it.mealSlot == target }
     val foods = vm.foods.associateBy { it.id }
     val total = entries.fold(NutritionValues.ZERO) { sum, entry -> sum + entry.nutritionSnapshot }
     val colors = LocalBreakfastColors.current
@@ -96,7 +96,7 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
                     title = target.label(),
                     onBack = vm.surfaces::closeMeal,
                     modifier = Modifier.padding(top = 8.dp),
-                    subtitle = shortDateLabel(vm.selectedDayKey),
+                    subtitle = shortDateLabel(vm.day.selectedDayKey),
                     trailing = {
                         Row(Modifier.padding(end = 12.dp), verticalAlignment = Alignment.Bottom) {
                             Text(formatKcal(total.calories), color = colors.ink, style = BreakfastType.Title)

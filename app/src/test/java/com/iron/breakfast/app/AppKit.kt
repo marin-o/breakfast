@@ -155,7 +155,7 @@ internal class AppKit {
         selectedDay = { day },
         resolvingPart = { resolve.resolvingPart },
         onPartPicked = resolve::finishPart,
-        onDeleted = { food -> if (foodForm.editingFoodId == food.id) foodForm.close() },
+        onDeleted = { food -> foodForm.foodDeleted(food.id) },
         afterSave = resolve::afterSave,
     )
     val entryEdit: EntryEdit = EntryEdit(
