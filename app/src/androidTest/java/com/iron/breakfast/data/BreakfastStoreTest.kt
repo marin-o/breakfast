@@ -137,6 +137,47 @@ class BreakfastStoreTest {
         assertEqualsFullRead()
     }
 
+    /** Only a personal food can be deleted: a bundled one is refused and stays. */
+    @Test
+    fun onlyAPersonalFoodIsDeleted() = runBlocking {
+        val bundled = FoodCatalog.fixtures.first()
+        try {
+            store.deleteFood(bundled.id)
+            org.junit.Assert.fail("a bundled food is not deleted")
+        } catch (expected: IllegalArgumentException) {
+            // Refused inside the transaction: nothing written.
+        }
+        assertTrue(store.foods().any { it.id == bundled.id })
+        assertTrue(database.foodDao().byId(bundled.id) != null)
+    }
+
+    /** Its food deleted, an entry's amount still changes: its snapshot scales; Replace keeps it, meal and day too. */
+    @Test
+    fun anEntryWhoseFoodWasDeletedScalesItsAmount() = runBlocking {
+        val food = FoodRecord(
+            id = "custom-gone", name = "Gone bar", aliases = emptyList(), category = "Personal food", origin = FoodOrigin.CUSTOM,
+            nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(400.0, 10.0, 50.0, 20.0)),
+            defaultAmount = 50.0, defaultUnit = MeasureUnit.GRAM, personalOverride = true,
+        )
+        val engine = BreakfastEngine(store)
+        val logged = engine.cacheFoodAndLog(food, 50.0, MeasureUnit.GRAM, MealSlot.LUNCH, "2026-10-28")
+        engine.deleteFood(food.id)
+
+        val quick = engine.replaceEntryAmountUnit(logged.id, "75 g") as ReplacementResult.Success
+        assertEquals(300.0, quick.entry.nutritionSnapshot.calories, 1e-9)
+        assertEquals(7.5, quick.entry.nutritionSnapshot.protein!!, 1e-9)
+        assertEquals(37.5, quick.entry.nutritionSnapshot.carbohydrates!!, 1e-9)
+        assertEquals(15.0, quick.entry.nutritionSnapshot.fat!!, 1e-9)
+        assertEquals(75.0, store.entries().single { it.id == logged.id }.enteredAmount, 0.0)
+        assertTrue(engine.replaceEntryAmountUnit(logged.id, "1 tbsp") is ReplacementResult.Failure)
+
+        val full = engine.replaceEntryDraft(logged.id, food.id, 25.0, MeasureUnit.GRAM, MealSlot.DINNER, "2026-10-27") as ReplacementResult.Success
+        assertEquals(100.0, full.entry.nutritionSnapshot.calories, 1e-9)
+        assertEquals(MealSlot.DINNER, full.entry.mealSlot)
+        assertEquals("2026-10-27", full.entry.dayKey)
+        assertEquals(food.id, full.entry.foodId)
+    }
+
     /** Foods are no longer archived: a row an older build archived is deleted when the store opens, once. */
     @Test
     fun theStoreDeletesArchivedFoodsWhenItOpensAndOnlyThem() = runBlocking {
@@ -185,7 +226,7 @@ class BreakfastStoreTest {
         assertTrue(foods === store.foods())
         assertTrue(preferences !== store.preferenceMap())
 
-        store.deleteFood(FoodCatalog.fixtures.first().id)
+        store.upsertFood(FoodCatalog.fixtures.first().copy(name = "Edited"))
         assertTrue(foods !== store.foods())
     }
 
@@ -261,7 +302,7 @@ class BreakfastStoreTest {
         assertTrue(matcher === engine.matcherForTesting())
         assertTrue(planner !== engine.planner())
 
-        store.deleteFood(FoodCatalog.fixtures.first().id)
+        store.upsertFood(FoodCatalog.fixtures.first().copy(name = "Edited"))
         assertTrue(matcher !== engine.matcherForTesting())
     }
 

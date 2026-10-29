@@ -192,6 +192,19 @@ class LibraryStateTest {
         assertNull("no Undo and no notice", notices.message)
     }
 
+    @Test fun aDeleteWhileAnotherWriteRunsKeepsTheDialog() {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        diary.session.write(DiaryChange.FoodsChanged) { gate.await() }
+        assertTrue(diary.session.busy)
+        library.askDelete(kefir)
+        library.confirmDelete()
+        assertEquals(kefir, library.deleteRequest)
+        assertEquals(emptyList<String>(), store.calls)
+        gate.complete(Unit)
+        library.confirmDelete()
+        assertEquals(listOf("delete kefir"), store.calls)
+    }
+
     @Test fun onlyAPersonalFoodCanBeDeleted() {
         library.askDelete(egg)
         assertNull(library.deleteRequest)

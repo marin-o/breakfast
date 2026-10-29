@@ -103,6 +103,9 @@ internal class ProductReview(
     /** Another screen took the review's place (a resolved part returning to the Log). */
     fun hide() { product = null }
 
+    /** A food was deleted: a review still showing it closes, so it cannot store that food again. */
+    fun foodDeleted(foodId: String) { if (product?.id == foodId) close() }
+
     /** "Find better match": the search, which returns to the resolver when the review came from a queue. */
     fun findBetterMatch() { close(); openSearch(queue() != null) }
 

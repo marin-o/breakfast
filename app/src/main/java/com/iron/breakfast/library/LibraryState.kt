@@ -293,8 +293,9 @@ internal class LibraryState(
      */
     fun confirmDelete() {
         val food = deleteRequest ?: return
-        deleteRequest = null
+        // A tap while another write runs is ignored, as elsewhere; the dialog stays for another tap.
         if (!session.ready || session.busy) return
+        deleteRequest = null
         session.write(
             change = DiaryChange.FoodsChanged,
             onSuccess = {

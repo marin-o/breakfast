@@ -83,6 +83,9 @@ internal class LogComposer(
     /** The foods picked for the old diary are dropped with it (see `SessionReset`). */
     fun clearPins() { pins.clear() }
 
+    /** A food was deleted: a part pinned to it is matched again, so Add cannot log (or bring back) that food. */
+    fun dropPinsOf(foodId: String) { pins.entries.removeAll { it.value.id == foodId } }
+
     /** A meal, the Library or an entry edit opened, or the diary was replaced: the Log's error no longer applies. */
     fun clearError() { error = null }
 

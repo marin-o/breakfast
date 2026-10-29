@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.room.Room
 import androidx.room.withTransaction
+import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.BuiltInCatalogSync
 import com.iron.breakfast.domain.FoodCatalog
@@ -162,7 +163,12 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
      */
     suspend fun deleteFood(id: String) {
         requireReady()
-        write(FOODS + PREFERENCES) { deleteFoodRows(id) }
+        write(FOODS + PREFERENCES) {
+            // Only a personal food: a bundled one would come back at the next start, an Open Food Facts one is a cache.
+            val stored = database.foodDao().byId(id) ?: return@write
+            require(stored.origin == FoodOrigin.CUSTOM.name) { "Only a personal food can be deleted." }
+            deleteFoodRows(id)
+        }
     }
 
     suspend fun deleteEntry(id: String) {

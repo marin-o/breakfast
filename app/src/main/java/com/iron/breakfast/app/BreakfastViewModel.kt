@@ -207,7 +207,12 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         selectedDay = { selectedDayKey },
         resolvingPart = { resolve.resolvingPart },
         onPartPicked = resolve::finishPart,
-        onDeleted = { food -> if (foodForm.editingFoodId == food.id) foodForm.close() },
+        // Nothing that still holds the deleted food can store it again: its form, a Log pin, an open review.
+        onDeleted = { food ->
+            if (foodForm.editingFoodId == food.id) foodForm.close()
+            log.dropPinsOf(food.id)
+            review.foodDeleted(food.id)
+        },
         afterSave = resolve::afterSave,
     )
     /** The entry detail and the quick and full edits (see [EntryEdit]); an edit shows its meal and returns to Daily through here. */
