@@ -87,20 +87,22 @@ internal fun logSubmitPlan(
     return LogSubmitPlan.Save(target)
 }
 
-/** Where a reviewed product is logged. While a resolve queue is active the meal is the queue's own and Add always advances it. */
+/** Where a food is logged ([queueLogPlan]), and whether that advances the resolve queue. */
 internal data class ReviewLogPlan(val meal: MealSlot, val advancesQueue: Boolean)
 
 /** The sign-in's arrow and Cancel are offered only while it does not submit (as drawn); Back closes it always. */
 internal fun contributionAuthCanDismiss(busy: Boolean): Boolean = !busy
 
-/** [queueActive]: a resolve queue is being resolved (it is continued and has parts left). */
-internal fun reviewLogPlan(queueActive: Boolean, queueTarget: MealSlot?, chosen: MealSlot): ReviewLogPlan =
-    if (queueActive && queueTarget != null) ReviewLogPlan(queueTarget, true) else ReviewLogPlan(chosen, false)
-
-/** The queue owns the meal while resolving ([queueActive]), even when the Daily screen has no selected meal. */
-internal fun resolverLogPlan(queueActive: Boolean, queueTarget: MealSlot?, currentMeal: MealSlot?): ReviewLogPlan? = when {
-    queueActive -> queueTarget?.let { ReviewLogPlan(it, true) }
-    else -> currentMeal?.let { ReviewLogPlan(it, false) }
+/**
+ * Where a food logs from a screen the resolver can open (product review's Add, the food form's Save). While a resolve
+ * queue is being resolved ([queueActive]: it is continued and has parts left) the queue owns the meal, even when the
+ * screen beneath has none, and the log advances the queue; otherwise it logs to [meal], the one chosen or open
+ * beneath. Null: nowhere to log. An active queue always has its meal (`ResolveFlow.afterSave` sets both, and the meal
+ * is cleared only with the last part), so a null [queueMeal] while active is a guard, not a state the app reaches.
+ */
+internal fun queueLogPlan(queueActive: Boolean, queueMeal: MealSlot?, meal: MealSlot?): ReviewLogPlan? = when {
+    queueActive -> queueMeal?.let { ReviewLogPlan(it, true) }
+    else -> meal?.let { ReviewLogPlan(it, false) }
 }
 
 internal fun canSaveProductToLibrary(slot: MealSlot?, queueActive: Boolean): Boolean = slot == null && !queueActive

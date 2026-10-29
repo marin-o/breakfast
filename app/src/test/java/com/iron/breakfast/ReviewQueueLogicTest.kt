@@ -6,34 +6,32 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/** [queueLogPlan] is the one rule product review's Add and the food form's Save follow. */
 class ReviewQueueLogicTest {
     @Test
     fun activeResolveQueueForcesItsMealAndAdvances() {
-        val plan = reviewLogPlan(queueActive = true, queueTarget = MealSlot.LUNCH, chosen = MealSlot.DINNER)
+        val plan = queueLogPlan(queueActive = true, queueMeal = MealSlot.LUNCH, meal = MealSlot.DINNER)
         assertEquals(ReviewLogPlan(MealSlot.LUNCH, true), plan)
     }
 
     @Test
     fun dailyResolveQueueUsesItsMealWhenNoMealIsSelected() {
-        assertEquals(
-            ReviewLogPlan(MealSlot.BREAKFAST, true),
-            resolverLogPlan(queueActive = true, queueTarget = MealSlot.BREAKFAST, currentMeal = null),
-        )
-    }
-
-    @Test
-    fun dailyCreateInResolveQueueUsesQueueMealAndAdvances() {
-        val plan = resolverLogPlan(queueActive = true, queueTarget = MealSlot.LUNCH, currentMeal = null)
-        assertEquals(ReviewLogPlan(MealSlot.LUNCH, true), plan)
+        val plan = queueLogPlan(queueActive = true, queueMeal = MealSlot.BREAKFAST, meal = null)
+        assertEquals(ReviewLogPlan(MealSlot.BREAKFAST, true), plan)
         assertTrue(plan!!.advancesQueue)
     }
 
     @Test
     fun outsideAResolveQueueTheChosenMealIsUsedAndNothingAdvances() {
-        assertEquals(ReviewLogPlan(MealSlot.DINNER, false), reviewLogPlan(false, MealSlot.LUNCH, MealSlot.DINNER))
-        assertEquals(ReviewLogPlan(MealSlot.DINNER, false), reviewLogPlan(true, null, MealSlot.DINNER))
-        assertEquals(ReviewLogPlan(MealSlot.LUNCH, false), resolverLogPlan(false, MealSlot.BREAKFAST, MealSlot.LUNCH))
-        assertEquals(null, resolverLogPlan(true, null, MealSlot.LUNCH))
+        assertEquals(ReviewLogPlan(MealSlot.DINNER, false), queueLogPlan(false, MealSlot.LUNCH, MealSlot.DINNER))
+        assertEquals("no meal chosen or open: nowhere to log", null, queueLogPlan(false, null, null))
+    }
+
+    @Test
+    fun anActiveQueueWithoutAMealLogsNowhere() {
+        // Not a state the app reaches (ResolveFlowTest.anActiveQueueAlwaysHasItsMeal); both screens refuse alike.
+        assertEquals(null, queueLogPlan(true, null, MealSlot.LUNCH))
+        assertEquals(null, queueLogPlan(true, null, null))
     }
 
     @Test

@@ -21,7 +21,7 @@ import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.domain.toMeasureUnit
 import com.iron.breakfast.productReviewOrigin
 import com.iron.breakfast.resolve.ResolveQueueView
-import com.iron.breakfast.reviewLogPlan
+import com.iron.breakfast.queueLogPlan
 import com.iron.breakfast.ui.label
 import com.iron.breakfast.ui.pretty
 
@@ -141,7 +141,8 @@ internal class ProductReview(
             return
         }
         val resolveQueue = queue()
-        val plan = reviewLogPlan(queueActive = resolveQueue != null, resolveQueue?.meal, chosen)
+        // Never null: [chosen] is a meal, and an active queue has its own ([queueLogPlan]).
+        val plan = queueLogPlan(queueActive = resolveQueue != null, resolveQueue?.meal, chosen) ?: return
         val target = plan.meal
         val scanned = fromScan
         val day = selectedDay()

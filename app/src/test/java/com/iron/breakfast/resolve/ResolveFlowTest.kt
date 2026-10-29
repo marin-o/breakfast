@@ -78,6 +78,27 @@ class ResolveFlowTest {
         assertEquals("ayran", flow.currentName())
     }
 
+    /**
+     * Why product review and the food form share one queue rule ([com.iron.breakfast.queueLogPlan]) with no "queue
+     * without a meal" case to settle: the queue gets its meal with its parts, keeps it while parts are left, and loses
+     * it only when it ends, also through children opened from the resolver.
+     */
+    @Test fun anActiveQueueAlwaysHasItsMeal() {
+        val draft = TypedText("ayran, kefir, boza")
+        flow.afterSave(listOf("ayran", "kefir", "boza"), MealSlot.DINNER, draft, "ayran, kefir, boza")
+        assertEquals(MealSlot.DINNER, flow.queueView()?.meal)
+        flow.resolve(ayran)
+        flow.skip()
+        assertEquals(MealSlot.DINNER, flow.queueView()?.meal)
+        flow.childOpened(fromResolver = true)
+        flow.childClosed()
+        assertEquals(MealSlot.DINNER, flow.queueView()?.meal)
+        flow.childOpened(fromResolver = true)
+        flow.childLogged(advancesQueue = true)
+        assertNull("the last part ended the queue and its meal together", flow.queueView())
+        assertNull(flow.queueMeal)
+    }
+
     @Test fun aSaveWhoseTextChangedMeanwhileLeavesTheNewText() {
         val draft = TypedText("2 eggs, kefir, banana")
         flow.afterSave(listOf("kefir"), MealSlot.LUNCH, draft, typedAtSave = "2 eggs, kefir")

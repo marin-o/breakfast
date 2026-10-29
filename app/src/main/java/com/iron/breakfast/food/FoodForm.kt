@@ -25,7 +25,7 @@ import com.iron.breakfast.foodFormBack
 import com.iron.breakfast.ReviewLogPlan
 import com.iron.breakfast.foodSaveRefusal
 import com.iron.breakfast.resolve.ResolveQueueView
-import com.iron.breakfast.resolverLogPlan
+import com.iron.breakfast.queueLogPlan
 import com.iron.breakfast.ui.label
 
 /** The food writes the form makes; the view model adapts `BreakfastEngine`. */
@@ -240,8 +240,9 @@ internal class FoodForm(
 
 /**
  * Where Save logs a new food, or null to save it alone. While a Log part is being resolved ([resolvingPart]) it is
- * never logged: it becomes the part's pick, and Add logs the draft. While a resolve [queue] is being resolved its meal
- * wins and the queue advances (no meal: null, which the form refuses); otherwise the meal open beneath, if any.
+ * never logged: it becomes the part's pick, and Add logs the draft. Otherwise the rule product review follows too
+ * ([queueLogPlan]): while a resolve [queue] is being resolved its meal wins and the queue advances; else the meal open
+ * beneath, if any.
  */
 internal fun foodSaveTarget(resolvingPart: Boolean, queue: ResolveQueueView?, openMeal: MealSlot?): ReviewLogPlan? =
-    if (resolvingPart) null else resolverLogPlan(queueActive = queue != null, queue?.meal, openMeal)
+    if (resolvingPart) null else queueLogPlan(queueActive = queue != null, queue?.meal, openMeal)
