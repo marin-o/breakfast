@@ -98,6 +98,7 @@ import com.iron.breakfast.ui.components.TertiaryButton
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.components.SectionHeading
 import com.iron.breakfast.ui.components.BottomNav
+import com.iron.breakfast.ui.components.NavTab
 import com.iron.breakfast.ui.components.ConfirmationSnackbar
 import com.iron.breakfast.ui.components.rememberMotion
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
@@ -186,7 +187,7 @@ private fun LibraryFoodRow(library: LibraryState, automaticMeal: () -> MealSlot?
     }
 }
 
-private fun defaultServingCalories(food: FoodRecord): String = formatKcal(com.iron.breakfast.domain.defaultServingCalculation(food).nutrition.calories)
+internal fun defaultServingCalories(food: FoodRecord): String = formatKcal(com.iron.breakfast.domain.defaultServingCalculation(food).nutrition.calories)
 
 /**
  * The Library's bottom bar: the Composer look (ink bar, "Search foods") over the existing text field.
@@ -230,7 +231,13 @@ internal fun LibraryComposer(library: LibraryState, resolve: ResolveFlow, scan: 
                 Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.bg)
             }
         }
-        if (!inMeal) BottomNav(selectedToday = false, onToday = { surfaces.closeMeal(); surfaces.closeLibrary() }, onLibrary = {}, onSettings = surfaces::openSettings)
+        if (!inMeal) BottomNav(
+            selected = NavTab.LIBRARY,
+            onMeals = { surfaces.closeMeal(); surfaces.closeLibrary() },
+            onLibrary = {},
+            onRecipes = surfaces::openRecipes,
+            onSettings = surfaces::openSettings,
+        )
     }
 }
 
@@ -323,8 +330,9 @@ internal fun LibraryFoodDetailDialog(
     if (amountSheetOpen) LibraryAmountSheet(library, food, targetMeal) { amountSheetOpen = false }
 }
 
+/** One nutrition line of a food or recipe page: the label, then the value in ink and its unit in soft. */
 @Composable
-private fun LibraryFactRow(label: String, number: String, unit: String) {
+internal fun LibraryFactRow(label: String, number: String, unit: String) {
     val colors = LocalBreakfastColors.current
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     if (isLargeFont(fontScale)) {
@@ -352,13 +360,41 @@ internal fun FocusedFoodAddDialog(library: LibraryState, surfaces: Surfaces, foo
     LibraryAmountSheet(library, food, target, library::closeFood)
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LibraryAmountSheet(library: LibraryState, food: FoodRecord, target: MealSlot, onDismiss: () -> Unit) {
+    val last = library.lastLoggedEntry(food)
+    FoodAmountSheet(
+        food = food,
+        startAmount = last?.enteredAmount ?: food.defaultAmount,
+        startUnit = last?.enteredUnit ?: food.defaultUnit,
+        startMeal = target,
+        onAdd = { amount, unit, meal -> library.log(food, meal!!, amount, unit); onDismiss() },
+        onInvalid = library::invalidAmount,
+        onDismiss = onDismiss,
+    )
+}
+
+/**
+ * The amount sheet: the food's name and source, the amount and its units (the food's default, its basis and its
+ * servings), the meal ([startMeal]; none for a recipe's ingredient, which has no meal), the kcal and macros it comes
+ * to, and Add. The Library logs through it, a recipe is logged through it, and a recipe's ingredient is added through
+ * it. Its values are saveable, so a configuration change keeps the open sheet as it was.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun FoodAmountSheet(
+    food: FoodRecord,
+    startAmount: Double,
+    startUnit: MeasureUnit,
+    startMeal: MealSlot?,
+    onAdd: (amount: Double, unit: MeasureUnit, meal: MealSlot?) -> Unit,
+    onInvalid: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     val colors = LocalBreakfastColors.current
-    var amountText by rememberSaveable(food.id, target) { mutableStateOf((library.lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount).plain()) }
-    var unit by rememberSaveable(food.id, target) { mutableStateOf(library.lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit) }
-    var chosenMeal by rememberSaveable(food.id, target) { mutableStateOf(target) }
+    var amountText by rememberSaveable(food.id, startMeal) { mutableStateOf(startAmount.plain()) }
+    var unit by rememberSaveable(food.id, startMeal) { mutableStateOf(startUnit) }
+    var chosenMeal by rememberSaveable(food.id, startMeal) { mutableStateOf(startMeal) }
     val units = (listOf(food.defaultUnit, food.nutrition.unit) + food.conversions.map { it.unit }).filter { it != MeasureUnit.UNKNOWN }.distinct()
     val calc = amountText.toDoubleOrNull()?.takeIf { it > 0 }?.let { NutritionCalculator().calculate(food, it, unit) }
     Sheet(onDismissRequest = onDismiss, skipPartiallyExpanded = true) {
@@ -371,16 +407,18 @@ private fun LibraryAmountSheet(library: LibraryState, food: FoodRecord, target: 
                     units.forEach { candidate -> ChoiceOption(candidate.displayLabel(), unit == candidate, { unit = candidate }) }
                 }
             }
-            Text("Meal", color = colors.soft, style = BreakfastType.Meta)
-            MealChoices(selected = chosenMeal, onSelect = { chosenMeal = it }, singleRow = true)
+            chosenMeal?.let { meal ->
+                Text("Meal", color = colors.soft, style = BreakfastType.Meta)
+                MealChoices(selected = meal, onSelect = { chosenMeal = it }, singleRow = true)
+            }
             Hairline()
             Text(calc?.let { "${formatKcal(it.nutrition.calories)} kcal" } ?: "Enter a positive amount", color = colors.ink, style = BreakfastType.Section)
             Text(calc?.let { "P ${it.nutrition.protein?.pretty() ?: "—"}  C ${it.nutrition.carbohydrates?.pretty() ?: "—"}  F ${it.nutrition.fat?.pretty() ?: "—"}" } ?: "", color = colors.soft, style = BreakfastType.Secondary)
             PrimaryButton(
-                "Add to ${chosenMeal.label()}",
+                chosenMeal?.let { "Add to ${it.label()}" } ?: "Add",
                 onClick = {
                     val amount = amountText.toDoubleOrNull()
-                    if (amount != null && amount > 0 && calc?.supported == true) { library.log(food, chosenMeal, amount, unit); onDismiss() } else library.invalidAmount()
+                    if (amount != null && amount > 0 && calc?.supported == true) onAdd(amount, unit, chosenMeal) else onInvalid()
                 },
                 enabled = calc?.supported == true,
             )

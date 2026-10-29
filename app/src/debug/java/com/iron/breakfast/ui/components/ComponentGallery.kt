@@ -61,7 +61,7 @@ private fun ComponentGallery() {
             Field("Name", "", {}, placeholder = "Name", hint = "from scan")
             SearchField("kiki", {}, {}, label = "Search foods")
             Composer("Log food", {}, onScan = {})
-            BottomNav(selectedToday = true, onToday = {}, onLibrary = {}, onSettings = {})
+            BottomNav(selected = NavTab.MEALS, onMeals = {}, onLibrary = {}, onRecipes = {}, onSettings = {})
             Snackbar("Saved meal", "Undo", {})
             LinearProgress("Searching Open Food Facts")
             SectionHeading("Servings")

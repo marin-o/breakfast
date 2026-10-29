@@ -87,6 +87,15 @@ internal sealed interface DiaryChange {
         override val refreshesLibrary get() = true
     }
 
+    /**
+     * A recipe saved, edited or deleted. Like a food edit it keeps a pending Undo; the Library lists foods only, so it
+     * is not recomputed (the Recipes tab reads the diary's recipes).
+     */
+    data object RecipesChanged : DiaryChange {
+        override val kind get() = DiaryChangeKind.FOOD_EDIT
+        override val refreshesLibrary get() = false
+    }
+
     /** The whole diary replaced by an import, or deleted by Delete all data. */
     data object DiaryReplaced : DiaryChange {
         override val kind get() = DiaryChangeKind.REPLACE

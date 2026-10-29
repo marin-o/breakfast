@@ -31,6 +31,9 @@ import org.junit.Test
  *   `anEditUpdatesTheFoodAndNeverLogs`; `ResolveFrameTest.aNewFoodMadeForALogPart...`), stored from review
  *   (`ProductReviewTest.saveToLibraryStoresTheEditedFoodOnlyFromTheLibrary`, `whileALogPartIsResolved...`), deleted
  *   (`LibraryStateTest.deleteFoodAsksFirstThenDeletes...`).
+ * - [DiaryChange.RecipesChanged]: a recipe saved or edited (`RecipeFormTest.saveWritesTheRecipe...`), deleted
+ *   (`RecipeBookTest.deleteRecipeAsksFirstThenDeletes...`); a recipe logged is [DiaryChange.FoodsLogged]
+ *   (`RecipeBookTest.theSheetLogsTheRecipe...`).
  * - [DiaryChange.DiaryReplaced]: import and Delete all (`DiaryTransferTest.replaceDiaryWritesTheSafetyCopyFirst...`,
  *   `deleteAllAlwaysWritesTheSafetyCopy...`).
  */
@@ -57,6 +60,8 @@ class DiaryChangeTest {
         DiaryChange.MatchCorrected -> Effect(Undo.KEEP, rowsChanged = true, refreshesLibrary = false)
         DiaryChange.MatchConfirmed -> Effect(Undo.KEEP, rowsChanged = false, refreshesLibrary = false)
         DiaryChange.FoodsChanged -> Effect(Undo.KEEP, rowsChanged = true, refreshesLibrary = true)
+        // A recipe saved, edited or deleted: as a food edit, but the Library lists no recipes.
+        DiaryChange.RecipesChanged -> Effect(Undo.KEEP, rowsChanged = true, refreshesLibrary = false)
         DiaryChange.DiaryReplaced -> Effect(Undo.END, rowsChanged = true, refreshesLibrary = true)
     }
 
@@ -64,7 +69,8 @@ class DiaryChangeTest {
     private val changes = listOf(
         DiaryChange.BatchLogged("1 food added to Breakfast", listOf(entry)), DiaryChange.FoodsLogged, DiaryChange.QueuedPartLogged,
         DiaryChange.EntryEdited, DiaryChange.EntryEditedAfterClose, DiaryChange.EntryDeleted(entry), DiaryChange.UndoApplied,
-        DiaryChange.MatchCorrected, DiaryChange.MatchConfirmed, DiaryChange.FoodsChanged, DiaryChange.DiaryReplaced,
+        DiaryChange.MatchCorrected, DiaryChange.MatchConfirmed, DiaryChange.FoodsChanged, DiaryChange.RecipesChanged,
+        DiaryChange.DiaryReplaced,
     )
 
     @Test fun everyKindOfChangeHasASample() {

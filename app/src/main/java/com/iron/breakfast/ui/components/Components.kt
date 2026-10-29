@@ -704,20 +704,35 @@ fun InkBar(modifier: Modifier = Modifier, endPadding: Dp = 4.dp, content: @Compo
     )
 }
 
+/** The bottom bar's tabs, in their order. */
+enum class NavTab(val label: String) { MEALS("Meals"), LIBRARY("Library"), RECIPES("Recipes") }
+
 /**
- * Two text tabs, centred with a 40dp gap, and the Settings icon at the right end. The active tab is ink, the other
- * soft; the icon is soft, as an inactive tab.
+ * The text tabs ([NavTab], in order), centred with a 40dp gap, and the Settings icon at the right end. The active tab is
+ * ink, the others soft; the icon is soft, as an inactive tab.
  */
 @Composable
-fun BottomNav(selectedToday: Boolean, onToday: () -> Unit, onLibrary: () -> Unit, onSettings: () -> Unit, modifier: Modifier = Modifier) {
+fun BottomNav(
+    selected: NavTab,
+    onMeals: () -> Unit,
+    onLibrary: () -> Unit,
+    onRecipes: () -> Unit,
+    onSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = LocalBreakfastColors.current
     Row(modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         // Equal sides keep the tabs centred; each side is at least the icon's width.
         Spacer(Modifier.weight(1f).widthIn(min = IconTarget))
         Row(Modifier.selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
-            NavTab("Meals", selected = selectedToday, onClick = onToday)
-            Spacer(Modifier.width(40.dp))
-            NavTab("Library", selected = !selectedToday, onClick = onLibrary)
+            NavTab.entries.forEachIndexed { index, tab ->
+                if (index > 0) Spacer(Modifier.width(40.dp))
+                NavTabButton(tab.label, selected = tab == selected, onClick = when (tab) {
+                    NavTab.MEALS -> onMeals
+                    NavTab.LIBRARY -> onLibrary
+                    NavTab.RECIPES -> onRecipes
+                })
+            }
         }
         Box(Modifier.weight(1f).widthIn(min = IconTarget), contentAlignment = Alignment.CenterEnd) {
             IconButton(onClick = onSettings, modifier = Modifier.size(IconTarget)) {
@@ -728,7 +743,7 @@ fun BottomNav(selectedToday: Boolean, onToday: () -> Unit, onLibrary: () -> Unit
 }
 
 @Composable
-private fun NavTab(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun NavTabButton(label: String, selected: Boolean, onClick: () -> Unit) {
     val colors = LocalBreakfastColors.current
     Box(
         Modifier

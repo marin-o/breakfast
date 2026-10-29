@@ -18,6 +18,8 @@ import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.RankedFood
 import com.iron.breakfast.domain.ReplacementResult
+import com.iron.breakfast.domain.Recipe
+import com.iron.breakfast.recipes.RecipeStore
 import com.iron.breakfast.domain.SavedMeal
 import com.iron.breakfast.entry.EntryEditStore
 import com.iron.breakfast.food.FoodFormStore
@@ -153,6 +155,20 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
             },
             offSearch = object : OffSearchService { override suspend fun search(query: String) = OffSearchResult.Success(emptyList()) },
             licence = { "SIL Open Font License" },
+            recipes = object : RecipeStore {
+                override fun ingredientPlanner(pins: Map<String, FoodRecord>) = plannerFor(pins)
+                override suspend fun foodsMatching(query: String) = libraryFoods
+                override suspend fun saveRecipe(recipe: Recipe): Recipe {
+                    val stored = recipe.copy(id = recipe.id.ifBlank { "recipe-${recipe.name.lowercase()}" })
+                    calls += "save recipe ${stored.id}"
+                    diary.recipes = diary.recipes.filterNot { it.id == stored.id } + stored
+                    return stored
+                }
+                override suspend fun deleteRecipe(id: String) { calls += "delete recipe $id"; diary.recipes = diary.recipes.filterNot { it.id == id } }
+                override suspend fun logRecipe(recipe: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
+                    calls += "log recipe ${recipe.id} $amount ${unit.name} $meal"
+                }
+            },
         ),
         settings = SettingsState(AppSettings(FakeSettingsStore())) { now },
         savedState = savedState,
@@ -182,6 +198,7 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
     val scan = owners.scan
     val review = owners.review
     val surfaces = owners.surfaces
+    val recipes = owners.recipes
 
     /** The day picked, as the date picker picks it (`DayState.goTo`). */
     fun selectDay(value: String) = day.goTo(value)
@@ -189,6 +206,12 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
     /** Puts [entries] in the diary, as a reload would. */
     fun diaryHas(vararg entries: MealEntry) {
         diary.rows = entries.toList()
+        owners.session.refresh()
+    }
+
+    /** Puts [recipes] in the diary, as a reload would. */
+    fun recipesAre(vararg recipes: Recipe) {
+        diary.recipes = recipes.toList()
         owners.session.refresh()
     }
 
@@ -225,11 +248,13 @@ internal class KitDiary {
     var damaged = false
     var rows: List<MealEntry> = emptyList()
     var foods: List<FoodRecord> = emptyList()
+    var recipes: List<Recipe> = emptyList()
     val scope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
     val source = object : DiarySource {
         override suspend fun open() {}
         override fun foods(): List<FoodRecord> = foods
         override fun entries(): List<MealEntry> = rows
+        override fun recipes(): List<Recipe> = recipes
         override suspend fun reloadIfStale() = false
         override fun damagedNoticePending() = damaged
         override fun damagedNoticeSeen() { damaged = false }

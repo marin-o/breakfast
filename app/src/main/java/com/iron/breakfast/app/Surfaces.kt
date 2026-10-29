@@ -8,6 +8,9 @@ import com.iron.breakfast.contribution.ContributionFlow
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
+import com.iron.breakfast.domain.Recipe
+import com.iron.breakfast.domain.isRecipeId
+import com.iron.breakfast.recipes.RecipeBook
 import com.iron.breakfast.entry.EntryEdit
 import com.iron.breakfast.entry.EntryEditMode
 import com.iron.breakfast.library.exitLibraryTarget
@@ -32,6 +35,8 @@ internal enum class Surface(
     val coversBase: Boolean = false,
 ) {
     DAILY, MEAL, LIBRARY,
+    /** The Recipes tab: the list of recipes. */
+    RECIPES,
     /** The scanner's frozen frame behind a scanned product's review; it replaces the base, the Log and the resolver. */
     SCAN_REVIEW_BACKDROP,
     LOG(coversBase = true),
@@ -40,6 +45,12 @@ internal enum class Surface(
     LIBRARY_FOOD_ADD(coversBase = true),
     /** A food tapped on the Library tab: its page. */
     LIBRARY_FOOD(coversBase = true),
+    /** A recipe tapped on the Recipes tab: its page. */
+    RECIPE(coversBase = true),
+    /** A recipe row's "+": the amount sheet with its units and the meal. */
+    RECIPE_LOG(coversBase = true),
+    /** "Delete recipe" asks first, over the recipe page or its form. */
+    DELETE_RECIPE,
     MIXED_MEAL_PICKER, BATCH_MEAL_PICKER,
     FOOD_FORM(coversBase = true), SETTINGS(coversBase = true), DISCARD_FOOD,
     /** "Delete food" asks first, over the food page or Edit food. */
@@ -53,7 +64,7 @@ internal enum class Surface(
     /** Drawn alone, over whatever it was opened from, which comes back as it was. */
     SCANNER(coversBase = true);
 
-    val base: Boolean get() = this == DAILY || this == MEAL || this == LIBRARY
+    val base: Boolean get() = this == DAILY || this == MEAL || this == LIBRARY || this == RECIPES
 }
 
 /**
@@ -87,6 +98,7 @@ internal class Surfaces(
     private val review: ProductReview,
     private val contribution: ContributionFlow,
     private val transfer: DiaryTransfer<*>,
+    private val recipes: RecipeBook,
     /** The Meal screen's meal restored after process death (the Library does not reopen). */
     initialMeal: MealSlot?,
 ) {
@@ -113,9 +125,10 @@ internal class Surfaces(
     }
 
     private fun isOpen(surface: Surface, backdrop: Boolean, editing: Boolean): Boolean = when (surface) {
-        Surface.DAILY -> !backdrop && !library.open && meal == null
-        Surface.MEAL -> !backdrop && !library.open && meal != null
+        Surface.DAILY -> !backdrop && !library.open && !recipes.open && meal == null
+        Surface.MEAL -> !backdrop && !library.open && !recipes.open && meal != null
         Surface.LIBRARY -> !backdrop && library.open
+        Surface.RECIPES -> !backdrop && recipes.open && !library.open
         Surface.SCAN_REVIEW_BACKDROP -> backdrop
         Surface.LOG -> !backdrop && log.open
         Surface.ENTRY_QUICK_EDIT -> entryEdit.mode == EntryEditMode.QUICK && editing
@@ -123,6 +136,9 @@ internal class Surfaces(
         Surface.ENTRY_FOOD_PICKER -> entryEdit.pickerOpen
         Surface.LIBRARY_FOOD_ADD -> library.selectedFood != null && mealOnScreen() != null
         Surface.LIBRARY_FOOD -> library.selectedFood != null && mealOnScreen() == null
+        Surface.RECIPE -> recipes.page != null
+        Surface.RECIPE_LOG -> recipes.logging != null
+        Surface.DELETE_RECIPE -> recipes.deleteRequest != null
         Surface.MIXED_MEAL_PICKER -> library.mixedMealPickerOpen
         Surface.BATCH_MEAL_PICKER -> library.batchMealPickerOpen
         Surface.FOOD_FORM -> foodForm.open
@@ -169,6 +185,8 @@ internal class Surfaces(
         // The same exits as the arrows: a meal's Library goes to the meal, a part's to the Log.
         Surface.MEAL -> ::closeMeal.takeIf { !covered }
         Surface.LIBRARY -> ::exitLibrary.takeIf { !covered }
+        Surface.RECIPES -> ::closeRecipes.takeIf { !covered }
+        Surface.RECIPE -> recipes::closeRecipe
         Surface.LOG -> log::close
         Surface.ENTRY_QUICK_EDIT, Surface.ENTRY_FULL_EDIT -> ::cancelEdit
         Surface.LIBRARY_FOOD -> library::closeFood
@@ -184,7 +202,7 @@ internal class Surfaces(
         Surface.ENTRY_DETAIL -> entryEdit::closeDetail
         Surface.SCANNER -> scan::end
         // Dialogs and sheets, in their own window; the backdrop goes with its review sheet.
-        Surface.SCAN_REVIEW_BACKDROP, Surface.ENTRY_FOOD_PICKER, Surface.LIBRARY_FOOD_ADD, Surface.MIXED_MEAL_PICKER,
+        Surface.SCAN_REVIEW_BACKDROP, Surface.ENTRY_FOOD_PICKER, Surface.LIBRARY_FOOD_ADD, Surface.RECIPE_LOG, Surface.DELETE_RECIPE, Surface.MIXED_MEAL_PICKER,
         Surface.BATCH_MEAL_PICKER, Surface.DISCARD_FOOD, Surface.DELETE_FOOD, Surface.PRODUCT_REVIEW, Surface.NOTICE, Surface.REPLACE_DIARY,
         Surface.DELETE_ALL, Surface.STORAGE_UNAVAILABLE -> null
     }
@@ -211,6 +229,7 @@ internal class Surfaces(
     private fun showLibrary(target: MealSlot?, query: String, bar: String = query) {
         entryEdit.cancel()
         meal = null
+        recipes.close()
         library.show(target, query, bar)
     }
     fun openLibrary() = showLibrary(null, "")
@@ -219,8 +238,14 @@ internal class Surfaces(
         resolve.abandon()
         showLibrary(target, query)
     }
-    /** An entry's "Open in Library": the Library tab with that food's page open. */
+    /** An entry's "Open in Library": the Library tab with that food's page open; a recipe's entry opens its recipe. */
     fun openLibraryFoodDetail(entry: MealEntry) {
+        if (isRecipeId(entry.foodId)) {
+            entryEdit.closeDetail()
+            openRecipes()
+            session.recipes.firstOrNull { it.id == entry.foodId }?.let(recipes::openRecipe)
+            return
+        }
         entryEdit.closeDetail()
         showLibrary(null, entry.foodName, bar = "")
         library.showFood(session.foods.firstOrNull { it.id == entry.foodId })
@@ -240,6 +265,30 @@ internal class Surfaces(
         closeSettings()
         meal = returnTo
     }
+    /**
+     * The Recipes tab (its bottom-bar tab), over whatever base screen showed: the Library and a meal close, as the tabs
+     * replace each other; an open entry edit ends.
+     */
+    fun openRecipes() {
+        if (recipes.open) return
+        entryEdit.cancel()
+        if (library.open) closeLibrary()
+        closeSettings()
+        meal = null
+        recipes.show()
+    }
+    /** Leaves the Recipes tab (and Settings over it) for Daily: its Meals tab and Back. */
+    fun closeRecipes() {
+        recipes.close()
+        closeSettings()
+        meal = null
+    }
+    /** [recipe]'s page on the Recipes tab, which opens if it was not (a recipe saved from a form restored over Daily). */
+    fun showRecipe(recipe: Recipe) {
+        openRecipes()
+        recipes.openRecipe(recipe)
+    }
+
     /** "No local match"'s arrow and Back: a part being resolved goes back to the Log, else the list shows again. */
     fun leaveNoMatch() { if (resolve.resolvingPart) closeLibrary() else library.onQuery("") }
 

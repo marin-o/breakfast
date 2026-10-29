@@ -7,6 +7,7 @@ import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionValues
+import com.iron.breakfast.domain.Recipe
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +40,7 @@ internal class FakeTime(var now: Long = 1_000L) {
 internal class OpenDiary {
     var rows: List<MealEntry> = emptyList()
     var foods: List<FoodRecord> = emptyList()
+    var recipes: List<Recipe> = emptyList()
     var entryReads = 0
     val published = mutableListOf<DiaryChange>()
     val scope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
@@ -47,6 +49,7 @@ internal class OpenDiary {
             override suspend fun open() {}
             override fun foods(): List<FoodRecord> = foods
             override fun entries(): List<MealEntry> { entryReads++; return rows }
+            override fun recipes(): List<Recipe> = recipes
             override suspend fun reloadIfStale() = false
         },
         scope = scope,

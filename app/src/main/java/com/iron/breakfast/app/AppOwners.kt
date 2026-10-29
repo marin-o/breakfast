@@ -16,6 +16,8 @@ import com.iron.breakfast.library.LibraryStore
 import com.iron.breakfast.log.LogComposer
 import com.iron.breakfast.log.LogStore
 import com.iron.breakfast.log.automaticMeal
+import com.iron.breakfast.recipes.RecipeBook
+import com.iron.breakfast.recipes.RecipeStore
 import com.iron.breakfast.resolve.ResolveFlow
 import com.iron.breakfast.resolve.ResolveStore
 import com.iron.breakfast.scan.BarcodeLookup
@@ -65,6 +67,7 @@ internal class AppStores<D>(
     val transferLog: TransferLog,
     val contributions: OffContributions,
     val offSearch: OffSearchService,
+    val recipes: RecipeStore,
     /** About, Licences: the bundled licence as text (an app asset); throws when it cannot be read. */
     val licence: () -> String,
 )
@@ -276,9 +279,19 @@ internal class AppOwners<D>(
         startScan = { scan.begin() },
         confirmLogged = confirmations::logged,
     )
+    /** The Recipes tab: the list, the recipe page, logging one and Delete recipe (see [RecipeBook]). */
+    val recipes: RecipeBook = RecipeBook(
+        session = session,
+        store = stores.recipes,
+        notices = notices,
+        selectedDay = { day.selectedDayKey },
+        confirmLogged = confirmations::logged,
+        // Nothing that still holds the deleted recipe can log it again: a Log pin.
+        onDeleted = { id -> log.dropPinsOf(id) },
+    )
     /** What is open and in which order: drawing, Back and the top check (see [Surfaces]); the Meal screen and Settings. */
     val surfaces: Surfaces = Surfaces(
-        session, notices, settings, log, library, resolve, entryEdit, foodForm, search, scan, review, contribution, transfer,
+        session, notices, settings, log, library, resolve, entryEdit, foodForm, search, scan, review, contribution, transfer, recipes,
         initialMeal = savedState.get<String>(MEAL_SLOT_KEY)?.let { runCatching { MealSlot.valueOf(it) }.getOrNull() },
     )
 
@@ -294,7 +307,7 @@ internal class AppOwners<D>(
         session.onChange(feedback::onChange)
         session.onChange { change -> if (change.refreshesLibrary) library.refresh() }
         // Import and Delete all: one reset of everything that referred to the old diary (see [SessionReset]).
-        session.onChange(SessionReset(sessionResetSteps(log, contribution, resolve, entryEdit, foodForm))::onChange)
+        session.onChange(SessionReset(sessionResetSteps(log, contribution, resolve, entryEdit, foodForm, recipes))::onChange)
         // A new day start: today follows it at once, and a user on today stays on today (it counts as a return).
         settings.dayStartHourSetting.observe { day.check(returning = true) }
         // An Undo offer showing now follows the new window from the moment it was made.

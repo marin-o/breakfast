@@ -68,6 +68,7 @@ import com.iron.breakfast.domain.macroTotalsOf
 import com.iron.breakfast.ui.label
 import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.components.BottomNav
+import com.iron.breakfast.ui.components.NavTab
 import com.iron.breakfast.ui.components.ChoiceOption
 import com.iron.breakfast.ui.components.Composer
 import com.iron.breakfast.ui.components.DayHeader
@@ -337,7 +338,13 @@ internal fun DailyComposer(
             draft = draft,
             longDraft = settings.longDraft,
         )
-        BottomNav(selectedToday = true, onToday = { surfaces.closeMeal(); surfaces.closeLibrary() }, onLibrary = { surfaces.closeMeal(); surfaces.openLibrary() }, onSettings = surfaces::openSettings)
+        BottomNav(
+            selected = NavTab.MEALS,
+            onMeals = { surfaces.closeMeal(); surfaces.closeLibrary() },
+            onLibrary = { surfaces.closeMeal(); surfaces.openLibrary() },
+            onRecipes = { surfaces.closeMeal(); surfaces.openRecipes() },
+            onSettings = surfaces::openSettings,
+        )
     }
 }
 

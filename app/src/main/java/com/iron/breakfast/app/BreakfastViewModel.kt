@@ -31,6 +31,8 @@ import com.iron.breakfast.transfer.ContentDiaryFiles
 import com.iron.breakfast.transfer.DiaryData
 import com.iron.breakfast.transfer.TransferLog
 import com.iron.breakfast.data.DiaryRows
+import com.iron.breakfast.domain.Recipe
+import com.iron.breakfast.recipes.RecipeStore
 
 /**
  * The Android host of [AppOwners]: it adapts `BreakfastEngine`, `OpenFoodFactsClient` and the content resolver as the
@@ -134,6 +136,15 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
             },
             contributions = off,
             offSearch = off,
+            recipes = object : RecipeStore {
+                override fun ingredientPlanner(pins: Map<String, FoodRecord>) = engine.ingredientPlanner(pins)
+                override suspend fun foodsMatching(query: String) = engine.foodsMatching(query)
+                override suspend fun saveRecipe(recipe: Recipe) = engine.saveRecipe(recipe)
+                override suspend fun deleteRecipe(id: String) = engine.deleteRecipe(id)
+                override suspend fun logRecipe(recipe: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
+                    engine.logRecipe(recipe, amount, unit, meal, dayKey)
+                }
+            },
             licence = { application.assets.open(LICENCES_ASSET).bufferedReader().use { it.readText() } },
         ),
         settings = settingsState,
@@ -165,6 +176,7 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
     internal val scan = app.scan
     internal val review = app.review
     internal val surfaces = app.surfaces
+    internal val recipes = app.recipes
 
     /** The read model and the write gate (see [DiarySession]); screens read the diary and the gate from it. */
     internal val session = app.session

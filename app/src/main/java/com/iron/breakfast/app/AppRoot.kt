@@ -64,6 +64,10 @@ import com.iron.breakfast.contribution.ContributionReviewScreen
 import com.iron.breakfast.contribution.ContributionSignInScreen
 import com.iron.breakfast.contribution.ContributionFailureScreen
 import com.iron.breakfast.ui.components.ChoiceOption
+import com.iron.breakfast.recipes.RecipeLogSheet
+import com.iron.breakfast.recipes.RecipePageScreen
+import com.iron.breakfast.recipes.RecipesBottomBar
+import com.iron.breakfast.recipes.RecipesScreen
 import com.iron.breakfast.ui.components.rememberMotion
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -110,7 +114,7 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
 @Composable
 private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
     when (surface) {
-        Surface.DAILY, Surface.MEAL, Surface.LIBRARY -> Scaffold(
+        Surface.DAILY, Surface.MEAL, Surface.LIBRARY, Surface.RECIPES -> Scaffold(
             containerColor = LocalBreakfastColors.current.bg,
             contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout),
             bottomBar = {
@@ -118,6 +122,7 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
                 Box(Modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).imePadding()) {
                     // Daily and Meal composers float over their own content; only Library uses this bar.
                     if (!vm.entryEdit.editing && surface == Surface.LIBRARY) LibraryComposer(vm.library, vm.resolve, vm.scan, vm.surfaces)
+                    if (surface == Surface.RECIPES) RecipesBottomBar(vm.surfaces)
                 }
             }
         ) { pad ->
@@ -125,6 +130,7 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
                 Surface.LIBRARY -> LibraryScreen(
                     vm.library, vm.resolve, vm.day, vm.surfaces, vm.foodForm, vm.confirmations, vm::automaticMealNow, Modifier.padding(pad),
                 )
+                Surface.RECIPES -> RecipesScreen(vm.recipes, vm.confirmations, onNew = null, Modifier.padding(pad))
                 Surface.DAILY -> DailyScreen(
                     vm.session, vm.day, vm.settings, vm.log, vm.contribution, vm.entryEdit, vm.surfaces, vm.undo, vm.feedback,
                     vm.search, vm.confirmations, vm.reminders, vm.scan, Modifier.padding(pad),
@@ -143,6 +149,15 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         Surface.ENTRY_FOOD_PICKER -> EntryFoodPicker(vm.entryEdit, vm.session)
         Surface.LIBRARY_FOOD_ADD -> vm.library.selectedFood?.let { FocusedFoodAddDialog(vm.library, vm.surfaces, it) }
         Surface.LIBRARY_FOOD -> vm.library.selectedFood?.let { LibraryFoodDetailDialog(vm.library, vm.surfaces, vm.foodForm, vm.contribution, vm.settings, vm::automaticMealNow, it) }
+        Surface.RECIPE -> vm.recipes.page?.let { RecipePageScreen(vm.recipes, it, onEdit = null) }
+        Surface.RECIPE_LOG -> vm.recipes.logging?.let { RecipeLogSheet(vm.recipes, vm.surfaces, vm::automaticMealNow, it) }
+        // As Delete food: for good, and past entries keep their own name and numbers.
+        Surface.DELETE_RECIPE -> AlertDialog(
+            onDismissRequest = vm.recipes::cancelDelete,
+            confirmButton = { TextButton(vm.recipes::confirmDelete) { Text("Delete recipe") } },
+            dismissButton = { TextButton(vm.recipes::cancelDelete) { Text("Cancel") } },
+            text = { Text("Past entries keep their numbers.") },
+        )
         Surface.MIXED_MEAL_PICKER -> MixedMealPickerDialog(vm.library)
         Surface.BATCH_MEAL_PICKER -> LibraryBatchMealPickerDialog(vm.library)
         Surface.FOOD_FORM -> if (vm.foodForm.editingFoodId != null) EditFoodScreen(vm.foodForm, vm.session, vm.library) else CreateFoodScreen(vm.foodForm, vm.session)
