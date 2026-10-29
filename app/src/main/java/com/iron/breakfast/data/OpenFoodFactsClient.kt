@@ -490,11 +490,30 @@ class OpenFoodFactsClient(
             aliases = emptyList(), category = "Open Food Facts",
             origin = FoodOrigin.GENERIC,
             nutrition = NutritionBasis(100.0, basisUnit, values),
-            conversions = listOf(com.iron.breakfast.domain.ServingConversion(basisUnit, 1.0, "Open Food Facts per 100 ${basisUnit.label}")),
+            conversions = listOf(com.iron.breakfast.domain.ServingConversion(basisUnit, 1.0, "Open Food Facts per 100 ${basisUnit.label}")) +
+                productServings(p, basisUnit),
             defaultAmount = 100.0, defaultUnit = basisUnit,
             sourceId = barcode, sourceName = "Open Food Facts", sourceRelease = "v3",
             sourceDescription = "Selected on explicit search; cached only when added", brand = p.string("brands"), barcode = barcode
         )
+    }
+
+    /**
+     * A product's named servings, in its [basis]: its printed serving size when it reads clearly ("1 can (330 ml)" is
+     * can = 330 ml, a bare "30 g" is `serving`), and its package ("package" = its quantity in g or ml). Unclear or in
+     * another unit than the basis: skipped, never guessed.
+     */
+    private fun productServings(p: kotlinx.serialization.json.JsonObject, basis: MeasureUnit): List<com.iron.breakfast.domain.ServingConversion> {
+        val serving = com.iron.breakfast.domain.servingFromLabel(p.string("serving_size"), basis, "serving")
+        val quantity = p.number("product_quantity")?.takeIf { it.isFinite() && it > 0.0 }
+        val quantityUnit = p.string("product_quantity_unit")?.trim()?.lowercase()?.let { mapOf("g" to MeasureUnit.GRAM, "ml" to MeasureUnit.MILLILITER)[it] }
+        val pack = if (quantity != null && quantityUnit == basis) {
+            com.iron.breakfast.domain.ServingConversion(basis, quantity, "Open Food Facts package", label = "package")
+        } else {
+            com.iron.breakfast.domain.servingFromLabel(p.string("quantity"), basis, "package")
+                ?.takeIf { it.label == "package" }?.copy(provenance = "Open Food Facts package")
+        }
+        return listOfNotNull(serving, pack).distinctBy { it.name }
     }
 
     internal fun parseProductForTesting(raw: String, fallbackBarcode: String? = null): FoodRecord? =
