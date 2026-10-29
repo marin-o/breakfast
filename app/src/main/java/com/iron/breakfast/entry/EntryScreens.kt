@@ -101,7 +101,8 @@ internal fun EntryDetailScreen(vm: BreakfastViewModel, entry: MealEntry) {
                 Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 22.dp))
                 Hairline(Modifier.padding(top = 30.dp))
                 Column(Modifier.fillMaxWidth().padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PrimaryButton("Edit amount", { vm.entryEdit.closeDetail(); vm.entryEdit.beginQuick(entry) }, kind = ButtonKind.Neutral)
+                    // Its food deleted, an entry's amount still changes by its own numbers; not when they cannot scale.
+                    if (vm.entryEdit.amountEditable(entry)) PrimaryButton("Edit amount", { vm.entryEdit.closeDetail(); vm.entryEdit.beginQuick(entry) }, kind = ButtonKind.Neutral)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         SecondaryButton("Replace food", { vm.entryEdit.closeDetail(); vm.entryEdit.beginFull(entry) }, Modifier.weight(1f), fillWidth = false)
                         SecondaryButton("Open in Library", { vm.surfaces.openLibraryFoodDetail(entry) }, Modifier.weight(1f), fillWidth = false)
@@ -148,7 +149,7 @@ internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
     var unit by rememberSaveable(entry.id) { mutableStateOf(entry.enteredUnit) }
     val food = vm.foods.firstOrNull { it.id == entry.foodId }
     val units = food?.let(::entryUnits).orEmpty().ifEmpty { listOf(entry.enteredUnit) }
-    val preview = amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { vm.entryEdit.preview(entry.foodId, it, unit) }
+    val preview = amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { vm.entryEdit.preview(entry, entry.foodId, it, unit) }
     val changed = entryDraftNutritionChanged(entry, amount, unit, entry.foodId)
     // A save error stays until the amount or unit changes.
     LaunchedEffect(amount, unit) { vm.entryEdit.inputChanged() }
@@ -175,7 +176,8 @@ internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
             Hairline(Modifier.padding(top = 2.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 if (preview != null) {
-                    val base = "${preview.resolvedBaseAmount.pretty()} ${food?.nutrition?.unit?.displayLabel() ?: unit.displayLabel()}"
+                    val baseUnit = food?.nutrition?.unit ?: entry.resolvedBaseUnit.takeIf { it != MeasureUnit.UNKNOWN } ?: unit
+                    val base = "${preview.resolvedBaseAmount.pretty()} ${baseUnit.displayLabel()}"
                     val shownBase = if (preview.approximate && food != null && unit != food.nutrition.unit) "≈ $base" else base
                     Text(shownBase, color = colors.ink, style = BreakfastType.BodyMedium)
                     Text("${formatKcal(preview.nutrition.calories)} kcal", color = colors.ink, style = BreakfastType.BodyMedium)
@@ -206,7 +208,9 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
     val context = LocalContext.current
     val date = runCatching { LocalDate.parse(dayKey) }.getOrElse { LocalDate.now() }
     val units = selectedFood?.let(::entryUnits).orEmpty().ifEmpty { listOf(entry.enteredUnit) }
-    val preview = selectedFood?.let { food -> amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { vm.entryEdit.preview(food.id, it, unit) } }
+    // With the entry's food deleted and no other chosen, the entry itself: its amount in its own unit, scaled.
+    val foodId = selectedFood?.id ?: entry.foodId
+    val preview = amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { vm.entryEdit.preview(entry, foodId, it, unit) }
     LaunchedEffect(selectedFood?.id) { if (unit !in units) unit = units.first() }
     // A save error stays until something being edited changes.
     LaunchedEffect(selectedFood?.id, amount, unit, meal, dayKey) { vm.entryEdit.inputChanged() }
@@ -247,7 +251,7 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
                 Text("${formatKcal(shown.calories)} kcal", style = BreakfastType.Section, color = colors.ink)
                 Text("P ${shown.protein?.pretty() ?: "—"}   C ${shown.carbohydrates?.pretty() ?: "—"}   F ${shown.fat?.pretty() ?: "—"}", color = colors.soft, style = BreakfastType.Secondary)
             }
-            PrimaryButton("Save", { selectedFood?.let { vm.entryEdit.saveFull(it.id, amount, unit, meal, dayKey) } }, Modifier.padding(horizontal = Gutter), enabled = !vm.busy)
+            PrimaryButton("Save", { vm.entryEdit.saveFull(foodId, amount, unit, meal, dayKey) }, Modifier.padding(horizontal = Gutter), enabled = !vm.busy)
             vm.entryEdit.error?.let { Text(it, Modifier.padding(Gutter), color = colors.bad, style = BreakfastType.Meta) }
         }
     }

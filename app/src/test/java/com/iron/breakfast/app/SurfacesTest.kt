@@ -428,6 +428,15 @@ class SurfacesTest {
         assertTrue("delete food jam" in app.calls)
     }
 
+    /** "Open in Library" on an entry whose food was deleted: the Library searches its name; no empty food page. */
+    @Test fun openInLibraryForAnEntryWhoseFoodIsGoneSearchesItsName() {
+        val orphan = entry("orphan").copy(foodId = "deleted-food", foodName = "Old jam")
+        app.openLibraryFoodDetail(orphan)
+        assertNull(app.library.selectedFood)
+        assertEquals("Old jam", app.library.query)
+        assertTrue(app.surfaces.shown().first() == Surface.LIBRARY && Surface.LIBRARY_FOOD !in app.surfaces.shown())
+    }
+
     /** Delete food on Edit food: the form closes with it, without asking to discard. */
     @Test fun deleteFoodFromEditFoodClosesTheForm() {
         val jam = food("jam", "Jam")

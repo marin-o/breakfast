@@ -164,7 +164,8 @@ class BreakfastEngine(
             val parsed = parseStrictAmountUnit(text)
                 ?: return@editEntry ReplacementResult.Failure("Enter a positive amount and a supported unit, such as 100 g or 1 tbsp.")
             val food = store.foods().firstOrNull { it.id == old.foodId }
-                ?: return@editEntry ReplacementResult.Failure("The original food for this entry is no longer available.")
+                ?: return@editEntry snapshotScaled(old, parsed.amount, parsed.unit)?.let { ReplacementResult.Success(old.withScaled(parsed.amount, it)) }
+                    ?: ReplacementResult.Failure("The original food for this entry is no longer available.")
             val calculation = calculator.calculate(food, parsed.amount, parsed.unit)
             if (!calculation.supported) {
                 return@editEntry ReplacementResult.Failure(
@@ -211,7 +212,12 @@ class BreakfastEngine(
         dayKey: String,
     ): ReplacementResult = editEntry(entryId, "That saved entry is no longer available.") { old ->
         val food = store.foods().firstOrNull { it.id == foodId }
-            ?: return@editEntry ReplacementResult.Failure("That catalogue record is no longer available.")
+        // Its food deleted, an entry kept on it can still change its amount (in its own unit), meal and day.
+        if (food == null) {
+            val scaled = snapshotScaled(old, amount, unit).takeIf { foodId == old.foodId }
+                ?: return@editEntry ReplacementResult.Failure("That catalogue record is no longer available.")
+            return@editEntry ReplacementResult.Success(old.withScaled(amount, scaled).copy(mealSlot = mealSlot, dayKey = dayKey))
+        }
         if (!amount.isFinite() || amount <= 0.0) return@editEntry ReplacementResult.Failure("Enter a positive amount.")
         val calculation = calculator.calculate(food, amount, unit)
         if (!calculation.supported) return@editEntry ReplacementResult.Failure("That amount/unit is not supported for ${food.name}.")
@@ -374,6 +380,22 @@ internal fun rankingPreferences(learn: Boolean, stored: Map<String, Preference>)
     if (learn) stored else NO_PREFERENCES
 
 private val NO_PREFERENCES: Map<String, Preference> = emptyMap()
+
+/**
+ * An entry whose food was deleted, at [amount] of its own unit: its own snapshot scaled in proportion, the only honest
+ * figure left. Null for another unit (nothing to convert with) or a stored amount that is not a positive number.
+ */
+internal fun snapshotScaled(entry: MealEntry, amount: Double, unit: MeasureUnit): Calculation? {
+    if (unit != entry.enteredUnit || !amount.isFinite() || amount <= 0.0 || !snapshotScalable(entry)) return null
+    val factor = amount / entry.enteredAmount
+    return Calculation(entry.nutritionSnapshot * factor, entry.resolvedBaseAmount * factor, entry.conversionProvenance, entry.approximateConversion, supported = true)
+}
+
+/** Whether an entry's amount can change without its food: [snapshotScaled] needs a positive stored amount. */
+internal fun snapshotScalable(entry: MealEntry): Boolean = entry.enteredAmount.isFinite() && entry.enteredAmount > 0.0
+
+private fun MealEntry.withScaled(amount: Double, scaled: Calculation) =
+    copy(enteredAmount = amount, resolvedBaseAmount = scaled.resolvedBaseAmount, nutritionSnapshot = scaled.nutrition)
 
 internal fun cachedFoodForLogging(candidate: FoodRecord, byId: FoodRecord?, byBarcode: FoodRecord?): FoodRecord =
     listOfNotNull(byId, byBarcode).firstOrNull { it.personalOverride } ?: candidate

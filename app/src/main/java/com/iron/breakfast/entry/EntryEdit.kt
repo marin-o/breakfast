@@ -5,6 +5,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.iron.breakfast.app.DiaryChange
 import com.iron.breakfast.app.DiarySession
+import com.iron.breakfast.domain.snapshotScalable
+import com.iron.breakfast.domain.snapshotScaled
 import com.iron.breakfast.domain.Calculation
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
@@ -79,7 +81,14 @@ internal class EntryEdit(
     /** The diary was reloaded: the detail shows the entry as stored, or closes when it is gone. */
     fun diaryReloaded() { selectedEntry = selectedEntryId?.let { id -> session.entries.firstOrNull { it.id == id } } }
 
-    fun beginQuick(entry: MealEntry) { begin(entry, EntryEditMode.QUICK) }
+    /** Quick edit of the amount; not for an entry whose food is gone and whose amount cannot be scaled. */
+    fun beginQuick(entry: MealEntry) {
+        if (!amountEditable(entry)) return
+        begin(entry, EntryEditMode.QUICK)
+    }
+
+    /** "Edit amount" is offered: the food is stored, or the entry's own snapshot can be scaled ([snapshotScalable]). */
+    fun amountEditable(entry: MealEntry): Boolean = session.foods.any { it.id == entry.foodId } || snapshotScalable(entry)
 
     fun beginFull(entry: MealEntry) {
         if (!begin(entry, EntryEditMode.FULL)) return
@@ -126,9 +135,14 @@ internal class EntryEdit(
     fun editingEntry(): MealEntry? = editingEntryId?.let { id -> session.entries.firstOrNull { it.id == id } }
     fun editingFood(): FoodRecord? = editingFoodId?.let { id -> session.foods.firstOrNull { it.id == id } }
 
-    /** What the edited values come to, for the sheet's preview; null when the food is gone. */
-    fun preview(foodId: String, amount: Double, unit: MeasureUnit): Calculation? =
-        session.foods.firstOrNull { it.id == foodId }?.let { calculator.calculate(it, amount, unit) }
+    /**
+     * What [entry] edited to [foodId], [amount] and [unit] comes to, for the preview. With its own food gone, its
+     * snapshot scaled ([snapshotScaled]); null when that cannot be.
+     */
+    fun preview(entry: MealEntry, foodId: String, amount: Double, unit: MeasureUnit): Calculation? {
+        val food = session.foods.firstOrNull { it.id == foodId }
+        return if (food != null) calculator.calculate(food, amount, unit) else snapshotScaled(entry, amount, unit).takeIf { foodId == entry.foodId }
+    }
 
     fun openFoodPicker() { pickerOpen = true }
     fun closeFoodPicker() { pickerOpen = false }

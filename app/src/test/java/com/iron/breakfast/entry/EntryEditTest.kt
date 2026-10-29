@@ -198,8 +198,24 @@ class EntryEditTest {
     }
 
     @Test fun thePreviewAndUnitsComeFromTheFood() {
-        assertEquals(190.0, edit.preview("oats", 50.0, MeasureUnit.GRAM)!!.nutrition.calories, 1e-9)
-        assertNull(edit.preview("gone", 50.0, MeasureUnit.GRAM))
+        assertEquals(190.0, edit.preview(e1, "oats", 50.0, MeasureUnit.GRAM)!!.nutrition.calories, 1e-9)
+        assertNull("another food that is gone", edit.preview(e1, "gone", 50.0, MeasureUnit.GRAM))
         assertEquals(listOf(MeasureUnit.GRAM, MeasureUnit.TABLESPOON), entryUnits(oats))
+    }
+
+    @Test fun anEntryWhoseFoodIsGoneOffersItsAmountOnlyWhenItCanScale() {
+        val orphan = e1.copy(id = "o1", foodId = "deleted-food")
+        assertTrue(edit.amountEditable(e1))
+        assertTrue(edit.amountEditable(orphan))
+        val preview = edit.preview(orphan, orphan.foodId, 60.0, MeasureUnit.GRAM)!!
+        assertEquals(228.0, preview.nutrition.calories, 1e-9)
+        assertNull("no other unit without the food", edit.preview(orphan, orphan.foodId, 1.0, MeasureUnit.TABLESPOON))
+
+        val stuck = orphan.copy(id = "o2", enteredAmount = 0.0)
+        assertFalse(edit.amountEditable(stuck))
+        edit.beginQuick(stuck)
+        assertEquals(EntryEditMode.NONE, edit.mode)
+        edit.beginQuick(orphan)
+        assertEquals(EntryEditMode.QUICK, edit.mode)
     }
 }
