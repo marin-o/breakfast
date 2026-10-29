@@ -101,6 +101,88 @@ class RecipeSurfacesTest {
         shows("RECIPES")
     }
 
+    @Test fun newRecipeOpensOverTheTabAndBackAsksOnlyWhenChanged() {
+        app.surfaces.openRecipes()
+        app.recipeForm.openNew()
+        shows("RECIPES", "RECIPE_FORM")
+        assertTrue(app.surfaces.baseCovered())
+        app.back()
+        shows("RECIPES")
+        app.recipeForm.openNew()
+        app.recipeForm.onName("Soup")
+        app.back()
+        shows("RECIPES", "RECIPE_FORM", "DISCARD_RECIPE")
+        app.recipeForm.discard()
+        shows("RECIPES")
+    }
+
+    @Test fun theIngredientSearchAndItsSheetStackOverTheFormAndBackReturnsToIt() {
+        val kefir = com.iron.breakfast.resolve.food("custom-kefir", "Kefir")
+        app.libraryFoods = listOf(kefir)
+        app.surfaces.openRecipes()
+        app.recipeForm.openNew()
+        app.recipeForm.openSearch()
+        shows("RECIPES", "RECIPE_FORM", "RECIPE_SEARCH")
+        assertEquals(listOf(kefir), app.recipeForm.results)
+        app.back()
+        shows("RECIPES", "RECIPE_FORM")
+        app.recipeForm.openSearch()
+        app.recipeForm.pick(kefir)
+        shows("RECIPES", "RECIPE_FORM", "RECIPE_SEARCH", "RECIPE_INGREDIENT_ADD")
+        app.recipeForm.addIngredient(kefir, 200.0, com.iron.breakfast.domain.MeasureUnit.GRAM)
+        shows("RECIPES", "RECIPE_FORM")
+        assertEquals("200 g Kefir", app.recipeForm.fields.ingredients)
+    }
+
+    @Test fun editFromThePageThenSaveShowsThePageAgain() {
+        app.surfaces.openRecipes()
+        app.recipes.openRecipe(chili)
+        // The page's Edit: the page closes, the form opens.
+        app.recipes.closeRecipe()
+        app.recipeForm.openEdit(chili)
+        shows("RECIPES", "RECIPE_FORM")
+        app.recipeForm.onPortions("8")
+        app.recipeForm.save()
+        assertEquals(listOf("save recipe recipe-chili"), app.calls)
+        shows("RECIPES", "RECIPE")
+        assertEquals(8.0, app.recipes.page!!.portions!!, 0.0)
+    }
+
+    @Test fun deleteRecipeFromItsFormAsksOverItAndClosesIt() {
+        app.surfaces.openRecipes()
+        app.recipeForm.openEdit(chili)
+        app.recipes.askDelete(chili)
+        shows("RECIPES", "RECIPE_FORM", "DELETE_RECIPE")
+        app.recipes.confirmDelete()
+        shows("RECIPES")
+        assertFalse(app.recipeForm.open)
+    }
+
+    /** As the food form: an open recipe form comes back after the process was killed, over Daily. */
+    @Test fun anOpenRecipeFormComesBackAfterTheProcessWasKilled() {
+        app.surfaces.openRecipes()
+        app.recipeForm.openNew()
+        app.recipeForm.onName("Soup")
+        app.recipeForm.onTotalWeight("900")
+        // What the main thread's frame does on Android: the changes reach the mirrors.
+        androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        val again = AppKit(app.savedState).apply { recipesAre(chili) }
+        assertEquals(listOf("DAILY", "RECIPE_FORM"), again.shown())
+        assertEquals("Soup", again.recipeForm.fields.name)
+        again.recipeForm.close()
+        androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        assertEquals(listOf("DAILY"), again.shown())
+        assertEquals(null, again.savedState.get<String>(RECIPE_FORM_KEY))
+    }
+
+    @Test fun aReplacedDiaryClosesAnEditOfARecipeItDoesNotHave() {
+        app.surfaces.openRecipes()
+        app.recipeForm.openEdit(chili)
+        app.recipesAre()
+        app.owners.session.write(DiaryChange.DiaryReplaced) {}
+        shows("RECIPES")
+    }
+
     @Test fun aReplacedDiaryClosesTheRecipePage() {
         app.surfaces.openRecipes()
         app.recipes.openRecipe(chili)

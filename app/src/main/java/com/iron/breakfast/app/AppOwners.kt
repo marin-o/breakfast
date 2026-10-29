@@ -17,6 +17,7 @@ import com.iron.breakfast.log.LogComposer
 import com.iron.breakfast.log.LogStore
 import com.iron.breakfast.log.automaticMeal
 import com.iron.breakfast.recipes.RecipeBook
+import com.iron.breakfast.recipes.RecipeForm
 import com.iron.breakfast.recipes.RecipeStore
 import com.iron.breakfast.resolve.ResolveFlow
 import com.iron.breakfast.resolve.ResolveStore
@@ -218,6 +219,7 @@ internal class AppOwners<D>(
             foodForm.foodDeleted(food.id)
             log.dropPinsOf(food.id)
             review.foodDeleted(food.id)
+            recipeForm.dropPinsOf(food.id)
         },
         afterSave = resolve::afterSave,
         confirmLogged = confirmations::logged,
@@ -286,20 +288,36 @@ internal class AppOwners<D>(
         notices = notices,
         selectedDay = { day.selectedDayKey },
         confirmLogged = confirmations::logged,
-        // Nothing that still holds the deleted recipe can log it again: a Log pin.
-        onDeleted = { id -> log.dropPinsOf(id) },
+        // Nothing that still holds the deleted recipe can store or log it again: its form, a Log pin.
+        onDeleted = { id ->
+            recipeForm.recipeDeleted(id)
+            log.dropPinsOf(id)
+        },
+    )
+    /** New recipe and Edit, with the ingredient search (see [RecipeForm]); a saved recipe shows its page. */
+    val recipeForm: RecipeForm = RecipeForm(
+        session = session,
+        store = stores.recipes,
+        notices = notices,
+        scope = threads.scope,
+        io = threads.io,
+        main = threads.main,
+        compute = threads.compute,
+        onSaved = { recipe -> surfaces.showRecipe(recipe) },
     )
     /** What is open and in which order: drawing, Back and the top check (see [Surfaces]); the Meal screen and Settings. */
     val surfaces: Surfaces = Surfaces(
-        session, notices, settings, log, library, resolve, entryEdit, foodForm, search, scan, review, contribution, transfer, recipes,
+        session, notices, settings, log, library, resolve, entryEdit, foodForm, search, scan, review, contribution, transfer, recipes, recipeForm,
         initialMeal = savedState.get<String>(MEAL_SLOT_KEY)?.let { runCatching { MealSlot.valueOf(it) }.getOrNull() },
     )
 
     init {
         restoreFoodForm(savedState)?.let(foodForm::restore)
+        restoreRecipeForm(savedState)?.let(recipeForm::restore)
         // Every change is mirrored, so an added or cleared draft and a closed or saved form drop their keys.
         threads.scope.launch { snapshotFlow { log.savedDraft() }.collect { saveLogDraft(savedState, it) } }
         threads.scope.launch { snapshotFlow { foodForm.savedForm() }.collect { saveFoodForm(savedState, it) } }
+        threads.scope.launch { snapshotFlow { recipeForm.savedForm() }.collect { saveRecipeForm(savedState, it) } }
         // The meal on screen comes back after process death as the Meal screen (the Library does not reopen).
         threads.scope.launch { snapshotFlow { mealOnScreen() }.collect { savedState[MEAL_SLOT_KEY] = it?.name } }
         // After every committed write, in this order: Undo, "Not right?" feedback, the Library list.
@@ -307,7 +325,7 @@ internal class AppOwners<D>(
         session.onChange(feedback::onChange)
         session.onChange { change -> if (change.refreshesLibrary) library.refresh() }
         // Import and Delete all: one reset of everything that referred to the old diary (see [SessionReset]).
-        session.onChange(SessionReset(sessionResetSteps(log, contribution, resolve, entryEdit, foodForm, recipes))::onChange)
+        session.onChange(SessionReset(sessionResetSteps(log, contribution, resolve, entryEdit, foodForm, recipes, recipeForm))::onChange)
         // A new day start: today follows it at once, and a user on today stays on today (it counts as a return).
         settings.dayStartHourSetting.observe { day.check(returning = true) }
         // An Undo offer showing now follows the new window from the moment it was made.
@@ -322,6 +340,7 @@ internal class AppOwners<D>(
     fun openStore() = session.open {
         reminders.check()
         foodForm.closeIfFoodGone()
+        recipeForm.closeIfRecipeGone()
     }
 
     /**

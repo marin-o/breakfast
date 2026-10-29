@@ -6,6 +6,8 @@ import com.iron.breakfast.domain.DraftRow
 import com.iron.breakfast.domain.RankedFood
 import com.iron.breakfast.domain.SegmentResolution
 import com.iron.breakfast.domain.Calculation
+import com.iron.breakfast.domain.DraftView
+import com.iron.breakfast.domain.LogPlanner
 
 /** What the Log page shows for one draft, computed in one planner pass by [BreakfastViewModel.logDraftView]. */
 internal data class LogDraftView(
@@ -23,3 +25,22 @@ internal data class LogDraftView(
     /** The kcal each of [choices] would log, in the same order. */
     val choiceCalculations: List<Calculation> = emptyList(),
 )
+
+/**
+ * What [planner] shows for [text] in one pass (nothing until storage is [ready]): rows, the choice group, suggestions
+ * and the sum all come from the same resolution, and each choice's kcal from the same planner and text as the sum, so
+ * the two never disagree. The Log page and a recipe's ingredients both read it.
+ */
+internal fun logDraftViewOf(planner: LogPlanner, text: String, committed: Boolean, ready: Boolean): LogDraftView {
+    val view = if (ready) planner.draft(text, typing = !committed) else DraftView.EMPTY
+    return LogDraftView(
+        rows = view.rows,
+        choices = view.choices,
+        choiceHint = view.choiceHint,
+        preselected = view.preselected,
+        activePhrase = view.activePhrase,
+        // The sum is the draft's own count: what Add would save.
+        logged = view.logged,
+        choiceCalculations = view.choices.map { planner.calculationFor(view.activeText, it.food) },
+    )
+}

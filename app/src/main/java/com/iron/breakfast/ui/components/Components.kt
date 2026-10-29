@@ -77,6 +77,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
@@ -338,6 +339,74 @@ fun Field(
     errorDescription: String? = null,
 ) {
     val colors = LocalBreakfastColors.current
+    LabelledField(label, modifier, labelVisible, error, errorMessage, hint, fieldModifier, trailing, required, errorDescription) { textModifier ->
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = textModifier,
+            singleLine = singleLine,
+            minLines = minLines,
+            readOnly = readOnly,
+            textStyle = if (amountStyle) BreakfastType.LargeInput.copy(color = colors.ink, textAlign = TextAlign.Center) else BreakfastType.Body.copy(color = colors.ink),
+            cursorBrush = SolidColor(colors.ink),
+            keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
+            visualTransformation = visualTransformation,
+            decorationBox = { inner -> FieldText(inner, value.isEmpty(), placeholder, centred = amountStyle) },
+        )
+    }
+}
+
+/**
+ * The same [Field] over a [TextFieldValue], for text that also changes from outside the field (a tapped choice) and
+ * needs its caret placed: the recipe's ingredients.
+ */
+@Composable
+fun Field(
+    label: String,
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    modifier: Modifier = Modifier,
+    singleLine: Boolean = true,
+    minLines: Int = 1,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    fieldModifier: Modifier = Modifier,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    val colors = LocalBreakfastColors.current
+    LabelledField(label, modifier, labelVisible = true, error = false, errorMessage = null, hint = null, fieldModifier, trailing, required = false, errorDescription = null) { textModifier ->
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = textModifier,
+            singleLine = singleLine,
+            minLines = minLines,
+            textStyle = BreakfastType.Body.copy(color = colors.ink),
+            cursorBrush = SolidColor(colors.ink),
+            keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
+            decorationBox = { inner -> FieldText(inner, empty = false, placeholder = null, centred = false) },
+        )
+    }
+}
+
+/** A field's label row, its box with [input] (given the modifier the text field takes), its hint, trailing and error. */
+@Composable
+private fun LabelledField(
+    label: String,
+    modifier: Modifier,
+    labelVisible: Boolean,
+    error: Boolean,
+    errorMessage: String?,
+    hint: String?,
+    fieldModifier: Modifier,
+    trailing: (@Composable () -> Unit)?,
+    required: Boolean,
+    errorDescription: String?,
+    input: @Composable (textModifier: Modifier) -> Unit,
+) {
+    val colors = LocalBreakfastColors.current
     val spokenError = errorMessage ?: errorDescription?.takeIf { error }
     Column(modifier.fillMaxWidth()) {
         if (labelVisible) Row(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
@@ -345,10 +414,8 @@ fun Field(
             if (required) Text("required", color = colors.soft, style = BreakfastType.Meta)
         }
         FieldFrame(error = error, modifier = Modifier.fillMaxWidth()) { onFocus ->
-            BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier
+            input(
+                Modifier
                     .weight(1f)
                     .then(fieldModifier)
                     .onFocusChanged(onFocus)
@@ -357,25 +424,20 @@ fun Field(
                         contentDescription = if (required) "$label, required" else label
                         if (spokenError != null) error(spokenError)
                     },
-                singleLine = singleLine,
-                minLines = minLines,
-                readOnly = readOnly,
-                textStyle = if (amountStyle) BreakfastType.LargeInput.copy(color = colors.ink, textAlign = TextAlign.Center) else BreakfastType.Body.copy(color = colors.ink),
-                cursorBrush = SolidColor(colors.ink),
-                keyboardOptions = keyboardOptions,
-                keyboardActions = keyboardActions,
-                visualTransformation = visualTransformation,
-                decorationBox = { inner ->
-                    Box(Modifier.heightIn(min = 22.dp), contentAlignment = if (amountStyle) Alignment.Center else Alignment.CenterStart) {
-                        if (value.isEmpty() && placeholder != null) Text(placeholder, color = colors.soft, style = BreakfastType.Body)
-                        inner()
-                    }
-                },
             )
             if (hint != null) Text(hint, color = colors.soft, style = BreakfastType.Meta)
             trailing?.invoke()
         }
         if (errorMessage != null) Text(errorMessage, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(top = 4.dp))
+    }
+}
+
+/** The text inside a field's box, with its [placeholder] while [empty]. */
+@Composable
+private fun FieldText(inner: @Composable () -> Unit, empty: Boolean, placeholder: String?, centred: Boolean) {
+    Box(Modifier.heightIn(min = 22.dp), contentAlignment = if (centred) Alignment.Center else Alignment.CenterStart) {
+        if (empty && placeholder != null) Text(placeholder, color = LocalBreakfastColors.current.soft, style = BreakfastType.Body)
+        inner()
     }
 }
 

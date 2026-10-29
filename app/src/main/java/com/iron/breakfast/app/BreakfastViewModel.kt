@@ -177,6 +177,7 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
     internal val review = app.review
     internal val surfaces = app.surfaces
     internal val recipes = app.recipes
+    internal val recipeForm = app.recipeForm
 
     /** The read model and the write gate (see [DiarySession]); screens read the diary and the gate from it. */
     internal val session = app.session

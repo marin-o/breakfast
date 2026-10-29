@@ -64,6 +64,9 @@ import com.iron.breakfast.contribution.ContributionReviewScreen
 import com.iron.breakfast.contribution.ContributionSignInScreen
 import com.iron.breakfast.contribution.ContributionFailureScreen
 import com.iron.breakfast.ui.components.ChoiceOption
+import com.iron.breakfast.recipes.IngredientAmountSheet
+import com.iron.breakfast.recipes.RecipeFormScreen
+import com.iron.breakfast.recipes.RecipeIngredientSearch
 import com.iron.breakfast.recipes.RecipeLogSheet
 import com.iron.breakfast.recipes.RecipePageScreen
 import com.iron.breakfast.recipes.RecipesBottomBar
@@ -130,7 +133,7 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
                 Surface.LIBRARY -> LibraryScreen(
                     vm.library, vm.resolve, vm.day, vm.surfaces, vm.foodForm, vm.confirmations, vm::automaticMealNow, Modifier.padding(pad),
                 )
-                Surface.RECIPES -> RecipesScreen(vm.recipes, vm.confirmations, onNew = null, Modifier.padding(pad))
+                Surface.RECIPES -> RecipesScreen(vm.recipes, vm.confirmations, onNew = vm.recipeForm::openNew, Modifier.padding(pad))
                 Surface.DAILY -> DailyScreen(
                     vm.session, vm.day, vm.settings, vm.log, vm.contribution, vm.entryEdit, vm.surfaces, vm.undo, vm.feedback,
                     vm.search, vm.confirmations, vm.reminders, vm.scan, Modifier.padding(pad),
@@ -149,8 +152,16 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         Surface.ENTRY_FOOD_PICKER -> EntryFoodPicker(vm.entryEdit, vm.session)
         Surface.LIBRARY_FOOD_ADD -> vm.library.selectedFood?.let { FocusedFoodAddDialog(vm.library, vm.surfaces, it) }
         Surface.LIBRARY_FOOD -> vm.library.selectedFood?.let { LibraryFoodDetailDialog(vm.library, vm.surfaces, vm.foodForm, vm.contribution, vm.settings, vm::automaticMealNow, it) }
-        Surface.RECIPE -> vm.recipes.page?.let { RecipePageScreen(vm.recipes, it, onEdit = null) }
+        Surface.RECIPE -> vm.recipes.page?.let { RecipePageScreen(vm.recipes, it, onEdit = vm.recipeForm::openEdit) }
         Surface.RECIPE_LOG -> vm.recipes.logging?.let { RecipeLogSheet(vm.recipes, vm.surfaces, vm::automaticMealNow, it) }
+        Surface.RECIPE_FORM -> RecipeFormScreen(vm.recipeForm, vm.recipes, vm.session, vm.settings)
+        Surface.RECIPE_SEARCH -> RecipeIngredientSearch(vm.recipeForm)
+        Surface.RECIPE_INGREDIENT_ADD -> vm.recipeForm.adding?.let { IngredientAmountSheet(vm.recipeForm, it) }
+        Surface.DISCARD_RECIPE -> AlertDialog(
+            onDismissRequest = vm.recipeForm::keepEditing,
+            confirmButton = { TextButton(vm.recipeForm::discard) { Text("Discard") } },
+            dismissButton = { TextButton(vm.recipeForm::keepEditing) { Text("Keep editing") } },
+        )
         // As Delete food: for good, and past entries keep their own name and numbers.
         Surface.DELETE_RECIPE -> AlertDialog(
             onDismissRequest = vm.recipes::cancelDelete,

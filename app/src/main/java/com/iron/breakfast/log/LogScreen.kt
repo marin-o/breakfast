@@ -58,6 +58,7 @@ import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.settings.SettingsState
 import com.iron.breakfast.today.DayState
 import com.iron.breakfast.domain.DraftRow
+import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.ui.label
@@ -93,7 +94,6 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
         val committed = log.committed
         draft = log.computeDraftView(input, committed, pins)
     }
-    val suggestions = draft.choices
     val target = log.targetMeal()
     // The bar counts what Add will save, including the active segment's preselected match.
     val logged = draft.logged
@@ -150,45 +150,7 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
             )
             Hairline(Modifier.padding(top = 22.dp))
             log.error?.let { Text(it, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(top = 8.dp)) }
-            // Rows in typed order. Typed text that matches no food stays visible, so it is never lost when Add is pressed.
-            // Not animated: a row has no identity that lasts while its text is typed (DESIGN.md, Motion).
-            draft.rows.forEach { row ->
-                when (row) {
-                    is DraftRow.Entry -> FoodRow(
-                        name = row.resolution.food.name,
-                        quantityLine = previewQuantityLine(row.resolution.amount, row.resolution.unit, row.resolution.calculation.approximate),
-                        calories = formatKcal(row.resolution.calculation.nutrition.calories),
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                    is DraftRow.Unresolved -> FoodRow(
-                        name = row.text,
-                        quantityLine = "Not in your foods",
-                        calories = "",
-                        modifier = Modifier.padding(top = 4.dp),
-                        onClick = { log.resolveNotInFoods(row) },
-                    )
-                }
-            }
-            if (suggestions.isNotEmpty()) {
-                Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.Bottom) {
-                    Text(foodText(draft.activePhrase), color = colors.ink, style = BreakfastType.Body, modifier = Modifier.weight(1f))
-                    if (draft.choiceHint) Text("which one?", color = colors.soft, style = BreakfastType.Meta)
-                }
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    suggestions.forEachIndexed { index, ranked ->
-                        ChoiceOption(
-                            label = ranked.food.name,
-                            selected = index == 0 && draft.preselected,
-                            onClick = { log.chooseSuggestion(ranked.food) },
-                            modifier = Modifier.widthIn(min = 168.dp),
-                            detail = draft.choiceCalculations.getOrNull(index)?.let(::choiceKcalDetail),
-                        )
-                    }
-                }
-            }
+            DraftParts(draft, onChoose = log::chooseSuggestion, onResolve = log::resolveNotInFoods)
         }
         // The add bar sits above whichever is taller: the keyboard or the navigation bar.
         // At large font the button takes its own full-width row so the sum keeps its width.
@@ -219,6 +181,56 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
             Row(barModifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 sum(Modifier.weight(1f))
                 addButton(false)
+            }
+        }
+    }
+}
+
+/**
+ * A draft's parts as the Log page shows them, under its field: the rows in typed order (an entry, or "Not in your
+ * foods", which [onResolve] takes), then the choice group for the part being typed ("which one?" for real choices),
+ * whose tap is [onChoose]. The Log page and a recipe's ingredients both draw it.
+ */
+@Composable
+internal fun DraftParts(draft: LogDraftView, onChoose: (FoodRecord) -> Unit, onResolve: (DraftRow.Unresolved) -> Unit) {
+    val colors = LocalBreakfastColors.current
+    // Rows in typed order. Typed text that matches no food stays visible, so it is never lost when Add is pressed.
+    // Not animated: a row has no identity that lasts while its text is typed (DESIGN.md, Motion).
+    draft.rows.forEach { row ->
+        when (row) {
+            is DraftRow.Entry -> FoodRow(
+                name = row.resolution.food.name,
+                quantityLine = previewQuantityLine(row.resolution.amount, row.resolution.unit, row.resolution.calculation.approximate),
+                calories = formatKcal(row.resolution.calculation.nutrition.calories),
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            is DraftRow.Unresolved -> FoodRow(
+                name = row.text,
+                quantityLine = "Not in your foods",
+                calories = "",
+                modifier = Modifier.padding(top = 4.dp),
+                onClick = { onResolve(row) },
+            )
+        }
+    }
+    val suggestions = draft.choices
+    if (suggestions.isNotEmpty()) {
+        Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.Bottom) {
+            Text(foodText(draft.activePhrase), color = colors.ink, style = BreakfastType.Body, modifier = Modifier.weight(1f))
+            if (draft.choiceHint) Text("which one?", color = colors.soft, style = BreakfastType.Meta)
+        }
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            suggestions.forEachIndexed { index, ranked ->
+                ChoiceOption(
+                    label = ranked.food.name,
+                    selected = index == 0 && draft.preselected,
+                    onClick = { onChoose(ranked.food) },
+                    modifier = Modifier.widthIn(min = 168.dp),
+                    detail = draft.choiceCalculations.getOrNull(index)?.let(::choiceKcalDetail),
+                )
             }
         }
     }

@@ -174,7 +174,21 @@ class LogPlanner(
      */
     fun chosenText(raw: String, food: FoodRecord): String {
         val (amount, unit) = quantityFor(reading(raw), food)
-        return listOfNotNull(formatAmount(amount), unit.displayLabel().ifBlank { null }, food.name).joinToString(" ")
+        return partText(food, amount, unit)
+    }
+
+    /** A part that reads back as [amount] [unit] of [food]: "500 g Beef mince", "1 portion Chili". */
+    fun partText(food: FoodRecord, amount: Double, unit: MeasureUnit): String =
+        listOfNotNull(formatAmount(amount), unit.displayLabel().ifBlank { null }, food.name).joinToString(" ")
+
+    /** [input] with [part] after its last part: after a comma, or as typed when the input already ends in a separator. */
+    fun withPartAdded(input: String, part: String): String {
+        val head = input.trimEnd()
+        return when {
+            head.isEmpty() -> part
+            endsOpen(head) -> "$head $part"
+            else -> "$head, $part"
+        }
     }
 
     /** The query the library opens with for [raw]: the food text, without its amount ("kiselo mleko 200g" is "kiselo mleko"). */

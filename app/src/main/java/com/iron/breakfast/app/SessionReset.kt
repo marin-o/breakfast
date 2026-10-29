@@ -5,6 +5,7 @@ import com.iron.breakfast.entry.EntryEdit
 import com.iron.breakfast.food.FoodForm
 import com.iron.breakfast.log.LogComposer
 import com.iron.breakfast.recipes.RecipeBook
+import com.iron.breakfast.recipes.RecipeForm
 import com.iron.breakfast.resolve.ResolveFlow
 
 /**
@@ -27,10 +28,12 @@ internal class SessionReset(private val steps: List<() -> Unit>) {
  * match." about the old diary's foods no longer applies), a contribution candidate with its preflight and review, the
  * resolve queue and resolver, the entry detail, and an Edit food whose food the new diary does not have (since the
  * D15 fix: a fresh diary after damage resets the session too), and on the Recipes tab the recipe page, its amount sheet
- * and a Delete recipe question.
+ * and a Delete recipe question, and an Edit of a recipe the new diary does not have.
  */
 internal fun sessionResetSteps(
     log: LogComposer, contribution: ContributionFlow, resolve: ResolveFlow, entryEdit: EntryEdit, foodForm: FoodForm,
-    recipes: RecipeBook,
-): List<() -> Unit> =
-    listOf(log::clearPins, log::clearError, contribution::reset, resolve::abandon, entryEdit::closeDetail, foodForm::closeIfFoodGone, recipes::reset)
+    recipes: RecipeBook, recipeForm: RecipeForm,
+): List<() -> Unit> = listOf(
+    log::clearPins, log::clearError, contribution::reset, resolve::abandon, entryEdit::closeDetail, foodForm::closeIfFoodGone,
+    recipes::reset, recipeForm::closeIfRecipeGone,
+)

@@ -199,6 +199,7 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
     val review = owners.review
     val surfaces = owners.surfaces
     val recipes = owners.recipes
+    val recipeForm = owners.recipeForm
 
     /** The day picked, as the date picker picks it (`DayState.goTo`). */
     fun selectDay(value: String) = day.goTo(value)

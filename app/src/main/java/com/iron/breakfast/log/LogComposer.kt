@@ -9,7 +9,6 @@ import com.iron.breakfast.app.LOGGED
 import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.app.SavedLogDraft
 import com.iron.breakfast.domain.DraftRow
-import com.iron.breakfast.domain.DraftView
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.LogPlanner
 import com.iron.breakfast.domain.MealSlot
@@ -141,22 +140,8 @@ internal class LogComposer(
     suspend fun computeDraftView(text: String, committed: Boolean, pins: Map<String, FoodRecord>): LogDraftView =
         withContext(compute) { draftView(text, committed, pins) }
 
-    fun draftView(text: String = draft, committed: Boolean = this.committed, pins: Map<String, FoodRecord> = pinsSnapshot()): LogDraftView {
-        val planner = store.planner(pins)
-        // One planner draft: rows, the choice group, suggestions and the add-bar sum all come from the same resolution.
-        val view = if (session.ready) planner.draft(text, typing = !committed) else DraftView.EMPTY
-        return LogDraftView(
-            rows = view.rows,
-            choices = view.choices,
-            choiceHint = view.choiceHint,
-            preselected = view.preselected,
-            activePhrase = view.activePhrase,
-            // The sum is the draft's own count: what Add would save.
-            logged = view.logged,
-            // Each choice's kcal from the same planner and text as the sum, so the two never disagree.
-            choiceCalculations = view.choices.map { planner.calculationFor(view.activeText, it.food) },
-        )
-    }
+    fun draftView(text: String = draft, committed: Boolean = this.committed, pins: Map<String, FoodRecord> = pinsSnapshot()): LogDraftView =
+        logDraftViewOf(store.planner(pins), text, committed, session.ready)
 
     /**
      * Tapping a choice or a suggestion: the typed part becomes the amount, unit and name it would log, pinned to the

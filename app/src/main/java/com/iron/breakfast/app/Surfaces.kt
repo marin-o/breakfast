@@ -11,6 +11,7 @@ import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.Recipe
 import com.iron.breakfast.domain.isRecipeId
 import com.iron.breakfast.recipes.RecipeBook
+import com.iron.breakfast.recipes.RecipeForm
 import com.iron.breakfast.entry.EntryEdit
 import com.iron.breakfast.entry.EntryEditMode
 import com.iron.breakfast.library.exitLibraryTarget
@@ -49,6 +50,13 @@ internal enum class Surface(
     RECIPE(coversBase = true),
     /** A recipe row's "+": the amount sheet with its units and the meal. */
     RECIPE_LOG(coversBase = true),
+    /** New recipe and Edit. */
+    RECIPE_FORM(coversBase = true),
+    /** The recipe form's ingredient search, over the form. */
+    RECIPE_SEARCH(coversBase = true),
+    /** A food picked in the ingredient search: the amount sheet, whose Add adds the ingredient. */
+    RECIPE_INGREDIENT_ADD(coversBase = true),
+    DISCARD_RECIPE,
     /** "Delete recipe" asks first, over the recipe page or its form. */
     DELETE_RECIPE,
     MIXED_MEAL_PICKER, BATCH_MEAL_PICKER,
@@ -99,6 +107,7 @@ internal class Surfaces(
     private val contribution: ContributionFlow,
     private val transfer: DiaryTransfer<*>,
     private val recipes: RecipeBook,
+    private val recipeForm: RecipeForm,
     /** The Meal screen's meal restored after process death (the Library does not reopen). */
     initialMeal: MealSlot?,
 ) {
@@ -138,6 +147,10 @@ internal class Surfaces(
         Surface.LIBRARY_FOOD -> library.selectedFood != null && mealOnScreen() == null
         Surface.RECIPE -> recipes.page != null
         Surface.RECIPE_LOG -> recipes.logging != null
+        Surface.RECIPE_FORM -> recipeForm.open
+        Surface.RECIPE_SEARCH -> recipeForm.open && recipeForm.searchOpen
+        Surface.RECIPE_INGREDIENT_ADD -> recipeForm.open && recipeForm.adding != null
+        Surface.DISCARD_RECIPE -> recipeForm.discardOpen
         Surface.DELETE_RECIPE -> recipes.deleteRequest != null
         Surface.MIXED_MEAL_PICKER -> library.mixedMealPickerOpen
         Surface.BATCH_MEAL_PICKER -> library.batchMealPickerOpen
@@ -187,6 +200,8 @@ internal class Surfaces(
         Surface.LIBRARY -> ::exitLibrary.takeIf { !covered }
         Surface.RECIPES -> ::closeRecipes.takeIf { !covered }
         Surface.RECIPE -> recipes::closeRecipe
+        Surface.RECIPE_FORM -> recipeForm::leave
+        Surface.RECIPE_SEARCH -> recipeForm::closeSearch
         Surface.LOG -> log::close
         Surface.ENTRY_QUICK_EDIT, Surface.ENTRY_FULL_EDIT -> ::cancelEdit
         Surface.LIBRARY_FOOD -> library::closeFood
@@ -202,7 +217,8 @@ internal class Surfaces(
         Surface.ENTRY_DETAIL -> entryEdit::closeDetail
         Surface.SCANNER -> scan::end
         // Dialogs and sheets, in their own window; the backdrop goes with its review sheet.
-        Surface.SCAN_REVIEW_BACKDROP, Surface.ENTRY_FOOD_PICKER, Surface.LIBRARY_FOOD_ADD, Surface.RECIPE_LOG, Surface.DELETE_RECIPE, Surface.MIXED_MEAL_PICKER,
+        Surface.SCAN_REVIEW_BACKDROP, Surface.ENTRY_FOOD_PICKER, Surface.LIBRARY_FOOD_ADD, Surface.RECIPE_LOG, Surface.RECIPE_INGREDIENT_ADD,
+        Surface.DISCARD_RECIPE, Surface.DELETE_RECIPE, Surface.MIXED_MEAL_PICKER,
         Surface.BATCH_MEAL_PICKER, Surface.DISCARD_FOOD, Surface.DELETE_FOOD, Surface.PRODUCT_REVIEW, Surface.NOTICE, Surface.REPLACE_DIARY,
         Surface.DELETE_ALL, Surface.STORAGE_UNAVAILABLE -> null
     }
