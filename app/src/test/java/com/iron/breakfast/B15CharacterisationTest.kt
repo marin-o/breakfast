@@ -31,7 +31,8 @@ class B15CharacterisationTest {
      * sheet offers reads back as itself, and the text `beginQuickEdit` started from reads back as the entry's values.
      */
     @Test fun theQuickEditTextReadsBackAsTheAmountAndUnit() {
-        for (unit in MeasureUnit.entries - MeasureUnit.UNKNOWN) {
+        // A serving is typed by its name, not a label of its own (ServingsTest covers it).
+        for (unit in MeasureUnit.entries - MeasureUnit.UNKNOWN - MeasureUnit.SERVING) {
             val parsed = parseStrictAmountUnit("${"1.5".trim()} ${unit.displayLabel()}")
             assertEquals(unit.name, 1.5, parsed?.amount)
             assertEquals(unit.name, unit, parsed?.unit)

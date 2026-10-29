@@ -162,6 +162,9 @@ class FoodMatcher(
         return indexedCatalog.any { indexed -> queries.all { hit(it, indexed) != null } }
     }
 
+    /** True when some food has a serving named [word] ("cans" for a can), under the script rule ([servingNameMatches]). */
+    fun hasServingNamed(word: String): Boolean = catalog.any { it.servingNamed(word) != null }
+
     /** True when some food names [word] as a whole word, through any tier except a prefix of a longer word. */
     fun matchesWholeWord(word: String): Boolean {
         val queries = tokens(expandAbbreviations(word)).map(::QueryToken)

@@ -112,7 +112,8 @@ class BreakfastEngine(
                 sourcePhrase = resolved.raw,
                 mealSlot = mealSlot,
                 dayKey = dayKey,
-                resolvedBaseUnit = resolved.food.nutrition.unit
+                resolvedBaseUnit = resolved.food.nutrition.unit,
+                enteredUnitLabel = resolved.label,
             )
         }
         if (entries.isNotEmpty()) store.saveEntries(entries)
@@ -163,7 +164,7 @@ class BreakfastEngine(
             val food = matchable().firstOrNull { it.id == foodId }
                 ?: return@editEntry ReplacementResult.Failure("That catalogue record is no longer available.")
             if (!old.enteredAmount.isFinite() || old.enteredAmount <= 0.0) return@editEntry ReplacementResult.Failure("Enter a positive amount.")
-            val calculation = calculator.calculate(food, old.enteredAmount, old.enteredUnit)
+            val calculation = calculator.calculate(food, old.enteredAmount, old.enteredUnit, old.enteredUnitLabel)
             if (!calculation.supported) {
                 return@editEntry ReplacementResult.Failure(
                     "${food.name} has no ${old.enteredUnit.displayLabel()} conversion. Re-enter this segment with a compatible amount such as ml or g."
@@ -190,13 +191,15 @@ class BreakfastEngine(
      */
     suspend fun replaceEntryAmountUnit(entryId: String, text: String): ReplacementResult =
         editEntry(entryId, "That entry is no longer available.") { old ->
-            val parsed = parseStrictAmountUnit(text)
+            val parsed = parseEditAmount(text)
                 ?: return@editEntry ReplacementResult.Failure("Enter a positive amount and a supported unit, such as 100 g or 1 tbsp.")
             // A recipe entry follows its recipe while it exists (portion and g both); a deleted one scales its snapshot.
             val food = matchable().firstOrNull { it.id == old.foodId }
-                ?: return@editEntry snapshotScaled(old, parsed.amount, parsed.unit)?.let { ReplacementResult.Success(old.withScaled(parsed.amount, it)) }
+                ?: return@editEntry snapshotScaled(old, parsed.amount, parsed.unit, parsed.word)?.let { ReplacementResult.Success(old.withScaled(parsed.amount, it)) }
                     ?: ReplacementResult.Failure("The original food for this entry is no longer available.")
-            val calculation = calculator.calculate(food, parsed.amount, parsed.unit)
+            // A serving's name typed ("2 slice") counts that serving, as on the Log.
+            val measure = food.typedMeasure(parsed.unit, parsed.word, parsed.label)
+            val calculation = calculator.calculate(food, parsed.amount, measure.unit, measure.name)
             if (!calculation.supported) {
                 return@editEntry ReplacementResult.Failure(
                     "That amount/unit is not supported for ${food.name}."
@@ -205,7 +208,8 @@ class BreakfastEngine(
             ReplacementResult.Success(
                 old.copy(
                     enteredAmount = parsed.amount,
-                    enteredUnit = parsed.unit,
+                    enteredUnit = measure.unit,
+                    enteredUnitLabel = measure.name,
                     resolvedBaseAmount = calculation.resolvedBaseAmount,
                     nutritionSnapshot = calculation.nutrition,
                     conversionProvenance = calculation.provenance,
@@ -222,10 +226,13 @@ class BreakfastEngine(
         return editEntry(entryId, "That entry is no longer available.") { old ->
             if (match == null) return@editEntry ReplacementResult.Failure("No matching food.")
             val amount = parsed.amount ?: old.enteredAmount
-            val unit = parsed.unit ?: old.enteredUnit
-            val calculation = calculator.calculate(match.food, amount, unit)
+            val measure = if (parsed.unit != null) match.food.typedMeasure(parsed.unit, parsed.unitWord, parsed.unitLabel)
+                else Measure(old.enteredUnit, old.enteredUnitLabel)
+            val unit = measure.unit
+            val calculation = calculator.calculate(match.food, amount, unit, measure.name)
             if (!calculation.supported) return@editEntry ReplacementResult.Failure("That amount/unit is not supported for ${match.food.name}.")
             ReplacementResult.Success(old.copy(foodId = match.food.id, foodName = match.food.name, enteredAmount = amount, enteredUnit = unit,
+                enteredUnitLabel = measure.name,
                 resolvedBaseAmount = calculation.resolvedBaseAmount, nutritionSnapshot = calculation.nutrition,
                 conversionProvenance = calculation.provenance, approximateConversion = calculation.approximate, sourcePhrase = text,
                 resolvedBaseUnit = match.food.nutrition.unit))
@@ -240,17 +247,19 @@ class BreakfastEngine(
         unit: MeasureUnit,
         mealSlot: MealSlot,
         dayKey: String,
+        /** The serving's name for [MeasureUnit.SERVING]. */
+        servingName: String? = null,
     ): ReplacementResult = editEntry(entryId, "That saved entry is no longer available.") { old ->
         // A recipe that still exists is edited as a live recipe; a deleted one scales the entry's own snapshot.
         val food = matchable().firstOrNull { it.id == foodId }
         // Its food deleted, an entry kept on it can still change its amount (in its own unit), meal and day.
         if (food == null) {
-            val scaled = snapshotScaled(old, amount, unit).takeIf { foodId == old.foodId }
+            val scaled = snapshotScaled(old, amount, unit, servingName).takeIf { foodId == old.foodId }
                 ?: return@editEntry ReplacementResult.Failure("That catalogue record is no longer available.")
             return@editEntry ReplacementResult.Success(old.withScaled(amount, scaled).copy(mealSlot = mealSlot, dayKey = dayKey))
         }
         if (!amount.isFinite() || amount <= 0.0) return@editEntry ReplacementResult.Failure("Enter a positive amount.")
-        val calculation = calculator.calculate(food, amount, unit)
+        val calculation = calculator.calculate(food, amount, unit, servingName)
         if (!calculation.supported) return@editEntry ReplacementResult.Failure("That amount/unit is not supported for ${food.name}.")
         ReplacementResult.Success(
             old.copy(
@@ -258,6 +267,7 @@ class BreakfastEngine(
                 foodName = food.name,
                 enteredAmount = amount,
                 enteredUnit = unit,
+                enteredUnitLabel = servingName.takeIf { unit == MeasureUnit.SERVING },
                 resolvedBaseAmount = calculation.resolvedBaseAmount,
                 nutritionSnapshot = calculation.nutrition,
                 conversionProvenance = calculation.provenance,
@@ -386,7 +396,11 @@ class BreakfastEngine(
         return effectiveFood
     }
 
-    suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, mealSlot: MealSlot, dayKey: String): MealEntry {
+    suspend fun cacheFoodAndLog(
+        food: FoodRecord, amount: Double, unit: MeasureUnit, mealSlot: MealSlot, dayKey: String,
+        /** The serving's name for [MeasureUnit.SERVING] ("slice"). */
+        servingName: String? = null,
+    ): MealEntry {
         if (isRecipeId(food.id)) return logRecipe(food, amount, unit, mealSlot, dayKey)
         val effectiveFood = cachedFoodForLogging(
             food,
@@ -394,12 +408,13 @@ class BreakfastEngine(
             food.barcode?.let { store.foodByBarcode(it) }
         )
         require(amount.isFinite() && amount > 0.0) { "Enter a positive amount." }
-        val calculation = calculator.calculate(effectiveFood, amount, unit)
+        val calculation = calculator.calculate(effectiveFood, amount, unit, servingName)
         require(calculation.supported) { "Amount unit is incompatible with the nutrition basis" }
         val now = System.currentTimeMillis()
         val entry = MealEntry(UUID.randomUUID().toString(), effectiveFood.id, effectiveFood.name, amount, unit,
             calculation.resolvedBaseAmount, calculation.nutrition, calculation.provenance,
-            calculation.approximate, now, effectiveFood.name, mealSlot, dayKey, effectiveFood.nutrition.unit)
+            calculation.approximate, now, effectiveFood.name, mealSlot, dayKey, effectiveFood.nutrition.unit,
+            enteredUnitLabel = servingName.takeIf { unit == MeasureUnit.SERVING })
         store.addFoodAndEntry(effectiveFood, entry)
         invalidateMatcher()
         return entry
@@ -453,8 +468,10 @@ private val NO_PREFERENCES: Map<String, Preference> = emptyMap()
  * An entry whose food was deleted, at [amount] of its own unit: its own snapshot scaled in proportion, the only honest
  * figure left. Null for another unit (nothing to convert with) or a stored amount that is not a positive number.
  */
-internal fun snapshotScaled(entry: MealEntry, amount: Double, unit: MeasureUnit): Calculation? {
+internal fun snapshotScaled(entry: MealEntry, amount: Double, unit: MeasureUnit, servingName: String? = null): Calculation? {
     if (unit != entry.enteredUnit || !amount.isFinite() || amount <= 0.0 || !snapshotScalable(entry)) return null
+    // A serving is its own unit: only the same name scales.
+    if (unit == MeasureUnit.SERVING && (servingName == null || entry.enteredUnitLabel?.let { servingNameMatches(servingName, it) } != true)) return null
     val factor = amount / entry.enteredAmount
     return Calculation(entry.nutritionSnapshot * factor, entry.resolvedBaseAmount * factor, entry.conversionProvenance, entry.approximateConversion, supported = true)
 }
@@ -468,20 +485,41 @@ private fun MealEntry.withScaled(amount: Double, scaled: Calculation) =
 internal fun cachedFoodForLogging(candidate: FoodRecord, byId: FoodRecord?, byBarcode: FoodRecord?): FoodRecord =
     listOfNotNull(byId, byBarcode).firstOrNull { it.personalOverride } ?: candidate
 
-data class ParsedAmountUnit(val amount: Double, val unit: MeasureUnit)
+/**
+ * An amount and its unit as the quick edit types them. [word] is the unit word as typed (a serving's name for
+ * [MeasureUnit.SERVING]); [label] the label of a unit the amount was converted from ("kg").
+ */
+data class ParsedAmountUnit(val amount: Double, val unit: MeasureUnit, val word: String? = null, val label: String? = null)
 
 private val PORTION_UNIT = Regex("(?iu)portions?")
+
+private val SERVING_WORD = Regex("\\p{L}+")
 
 /** Strict amount/unit parsing used by saved-entry quick edit. */
 fun parseStrictAmountUnit(text: String): ParsedAmountUnit? {
     val parsed = ShorthandParser().parse(text)
-    val amount = parsed.amount
-    // "portion" is no unit word of the shorthand (a food's phrase keeps it): here, alone after the amount, it is one.
-    val unit = parsed.unit ?: MeasureUnit.PORTION.takeIf { PORTION_UNIT.matches(parsed.foodPhrase.trim()) }
-    if ((parsed.foodPhrase.isNotBlank() && parsed.unit != null) || amount == null || unit == null ||
-        !amount.isFinite() || amount <= 0.0
-    ) return null
-    return ParsedAmountUnit(amount, unit)
+    val amount = parsed.amount?.takeIf { it.isFinite() && it > 0.0 } ?: return null
+    val rest = parsed.foodPhrase.trim()
+    return when {
+        // The word is kept only when it may be a serving's name ("slice"), not the unit's own label ("g").
+        parsed.unit != null -> if (rest.isNotBlank()) null
+            else ParsedAmountUnit(amount, parsed.unit, parsed.unitWord?.takeUnless { it.equals(parsed.unit.label, ignoreCase = true) }, parsed.unitLabel)
+        // "portion" is no unit word of the shorthand (a food's phrase keeps it): here, alone after the amount, it is one.
+        PORTION_UNIT.matches(rest) -> ParsedAmountUnit(amount, MeasureUnit.PORTION)
+        else -> null
+    }
+}
+
+/**
+ * The quick edit's amount and unit ([parseStrictAmountUnit]), where the unit may also be a serving's name alone after
+ * the amount ("2 slice", "1 can"), which the entry's food has or does not.
+ */
+fun parseEditAmount(text: String): ParsedAmountUnit? {
+    parseStrictAmountUnit(text)?.let { return it }
+    val parsed = ShorthandParser().parse(text)
+    val amount = parsed.amount?.takeIf { it.isFinite() && it > 0.0 } ?: return null
+    val word = parsed.foodPhrase.trim()
+    return if (parsed.unit == null && SERVING_WORD.matches(word)) ParsedAmountUnit(amount, MeasureUnit.SERVING, word) else null
 }
 
 /**

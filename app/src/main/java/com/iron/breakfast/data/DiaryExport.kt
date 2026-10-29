@@ -381,6 +381,7 @@ internal fun diaryProblem(file: DiaryFile): String? {
             !e.snapshotProtein.nonNegativeOrUnknown() || !e.snapshotCarbohydrates.nonNegativeOrUnknown() || !e.snapshotFat.nonNegativeOrUnknown() -> return "$at: macros"
             e.savedAtEpochMs < 0 -> return "$at: time ${e.savedAtEpochMs}"
             e.enteredUnitLabel != null && e.enteredUnitLabel.isBlank() -> return "$at: blank unit label"
+            e.enteredUnit == MeasureUnit.SERVING.name && e.enteredUnitLabel == null -> return "$at: serving without a name"
         }
     }
     return null

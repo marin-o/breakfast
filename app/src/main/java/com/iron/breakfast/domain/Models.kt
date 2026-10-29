@@ -17,6 +17,10 @@ enum class MeasureUnit(val label: String) {
     GRAM("g"), MILLILITER("ml"), TABLESPOON("tbsp"), TEASPOON("tsp"), PIECE("piece"),
     /** A recipe's portion: only a recipe with portions has it (see `domain/Recipes.kt`). */
     PORTION("portion"),
+    /** A US cup, 240 ml: a volume measure (see `domain/Servings.kt`). */
+    CUP("cup"),
+    /** One of a food's named servings ("slice", "can"): the name goes with it ([MealEntry.enteredUnitLabel]). */
+    SERVING(""),
     UNKNOWN("")
 }
 
@@ -218,6 +222,10 @@ data class ParsedSegment(
     val articleQuantity: Boolean = false,
     /** [raw] as it reads: with a space before a quantity glued to a food word ("mleko200g" reads "mleko 200g"). */
     val spaced: String = raw,
+    /** The unit word as typed ("slices", "kg", "pcs"): a food's serving of that name wins over [unit]. */
+    val unitWord: String? = null,
+    /** The label of a unit the amount was converted from ("kg", "oz", "dl"; [amount] is in g or ml); null otherwise. */
+    val unitLabel: String? = null,
 )
 
 data class RankedFood(

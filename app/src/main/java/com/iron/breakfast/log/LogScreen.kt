@@ -76,6 +76,7 @@ import com.iron.breakfast.ui.screens.formatKcal
 import com.iron.breakfast.ui.screens.choiceKcalDetail
 import com.iron.breakfast.ui.screens.foodCountLabel
 import com.iron.breakfast.ui.screens.countedQuantity
+import com.iron.breakfast.ui.screens.labelFor
 
 
 /**
@@ -200,7 +201,7 @@ internal fun DraftParts(draft: LogDraftView, onChoose: (FoodRecord) -> Unit, onR
         when (row) {
             is DraftRow.Entry -> FoodRow(
                 name = row.resolution.food.name,
-                quantityLine = previewQuantityLine(row.resolution.amount, row.resolution.unit, row.resolution.calculation.approximate),
+                quantityLine = previewQuantityLine(row.resolution.amount, row.resolution.unit, row.resolution.calculation.approximate, row.resolution.label),
                 calories = formatKcal(row.resolution.calculation.nutrition.calories),
                 modifier = Modifier.padding(top = 4.dp),
             )
@@ -284,6 +285,6 @@ internal fun inputFieldFor(text: String): TextFieldValue = TextFieldValue(text, 
  * The quantity line of a Log row. Counted pieces and portions read as the user typed them (`2 pieces`, `1 portion`),
  * never with ≈. Other units show ≈ only when the amount was converted (1 tbsp as grams).
  */
-internal fun previewQuantityLine(amount: Double, unit: com.iron.breakfast.domain.MeasureUnit, approximate: Boolean): String =
-    countedQuantity(amount, unit) ?: "${if (approximate) "≈" else ""}${amount.pretty()} ${unit.displayLabel()}"
+internal fun previewQuantityLine(amount: Double, unit: com.iron.breakfast.domain.MeasureUnit, approximate: Boolean, label: String? = null): String =
+    countedQuantity(amount, unit, label) ?: "${if (approximate) "≈" else ""}${amount.pretty()} ${unit.labelFor(amount)}"
 

@@ -90,7 +90,7 @@ class GluedQuantityTest {
 
     @Test fun aGlueThatDoesNotResolveStaysOneUnresolvedPart() {
         assertEquals(listOf("xyzzy200g"), planner.plan("xyzzy200g").unresolved)
-        assertEquals(listOf("mleko200cups"), planner.plan("mleko200cups").unresolved)
+        assertEquals(listOf("mleko200jars"), planner.plan("mleko200jars").unresolved)
     }
 
     @Test fun withoutAProbeTheParserLeavesAGlueAlone() {

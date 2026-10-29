@@ -2,6 +2,7 @@ package com.iron.breakfast.domain
 
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.system.measureNanoTime
@@ -154,17 +155,17 @@ class BreakfastDomainTest {
         )
         val calculator = NutritionCalculator()
 
+        // Measurements: on a per-100 ml food a spoon is a fixed volume (15 ml, 5 ml), no longer a guess.
         val tablespoon = calculator.calculate(pestoMl, 1.0, MeasureUnit.TABLESPOON)
         assertTrue(tablespoon.supported)
-        assertTrue(tablespoon.approximate)
+        assertFalse(tablespoon.approximate)
         assertEquals(15.0, tablespoon.resolvedBaseAmount, 0.01)
         assertEquals(60.0, tablespoon.nutrition.calories, 0.01)
         assertTrue(tablespoon.provenance.contains("15 ml"))
-        assertTrue(tablespoon.provenance.contains("Approximate"))
 
         val teaspoon = calculator.calculate(pestoMl, 1.0, MeasureUnit.TEASPOON)
         assertEquals(5.0, teaspoon.resolvedBaseAmount, 0.01)
-        assertTrue(teaspoon.approximate)
+        assertFalse(teaspoon.approximate)
 
         val unsupportedPiece = calculator.calculate(pestoMl, 1.0, MeasureUnit.PIECE)
         assertTrue(!unsupportedPiece.supported)

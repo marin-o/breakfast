@@ -18,6 +18,9 @@ interface FoodProbe {
 
     /** True when some food names [word] as a whole word (not as part of a longer word). */
     fun matchesWholeWord(word: String): Boolean
+
+    /** True when some food has a serving named [word] ("cans"): after an amount it goes with it, as a unit does. */
+    fun isServingWord(word: String): Boolean = false
 }
 
 /** One part of the typed input: its text and where it sits in the input. */
@@ -97,7 +100,8 @@ class ShorthandParser {
                 val head = spanOf(input, span.start, span.start + words[words.size - 2].range.last + 1)
                 // Only a plain word is a fragment: "150ml" and "60g" are quantities, never a word being typed.
                 val plainWord = word.all { it.isLetter() }
-                if (plainWord && isFoodWord(word) && !probe.matchesWholeWord(word) && probe.isWholeFood(head.text)) {
+                // A serving's name after an amount ("coke 1 can") goes with the amount: it is not a word being typed.
+                if (plainWord && isFoodWord(word) && !probe.matchesWholeWord(word) && !probe.isServingWord(word) && probe.isWholeFood(head.text)) {
                     out += head
                     out += spanOf(input, span.start + last.range.first, span.end)
                     continue
@@ -150,11 +154,11 @@ class ShorthandParser {
                 i++
                 continue
             }
-            val quantityEnd = quantityEnd(texts, i)
+            val quantityEnd = quantityEnd(texts, i, probe)
             if (quantityEnd != null) {
                 val hasFood = current.any { isFoodWord(texts[it]) }
                 val foodFollows = foodWordBeforeSeparator(texts, quantityEnd)
-                if (hasFood && foodFollows && (leadingQuantity || trailingQuantity || !hasUnit(texts, i, quantityEnd))) {
+                if (hasFood && foodFollows && (leadingQuantity || trailingQuantity || !hasUnit(texts, i, quantityEnd, probe))) {
                     flush(nextWordBreak = false)
                     leadingQuantity = true
                 } else if (hasFood) {
@@ -169,7 +173,7 @@ class ShorthandParser {
             // A food word after a trailing quantity starts the next food: "oats 60g milk" is two parts.
             if (trailingQuantity && isFoodWord(word)) flush(nextWordBreak = false)
             // A leading meal word before a quantity is its own part: "lunch 1 banana" is two parts.
-            if (current.isEmpty() && ShorthandLexicon.mealSlotOf(word) != null && quantityEnd(texts, i + 1) != null) {
+            if (current.isEmpty() && ShorthandLexicon.mealSlotOf(word) != null && quantityEnd(texts, i + 1, probe) != null) {
                 current += i
                 flush(nextWordBreak = false)
                 i++
@@ -262,8 +266,11 @@ class ShorthandParser {
 
     private fun spanOf(input: String, start: Int, end: Int) = SegmentSpan(input.substring(start, end), start, end)
 
-    /** Exclusive end of the quantity that starts at [i], or null when no quantity starts there. */
-    private fun quantityEnd(texts: List<String>, i: Int): Int? {
+    /**
+     * Exclusive end of the quantity that starts at [i], or null when no quantity starts there. A number's unit may be a
+     * word some food has a serving by ([FoodProbe.isServingWord]): "coke 1 can" stays one part, as "bread 2 slices" does.
+     */
+    private fun quantityEnd(texts: List<String>, i: Int, probe: FoodProbe? = null): Int? {
         val word = texts.getOrNull(i) ?: return null
         val next = texts.getOrNull(i + 1)
         return when {
@@ -271,7 +278,8 @@ class ShorthandParser {
                 if (next?.startsWith("%") == true) return null
                 var end = i + 1
                 if (next != null && isQuantityFraction(next, texts.getOrNull(i + 2))) end++
-                if (texts.getOrNull(end)?.toMeasureUnit() != null) end++
+                val unit = texts.getOrNull(end)
+                if (unit?.toMeasureUnit() != null || (unit != null && probe?.isServingWord(unit) == true)) end++
                 end
             }
             isQuantityFraction(word, next) -> if (next?.toMeasureUnit() != null) i + 2 else i + 1
@@ -303,9 +311,9 @@ class ShorthandParser {
         return numerator < 10 && following?.lowercase(Locale.ROOT) !in COMPOSITION_WORDS
     }
 
-    /** True when the quantity words in [from, to) carry a unit ("60g", "1 kg", "2 tbsp"); a bare number does not. */
-    private fun hasUnit(texts: List<String>, from: Int, to: Int): Boolean = (from until to).any { index ->
-        texts[index].toMeasureUnit() != null ||
+    /** True when the quantity words in [from, to) carry a unit ("60g", "1 kg", "2 tbsp", "1 can"); a bare number does not. */
+    private fun hasUnit(texts: List<String>, from: Int, to: Int, probe: FoodProbe? = null): Boolean = (from until to).any { index ->
+        texts[index].toMeasureUnit() != null || probe?.isServingWord(texts[index]) == true ||
             ATTACHED_QUANTITY.matchEntire(texts[index])?.let { it.groupValues[2].toMeasureUnit() != null } == true
     }
 
@@ -346,6 +354,7 @@ class ShorthandParser {
         return ParsedSegment(
             raw, foodPhrase, quantity.amount, quantity.unit, quantity.range.first, quantity.range.last + 1,
             wordQuantity = quantity.fromWord, articleQuantity = quantity.article,
+            unitWord = quantity.unitWord, unitLabel = quantity.unitLabel,
         )
     }
 
@@ -359,6 +368,8 @@ class ShorthandParser {
         val range: IntRange,
         val fromWord: Boolean = false,
         val article: Boolean = false,
+        val unitWord: String? = null,
+        val unitLabel: String? = null,
     )
 
     /** The amount a segment states. Priority: half words, then digits, then number words, then "2x" or "x2". */
@@ -388,7 +399,7 @@ class ShorthandParser {
     /** A stated amount in the unit it names, converted to the stored unit: "1.5 kg" is 1500 g. */
     private fun quantityWithUnit(amount: Double, unitText: String, range: IntRange, fromWord: Boolean = false): Quantity {
         val spec = ShorthandLexicon.unitSpec(unitText) ?: return Quantity(amount, null, range, fromWord)
-        return Quantity(amount * spec.factor, spec.unit, range, fromWord)
+        return Quantity(amount * spec.factor, spec.unit, range, fromWord, unitWord = unitText.trim(), unitLabel = spec.label)
     }
 
     private fun parseAmount(text: String): Double {

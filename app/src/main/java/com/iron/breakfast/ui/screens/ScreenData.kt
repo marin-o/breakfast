@@ -16,6 +16,8 @@ import com.iron.breakfast.domain.parseStrictAmountUnit
 import com.iron.breakfast.domain.parseDecimal
 import com.iron.breakfast.domain.resolveNutrition
 import com.iron.breakfast.domain.displayLabel
+import com.iron.breakfast.domain.ShorthandLexicon
+import com.iron.breakfast.domain.servingNameFor
 import com.iron.breakfast.settings.DisplayDecimal
 import com.iron.breakfast.settings.markDecimals
 import com.iron.breakfast.ui.pretty
@@ -67,12 +69,12 @@ internal fun quantityRateDisplay(
 ): QuantityDisplay {
     // A counted piece or portion is the amount the user chose ("1 piece", "2 portions"). Its gram conversion and
     // kcal-per-gram rate are not a quantity to read, so they are not shown; the kcal sits in the row's own column.
-    countedQuantity(entry.enteredAmount, entry.enteredUnit)?.let { return QuantityDisplay(line = it) }
+    countedQuantity(entry.enteredAmount, entry.enteredUnit, entry.enteredUnitLabel)?.let { return QuantityDisplay(line = it) }
     val basisUnit = entry.resolvedBaseUnit.takeUnless { it == MeasureUnit.UNKNOWN }
         ?: provenanceBasisUnit(entry.conversionProvenance)
         ?: entry.enteredUnit
     val rate = if (entry.resolvedBaseAmount > 0.0) entry.nutritionSnapshot.calories / entry.resolvedBaseAmount else 0.0
-    val entered = "${entry.enteredAmount.pretty()} ${entry.enteredUnit.displayLabel()}".trim()
+    val entered = "${entry.enteredAmount.pretty()} ${entry.enteredUnit.labelFor(entry.enteredAmount)}".trim()
     val converted = basisUnit != entry.enteredUnit
     val approximate = entry.approximateConversion && converted
     val rawAmount = if (converted) entry.resolvedBaseAmount else entry.enteredAmount
@@ -92,12 +94,21 @@ internal fun quantityRateDisplay(
     )
 }
 
-/** A counted amount as it reads: "1 piece", "2 pieces", "1 portion", "1.5 portions"; null for a measured unit (g, ml, tbsp). */
-internal fun countedQuantity(amount: Double, unit: MeasureUnit): String? = when (unit) {
-    MeasureUnit.PIECE -> "${amount.pretty()} ${if (amount == 1.0) "piece" else "pieces"}"
-    MeasureUnit.PORTION -> "${amount.pretty()} ${if (amount == 1.0) "portion" else "portions"}"
+/**
+ * A counted amount as it reads: "1 piece", "2 pieces", "1.5 portions", a serving by its name ("2 slices", [label]), or
+ * an amount the shorthand converted, in the unit it was typed in ("1.5 kg", "8 oz"); null for a measured unit (g, ml,
+ * tbsp, cup).
+ */
+internal fun countedQuantity(amount: Double, unit: MeasureUnit, label: String? = null): String? = when {
+    unit == MeasureUnit.SERVING -> label?.let { "${amount.pretty()} ${servingNameFor(it, amount)}" }
+    label != null -> ShorthandLexicon.factorOf(label)?.let { factor -> "${(amount / factor).pretty()} $label" }
+    unit == MeasureUnit.PIECE -> "${amount.pretty()} ${if (amount == 1.0) "piece" else "pieces"}"
+    unit == MeasureUnit.PORTION -> "${amount.pretty()} ${if (amount == 1.0) "portion" else "portions"}"
     else -> null
 }
+
+/** A unit's label for [amount] of it: "cups" for more than one cup, else its label. */
+internal fun MeasureUnit.labelFor(amount: Double): String = if (this == MeasureUnit.CUP && amount != 1.0) "cups" else displayLabel()
 
 private const val MAX_RATE_UNIT_LINE = 28
 

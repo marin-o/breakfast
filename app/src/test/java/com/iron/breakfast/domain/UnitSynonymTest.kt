@@ -46,8 +46,11 @@ class UnitSynonymTest {
         assertEquals(Triple(100.0, MeasureUnit.GRAM, "овесни снегулки"), quantity("100гр овесни снегулки"))
     }
 
-    @Test fun cupStaysUnsupported() {
-        assertNull(parser.parse("1 cup oats").unit)
+    /** Measurements: a cup is a volume unit of 240 ml (owner, 2026-10-29); it used to be no unit at all. */
+    @Test fun aCupIsAUnit() {
+        assertEquals(MeasureUnit.CUP, parser.parse("1 cup oats").unit)
+        assertEquals(MeasureUnit.CUP, parser.parse("2 cups milk").unit)
+        assertNull(parser.parse("1 mug oats").unit)
     }
 
     @Test fun convertedUnitsResolveToTheirFoods() {

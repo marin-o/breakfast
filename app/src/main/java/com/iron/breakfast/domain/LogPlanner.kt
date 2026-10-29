@@ -13,6 +13,8 @@ data class SegmentResolution(
     val unit: MeasureUnit,
     val calculation: Calculation,
     val needsChoice: Boolean = false,
+    /** The serving's name for [MeasureUnit.SERVING], or the label of a unit the amount was converted from ("kg"). */
+    val label: String? = null,
 ) {
     val supported: Boolean get() = calculation.supported
 }
@@ -97,8 +99,11 @@ class LogPlanner(
      */
     private val countTyping: Boolean = true,
 ) {
-    /** How one part reads: what the food is matched on, and whether the amount came from the food's own name. */
-    private class Reading(val parsed: ParsedSegment, val wholeName: Boolean) {
+    /**
+     * How one part reads: what the food is matched on, whether the amount came from the food's own name, and a word read
+     * as a serving's name where a unit goes ("cans" in "2 cans coke"), when it is read that way.
+     */
+    private class Reading(val parsed: ParsedSegment, val wholeName: Boolean, val servingWord: String? = null) {
         // A glued part reads as its spaced form, so a name it carries is matched spaced ("cow milk3.2" as "cow milk 3.2").
         val phrase: String get() = if (wholeName) parsed.spaced else parsed.foodPhrase
     }
@@ -107,6 +112,7 @@ class LogPlanner(
     private val resolved: MutableMap<String, SegmentResolution?> = java.util.Collections.synchronizedMap(HashMap())
     private val coverCache: MutableMap<String, Boolean> = java.util.Collections.synchronizedMap(HashMap())
     private val wholeWordCache: MutableMap<String, Boolean> = java.util.Collections.synchronizedMap(HashMap())
+    private val servingWordCache: MutableMap<String, Boolean> = java.util.Collections.synchronizedMap(HashMap())
 
     /** Resolves one segment. Null when no food matches. An unsupported unit still resolves; check [SegmentResolution.supported]. */
     fun resolve(raw: String): SegmentResolution? {
@@ -116,17 +122,24 @@ class LogPlanner(
 
     private fun computeResolution(raw: String): SegmentResolution? {
         pins[raw]?.let { picked ->
-            val (amount, unit) = quantityFor(readingFor(raw, picked), picked)
+            val (amount, measure) = quantityFor(readingFor(raw, picked), picked)
             val ranked = RankedFood(picked, score = 1.0, reasons = listOf("picked"), fullMatch = true, wholeMatch = true)
-            return SegmentResolution(raw, listOf(ranked), picked, amount, unit, calculator.calculate(picked, amount, unit))
+            return SegmentResolution(raw, listOf(ranked), picked, amount, measure.unit, calculate(picked, amount, measure), label = measure.name)
         }
         val reading = reading(raw)
         // A word separator left inside one part ("Ben & Jerry's") names one food only when one food covers all of it.
         if (parser.hasWordSeparator(raw) && !matcher.covers(reading.phrase)) return null
         val plain = resolutionOf(raw, reading, matcher.suggestions(reading.phrase, preferences, SUGGESTION_LIMIT))
         if (plain != null && plain.supported && !plain.needsChoice) return plain
-        // Only when the part does not resolve as it reads: "2 portions chili" may be portions of a recipe. A food's
-        // phrase is never read this way, so "2 portions rice" logs exactly as it did before recipes.
+        // Only when the part does not resolve as it reads: a word where a unit goes may be a serving's name, of the
+        // foods that have one by that name ("2 cans coke", "coke 2 cans"). A food's name always wins.
+        for (serving in servingReadings(reading)) {
+            val word = serving.servingWord!!
+            val foods = matcher.suggestions(serving.phrase, preferences, SUGGESTION_LIMIT).filter { it.food.servingNamed(word) != null }
+            resolutionOf(raw, serving, foods)?.takeIf { it.supported && !it.needsChoice }?.let { return it }
+        }
+        // Then "2 portions chili" may be portions of a recipe. A food's phrase is never read this way, so "2 portions
+        // rice" logs exactly as it did before recipes.
         val portions = portionReading(reading) ?: return plain
         val recipes = matcher.suggestions(portions.phrase, preferences, SUGGESTION_LIMIT).filter { takesPortions(it.food) }
         val recipe = resolutionOf(raw, portions, recipes)
@@ -135,10 +148,33 @@ class LogPlanner(
 
     private fun resolutionOf(raw: String, reading: Reading, ranked: List<RankedFood>): SegmentResolution? {
         val top = ranked.firstOrNull() ?: return null
-        val (amount, unit) = quantityFor(reading, top.food)
+        val (amount, measure) = quantityFor(reading, top.food)
         // A partial match (not every identity token matches) is only a choice, as is a weak typo or spelling match.
         val needsChoice = !top.fullMatch || (top.weakMatch && (ranked.size > 1 || top.firstLetterEdit))
-        return SegmentResolution(raw, ranked, top.food, amount, unit, calculator.calculate(top.food, amount, unit), needsChoice)
+        return SegmentResolution(raw, ranked, top.food, amount, measure.unit, calculate(top.food, amount, measure), needsChoice, measure.name)
+    }
+
+    private fun calculate(food: FoodRecord, amount: Double, measure: Measure): Calculation =
+        calculator.calculate(food, amount, measure.unit, measure.name)
+
+    /**
+     * [reading] with a serving's name where a unit goes: the first word of its food text ("2 cans coke", "a can of
+     * coke") or the last ("coke 2 cans"), the rest the food. Only for a part that states an amount and no unit.
+     */
+    private fun servingReadings(reading: Reading): List<Reading> {
+        val parsed = reading.parsed
+        if (reading.wholeName || parsed.unit != null || (parsed.amount == null && !parsed.articleQuantity)) return emptyList()
+        val words = parsed.foodPhrase.trim().split(WHITESPACE).filter { it.isNotBlank() }
+        if (words.size < 2) return emptyList()
+        fun servingWord(word: String) = word.any(Char::isLetter) && word.lowercase() !in ShorthandLexicon.stopWords
+        val first = words.first().takeIf(::servingWord)?.let { word ->
+            val rest = words.drop(1).dropWhile { it.equals("of", ignoreCase = true) }
+            rest.takeIf { it.isNotEmpty() }?.let { Reading(parsed.copy(foodPhrase = it.joinToString(" ")), wholeName = false, servingWord = word) }
+        }
+        val last = words.last().takeIf(::servingWord)?.let { word ->
+            Reading(parsed.copy(foodPhrase = words.dropLast(1).joinToString(" ")), wholeName = false, servingWord = word)
+        }
+        return listOfNotNull(first, last)
     }
 
     /**
@@ -152,9 +188,13 @@ class LogPlanner(
         return Reading(reading.parsed.copy(foodPhrase = match.groupValues[1], unit = MeasureUnit.PORTION), wholeName = false)
     }
 
-    /** How [raw] reads for [food]: as portions when [food] is a recipe with portions and the part names them, else as it reads. */
+    /**
+     * How [raw] reads for [food]: with a serving's name [food] has where a unit goes, as portions when [food] is a recipe
+     * with portions and the part names them, else as it reads.
+     */
     private fun readingFor(raw: String, food: FoodRecord): Reading {
         val reading = reading(raw)
+        servingReadings(reading).firstOrNull { food.servingNamed(it.servingWord!!) != null }?.let { return it }
         return if (takesPortions(food)) portionReading(reading) ?: reading else reading
     }
 
@@ -169,24 +209,45 @@ class LogPlanner(
         // A glued part ("cow milk3.2") reads exactly like its spaced form, its name included.
         val wholeName = matcher.isExactName(raw) || matcher.isExactName(parsed.spaced) ||
             (parsed.wordQuantity && (matcher.covers(raw) || matcher.covers(parsed.spaced)))
-        return Reading(parsed, wholeName)
+        return Reading(keepingNameUnit(parsed), wholeName)
     }
 
-    /** The amount and unit a matched [food] takes from [reading]: the typed ones, else the food's defaults. */
-    private fun quantityFor(reading: Reading, food: FoodRecord): Pair<Double, MeasureUnit> {
-        if (reading.wholeName) return food.defaultAmount to food.defaultUnit
+    /**
+     * A unit word that came with measurements (cup, oz, lb) stays part of a food's name when a food covers it with the
+     * rest ("1 cup noodles" with a food Cup noodles): such a part reads as it did before that word was a unit.
+     */
+    private fun keepingNameUnit(parsed: ParsedSegment): ParsedSegment {
+        val word = parsed.unitWord ?: return parsed
+        if (word.lowercase().replace(WHITESPACE, " ") !in ShorthandLexicon.nameUnitWords) return parsed
+        val phrase = "$word ${parsed.foodPhrase}".trim()
+        if (!matcher.covers(phrase)) return parsed
+        val factor = ShorthandLexicon.unitSpec(word)?.factor ?: 1.0
+        return parsed.copy(foodPhrase = phrase, amount = parsed.amount?.div(factor), unit = null, unitWord = null, unitLabel = null)
+    }
+
+    /**
+     * The amount and measure a matched [food] takes from [reading]: the typed ones, else the food's defaults. A unit word
+     * that is one of the food's serving names counts that serving ("2 slices bread" with a slice); "slices" without one
+     * is a piece, as before.
+     */
+    private fun quantityFor(reading: Reading, food: FoodRecord): Pair<Double, Measure> {
+        if (reading.wholeName) return food.defaultAmount to Measure(food.defaultUnit)
         val parsed = reading.parsed
-        // A bare "a" or "an" means one only when the food is counted by the piece ("a banana"); "a milk" is the default.
+        val serving = reading.servingWord
+        // A bare "a" or "an" means one only when the food is counted by the piece ("a banana", "a can of coke"); "a milk"
+        // is the default.
         val amount = parsed.amount
-            ?: if (parsed.articleQuantity && food.defaultUnit == MeasureUnit.PIECE) 1.0 else food.defaultAmount
-        return amount to (parsed.unit ?: food.defaultUnit)
+            ?: if (parsed.articleQuantity && (food.defaultUnit == MeasureUnit.PIECE || serving != null)) 1.0 else food.defaultAmount
+        if (serving != null) return amount to food.typedMeasure(MeasureUnit.SERVING, serving)
+        val unit = parsed.unit ?: return amount to Measure(food.defaultUnit)
+        return amount to food.typedMeasure(unit, parsed.unitWord, parsed.unitLabel)
     }
 
     /** The calories Add would log for [raw] matched to [food]. The Log's choices show exactly this. */
     fun calculationFor(raw: String, food: FoodRecord): Calculation {
         val reading = readingFor(raw, food)
-        val (amount, unit) = quantityFor(reading, food)
-        return calculator.calculate(food, amount, unit)
+        val (amount, measure) = quantityFor(reading, food)
+        return calculate(food, amount, measure)
     }
 
     /** The food text the Log shows for [raw]: the whole part when it is a name, else the part without its amount. */
@@ -204,13 +265,18 @@ class LogPlanner(
      * name. Re-resolving it gives the same food, amount and unit the choice showed.
      */
     fun chosenText(raw: String, food: FoodRecord): String {
-        val (amount, unit) = quantityFor(readingFor(raw, food), food)
-        return partText(food, amount, unit)
+        val (amount, measure) = quantityFor(readingFor(raw, food), food)
+        return partText(food, amount, measure)
     }
 
     /** A part that reads back as [amount] [unit] of [food]: "500 g Beef mince", "1 portion Chili". */
-    fun partText(food: FoodRecord, amount: Double, unit: MeasureUnit): String =
-        listOfNotNull(formatAmount(amount), unit.displayLabel().ifBlank { null }, food.name).joinToString(" ")
+    fun partText(food: FoodRecord, amount: Double, unit: MeasureUnit): String = partText(food, amount, Measure(unit))
+
+    /** A part that reads back as [amount] of [measure] of [food]: "500 g Beef mince", "2 slices Bread". */
+    fun partText(food: FoodRecord, amount: Double, measure: Measure): String {
+        val unit = if (measure.unit == MeasureUnit.SERVING) servingNameFor(measure.label, amount) else measure.label
+        return listOfNotNull(formatAmount(amount), unit.ifBlank { null }, food.name).joinToString(" ")
+    }
 
     /** [input] with [part] after its last part: after a comma, or as typed when the input already ends in a separator. */
     fun withPartAdded(input: String, part: String): String {
@@ -281,6 +347,9 @@ class LogPlanner(
         }
 
         override fun matchesWholeWord(word: String): Boolean = wholeWordCache.getOrPut(word) { matcher.matchesWholeWord(word) }
+
+        override fun isServingWord(word: String): Boolean =
+            word.any(Char::isLetter) && servingWordCache.getOrPut(word) { matcher.hasServingNamed(word) }
     }
 
     /** The parts of [input] the Log page works with, meal words included. Every caller segments through here. */

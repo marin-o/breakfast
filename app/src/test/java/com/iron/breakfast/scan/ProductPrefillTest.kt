@@ -44,7 +44,8 @@ class ProductPrefillTest {
 
         assertEquals(MeasureUnit.MILLILITER, parseProductUnit(" ml "))
         assertEquals(MeasureUnit.TABLESPOON, parseProductUnit(" tbsp "))
-        assertNull(parseProductUnit(" cups "))
+        assertEquals(MeasureUnit.CUP, parseProductUnit(" cups "))
+        assertNull(parseProductUnit(" mugs "))
     }
 
     @Test
