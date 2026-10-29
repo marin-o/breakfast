@@ -37,7 +37,7 @@ internal const val DIARY_FORMAT = "breakfast-diary"
 internal const val DIARY_FORMAT_VERSION = 2
 
 /** The Room schema the rows were read from; a file from a newer schema is refused. Keep equal to [BreakfastDatabase]. */
-internal const val DIARY_SCHEMA_VERSION = 7
+internal const val DIARY_SCHEMA_VERSION = 8
 
 /** A file bigger than this is refused before it is parsed. A year of logging is well under 5 MB. */
 internal const val DIARY_MAX_BYTES = 32L * 1024 * 1024
@@ -142,7 +142,14 @@ internal data class MealEntryDto(
 )
 
 @Serializable
-internal data class RecipeDto(val id: String, val name: String, val portions: Double?, val totalWeight: Double?)
+internal data class RecipeDto(
+    val id: String,
+    val name: String,
+    val portions: Double?,
+    val totalWeight: Double?,
+    // Since schema 8; a file without it (format 1, or format 2 from schema 7) reads it as none.
+    val totalVolume: Double? = null,
+)
 
 @Serializable
 internal data class RecipeAliasDto(val recipeId: String, val alias: String)
@@ -197,7 +204,7 @@ internal fun diaryFileOf(rows: DiaryRows, settings: DiarySettings, exportedAtEpo
         servingConversions = rows.conversions.filter { it.foodId in foodIds }.sortedWith(compareBy({ it.foodId }, { it.unit }, { it.label })).map { it.toDto() },
         preferences = rows.preferences.filter { it.foodId in foodIds || it.foodId in recipeIds }.sortedBy { it.foodId }.map { PreferenceDto(it.foodId, it.explicitCount, it.lastReinforcedEpochMs) },
         mealEntries = rows.entries.sortedWith(compareBy({ it.savedAtEpochMs }, { it.id })).map { it.toDto() },
-        recipes = rows.recipes.sortedBy { it.id }.map { RecipeDto(it.id, it.name, it.portions, it.totalWeight) },
+        recipes = rows.recipes.sortedBy { it.id }.map { RecipeDto(it.id, it.name, it.portions, it.totalWeight, it.totalVolume) },
         recipeAliases = rows.recipeAliases.filter { it.recipeId in recipeIds }.sortedWith(compareBy({ it.recipeId }, { it.alias }))
             .map { RecipeAliasDto(it.recipeId, it.alias) },
         recipeIngredients = rows.recipeIngredients.filter { it.recipeId in recipeIds }.sortedWith(compareBy({ it.recipeId }, { it.position }))
@@ -232,7 +239,7 @@ internal fun validateDiary(file: DiaryFile): DiaryImport {
             conversions = file.servingConversions.map { it.toEntity() },
             preferences = file.preferences.map { PreferenceEntity(it.foodId, it.explicitCount, it.lastReinforcedEpochMs) },
             entries = file.mealEntries.map { it.toEntity() },
-            recipes = file.recipes.map { RecipeEntity(it.id, it.name, it.portions, it.totalWeight) },
+            recipes = file.recipes.map { RecipeEntity(it.id, it.name, it.portions, it.totalWeight, it.totalVolume) },
             recipeAliases = file.recipeAliases.map { RecipeAliasEntity(it.recipeId, it.alias) },
             recipeIngredients = file.recipeIngredients.map { it.toEntity() },
         ),
@@ -308,7 +315,8 @@ internal fun diaryProblem(file: DiaryFile): String? {
             r.name.isBlank() -> return "$at: blank name"
             r.portions != null && !r.portions.positive() -> return "$at: portions ${r.portions}"
             r.totalWeight != null && !r.totalWeight.positive() -> return "$at: total weight ${r.totalWeight}"
-            r.portions == null && r.totalWeight == null -> return "$at: no portions or total weight"
+            r.totalVolume != null && !r.totalVolume.positive() -> return "$at: total volume ${r.totalVolume}"
+            r.portions == null && r.totalWeight == null && r.totalVolume == null -> return "$at: no portions, total weight or total volume"
         }
     }
 

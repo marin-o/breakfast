@@ -140,6 +140,8 @@ class RecipeBookTest {
         assertEquals("4 portions, 1600 g", yieldLine(chili))
         assertEquals("1 portion", yieldLine(chili.copy(portions = 1.0, totalWeight = null)))
         assertEquals("900 g", yieldLine(chili.copy(portions = null, totalWeight = 900.0)))
+        assertEquals("4 portions, 1600 g, 1500 ml", yieldLine(chili.copy(totalVolume = 1500.0)))
+        assertEquals("1500 ml", yieldLine(chili.copy(portions = null, totalWeight = null, totalVolume = 1500.0)))
         assertEquals("100 g", amountLine(100.0, MeasureUnit.GRAM))
         assertEquals("1 portion", amountLine(1.0, MeasureUnit.PORTION))
         assertEquals("—" to "g", macroFact(com.iron.breakfast.domain.MacroTotal(0.0, 0, 2)))

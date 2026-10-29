@@ -3,6 +3,7 @@ package com.iron.breakfast.recipes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -85,6 +86,11 @@ internal fun RecipeFormScreen(form: RecipeForm, recipes: RecipeBook, session: Di
                         YieldField("Portions", fields.portions, form::onPortions, hint = null, Modifier.weight(1f))
                         YieldField("Total weight", fields.totalWeight, form::onTotalWeight, hint = "g", Modifier.weight(1f))
                     }
+                    // Under Total weight, as its counterpart in ml.
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Spacer(Modifier.weight(1f))
+                        YieldField("Total volume", fields.totalVolume, form::onTotalVolume, hint = "ml", Modifier.weight(1f))
+                    }
                     Column {
                         IngredientsField(form)
                         // The Log's rows and choices: a tapped choice pins its food; "Not in your foods" opens the search.
@@ -101,7 +107,7 @@ internal fun RecipeFormScreen(form: RecipeForm, recipes: RecipeBook, session: Di
     }
 }
 
-/** Portions or Total weight: a decimal field whose typed value that is not a positive number shows as an error. */
+/** Portions, Total weight or Total volume: a decimal field whose typed value that is not a positive number shows as an error. */
 @Composable
 private fun YieldField(label: String, value: String, onValue: (String) -> Unit, hint: String?, modifier: Modifier) {
     val error = yieldError(value)

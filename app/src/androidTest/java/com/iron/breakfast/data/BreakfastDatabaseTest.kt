@@ -223,7 +223,7 @@ class BreakfastDatabaseTest {
         migrated.close()
 
         // The app's own entities read the migrated file back: every old row, and the recipe as the store maps it.
-        val room = Room.databaseBuilder(context, BreakfastDatabase::class.java, name).addMigrations(ROOM_MIGRATION_6_7).build()
+        val room = Room.databaseBuilder(context, BreakfastDatabase::class.java, name).addMigrations(ROOM_MIGRATION_6_7, ROOM_MIGRATION_7_8).build()
         try {
             runBlocking {
                 assertEquals(listOf("e-3", "e-1", "e-2"), room.mealEntryDao().all().map { it.toDomain().id })
@@ -243,9 +243,65 @@ class BreakfastDatabaseTest {
         deleteTestDatabase(context, name)
     }
 
+    /**
+     * The phone runs schema 7 with recipes in it, so 7 to 8 must keep every row as it was and only add the total volume,
+     * null for every recipe there is. A diary as the owner has it: foods, entries, recipes with Cyrillic names, aliases
+     * and ingredients (one whose food was deleted, one with a macro unknown).
+     */
+    @Test
+    fun migration7To8KeepsTheDiaryAndItsRecipesAndAddsAnEmptyTotalVolume() {
+        val name = "migration-v8-${System.nanoTime()}.db".also(migrationNames::add)
+        val old = migrationHelper.createDatabase(name, 7)
+        old.execSQL("INSERT INTO foods VALUES ('custom-mince','Beef mince','Personal food','CUSTOM',100.0,'GRAM',250.0,20.0,0.0,18.0,100.0,'GRAM',NULL,NULL,NULL,NULL,NULL,NULL,NULL,0,1)")
+        old.execSQL("INSERT INTO food_aliases VALUES ('custom-mince','мелено')")
+        old.execSQL("INSERT INTO serving_conversions VALUES ('custom-mince','GRAM',100.0,'custom basis',0,'')")
+        old.execSQL("INSERT INTO preferences VALUES ('recipe-chili',4,1761650000000)")
+        old.execSQL("INSERT INTO meal_entries (id, food_id, food_name, entered_amount, entered_unit, resolved_base_amount, resolved_base_unit, snapshot_calories, snapshot_protein, snapshot_carbohydrates, snapshot_fat, conversion_provenance, approximate_conversion, saved_at_epoch_ms, source_phrase, meal_slot, day_key) VALUES ('e-chili','recipe-chili','Чили',1.5,'PORTION',450.0,'GRAM',581.25,37.5,NULL,34.1,'recipe portion',0,1761700000000,'1.5 chili','DINNER','2026-10-29')")
+        old.execSQL("INSERT INTO recipes VALUES ('recipe-chili','Чили',4.0,1200.0)")
+        old.execSQL("INSERT INTO recipes VALUES ('recipe-soup','Lentil soup',NULL,900.0)")
+        old.execSQL("INSERT INTO recipe_aliases VALUES ('recipe-chili','chili')")
+        old.execSQL("INSERT INTO recipe_ingredients VALUES ('recipe-chili',0,'custom-mince','Beef mince',500.0,'GRAM',500.0,'GRAM',1250.0,100.0,0.0,90.0)")
+        old.execSQL("INSERT INTO recipe_ingredients VALUES ('recipe-chili',1,'custom-gone','Kidney beans',1.0,'PIECE',240.0,'GRAM',300.0,20.0,NULL,1.0)")
+        old.close()
+
+        val migrated = migrationHelper.runMigrationsAndValidate(name, 8, true, ROOM_MIGRATION_7_8)
+        fun count(table: String) = migrated.query("SELECT COUNT(*) FROM $table").use { it.moveToFirst(); it.getInt(0) }
+        assertEquals(1, count("foods"))
+        assertEquals(1, count("meal_entries"))
+        assertEquals(1, count("preferences"))
+        assertEquals(2, count("recipes"))
+        assertEquals(1, count("recipe_aliases"))
+        assertEquals(2, count("recipe_ingredients"))
+        assertEquals(2, migrated.query("SELECT COUNT(*) FROM recipes WHERE total_volume_ml IS NULL").use { it.moveToFirst(); it.getInt(0) })
+        migrated.execSQL("UPDATE recipes SET total_volume_ml = 1500.0 WHERE id = 'recipe-soup'")
+        migrated.close()
+
+        val room = Room.databaseBuilder(context, BreakfastDatabase::class.java, name).addMigrations(ROOM_MIGRATION_7_8).build()
+        try {
+            runBlocking {
+                val recipes = recipesOf(room.recipeDao().all(), room.recipeAliasDao().all(), room.recipeIngredientDao().all()).associateBy { it.id }
+                val chili = recipes.getValue("recipe-chili")
+                assertEquals("Чили", chili.name)
+                assertEquals(4.0, chili.portions!!, 0.0)
+                assertEquals(1200.0, chili.totalWeight!!, 0.0)
+                assertEquals(null, chili.totalVolume)
+                assertEquals(listOf("chili"), chili.aliases)
+                assertEquals(listOf(1250.0, 300.0), chili.ingredients.map { it.nutritionSnapshot.calories })
+                assertEquals(null, chili.ingredients[1].nutritionSnapshot.carbohydrates)
+                assertEquals(1500.0, recipes.getValue("recipe-soup").totalVolume!!, 0.0)
+                val entry = room.mealEntryDao().all().single().toDomain()
+                assertEquals(MeasureUnit.PORTION, entry.enteredUnit)
+                assertEquals(581.25, entry.nutritionSnapshot.calories, 0.0)
+            }
+        } finally {
+            room.close()
+        }
+        deleteTestDatabase(context, name)
+    }
+
     /** The whole chain from the first schema ends where a fresh install starts: the recipe tables included. */
     @Test
-    fun migration1To7RunsTheWholeChain() {
+    fun migration1To8RunsTheWholeChain() {
         val name = "migration-chain-${System.nanoTime()}.db".also(migrationNames::add)
         migrationHelper.createDatabase(name, 1).also { old ->
             old.execSQL("CREATE TABLE IF NOT EXISTS foods (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL, origin TEXT NOT NULL, nutrition_amount REAL NOT NULL, nutrition_unit TEXT NOT NULL, calories REAL NOT NULL, protein REAL, carbohydrates REAL, fat REAL, default_amount REAL NOT NULL, default_unit TEXT NOT NULL, source_id TEXT, source_name TEXT, source_release TEXT, preparation TEXT, source_description TEXT)")
@@ -258,10 +314,12 @@ class BreakfastDatabaseTest {
             old.close()
         }
         val migrated = migrationHelper.runMigrationsAndValidate(
-            name, 7, true, ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6, ROOM_MIGRATION_6_7,
+            name, 8, true, ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6, ROOM_MIGRATION_6_7,
+            ROOM_MIGRATION_7_8,
         )
         assertEquals(1, migrated.query("SELECT COUNT(*) FROM meal_entries").use { it.moveToFirst(); it.getInt(0) })
         assertEquals(0, migrated.query("SELECT COUNT(*) FROM recipes").use { it.moveToFirst(); it.getInt(0) })
+        migrated.execSQL("INSERT INTO recipes VALUES ('recipe-soup','Soup',NULL,NULL,1500.0)")
         migrated.close(); deleteTestDatabase(context, name)
     }
 

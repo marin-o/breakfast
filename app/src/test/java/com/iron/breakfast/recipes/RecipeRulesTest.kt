@@ -34,6 +34,9 @@ class RecipeRulesTest {
         val whole = RecipeFields(name = "Bowl", portions = "2", ingredients = "2 eggs")
         assertTrue(recipeCanSave(whole, ingredientsComplete = true))
         assertTrue(recipeCanSave(whole.copy(portions = "", totalWeight = "300"), true))
+        assertTrue("a volume alone", recipeCanSave(whole.copy(portions = "", totalVolume = "1500"), true))
+        assertFalse("a volume typed wrong", recipeCanSave(whole.copy(totalVolume = "0"), true))
+        assertFalse(recipeCanSave(whole.copy(portions = "", totalVolume = "x"), true))
         assertFalse(recipeCanSave(whole, ingredientsComplete = false))
         assertFalse(recipeCanSave(whole.copy(name = " "), true))
         assertFalse(recipeCanSave(whole.copy(portions = ""), true))
@@ -75,6 +78,9 @@ class RecipeRulesTest {
         assertEquals(gone.foodName, again[1].foodName)
         assertEquals(egg.id, again[0].foodId)
         assertEquals("1600", edit.fields.totalWeight)
+        assertEquals("", edit.fields.totalVolume)
+        assertEquals("1500", recipeEdit(recipe.copy(totalVolume = 1500.0), FoodCatalog.fixtures, planner).fields.totalVolume)
+        assertEquals(750.0, recipeOf(null, RecipeFields(name = "Soup", totalVolume = "750", ingredients = "2 eggs"), planner.plan("2 eggs")).totalVolume!!, 0.0)
         assertEquals("4", edit.fields.portions)
     }
 

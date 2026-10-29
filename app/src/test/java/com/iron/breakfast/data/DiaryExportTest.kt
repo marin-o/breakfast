@@ -43,7 +43,7 @@ class DiaryExportTest {
         preferences = listOf(PreferenceEntity("custom-1", 3, 1_700_000_000_000L), PreferenceEntity("recipe-chili", 2, 1_700_000_000_000L)),
         // The second entry's food is gone: its snapshot keeps it readable, so it must survive the round trip.
         entries = listOf(entry("e-1", "custom-1", 2_000L), entry("e-2", "deleted-food", 1_000L), entry("e-3", "archived-1", 3_000L)),
-        recipes = listOf(RecipeEntity("recipe-chili", "Чили", 4.0, 1200.0), RecipeEntity("recipe-soup", "Soup", null, 900.0)),
+        recipes = listOf(RecipeEntity("recipe-chili", "Чили", 4.0, 1200.0), RecipeEntity("recipe-soup", "Soup", null, 900.0), RecipeEntity("recipe-broth", "Broth", null, null, 1500.0)),
         recipeAliases = listOf(RecipeAliasEntity("recipe-chili", "chili")),
         // The second ingredient's food is gone: it keeps its own numbers, as an entry does.
         recipeIngredients = listOf(ingredient("recipe-chili", 0, "custom-1"), ingredient("recipe-chili", 1, "deleted-food"), ingredient("recipe-soup", 0, "custom-1")),
@@ -89,11 +89,12 @@ class DiaryExportTest {
 
     @Test fun theFileNamesItsVersionsAndFields() {
         val text = encodeDiary(file())
-        assertTrue(text.startsWith("{\"format\":\"breakfast-diary\",\"formatVersion\":2,\"schemaVersion\":7,\"exportedAtEpochMs\":5000,"))
+        assertTrue(text.startsWith("{\"format\":\"breakfast-diary\",\"formatVersion\":2,\"schemaVersion\":8,\"exportedAtEpochMs\":5000,"))
         assertTrue("\"foodName\":\"Snapshot name e-1\"" in text)
         assertTrue("\"settings\":{\"dayStartHour\":4,\"longDraft\":\"TWO_LINES\"}" in text)
         assertTrue("\"snapshotCarbohydrates\":null" in text)
-        assertTrue("\"recipes\":[{\"id\":\"recipe-chili\",\"name\":\"Чили\",\"portions\":4.0,\"totalWeight\":1200.0}," in text)
+        assertTrue("{\"id\":\"recipe-chili\",\"name\":\"Чили\",\"portions\":4.0,\"totalWeight\":1200.0,\"totalVolume\":null}" in text)
+        assertTrue("\"totalVolume\":1500.0" in text)
         assertTrue("\"totalWeight\":900.0" in text && "\"portions\":null" in text)
     }
 
@@ -110,6 +111,16 @@ class DiaryExportTest {
         assertTrue(imported.rows.recipes.isEmpty() && imported.rows.recipeIngredients.isEmpty())
     }
 
+    /** A format 2 file from schema 7 has no total volume: it imports with none. */
+    @Test fun aFileFromBeforeTotalVolumeStillImports() {
+        val text = encodeDiary(file().copy(schemaVersion = 7, recipes = file().recipes.filter { it.totalVolume == null }))
+            .replace(",\"totalVolume\":null", "")
+        assertTrue("totalVolume" !in text)
+        val imported = valid(text)
+        assertEquals(2, imported.rows.recipes.size)
+        assertTrue(imported.rows.recipes.all { it.totalVolume == null })
+    }
+
     @Test fun recipeRowsAreChecked() {
         val f = file()
         refused(f.copy(recipes = f.recipes + f.recipes.first()))
@@ -120,7 +131,9 @@ class DiaryExportTest {
         refused(f.copy(recipes = f.recipes.map { it.copy(name = " ") }))
         refused(f.copy(recipes = f.recipes.map { it.copy(portions = 0.0) }))
         refused(f.copy(recipes = f.recipes.map { it.copy(totalWeight = -1.0) }))
-        refused(f.copy(recipes = f.recipes.map { it.copy(portions = null, totalWeight = null) }))
+        refused(f.copy(recipes = f.recipes.map { it.copy(portions = null, totalWeight = null, totalVolume = null) }))
+        refused(f.copy(recipes = f.recipes.map { it.copy(totalVolume = 0.0) }))
+        assertNull(diaryProblem(f.copy(recipes = f.recipes.map { it.copy(portions = null, totalWeight = null, totalVolume = 1.0) })))
         refused(f.copy(recipeAliases = f.recipeAliases + RecipeAliasDto("recipe-missing", "x")))
         refused(f.copy(recipeAliases = f.recipeAliases + f.recipeAliases.first()))
         refused(f.copy(recipeIngredients = f.recipeIngredients + f.recipeIngredients.first()))

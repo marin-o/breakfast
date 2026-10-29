@@ -82,6 +82,33 @@ class RecipeTest {
         assertEquals(MeasureUnit.PORTION, chili.copy(totalWeight = null).asFood().nutrition.unit)
     }
 
+    /** A total volume: per ml is the total over it, ml is offered only with it, and without portions or a weight a bare count is 100 ml. */
+    @Test fun aRecipeWithATotalVolumeLogsByTheMl() {
+        val soup = chili.copy(portions = null, totalWeight = null, totalVolume = 1500.0)
+        assertEquals(456.0, soup.nutritionFor(300.0, MeasureUnit.MILLILITER)!!.values.calories, 1e-9)
+        assertNull(soup.nutritionFor(300.0, MeasureUnit.GRAM))
+        assertNull(chili.nutritionFor(300.0, MeasureUnit.MILLILITER))
+        assertEquals(listOf(MeasureUnit.MILLILITER), soup.units())
+        assertEquals(100.0 to MeasureUnit.MILLILITER, soup.shownServing())
+        // A weight wins the basis over a volume; portions win the serving over both.
+        assertEquals(100.0 to MeasureUnit.GRAM, soup.copy(totalWeight = 1600.0).shownServing())
+        assertEquals(1.0 to MeasureUnit.PORTION, soup.copy(portions = 4.0).shownServing())
+        val all = chili.copy(totalVolume = 1500.0)
+        assertEquals(listOf(MeasureUnit.PORTION, MeasureUnit.GRAM, MeasureUnit.MILLILITER), all.units())
+        val calculator = NutritionCalculator()
+        for (recipe in listOf(soup, all, soup.copy(portions = 4.0), soup.copy(totalWeight = 1600.0))) {
+            val food = recipe.asFood()
+            for (unit in listOf(MeasureUnit.PORTION, MeasureUnit.GRAM, MeasureUnit.MILLILITER)) {
+                val calculation = calculator.calculate(food, 300.0, unit)
+                val expected = recipe.nutritionFor(300.0, unit)
+                assertEquals("$unit for ${recipe.units()}", expected != null, calculation.supported)
+                if (expected != null) assertEquals(expected.values.calories, calculation.nutrition.calories, 1e-9)
+            }
+        }
+        assertEquals(MeasureUnit.MILLILITER, soup.asFood().nutrition.unit)
+        assertEquals(MeasureUnit.GRAM, all.asFood().nutrition.unit)
+    }
+
     @Test fun theIndexFollowsFoodsAndIsBuiltOncePerPairOfLists() {
         val foods = listOf(FoodRecord("mince", "Lean mince", emptyList(), "Personal food", FoodOrigin.CUSTOM, NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(150.0, 22.0, 0.0, 5.0))))
         val recipes = listOf(chili)

@@ -30,7 +30,7 @@ import com.iron.breakfast.domain.asFood
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.domain.nutritionFor
 import com.iron.breakfast.domain.shownServing
-import com.iron.breakfast.domain.validYield
+import com.iron.breakfast.domain.yields
 import com.iron.breakfast.library.FoodAmountSheet
 import com.iron.breakfast.library.LibraryFactRow
 import com.iron.breakfast.library.libraryPresetMeal
@@ -187,11 +187,8 @@ internal fun recipeCountLabel(count: Int): String = if (count == 1) "1 recipe" e
 /** "1 portion", "2 portions", "100 g": an amount as a row's quantity line reads it. */
 internal fun amountLine(amount: Double, unit: MeasureUnit): String = countedQuantity(amount, unit) ?: "${amount.pretty()} ${unit.displayLabel()}"
 
-/** What a recipe makes: "4 portions", "1600 g", or both, "4 portions, 1600 g". */
-internal fun yieldLine(recipe: Recipe): String = listOfNotNull(
-    recipe.portions?.takeIf(::validYield)?.let { countedQuantity(it, MeasureUnit.PORTION) },
-    recipe.totalWeight?.takeIf(::validYield)?.let { amountLine(it, MeasureUnit.GRAM) },
-).joinToString(", ")
+/** What a recipe makes: "4 portions", "1600 g", "1500 ml", or what it has of them, "4 portions, 1600 g, 1500 ml". */
+internal fun yieldLine(recipe: Recipe): String = recipe.yields().joinToString(", ") { (unit, amount) -> amountLine(amount, unit) }
 
 /** A macro's value and unit on the page: "—" with none known, "12" and "g ?" with some unknown, else "12" and "g". */
 internal fun macroFact(total: MacroTotal): Pair<String, String> = when {

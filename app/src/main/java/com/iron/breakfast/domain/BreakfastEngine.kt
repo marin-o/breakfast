@@ -423,7 +423,7 @@ class BreakfastEngine(
     /** Saves a new recipe (a blank id gets one) or an edited one; returns it as stored. */
     suspend fun saveRecipe(recipe: Recipe): Recipe {
         require(recipe.name.isNotBlank()) { "Name is required" }
-        require(validYield(recipe.portions) || validYield(recipe.totalWeight)) { "Portions or a total weight is required" }
+        require(recipe.yields().isNotEmpty()) { "Portions or a total weight is required" }
         val stored = recipe.copy(name = recipe.name.trim(), id = recipe.id.ifBlank { RECIPE_ID_PREFIX + UUID.randomUUID() })
         store.saveRecipe(stored)
         return stored

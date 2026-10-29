@@ -22,6 +22,7 @@ internal data class RecipeFields(
     val name: String = "",
     val portions: String = "",
     val totalWeight: String = "",
+    val totalVolume: String = "",
     val aliases: String = "",
     val ingredients: String = "",
 )
@@ -33,12 +34,14 @@ internal fun yieldOf(text: String): Double? = parseDecimal(text)?.takeIf(::valid
 internal fun yieldError(text: String): Boolean = text.isNotBlank() && yieldOf(text) == null
 
 /**
- * Save is offered once the recipe is whole: a name, portions or a total weight (at least one, and neither typed wrong),
+ * Save is offered once the recipe is whole: a name, portions, a total weight or a total volume (at least one, and none
+ * typed wrong),
  * and ingredients that all resolve ([ingredientsComplete]: at least one, none "Not in your foods" or still a choice).
  */
 internal fun recipeCanSave(fields: RecipeFields, ingredientsComplete: Boolean): Boolean =
-    fields.name.isNotBlank() && !yieldError(fields.portions) && !yieldError(fields.totalWeight) &&
-        (yieldOf(fields.portions) != null || yieldOf(fields.totalWeight) != null) && ingredientsComplete
+    fields.name.isNotBlank() && listOf(fields.portions, fields.totalWeight, fields.totalVolume).let { yields ->
+        yields.none(::yieldError) && yields.any { yieldOf(it) != null }
+    } && ingredientsComplete
 
 /** Every part of the finished ingredients resolves, and there is at least one. */
 internal fun ingredientsComplete(plan: LogPlan): Boolean = plan.entries.isNotEmpty() && plan.unresolved.isEmpty()
@@ -63,6 +66,7 @@ internal fun recipeOf(id: String?, fields: RecipeFields, plan: LogPlan): Recipe 
     aliases = splitAliases(fields.aliases).distinct(),
     portions = yieldOf(fields.portions),
     totalWeight = yieldOf(fields.totalWeight),
+    totalVolume = yieldOf(fields.totalVolume),
     ingredients = ingredientsOf(plan),
 )
 
@@ -85,6 +89,7 @@ internal fun recipeEdit(recipe: Recipe, foods: List<FoodRecord>, planner: LogPla
         name = recipe.name,
         portions = editableNumber(recipe.portions),
         totalWeight = editableNumber(recipe.totalWeight),
+        totalVolume = editableNumber(recipe.totalVolume),
         aliases = recipe.aliases.joinToString(", "),
         ingredients = parts.joinToString(", "),
     )

@@ -196,6 +196,14 @@ class RecipeSurfacesTest {
         assertTrue(app.entryEdit.amountEditable(eaten))
         // 300 g of 1600 g of a 1250 kcal dish.
         assertEquals(234.375, app.entryEdit.preview(eaten, chili.id, 300.0, com.iron.breakfast.domain.MeasureUnit.GRAM)!!.nutrition.calories, 1e-9)
+        // With a total volume too, the edit offers ml: 300 ml of 1500 ml.
+        app.recipesAre(chili.copy(totalVolume = 1500.0))
+        val withVolume = app.entryEdit.foodOf(chili.id)!!
+        assertEquals(
+            listOf(com.iron.breakfast.domain.MeasureUnit.PORTION, com.iron.breakfast.domain.MeasureUnit.GRAM, com.iron.breakfast.domain.MeasureUnit.MILLILITER),
+            com.iron.breakfast.entry.entryUnits(withVolume),
+        )
+        assertEquals(250.0, app.entryEdit.preview(eaten, chili.id, 300.0, com.iron.breakfast.domain.MeasureUnit.MILLILITER)!!.nutrition.calories, 1e-9)
         // Deleted, the entry scales its own snapshot in its own unit only.
         app.recipesAre()
         assertNull(app.entryEdit.foodOf(chili.id))

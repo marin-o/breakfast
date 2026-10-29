@@ -18,8 +18,9 @@ class RecipeLogBarTest {
     private val chili = Recipe("recipe-chili", "Chili", aliases = listOf("чили"), portions = 4.0, totalWeight = 1600.0, ingredients = listOf(ingredient))
     private val stew = Recipe("recipe-stew", "Манџа", portions = 5.0, ingredients = listOf(ingredient))
     private val soup = Recipe("recipe-soup", "Lentil soup", totalWeight = 1000.0, ingredients = listOf(ingredient))
+    private val broth = Recipe("recipe-broth", "Bone broth", totalVolume = 2000.0, ingredients = listOf(ingredient))
 
-    private fun planner(recipes: List<Recipe> = listOf(chili, stew, soup), foods: List<FoodRecord> = FoodCatalog.fixtures) =
+    private fun planner(recipes: List<Recipe> = listOf(chili, stew, soup, broth), foods: List<FoodRecord> = FoodCatalog.fixtures) =
         LogPlanner(FoodMatcher(RecipeIndex().matchable(foods, recipes)))
 
     private fun resolved(text: String, planner: LogPlanner = planner()): SegmentResolution =
@@ -50,6 +51,23 @@ class RecipeLogBarTest {
         assertEquals(600.0, resolved("300 g lentil soup").calculation.nutrition.calories, 1e-9)
         assertTrue(planner().plan("2 portions lentil soup").entries.isEmpty())
         assertEquals(100.0 to MeasureUnit.GRAM, resolved("lentil soup").let { it.amount to it.unit })
+    }
+
+    /** By volume, in every ml unit the shorthand reads (its factors), only for a recipe with a total volume. */
+    @Test fun aRecipeWithATotalVolumeLogsByTheMl() {
+        for ((text, ml) in listOf("300 ml bone broth" to 300.0, "3 dl bone broth" to 300.0, "0.5 l bone broth" to 500.0, "33 cl bone broth" to 330.0)) {
+            val part = resolved(text)
+            assertEquals(text, "recipe-broth", part.food.id)
+            assertEquals(text, MeasureUnit.MILLILITER, part.unit)
+            assertEquals(text, ml, part.amount, 1e-9)
+            // 2000 kcal in 2000 ml.
+            assertEquals(text, ml, part.calculation.nutrition.calories, 1e-9)
+        }
+        // A bare name is 100 ml; no weight, so no g; no volume, no ml.
+        assertEquals(100.0 to MeasureUnit.MILLILITER, resolved("bone broth").let { it.amount to it.unit })
+        assertTrue(planner().plan("300 g bone broth").entries.isEmpty())
+        assertTrue(planner().plan("300 ml lentil soup").entries.isEmpty())
+        assertTrue(planner().plan("300 ml chili").entries.isEmpty())
     }
 
     @Test fun aRecipeIsFoundByItsAliasAndOnlyInItsOwnScript() {

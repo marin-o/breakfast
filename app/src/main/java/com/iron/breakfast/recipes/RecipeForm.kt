@@ -41,7 +41,7 @@ internal data class SavedRecipeForm(
 /**
  * New recipe and Edit: one form over [fields].
  *
- * - **Fields:** the name, portions and total weight (at least one), the aliases, and the ingredients, typed like the
+ * - **Fields:** the name, portions, total weight and total volume (at least one), the aliases, and the ingredients, typed like the
  *   Log bar and read by the same planner, over the foods alone ([RecipeStore.ingredientPlanner]): the same rows, "which
  *   one?" choices and "Not in your foods". A choice or a pick pins its food to the part text, as on the Log, for as long
  *   as the form is open.
@@ -111,6 +111,7 @@ internal class RecipeForm(
     fun onName(value: String) { fields = fields.copy(name = value) }
     fun onPortions(value: String) { fields = fields.copy(portions = value) }
     fun onTotalWeight(value: String) { fields = fields.copy(totalWeight = value) }
+    fun onTotalVolume(value: String) { fields = fields.copy(totalVolume = value) }
     fun onAliases(value: String) { fields = fields.copy(aliases = value) }
 
     /** The ingredients' typing. Clearing them also drops the foods picked for them. */

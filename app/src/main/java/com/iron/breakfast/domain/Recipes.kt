@@ -19,8 +19,9 @@ data class RecipeIngredient(
 )
 
 /**
- * A dish made from foods. It yields [portions], a [totalWeight] in grams (the weighed finished dish), or both: at least
- * one. Its name and aliases are matched like a personal food's. Recipes are never ingredients.
+ * A dish made from foods. It yields [portions], a [totalWeight] in grams (the weighed finished dish), a [totalVolume] in
+ * ml (the measured finished dish), or any of them together: at least one. Its name and aliases are matched like a
+ * personal food's. Recipes are never ingredients.
  */
 @Serializable
 data class Recipe(
@@ -29,6 +30,7 @@ data class Recipe(
     val aliases: List<String> = emptyList(),
     val portions: Double? = null,
     val totalWeight: Double? = null,
+    val totalVolume: Double? = null,
     val ingredients: List<RecipeIngredient> = emptyList(),
 )
 
@@ -85,43 +87,53 @@ fun Recipe.total(): RecipeNutrition = ingredients.map { it.nutritionSnapshot }.l
     RecipeNutrition(values.reduceOrNull { sum, it -> sum + it } ?: NutritionValues.ZERO, macroTotalsOf(values))
 }
 
-/**
- * [amount] of [unit]: per portion the total over [Recipe.portions], per gram the total over [Recipe.totalWeight]. Null
- * for a unit the recipe has no yield in.
- */
-fun Recipe.nutritionFor(amount: Double, unit: MeasureUnit): RecipeNutrition? {
-    val yieldAmount = when (unit) {
-        MeasureUnit.PORTION -> portions
-        MeasureUnit.GRAM -> totalWeight
-        else -> null
-    }?.takeIf(::validYield) ?: return null
-    return total().scaled(amount / yieldAmount)
-}
-
-/** What the list and the page show a recipe by: one portion when it has portions, else 100 g, as foods show their basis. */
-fun Recipe.shownServing(): Pair<Double, MeasureUnit> =
-    if (validYield(portions)) 1.0 to MeasureUnit.PORTION else 100.0 to MeasureUnit.GRAM
-
-/** The units a recipe logs in: portion when it has portions, g when it has a total weight. */
-fun Recipe.units(): List<MeasureUnit> = listOfNotNull(
-    MeasureUnit.PORTION.takeIf { validYield(portions) },
-    MeasureUnit.GRAM.takeIf { validYield(totalWeight) },
+/** The recipe's yields that are given, by unit: portions, grams of the dish, ml of the dish, in that order. */
+fun Recipe.yields(): List<Pair<MeasureUnit, Double>> = listOfNotNull(
+    portions?.takeIf(::validYield)?.let { MeasureUnit.PORTION to it },
+    totalWeight?.takeIf(::validYield)?.let { MeasureUnit.GRAM to it },
+    totalVolume?.takeIf(::validYield)?.let { MeasureUnit.MILLILITER to it },
 )
 
 /**
+ * [amount] of [unit]: per portion the total over [Recipe.portions], per gram over [Recipe.totalWeight], per ml over
+ * [Recipe.totalVolume]. Null for a unit the recipe has no yield in.
+ */
+fun Recipe.nutritionFor(amount: Double, unit: MeasureUnit): RecipeNutrition? {
+    val yieldAmount = yields().firstOrNull { it.first == unit }?.second ?: return null
+    return total().scaled(amount / yieldAmount)
+}
+
+/**
+ * What the list and the page show a recipe by, and a bare count logs: one portion when it has portions, else 100 g with
+ * a weight, else 100 ml, as foods show their basis.
+ */
+fun Recipe.shownServing(): Pair<Double, MeasureUnit> = when {
+    validYield(portions) -> 1.0 to MeasureUnit.PORTION
+    validYield(totalWeight) || !validYield(totalVolume) -> 100.0 to MeasureUnit.GRAM
+    else -> 100.0 to MeasureUnit.MILLILITER
+}
+
+/** The units a recipe logs in: portion with portions, g with a total weight, ml with a total volume. */
+fun Recipe.units(): List<MeasureUnit> = yields().map { it.first }
+
+/**
  * The recipe as a food the Log matches and logs: its name and aliases, personal (so it ranks as a personal food does),
- * on the basis of its total weight when it has one (portions converted to grams), else of its portions. It logs one
- * portion by default, or 100 g without portions. A logged recipe is one entry with its own snapshot; the food is never
- * stored ([isRecipeId]).
+ * on the basis of its total weight when it has one, else of its total volume, else of its portions; each other yield
+ * converts to that basis (a portion as its share of the grams, an ml as the grams it weighs). It logs one portion by
+ * default, else 100 g, else 100 ml ([shownServing]). A logged recipe is one entry with its own snapshot; the food is
+ * never stored ([isRecipeId]).
  */
 fun Recipe.asFood(): FoodRecord {
     val total = total().values
-    val weight = totalWeight?.takeIf(::validYield)
-    val portions = portions?.takeIf(::validYield)
-    val basis = if (weight != null) NutritionBasis(weight, MeasureUnit.GRAM, total) else NutritionBasis(portions ?: 1.0, MeasureUnit.PORTION, total)
-    val conversions = buildList {
-        if (weight != null) add(ServingConversion(MeasureUnit.GRAM, weight, "recipe weight"))
-        if (portions != null) add(ServingConversion(MeasureUnit.PORTION, if (weight != null) weight / portions else portions, "recipe portion"))
+    val yields = yields()
+    val (basisUnit, basisAmount) = yields.firstOrNull { it.first == MeasureUnit.GRAM }
+        ?: yields.firstOrNull { it.first == MeasureUnit.MILLILITER }
+        ?: yields.firstOrNull()
+        ?: (MeasureUnit.PORTION to 1.0)
+    val basis = NutritionBasis(basisAmount, basisUnit, total)
+    // The basis itself as a conversion, as a personal food has ("custom basis"); every other yield in basis units.
+    val conversions = yields.map { (unit, amount) ->
+        ServingConversion(unit, if (unit == basisUnit) amount else basisAmount / amount, "recipe ${unit.name.lowercase()}")
     }
     val (defaultAmount, defaultUnit) = shownServing()
     return FoodRecord(

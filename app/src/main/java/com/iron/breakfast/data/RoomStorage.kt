@@ -106,13 +106,15 @@ data class MealEntryEntity(
     @ColumnInfo(name = "day_key") val dayKey: String
 )
 
-/** A recipe: its yield in portions, in grams of the finished dish, or both (at least one; see `domain/Recipes.kt`). */
+/** A recipe: its yield in portions, grams or millilitres of the finished dish (at least one; see `domain/Recipes.kt`). */
 @Entity(tableName = "recipes")
 data class RecipeEntity(
     @PrimaryKey val id: String,
     val name: String,
     val portions: Double?,
     @ColumnInfo(name = "total_weight") val totalWeight: Double?,
+    /** Since schema 8; null for a recipe without a volume, and for every recipe saved before. */
+    @ColumnInfo(name = "total_volume_ml") val totalVolume: Double? = null,
 )
 
 @Entity(tableName = "recipe_aliases", primaryKeys = ["recipe_id", "alias"])
@@ -334,7 +336,7 @@ interface RecipeIngredientDao {
         RecipeAliasEntity::class,
         RecipeIngredientEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 abstract class BreakfastDatabase : RoomDatabase() {
@@ -419,6 +421,13 @@ val ROOM_MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
                 "`snapshot_protein` REAL, `snapshot_carbohydrates` REAL, `snapshot_fat` REAL, PRIMARY KEY(`recipe_id`, `position`))"
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_recipe_ingredients_food_id` ON `recipe_ingredients` (`food_id`)")
+    }
+}
+
+/** A recipe's total volume in ml: one nullable column; every row there is gets null, nothing else is touched. */
+val ROOM_MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `recipes` ADD COLUMN `total_volume_ml` REAL")
     }
 }
 
@@ -543,7 +552,7 @@ fun MealEntryEntity.toDomain() = MealEntry(
 
 
 
-fun Recipe.toEntity() = RecipeEntity(id = id, name = name, portions = portions, totalWeight = totalWeight)
+fun Recipe.toEntity() = RecipeEntity(id = id, name = name, portions = portions, totalWeight = totalWeight, totalVolume = totalVolume)
 
 fun Recipe.toAliasEntities(): List<RecipeAliasEntity> = aliases.distinct().map { RecipeAliasEntity(recipeId = id, alias = it) }
 
@@ -589,6 +598,7 @@ internal fun recipesOf(
             aliases = aliasesBy[entity.id].orEmpty().map { it.alias },
             portions = entity.portions,
             totalWeight = entity.totalWeight,
+            totalVolume = entity.totalVolume,
             ingredients = ingredientsBy[entity.id].orEmpty().sortedBy { it.position }.map { it.toDomain() },
         )
     }
