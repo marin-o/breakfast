@@ -144,7 +144,6 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
                             // The one shadow in the app: the overflow menu popover.
                             Column(Modifier.widthIn(min = 220.dp).shadow(6.dp, SecondaryShape).background(colors.bg).border(1.dp, colors.line, SecondaryShape).padding(vertical = 2.dp)) {
                                 TertiaryButton("Archived foods", { menuOpen = false; vm.surfaces.openArchivedLibrary() }, Modifier.fillMaxWidth())
-                                TertiaryButton("Settings", { menuOpen = false; vm.surfaces.openSettings() }, Modifier.fillMaxWidth())
                             }
                         }
                     }
@@ -247,7 +246,7 @@ internal fun LibraryComposer(vm: BreakfastViewModel) {
                 Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.bg)
             }
         }
-        if (!inMeal) BottomNav(selectedToday = false, onToday = { vm.surfaces.closeMeal(); vm.surfaces.closeLibrary() }, onLibrary = {})
+        if (!inMeal) BottomNav(selectedToday = false, onToday = { vm.surfaces.closeMeal(); vm.surfaces.closeLibrary() }, onLibrary = {}, onSettings = vm.surfaces::openSettings)
     }
 }
 

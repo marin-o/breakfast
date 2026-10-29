@@ -417,6 +417,17 @@ class SurfacesTest {
         shows("LIBRARY", "MIXED_MEAL_PICKER", "NOTICE")
     }
 
+    /** The bottom bar's Settings icon on Daily: Settings opens over Daily, and Back from a page and the list returns there. */
+    @Test fun settingsOpensOverDailyAndBackReturnsThere() {
+        app.openSettings()
+        shows("DAILY", "SETTINGS")
+        app.settings.openPage(SettingsPage.DATA)
+        app.back()
+        shows("DAILY", "SETTINGS")
+        app.back()
+        shows("DAILY")
+    }
+
     @Test fun settingsDialogsOpenOverSettings() {
         app.openLibrary()
         app.openSettings()

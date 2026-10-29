@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -702,13 +704,26 @@ fun InkBar(modifier: Modifier = Modifier, endPadding: Dp = 4.dp, content: @Compo
     )
 }
 
-/** Two text tabs, centred with a 40dp gap. The active tab is ink, the other soft. */
+/**
+ * Two text tabs, centred with a 40dp gap, and the Settings icon at the right end. The active tab is ink, the other
+ * soft; the icon is soft, as an inactive tab.
+ */
 @Composable
-fun BottomNav(selectedToday: Boolean, onToday: () -> Unit, onLibrary: () -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth().padding(vertical = 4.dp).selectableGroup(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        NavTab("Meals", selected = selectedToday, onClick = onToday)
-        Spacer(Modifier.width(40.dp))
-        NavTab("Library", selected = !selectedToday, onClick = onLibrary)
+fun BottomNav(selectedToday: Boolean, onToday: () -> Unit, onLibrary: () -> Unit, onSettings: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = LocalBreakfastColors.current
+    Row(modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        // Equal sides keep the tabs centred; each side is at least the icon's width.
+        Spacer(Modifier.weight(1f).widthIn(min = IconTarget))
+        Row(Modifier.selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
+            NavTab("Meals", selected = selectedToday, onClick = onToday)
+            Spacer(Modifier.width(40.dp))
+            NavTab("Library", selected = !selectedToday, onClick = onLibrary)
+        }
+        Box(Modifier.weight(1f).widthIn(min = IconTarget), contentAlignment = Alignment.CenterEnd) {
+            IconButton(onClick = onSettings, modifier = Modifier.size(IconTarget)) {
+                Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = colors.soft, modifier = Modifier.size(22.dp))
+            }
+        }
     }
 }
 

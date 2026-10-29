@@ -62,10 +62,11 @@ internal enum class Surface(
  * ordered list of surfaces from it, so drawing order, Back and "is anything on top" cannot disagree. Stacking that
  * is legitimate stays: the scanner over the food form (Back returns to the form), the resolver under its children
  * (it comes back when one closes without resolving) and after a background save, the Log ↔ Library part-resolve
- * frame, Settings and its pages over the Library, the entry detail and its edits, the contribution screens, dialogs
+ * frame, Settings and its pages over Daily or the Library, the entry detail and its edits, the contribution screens, dialogs
  * and notices.
  *
- * It owns the two surfaces that are the app's own: the Meal screen ([meal]) and Settings ([settingsOpen]), and the
+ * It owns the two surfaces that are the app's own: the Meal screen ([meal]) and Settings ([settingsOpen], over Daily
+ * or the Library), and the
  * transitions between features that decide what replaces what: leaving the Library ([exitLibrary]), the return to
  * the Log ([returnToLog]), and a child of the resolver taking its place ([searchOpened], [foodFormOpened],
  * [productScanned]).
@@ -92,7 +93,10 @@ internal class Surfaces(
      * [LibraryState.target]; leaving the Library says which of the two comes back.
      */
     var meal by mutableStateOf(initialMeal); private set
-    /** Settings, over the Library; its page is [SettingsState.page]. Every way out of the Library closes it. */
+    /**
+     * Settings, over Daily or the Library (the bottom bar's icon); its page is [SettingsState.page]. Back returns to
+     * the screen it was opened over; every way out of the Library closes it.
+     */
     var settingsOpen by mutableStateOf(false); private set
 
     /** What is drawn now, bottom first, in [Surface] order. */
@@ -238,7 +242,7 @@ internal class Surfaces(
     /** "No local match"'s arrow and Back: a part being resolved goes back to the Log, else the list shows again. */
     fun leaveNoMatch() { if (resolve.resolvingPart) closeLibrary() else library.onQuery("") }
 
-    /** Settings, over the Library, on the list of groups; its arrow and Back return there. */
+    /** Settings, over Daily or the Library, on the list of groups; its arrow and Back return there. */
     fun openSettings() { settings.showList(); settingsOpen = true }
     private fun closeSettings() { settingsOpen = false; settings.showList() }
     /** Back or the arrow in Settings: a page goes back ([SettingsState.back]), the list closes Settings. */

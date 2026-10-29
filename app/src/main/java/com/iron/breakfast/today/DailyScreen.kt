@@ -293,7 +293,7 @@ internal fun DailyComposer(vm: BreakfastViewModel, modifier: Modifier = Modifier
             draft = draft,
             longDraft = vm.settings.longDraft,
         )
-        BottomNav(selectedToday = true, onToday = { vm.surfaces.closeMeal(); vm.surfaces.closeLibrary() }, onLibrary = { vm.surfaces.closeMeal(); vm.surfaces.openLibrary() })
+        BottomNav(selectedToday = true, onToday = { vm.surfaces.closeMeal(); vm.surfaces.closeLibrary() }, onLibrary = { vm.surfaces.closeMeal(); vm.surfaces.openLibrary() }, onSettings = vm.surfaces::openSettings)
     }
 }
 

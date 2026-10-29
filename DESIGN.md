@@ -74,7 +74,7 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 - **Field**: label 13sp soft above; 1dp `line` box, radius 12, min 52dp, 16sp text. Focus 1.5dp `ink`. Error 1.5dp `bad` and 13sp `bad` text below. Optional soft trailing hint.
 - **SearchField**: a Field with a leading magnifier and a trailing clear.
 - **Composer**: `ink` bar, radius 16, 52dp, placeholder in `bg` at 60%, scan icon on the right. Fixed at the bottom over a `bg` fade.
-- **BottomNav**: centred text tabs "Meals" (Daily) and "Library", 40dp apart, 14sp/500. Active ink, inactive soft.
+- **BottomNav**: centred text tabs "Meals" (Daily) and "Library", 40dp apart, 14sp/500. Active ink, inactive soft. At the right end a 22dp soft Settings icon in a 44dp target opens Settings over the screen; Back returns to it.
 - **Sheet**: `bg`, top radius 20, 36x5 `line` grabber, 24dp padding, `scrim` behind.
 - **Snackbar**: `ink` fill, radius 14, `bg` text, the action in `bg` 500 on the right, 16dp from the edges.
 
