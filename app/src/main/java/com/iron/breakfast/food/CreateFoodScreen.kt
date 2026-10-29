@@ -36,7 +36,7 @@ import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import com.iron.breakfast.app.BreakfastViewModel
+import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.domain.asciiDigits
 import com.iron.breakfast.domain.parseNutritionShorthand
 import com.iron.breakfast.domain.validateBarcodeInput
@@ -56,10 +56,9 @@ import com.iron.breakfast.ui.screens.editableNumber
  * New personal food. The shorthand field fills the nutrition fields under it as it is typed; a field typed into
  * keeps its own value. Name and kcal are required, so Save waits for them.
  */
-@Composable internal fun CreateFoodScreen(vm: BreakfastViewModel) {
-    val form = vm.foodForm
+@Composable internal fun CreateFoodScreen(form: FoodForm, session: DiarySession) {
     val draft = form.draft
-    val barcodeError = validateBarcodeInput(draft.barcode, vm.foods)
+    val barcodeError = validateBarcodeInput(draft.barcode, session.foods)
     val state = createFoodState(draft.nutritionInput(), draft.name, barcodeError)
     val colors = LocalBreakfastColors.current
     // A save the view model refuses (Save was enabled, but a number is out of range) moves focus to the field to fix,

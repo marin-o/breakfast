@@ -49,7 +49,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.iron.breakfast.app.BreakfastViewModel
+import com.iron.breakfast.app.DiarySession
+import com.iron.breakfast.app.Surfaces
+import com.iron.breakfast.today.DayState
+import com.iron.breakfast.today.UndoController
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
@@ -85,14 +88,14 @@ import com.iron.breakfast.ui.screens.datePickerMaxMs
 
 
 @Composable
-internal fun EntryDetailScreen(vm: BreakfastViewModel, entry: MealEntry) {
+internal fun EntryDetailScreen(entryEdit: EntryEdit, session: DiarySession, surfaces: Surfaces, undo: UndoController, entry: MealEntry) {
     val colors = LocalBreakfastColors.current
-    val food = vm.foods.firstOrNull { it.id == entry.foodId }
+    val food = session.foods.firstOrNull { it.id == entry.foodId }
     val quantity = quantityRateDisplay(entry, food)
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)).navigationBarsPadding()) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Gutter, vertical = 8.dp)) {
-                TopBar("Entry", vm.entryEdit::closeDetail, subtitle = "${entry.mealSlot.label()}, ${shortDateLabel(entry.dayKey)}, ${entry.savedAtEpochMs.formatClock()}")
+                TopBar("Entry", entryEdit::closeDetail, subtitle = "${entry.mealSlot.label()}, ${shortDateLabel(entry.dayKey)}, ${entry.savedAtEpochMs.formatClock()}")
                 Text(foodText(entry.foodName), color = colors.ink, style = BreakfastType.Section, modifier = Modifier.padding(top = 22.dp))
                 Text(quantity.plainLine(), color = colors.soft, style = BreakfastType.Secondary)
                 Text(formatKcal(entry.nutritionSnapshot.calories), color = colors.ink, style = BreakfastType.Hero, modifier = Modifier.padding(top = 22.dp))
@@ -102,13 +105,13 @@ internal fun EntryDetailScreen(vm: BreakfastViewModel, entry: MealEntry) {
                 Hairline(Modifier.padding(top = 30.dp))
                 Column(Modifier.fillMaxWidth().padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     // Its food deleted, an entry's amount still changes by its own numbers; not when they cannot scale.
-                    if (vm.entryEdit.amountEditable(entry)) PrimaryButton("Edit amount", { vm.entryEdit.closeDetail(); vm.entryEdit.beginQuick(entry) }, kind = ButtonKind.Neutral)
+                    if (entryEdit.amountEditable(entry)) PrimaryButton("Edit amount", { entryEdit.closeDetail(); entryEdit.beginQuick(entry) }, kind = ButtonKind.Neutral)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        SecondaryButton("Replace food", { vm.entryEdit.closeDetail(); vm.entryEdit.beginFull(entry) }, Modifier.weight(1f), fillWidth = false)
-                        SecondaryButton("Open in Library", { vm.surfaces.openLibraryFoodDetail(entry) }, Modifier.weight(1f), fillWidth = false)
+                        SecondaryButton("Replace food", { entryEdit.closeDetail(); entryEdit.beginFull(entry) }, Modifier.weight(1f), fillWidth = false)
+                        SecondaryButton("Open in Library", { surfaces.openLibraryFoodDetail(entry) }, Modifier.weight(1f), fillWidth = false)
                     }
                 }
-                DestructiveButton("Delete entry", { vm.entryEdit.closeDetail(); vm.undo.delete(entry) }, Modifier.padding(top = 8.dp))
+                DestructiveButton("Delete entry", { entryEdit.closeDetail(); undo.delete(entry) }, Modifier.padding(top = 8.dp))
             }
         }
     }
@@ -142,21 +145,21 @@ private fun MacroTable(entry: MealEntry, modifier: Modifier = Modifier) {
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
+internal fun EntryQuickEditSheet(entryEdit: EntryEdit, session: DiarySession, entry: MealEntry) {
     val colors = LocalBreakfastColors.current
     // Saveable: a dark-mode or font-size change recreates the activity and must not reset what was typed.
     var amount by rememberSaveable(entry.id) { mutableStateOf(editAmountText(entry.enteredAmount)) }
     var unit by rememberSaveable(entry.id) { mutableStateOf(entry.enteredUnit) }
-    val food = vm.foods.firstOrNull { it.id == entry.foodId }
+    val food = session.foods.firstOrNull { it.id == entry.foodId }
     val units = food?.let(::entryUnits).orEmpty().ifEmpty { listOf(entry.enteredUnit) }
-    val preview = amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { vm.entryEdit.preview(entry, entry.foodId, it, unit) }
+    val preview = amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { entryEdit.preview(entry, entry.foodId, it, unit) }
     val changed = entryDraftNutritionChanged(entry, amount, unit, entry.foodId)
     // A save error stays until the amount or unit changes.
-    LaunchedEffect(amount, unit) { vm.entryEdit.inputChanged() }
+    LaunchedEffect(amount, unit) { entryEdit.inputChanged() }
     val requester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(Unit) { requester.requestFocus() }
-    Sheet(onDismissRequest = { vm.entryEdit.cancel() }, skipPartiallyExpanded = true) {
+    Sheet(onDismissRequest = { entryEdit.cancel() }, skipPartiallyExpanded = true) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(foodText(entry.foodName), style = BreakfastType.Section, color = colors.ink)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -165,7 +168,7 @@ internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
                     "Amount", amount, { amount = it.decimalInput() }, Modifier.weight(1f),
                     labelVisible = false, amountStyle = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { keyboard?.hide(); vm.entryEdit.saveQuick("${amount.trim()} ${unit.displayLabel()}") }),
+                    keyboardActions = KeyboardActions(onDone = { keyboard?.hide(); entryEdit.saveQuick("${amount.trim()} ${unit.displayLabel()}") }),
                     fieldModifier = Modifier.focusRequester(requester),
                 )
                 AddCircle("Increase amount", { amount = adjustAmount(amount, 1.0) })
@@ -186,8 +189,8 @@ internal fun EntryQuickEditSheet(vm: BreakfastViewModel, entry: MealEntry) {
                 }
                 if (changed) Text("was ${formatKcal(entry.nutritionSnapshot.calories)}", color = colors.soft, style = BreakfastType.Secondary)
             }
-            PrimaryButton("Save", { vm.entryEdit.saveQuick("${amount.trim()} ${unit.displayLabel()}") }, enabled = amount.toDoubleOrNull()?.let { it > 0 } == true)
-            vm.entryEdit.error?.let { Text(it, color = colors.bad, style = BreakfastType.Meta) }
+            PrimaryButton("Save", { entryEdit.saveQuick("${amount.trim()} ${unit.displayLabel()}") }, enabled = amount.toDoubleOrNull()?.let { it > 0 } == true)
+            entryEdit.error?.let { Text(it, color = colors.bad, style = BreakfastType.Meta) }
         }
     }
 }
@@ -197,9 +200,9 @@ private fun adjustAmount(value: String, delta: Double): String = (value.toDouble
 private fun entryDraftNutritionChanged(entry: MealEntry, amount: String, unit: MeasureUnit, foodId: String?): Boolean = foodId != entry.foodId || amount.toDoubleOrNull()?.let { it != entry.enteredAmount } != false || unit != entry.enteredUnit
 
 @Composable
-internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
+internal fun EntryFullEditScreen(entryEdit: EntryEdit, session: DiarySession, dayState: DayState, entry: MealEntry) {
     val colors = LocalBreakfastColors.current
-    val selectedFood = vm.entryEdit.editingFood() ?: vm.foods.firstOrNull { it.id == entry.foodId }
+    val selectedFood = entryEdit.editingFood() ?: session.foods.firstOrNull { it.id == entry.foodId }
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     var amount by rememberSaveable(entry.id) { mutableStateOf(editAmountText(entry.enteredAmount)) }
     var unit by rememberSaveable(entry.id) { mutableStateOf(entry.enteredUnit) }
@@ -210,17 +213,17 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
     val units = selectedFood?.let(::entryUnits).orEmpty().ifEmpty { listOf(entry.enteredUnit) }
     // With the entry's food deleted and no other chosen, the entry itself: its amount in its own unit, scaled.
     val foodId = selectedFood?.id ?: entry.foodId
-    val preview = amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { vm.entryEdit.preview(entry, foodId, it, unit) }
+    val preview = amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { entryEdit.preview(entry, foodId, it, unit) }
     LaunchedEffect(selectedFood?.id) { if (unit !in units) unit = units.first() }
     // A save error stays until something being edited changes.
-    LaunchedEffect(selectedFood?.id, amount, unit, meal, dayKey) { vm.entryEdit.inputChanged() }
+    LaunchedEffect(selectedFood?.id, amount, unit, meal, dayKey) { entryEdit.inputChanged() }
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)).verticalScroll(rememberScrollState()).navigationBarsPadding()) {
-            TopBar("Edit entry", { vm.entryEdit.cancel() }, Modifier.padding(horizontal = Gutter, vertical = 8.dp))
+            TopBar("Edit entry", { entryEdit.cancel() }, Modifier.padding(horizontal = Gutter, vertical = 8.dp))
             Column(Modifier.padding(horizontal = Gutter), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Bottom) {
                     Field("Food", selectedFood?.name ?: entry.foodName, {}, Modifier.weight(1f), readOnly = true)
-                    SecondaryButton("Replace", vm.entryEdit::openFoodPicker, modifier = Modifier.widthIn(min = 96.dp * fontScale), fillWidth = false)
+                    SecondaryButton("Replace", entryEdit::openFoodPicker, modifier = Modifier.widthIn(min = 96.dp * fontScale), fillWidth = false)
                 }
                 Field("Amount", amount, { amount = it.decimalInput() }, Modifier.widthIn(min = 140.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -238,7 +241,7 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
                         .fillMaxWidth()
                         .heightIn(min = FieldMinHeight)
                         .border(1.dp, colors.line, FieldShape)
-                        .clickable(role = Role.Button) { DatePickerDialog(context, { _, year, month, day -> dayKey = LocalDate.of(year, month + 1, day).toString() }, date.year, date.monthValue - 1, date.dayOfMonth).apply { datePicker.maxDate = datePickerMaxMs(vm.day.todayKey, java.time.ZoneId.systemDefault()) }.show() }
+                        .clickable(role = Role.Button) { DatePickerDialog(context, { _, year, month, day -> dayKey = LocalDate.of(year, month + 1, day).toString() }, date.year, date.monthValue - 1, date.dayOfMonth).apply { datePicker.maxDate = datePickerMaxMs(dayState.todayKey, java.time.ZoneId.systemDefault()) }.show() }
                         .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -251,20 +254,20 @@ internal fun EntryFullEditScreen(vm: BreakfastViewModel, entry: MealEntry) {
                 Text("${formatKcal(shown.calories)} kcal", style = BreakfastType.Section, color = colors.ink)
                 Text("P ${shown.protein?.pretty() ?: "—"}   C ${shown.carbohydrates?.pretty() ?: "—"}   F ${shown.fat?.pretty() ?: "—"}", color = colors.soft, style = BreakfastType.Secondary)
             }
-            PrimaryButton("Save", { vm.entryEdit.saveFull(foodId, amount, unit, meal, dayKey) }, Modifier.padding(horizontal = Gutter), enabled = !vm.busy)
-            vm.entryEdit.error?.let { Text(it, Modifier.padding(Gutter), color = colors.bad, style = BreakfastType.Meta) }
+            PrimaryButton("Save", { entryEdit.saveFull(foodId, amount, unit, meal, dayKey) }, Modifier.padding(horizontal = Gutter), enabled = !session.busy)
+            entryEdit.error?.let { Text(it, Modifier.padding(Gutter), color = colors.bad, style = BreakfastType.Meta) }
         }
     }
 }
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-internal fun EntryFoodPicker(vm: BreakfastViewModel) {
-    Sheet(onDismissRequest = vm.entryEdit::closeFoodPicker) {
+internal fun EntryFoodPicker(entryEdit: EntryEdit, session: DiarySession) {
+    Sheet(onDismissRequest = entryEdit::closeFoodPicker) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SectionHeading("Replace food", Modifier.padding(bottom = 8.dp))
-            vm.foods.take(30).forEach { food ->
-                TertiaryButton(food.name, { vm.entryEdit.chooseFood(food) }, Modifier.fillMaxWidth())
+            session.foods.take(30).forEach { food ->
+                TertiaryButton(food.name, { entryEdit.chooseFood(food) }, Modifier.fillMaxWidth())
             }
         }
     }

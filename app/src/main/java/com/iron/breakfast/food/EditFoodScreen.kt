@@ -28,7 +28,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.iron.breakfast.app.BreakfastViewModel
+import com.iron.breakfast.app.DiarySession
+import com.iron.breakfast.library.LibraryState
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.asciiDigits
@@ -65,10 +66,9 @@ private fun FoodBarcodeField(form: FoodForm, label: String = "Barcode") {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun EditFoodScreen(vm: BreakfastViewModel) {
-    val form = vm.foodForm
+internal fun EditFoodScreen(form: FoodForm, session: DiarySession, library: LibraryState) {
     val colors = LocalBreakfastColors.current
-    val food = vm.foods.firstOrNull { it.id == form.editingFoodId } ?: return
+    val food = session.foods.firstOrNull { it.id == form.editingFoodId } ?: return
     val draft = form.draft
     Column(Modifier.fillMaxSize().background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         TopBar("Edit food", form::leave, Modifier.padding(top = 8.dp))
@@ -138,6 +138,6 @@ internal fun EditFoodScreen(vm: BreakfastViewModel) {
             TertiaryButton("Add alias", { draft.aliasFieldOpen = true })
         }
         PrimaryButton("Save", form::save, Modifier.padding(top = 8.dp))
-        if (food.origin == FoodOrigin.CUSTOM) DestructiveButton("Delete food", { vm.library.askDelete(food) }, Modifier.fillMaxWidth(), outlined = true)
+        if (food.origin == FoodOrigin.CUSTOM) DestructiveButton("Delete food", { library.askDelete(food) }, Modifier.fillMaxWidth(), outlined = true)
     }
 }

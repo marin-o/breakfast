@@ -129,15 +129,15 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         }
         Surface.SCAN_REVIEW_BACKDROP -> ScanReviewBackdrop(vm.review::close)
         // Drawn over the screen beneath, which keeps its scroll position. Dialogs and sheets after it render above it.
-        Surface.LOG -> LogScreen(vm)
-        Surface.ENTRY_QUICK_EDIT -> vm.entryEdit.editingEntry()?.let { EntryQuickEditSheet(vm, it) }
-        Surface.ENTRY_FULL_EDIT -> vm.entryEdit.editingEntry()?.let { EntryFullEditScreen(vm, it) }
-        Surface.ENTRY_FOOD_PICKER -> EntryFoodPicker(vm)
+        Surface.LOG -> LogScreen(vm.log, vm.session, vm.settings, vm.day)
+        Surface.ENTRY_QUICK_EDIT -> vm.entryEdit.editingEntry()?.let { EntryQuickEditSheet(vm.entryEdit, vm.session, it) }
+        Surface.ENTRY_FULL_EDIT -> vm.entryEdit.editingEntry()?.let { EntryFullEditScreen(vm.entryEdit, vm.session, vm.day, it) }
+        Surface.ENTRY_FOOD_PICKER -> EntryFoodPicker(vm.entryEdit, vm.session)
         Surface.LIBRARY_FOOD_ADD -> vm.library.selectedFood?.let { FocusedFoodAddDialog(vm, it) }
         Surface.LIBRARY_FOOD -> vm.library.selectedFood?.let { LibraryFoodDetailDialog(vm, it) }
         Surface.MIXED_MEAL_PICKER -> MixedMealPickerDialog(vm)
         Surface.BATCH_MEAL_PICKER -> LibraryBatchMealPickerDialog(vm)
-        Surface.FOOD_FORM -> if (vm.foodForm.editingFoodId != null) EditFoodScreen(vm) else CreateFoodScreen(vm)
+        Surface.FOOD_FORM -> if (vm.foodForm.editingFoodId != null) EditFoodScreen(vm.foodForm, vm.session, vm.library) else CreateFoodScreen(vm.foodForm, vm.session)
         Surface.SETTINGS -> SettingsScreen(vm)
         // Deleting is for good: past entries keep their own name and numbers.
         Surface.DELETE_FOOD -> AlertDialog(
@@ -177,7 +177,7 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
             },
         )
         Surface.STORAGE_UNAVAILABLE -> AlertDialog(onDismissRequest = {}, confirmButton = { TextButton(vm::retryStorage) { Text("Try again") } }, title = { Text("Storage unavailable") }, text = { Text("Storage could not be opened.") })
-        Surface.ENTRY_DETAIL -> vm.entryEdit.selectedEntry?.let { EntryDetailScreen(vm, it) }
+        Surface.ENTRY_DETAIL -> vm.entryEdit.selectedEntry?.let { EntryDetailScreen(vm.entryEdit, vm.session, vm.surfaces, vm.undo, it) }
         Surface.SCANNER -> ScannerScreen(vm.scan, vm.settings.flashlightAtStart)
     }
 }

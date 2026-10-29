@@ -54,7 +54,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import com.iron.breakfast.app.BreakfastViewModel
+import com.iron.breakfast.app.DiarySession
+import com.iron.breakfast.settings.SettingsState
+import com.iron.breakfast.today.DayState
 import com.iron.breakfast.domain.DraftRow
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.displayLabel
@@ -79,25 +81,25 @@ import com.iron.breakfast.ui.screens.foodCountLabel
  * It edits the Log draft ([LogComposer.draft]), which stays until it is added or cleared; leaving the page keeps it.
  */
 @Composable
-internal fun LogScreen(vm: BreakfastViewModel) {
+internal fun LogScreen(log: LogComposer, session: DiarySession, settings: SettingsState, day: DayState) {
     val colors = LocalBreakfastColors.current
     // One resolution pass per draft: rows, choices and the add-bar sum all come from the same planner run.
     // It runs off the main thread so typing never waits on matching; the last draft shows until the next is ready.
-    var draft by remember { mutableStateOf(vm.log.draftView()) }
-    val pins = vm.log.pinsSnapshot()
-    LaunchedEffect(vm.log.draft, vm.log.committed, pins, vm.foods, vm.ready, vm.settings.countTyping, vm.settings.learnFromPicks) {
-        val input = vm.log.draft
-        val committed = vm.log.committed
-        draft = vm.log.computeDraftView(input, committed, pins)
+    var draft by remember { mutableStateOf(log.draftView()) }
+    val pins = log.pinsSnapshot()
+    LaunchedEffect(log.draft, log.committed, pins, session.foods, session.ready, settings.countTyping, settings.learnFromPicks) {
+        val input = log.draft
+        val committed = log.committed
+        draft = log.computeDraftView(input, committed, pins)
     }
     val suggestions = draft.choices
-    val target = vm.log.targetMeal()
+    val target = log.targetMeal()
     // The bar counts what Add will save, including the active segment's preselected match.
     val logged = draft.logged
     val kcal = logged.sumOf { it.calculation.nutrition.calories }
     // Any draft can be added: unresolved segments open the resolve-unknown flow, as before.
-    val canAdd = vm.log.draft.isNotBlank() && !vm.busy
-    val placeholder = if (vm.day.selectedDayKey == vm.day.todayKey) "2 eggs, 1 banana" else "Add to ${shortDateLabel(vm.day.selectedDayKey)}"
+    val canAdd = log.draft.isNotBlank() && !session.busy
+    val placeholder = if (day.selectedDayKey == day.todayKey) "2 eggs, 1 banana" else "Add to ${shortDateLabel(day.selectedDayKey)}"
     val requester = remember { FocusRequester() }
     LaunchedEffect(Unit) { requester.requestFocus() }
     val tick = rememberTick()
@@ -109,44 +111,44 @@ internal fun LogScreen(vm: BreakfastViewModel) {
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
     ) {
         Row(Modifier.fillMaxWidth().heightIn(min = HeaderHeight).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = vm.log::close, modifier = Modifier.size(IconTarget)) {
+            IconButton(onClick = log::close, modifier = Modifier.size(IconTarget)) {
                 Icon(Icons.Outlined.Close, contentDescription = "Close", tint = colors.ink, modifier = Modifier.size(22.dp))
             }
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                LogMealPicker(logMealPickerLabel(vm.log.targetMeal()), vm)
+                LogMealPicker(logMealPickerLabel(log.targetMeal()), log)
             }
             Box(Modifier.size(IconTarget))
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Gutter)) {
             // The field keeps its own caret. A change made from outside (a tapped choice) moves the caret to the end.
-            var field by remember { mutableStateOf(inputFieldFor(vm.log.draft)) }
-            LaunchedEffect(vm.log.draft) { field = syncedInputField(field, vm.log.draft) }
+            var field by remember { mutableStateOf(inputFieldFor(log.draft)) }
+            LaunchedEffect(log.draft) { field = syncedInputField(field, log.draft) }
             BasicTextField(
                 value = field,
                 // One logical line: Done submits, so a newline is never typed.
                 onValueChange = { next ->
                     val text = next.text.replace("\n", " ")
                     field = next.copy(text = text)
-                    vm.log.onDraft(text)
+                    log.onDraft(text)
                 },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = {
                     // Done commits the text: the last word is no longer being typed.
-                    vm.log.commit()
-                    if (canAdd) { tick(); vm.log.submit() }
+                    log.commit()
+                    if (canAdd) { tick(); log.submit() }
                 }),
                 textStyle = BreakfastType.LargeInput.copy(color = colors.ink),
                 cursorBrush = SolidColor(colors.ink),
                 modifier = Modifier.fillMaxWidth().padding(top = 18.dp).focusRequester(requester),
                 decorationBox = { inner ->
                     Box {
-                        if (vm.log.draft.isEmpty()) Text(placeholder, color = colors.soft, style = BreakfastType.LargeInput)
+                        if (log.draft.isEmpty()) Text(placeholder, color = colors.soft, style = BreakfastType.LargeInput)
                         inner()
                     }
                 },
             )
             Hairline(Modifier.padding(top = 22.dp))
-            vm.log.error?.let { Text(it, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(top = 8.dp)) }
+            log.error?.let { Text(it, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(top = 8.dp)) }
             // Rows in typed order. Typed text that matches no food stays visible, so it is never lost when Add is pressed.
             // Not animated: a row has no identity that lasts while its text is typed (DESIGN.md, Motion).
             draft.rows.forEach { row ->
@@ -162,7 +164,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
                         quantityLine = "Not in your foods",
                         calories = "",
                         modifier = Modifier.padding(top = 4.dp),
-                        onClick = { vm.log.resolveNotInFoods(row) },
+                        onClick = { log.resolveNotInFoods(row) },
                     )
                 }
             }
@@ -179,7 +181,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
                         ChoiceOption(
                             label = ranked.food.name,
                             selected = index == 0 && draft.preselected,
-                            onClick = { vm.log.chooseSuggestion(ranked.food) },
+                            onClick = { log.chooseSuggestion(ranked.food) },
                             modifier = Modifier.widthIn(min = 168.dp),
                             detail = draft.choiceCalculations.getOrNull(index)?.let(::choiceKcalDetail),
                         )
@@ -198,7 +200,7 @@ internal fun LogScreen(vm: BreakfastViewModel) {
         val addButton: @Composable (Boolean) -> Unit = { fill ->
             PrimaryButton(
                 text = if (target != null) "Add to ${target.label()}" else "Add",
-                onClick = { tick(); vm.log.submit() },
+                onClick = { tick(); log.submit() },
                 enabled = canAdd,
                 fillWidth = fill,
             )
@@ -223,14 +225,14 @@ internal fun LogScreen(vm: BreakfastViewModel) {
 
 /** The meal button at the top of the Log page. Its menu sets the target meal; "Meal" when nothing is chosen or typed. */
 @Composable
-private fun LogMealPicker(label: String, vm: BreakfastViewModel) {
+private fun LogMealPicker(label: String, log: LogComposer) {
     val colors = LocalBreakfastColors.current
     Box {
         Row(
             Modifier
                 .heightIn(min = IconTarget)
                 .border(1.dp, colors.line, ChoiceShape)
-                .clickable(role = Role.Button, onClick = vm.log::openMealMenu)
+                .clickable(role = Role.Button, onClick = log::openMealMenu)
                 .padding(start = 14.dp, end = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -239,8 +241,8 @@ private fun LogMealPicker(label: String, vm: BreakfastViewModel) {
             Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = null, tint = colors.ink, modifier = Modifier.size(16.dp))
         }
         DropdownMenu(
-            expanded = vm.log.mealMenuOpen,
-            onDismissRequest = vm.log::dismissMealMenu,
+            expanded = log.mealMenuOpen,
+            onDismissRequest = log::dismissMealMenu,
             containerColor = colors.bg,
             shadowElevation = 0.dp,
             border = BorderStroke(1.dp, colors.line),
@@ -248,7 +250,7 @@ private fun LogMealPicker(label: String, vm: BreakfastViewModel) {
             MealSlot.entries.forEach { meal ->
                 DropdownMenuItem(
                     text = { Text(meal.label(), color = colors.ink, style = BreakfastType.Body) },
-                    onClick = { vm.log.chooseMeal(meal) },
+                    onClick = { log.chooseMeal(meal) },
                 )
             }
         }
