@@ -106,6 +106,7 @@ class UndoControllerTest {
         assertEquals(listOf("Oats", "Milk"), undo.lastBatchNames())
         undo.undoBatch()
         assertEquals(listOf(batch), store.batches)
+        assertEquals(DiaryChange.UndoApplied, diary.published.last())
         assertNull(undo.offer)
         assertTrue(undo.lastBatchNames().isEmpty())
     }

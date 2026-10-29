@@ -1,94 +1,110 @@
 package com.iron.breakfast.app
 
-import com.iron.breakfast.contribution.ContributionFlow
-import com.iron.breakfast.contribution.OffContributions
 import com.iron.breakfast.data.OffContributionDraft
-import com.iron.breakfast.data.OffContributionResult
-import com.iron.breakfast.data.OffPreflightResult
+import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.FoodRecord
+import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionValues
-import com.iron.breakfast.settings.AppSettings
-import com.iron.breakfast.settings.FakeSettingsStore
-import com.iron.breakfast.settings.SettingsState
-import com.iron.breakfast.today.OpenDiary
-import com.iron.breakfast.transfer.DiaryTransfer
-import com.iron.breakfast.transfer.FakeData
-import com.iron.breakfast.transfer.FakeFiles
-import com.iron.breakfast.transfer.RecordingLog
+import com.iron.breakfast.today.entry
 import com.iron.breakfast.transfer.validDiaryText
-import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
  * B14: Import diary and Delete all data reset the session the same way, through one [SessionReset] on the
  * [DiaryChange.DiaryReplaced] they both publish. Before, import kept the resolve queue, the entry detail and a
  * contribution candidate, which referred to the old diary.
+ *
+ * Over the app as the view model wires it ([AppKit]), so each step of the production [sessionResetSteps] is checked:
+ * the Log's pins and its error, the contribution candidate, the resolve queue and resolver, the entry detail.
  */
 class SessionResetTest {
-    private val diary = OpenDiary()
-    private val events = mutableListOf<String>()
-    private val files = FakeFiles(events)
-    private val data = FakeData(events)
-    private val settings = SettingsState(AppSettings(FakeSettingsStore())) { 0L }
-    private val contribution = ContributionFlow(
-        object : OffContributions {
-            override fun preflight(draft: OffContributionDraft) = OffPreflightResult.Existing
-            override fun contribute(draft: OffContributionDraft, username: String, password: String) = OffContributionResult.Success
-        },
-        Notices(), diary.scope, Dispatchers.Unconfined,
-    )
-    private val transfer = DiaryTransfer(diary.session, data, files, settings, Notices(), { 0L }, diary.scope, Dispatchers.Unconfined, RecordingLog(), onExported = {})
-    private val resets = mutableListOf<String>()
+    private val app = AppKit()
+    private val egg = entry("e1").copy(mealSlot = MealSlot.LUNCH)
 
-    init {
-        // As the view model registers it: its own steps, and each owner's reset operation.
-        diary.session.onChange(
-            SessionReset(listOf({ resets += "log pins" }, contribution::reset, { resets += "resolve queue" }, { resets += "entry detail" }))::onChange,
-        )
+    /** Everything the session can hold about the old diary, each checked as held. */
+    private fun holdTheOldDiary() {
+        // Add leaves a part: the Log's error, and the queue for the resolver.
+        app.unmatched = listOf("ayran")
+        app.log.open(MealSlot.LUNCH)
+        app.log.onDraft("2 eggs, ayran")
+        app.log.submit()
+        assertEquals("Some foods need a match.", app.log.error)
+        assertTrue(app.resolve.queueActive)
+        assertTrue(app.resolve.resolverOpen)
+        // A suggestion picked in the draft that is left: a pin.
+        app.log.onDraft("ayran, 2 eggs")
+        app.log.chooseSuggestion(FoodCatalog.fixtures.first { it.id == "egg" })
+        assertTrue(app.log.pinsSnapshot().isNotEmpty())
+        // A contribution candidate.
+        app.contribution.offerAfterLocalSave(OffContributionDraft("4006381333931", "Kefir", null, 100.0, MeasureUnit.GRAM, NutritionValues(60.0, 3.0, 4.0, 3.0)))
+        assertNotNull(app.contribution.pending)
+        // The entry detail.
+        app.diaryHas(egg)
+        app.entryEdit.openDetail(egg)
+        assertEquals(egg, app.entryEdit.selectedEntry)
     }
 
-    private fun candidate() {
-        contribution.offerAfterLocalSave(OffContributionDraft("4006381333931", "Kefir", null, 100.0, MeasureUnit.GRAM, NutritionValues(60.0, 3.0, 4.0, 3.0)))
-        assertNotNull(contribution.pending)
+    private fun assertTheSessionWasReset() {
+        assertEquals("pins", emptyMap<String, FoodRecord>(), app.log.pinsSnapshot())
+        assertNull("the Log's error", app.log.error)
+        assertNull("the contribution candidate", app.contribution.pending)
+        assertFalse("the resolve queue", app.resolve.queueActive)
+        assertEquals(emptyList<String>(), app.resolve.parts)
+        assertFalse("the resolver", app.resolve.resolverOpen)
+        assertNull("the entry detail", app.entryEdit.selectedEntry)
+    }
+
+    private fun import() {
+        app.documents.documents["in.json"] = validDiaryText()
+        app.transfer.import("in.json")
+        app.transfer.confirmImport()
+    }
+
+    private fun deleteAll() {
+        app.transfer.openDeleteAll()
+        app.transfer.confirmDeleteAll()
     }
 
     @Test fun replaceDiaryResetsTheWholeSession() {
-        candidate()
-        files.documents["in.json"] = validDiaryText()
-        transfer.import("in.json")
-        transfer.confirmImport()
-        assertEquals(listOf("log pins", "resolve queue", "entry detail"), resets)
-        assertNull(contribution.pending)
+        holdTheOldDiary()
+        import()
+        assertTheSessionWasReset()
+        assertEquals("the draft stays as it was", "ayran, 2 piece Egg", app.log.draft)
     }
 
     @Test fun deleteAllResetsTheSessionExactlyTheSameWay() {
-        candidate()
-        transfer.openDeleteAll()
-        transfer.confirmDeleteAll()
-        assertEquals(listOf("log pins", "resolve queue", "entry detail"), resets)
-        assertNull(contribution.pending)
+        holdTheOldDiary()
+        deleteAll()
+        assertTheSessionWasReset()
+        assertEquals("ayran, 2 piece Egg", app.log.draft)
     }
 
     @Test fun aReplaceOrDeleteThatFailedResetsNothing() {
-        candidate()
-        data.failure = IllegalStateException("locked")
-        files.documents["in.json"] = validDiaryText()
-        transfer.import("in.json")
-        transfer.confirmImport()
-        transfer.openDeleteAll()
-        transfer.confirmDeleteAll()
-        assertEquals(emptyList<String>(), resets)
-        assertNotNull(contribution.pending)
+        holdTheOldDiary()
+        app.data.failure = IllegalStateException("locked")
+        import()
+        app.notices.dismiss()
+        deleteAll()
+        assertTrue(app.log.pinsSnapshot().isNotEmpty())
+        assertEquals("Some foods need a match.", app.log.error)
+        assertNotNull(app.contribution.pending)
+        assertTrue(app.resolve.queueActive)
+        assertEquals(egg, app.entryEdit.selectedEntry)
     }
 
     @Test fun otherWritesDoNotReset() {
-        candidate()
-        diary.commit(DiaryChange.FoodsLogged)
-        diary.commit(DiaryChange.EntryEdited)
-        assertEquals(emptyList<String>(), resets)
-        assertNotNull(contribution.pending)
+        holdTheOldDiary()
+        checkNotNull(app.owners.session.write(DiaryChange.FoodsLogged) {})
+        checkNotNull(app.owners.session.write(DiaryChange.EntryEdited) {})
+        assertTrue(app.log.pinsSnapshot().isNotEmpty())
+        assertNotNull(app.contribution.pending)
+        assertTrue(app.resolve.queueActive)
+        assertEquals(egg, app.entryEdit.selectedEntry)
     }
 }

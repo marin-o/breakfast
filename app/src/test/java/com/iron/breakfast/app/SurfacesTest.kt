@@ -361,7 +361,6 @@ class SurfacesTest {
         shows("LIBRARY")
         app.library.openFood(kefir)
         app.library.closeFood(); app.contribution.openForFood(kefir)
-        app.offIo.runAll()
         shows("LIBRARY", "CONTRIBUTION_REVIEW")
         app.back()
         shows("LIBRARY")
@@ -371,7 +370,6 @@ class SurfacesTest {
         val kefir = food("kefir", "Kefir").copy(barcode = barcode)
         app.openLibrary()
         app.contribution.openForFood(kefir)
-        app.offIo.runAll()
         app.contribution.confirm()
         shows("LIBRARY", "CONTRIBUTION_SIGN_IN")
         app.back()
@@ -389,10 +387,11 @@ class SurfacesTest {
         val kefir = food("kefir", "Kefir").copy(barcode = barcode)
         app.openLibrary()
         app.contribution.openForFood(kefir)
-        app.offIo.runAll()
         app.contribution.confirm()
         app.contribution.onUsername("ana")
         app.contribution.onPassword("secret")
+        // The request is in flight.
+        app.io.holding = true
         app.contribution.submit()
         assertTrue(app.contribution.busy)
         shows("LIBRARY", "CONTRIBUTION_SIGN_IN")
@@ -401,7 +400,7 @@ class SurfacesTest {
         assertFalse(app.contribution.busy)
         assertEquals("", app.contribution.password)
         // Whatever became of the request, nothing opens again over the Library.
-        app.offIo.runAll()
+        app.io.runAll()
         shows("LIBRARY")
     }
 

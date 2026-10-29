@@ -2,12 +2,10 @@ package com.iron.breakfast.app
 
 import android.app.Application
 import android.util.Log
-import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import java.time.ZoneId
 import com.iron.breakfast.settings.AppSettings
 import com.iron.breakfast.domain.BreakfastEngine
@@ -16,322 +14,159 @@ import com.iron.breakfast.data.OpenFoodFactsClient
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
-import com.iron.breakfast.food.FoodForm
 import com.iron.breakfast.scan.BarcodeLookup
-import com.iron.breakfast.scan.ProductReview
 import com.iron.breakfast.scan.ProductStore
-import com.iron.breakfast.scan.ScanSession
 import com.iron.breakfast.food.FoodFormStore
 import com.iron.breakfast.food.NewFood
-import com.iron.breakfast.resolve.ResolveFlow
 import com.iron.breakfast.resolve.ResolveStore
 import com.iron.breakfast.domain.MeasureUnit
-import com.iron.breakfast.entry.EntryEditMode
-import com.iron.breakfast.entry.EntryEdit
 import com.iron.breakfast.entry.EntryEditStore
-import com.iron.breakfast.transfer.DiaryPicker
-import com.iron.breakfast.log.automaticMeal
-import com.iron.breakfast.log.LogComposer
 import com.iron.breakfast.log.LogStore
-import com.iron.breakfast.library.LibraryState
 import com.iron.breakfast.library.LibraryStore
-import com.iron.breakfast.lastUsedMeal
-import com.iron.breakfast.settings.undoWindowMs
 import com.iron.breakfast.settings.SettingsState
-import com.iron.breakfast.today.DayState
-import com.iron.breakfast.today.MatchFeedback
 import com.iron.breakfast.today.MatchStore
-import com.iron.breakfast.today.UndoController
 import com.iron.breakfast.today.UndoStore
-import com.iron.breakfast.contribution.ContributionFlow
-import com.iron.breakfast.search.OffSearch
 import com.iron.breakfast.transfer.ContentDiaryFiles
 import com.iron.breakfast.transfer.DiaryData
-import com.iron.breakfast.transfer.DiaryTransfer
-import com.iron.breakfast.transfer.ExportReminders
 import com.iron.breakfast.transfer.TransferLog
 import com.iron.breakfast.data.DiaryRows
 
-class BreakfastViewModel(application: Application, private val savedState: SavedStateHandle) : AndroidViewModel(application) {
+/**
+ * The Android host of [AppOwners]: it adapts `BreakfastEngine`, `OpenFoodFactsClient` and the content resolver as the
+ * owners' [AppStores], and carries the lifecycle (stop, start, the 60-second loop). The owners and their wiring are
+ * [AppOwners]'s, shared with the JVM tests; the screens reach them through the fields below.
+ */
+class BreakfastViewModel(application: Application, savedState: SavedStateHandle) : AndroidViewModel(application) {
     private val clock: () -> Long = System::currentTimeMillis
-    /** Every user setting and the open Settings page; the effects that are not settings are wired in [init]. */
-    internal val settings = SettingsState(AppSettings(application), clock)
-    private val zone: ZoneId get() = ZoneId.systemDefault()
-    /** Today and the day on show (see [DayState]); a day picked stops a scan looking up for the old one. */
-    internal val day = DayState(
-        clock = clock,
-        zone = { zone },
-        dayStartHour = { settings.dayStartHour },
-        restored = restoreSelectedDay(savedState),
-        save = { saveSelectedDay(savedState, it) },
-        onSelected = { scan.invalidateLookup() },
-    )
+    private val settingsState = SettingsState(AppSettings(application), clock)
     private val engine = BreakfastEngine(
         BreakfastStore(application),
-        countTypingSetting = { settings.countTyping },
-        learnFromPicksSetting = { settings.learnFromPicks },
-    )
-    /** The app's one modal message (see [Notices]); features speak through it. */
-    internal val notices = Notices()
-    /** The read model and the write gate (see [DiarySession]). */
-    private val session = DiarySession(
-        source = object : DiarySource {
-            override suspend fun open() = engine.initialize()
-            override fun foods() = engine.foods()
-            override fun entries() = engine.persistedMeal().entries
-            override suspend fun reloadIfStale() = engine.reloadIfStale()
-        },
-        scope = viewModelScope,
-        onOpenFailed = { Log.e(LOG_TAG, "Storage could not be opened", it) },
-        onRefreshed = { entryEdit.diaryReloaded() },
+        countTypingSetting = { settingsState.countTyping },
+        learnFromPicksSetting = { settingsState.learnFromPicks },
     )
     private val off = OpenFoodFactsClient()
-    /** The pending Undo, its expiry and Delete (see [UndoController]); Daily and Meal talk to it. */
-    internal val undo = UndoController(
-        session = session,
-        store = object : UndoStore {
-            override suspend fun deleteEntry(id: String) = engine.deleteEntry(id)
-            override suspend fun restoreEntry(entry: MealEntry) { engine.restoreEntry(entry) }
-            override suspend fun deleteEntries(entries: List<MealEntry>) { engine.deleteEntries(entries) }
-        },
-        notices = notices,
-        windowMs = { undoWindowMs(settings.undoWindow) },
+    private val app = AppOwners(
+        stores = AppStores(
+            diary = object : DiarySource {
+                override suspend fun open() = engine.initialize()
+                override fun foods() = engine.foods()
+                override fun entries() = engine.persistedMeal().entries
+                override suspend fun reloadIfStale() = engine.reloadIfStale()
+            },
+            undo = object : UndoStore {
+                override suspend fun deleteEntry(id: String) = engine.deleteEntry(id)
+                override suspend fun restoreEntry(entry: MealEntry) { engine.restoreEntry(entry) }
+                override suspend fun deleteEntries(entries: List<MealEntry>) { engine.deleteEntries(entries) }
+            },
+            match = object : MatchStore {
+                override fun alternativesFor(entry: MealEntry) = engine.alternativesFor(entry)
+                override suspend fun replaceEntry(entryId: String, foodId: String) = engine.replaceEntry(entryId, foodId)
+                override suspend fun reinforce(foodId: String) = engine.reinforce(foodId)
+            },
+            resolve = object : ResolveStore {
+                override fun typed(raw: String) = engine.planner().typed(raw)
+                override fun search(query: String) = engine.search(query)
+                override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
+                    engine.cacheFoodAndLog(food, amount, unit, meal, dayKey)
+                }
+            },
+            log = object : LogStore {
+                override fun planner(pins: Map<String, FoodRecord>) = engine.planner(pins)
+                override suspend fun save(text: String, meal: MealSlot, dayKey: String, pins: Map<String, FoodRecord>) =
+                    engine.save(text, mealSlot = meal, dayKey = dayKey, pins = pins)
+            },
+            library = object : LibraryStore {
+                override suspend fun foodsMatching(query: String) = engine.foodsMatching(query)
+                override fun planner() = engine.planner()
+                override fun search(phrase: String) = engine.search(phrase)
+                override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
+                    engine.cacheFoodAndLog(food, amount, unit, meal, dayKey)
+                }
+                override suspend fun save(text: String, meal: MealSlot, dayKey: String) = engine.save(text, mealSlot = meal, dayKey = dayKey)
+                override suspend fun deleteFood(id: String) { engine.deleteFood(id) }
+            },
+            entryEdit = object : EntryEditStore {
+                override suspend fun replaceAmountUnit(entryId: String, text: String) = engine.replaceEntryAmountUnit(entryId, text)
+                override suspend fun replaceEntry(entryId: String, foodId: String, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) =
+                    engine.replaceEntryDraft(entryId, foodId, amount, unit, meal, dayKey)
+            },
+            foodForm = object : FoodFormStore {
+                override suspend fun updateFood(food: FoodRecord) = engine.updateFood(food)
+                override suspend fun saveFood(food: NewFood) = engine.saveCustomFood(
+                    food.name, food.brand, food.barcode, food.aliases, food.nutrition, food.basisAmount, food.basisUnit,
+                    sourceName = food.sourceName, sourceDescription = food.sourceDescription,
+                )
+                override suspend fun saveFoodAndLog(food: NewFood, meal: MealSlot, dayKey: String): FoodRecord {
+                    val entry = engine.saveCustomAndLog(
+                        food.name, food.brand, food.barcode, food.aliases, food.nutrition, food.basisAmount, food.basisUnit, meal,
+                        food.basisAmount, food.basisUnit, dayKey = dayKey, sourceName = food.sourceName, sourceDescription = food.sourceDescription,
+                    )
+                    return engine.foodById(entry.foodId) ?: error("Saved food could not be reloaded.")
+                }
+            },
+            products = object : ProductStore {
+                override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
+                    engine.cacheFoodAndLog(food, amount, unit, meal, dayKey)
+                }
+                override suspend fun updateFood(food: FoodRecord) = engine.updateFood(food)
+                override suspend fun cacheFood(food: FoodRecord) = engine.cacheFood(food)
+            },
+            barcodes = object : BarcodeLookup {
+                override suspend fun localFood(barcode: String) = engine.foodByBarcode(barcode)
+                override suspend fun openFoodFacts(barcode: String) = off.barcode(barcode)
+            },
+            diaryData = object : DiaryData {
+                override suspend fun exportRows() = engine.exportRows()
+                override suspend fun replaceDiary(rows: DiaryRows) { engine.replaceDiary(rows) }
+                override suspend fun deleteAllData(alsoPreferences: Boolean) { engine.deleteAllData(alsoPreferences) }
+            },
+            diaryFiles = ContentDiaryFiles(application.contentResolver, application.noBackupFilesDir),
+            transferLog = object : TransferLog {
+                override fun error(message: String, cause: Throwable?) { Log.e(LOG_TAG, message, cause) }
+                override fun warn(message: String) { Log.w(LOG_TAG, message) }
+            },
+            contributions = off,
+            offSearch = off,
+        ),
+        settings = settingsState,
+        savedState = savedState,
+        threads = AppThreads(viewModelScope, io = Dispatchers.IO, main = Dispatchers.Main, compute = Dispatchers.Default),
         clock = clock,
-        scope = viewModelScope,
+        zone = { ZoneId.systemDefault() },
+        // The "Storage unavailable" dialog offers [retryStorage]; the cause goes to the log only.
+        onOpenFailed = { Log.e(LOG_TAG, "Storage could not be opened", it) },
     )
-    /** "Not right?" after a logged batch (see [MatchFeedback]); held while the resolver is open. */
-    internal val feedback = MatchFeedback(
-        session = session,
-        store = object : MatchStore {
-            override fun alternativesFor(entry: MealEntry) = engine.alternativesFor(entry)
-            override suspend fun replaceEntry(entryId: String, foodId: String) = engine.replaceEntry(entryId, foodId)
-            override suspend fun reinforce(foodId: String) = engine.reinforce(foodId)
-        },
-        notices = notices,
-        resolverOpen = { resolve.resolverOpen },
-        clock = clock,
-        scope = viewModelScope,
-    )
-    /** The Open Food Facts contribution flow (see [ContributionFlow]). */
-    internal val contribution = ContributionFlow(off, notices, viewModelScope, Dispatchers.IO)
-    /** The Open Food Facts search (see [OffSearch]); what it opens over and returns to stays with the resolve flow. */
-    internal val search: OffSearch = OffSearch(
-        off = off,
-        scope = viewModelScope,
-        io = Dispatchers.IO,
-        ready = { ready },
-        onOpen = { fromResolver -> surfaces.searchOpened(fromResolver) },
-        onClose = { resolve.childClosed() },
-        onChoose = { food -> review.choose(food) },
-    )
-    /** Export, import, Delete all and the safety copy (see [DiaryTransfer]); the root launches its pickers. */
-    internal val transfer = DiaryTransfer(
-        session = session,
-        data = object : DiaryData {
-            override suspend fun exportRows() = engine.exportRows()
-            override suspend fun replaceDiary(rows: DiaryRows) { engine.replaceDiary(rows) }
-            override suspend fun deleteAllData(alsoPreferences: Boolean) { engine.deleteAllData(alsoPreferences) }
-        },
-        files = ContentDiaryFiles(application.contentResolver, application.noBackupFilesDir),
-        settings = settings,
-        notices = notices,
-        clock = clock,
-        scope = viewModelScope,
-        io = Dispatchers.IO,
-        log = object : TransferLog {
-            override fun error(message: String, cause: Throwable?) { Log.e(LOG_TAG, message, cause) }
-            override fun warn(message: String) { Log.w(LOG_TAG, message) }
-        },
-        onExported = { reminders.hide() },
-    )
-    /** "Export your diary." on Daily (see [ExportReminders]). */
-    internal val reminders: ExportReminders = ExportReminders(settings, session, clock, requestExport = { transfer.requestPicker(DiaryPicker.EXPORT) })
+
+    // The owners, as [AppOwners] describes them.
+    internal val settings = app.settings
+    internal val day = app.day
+    internal val notices = app.notices
+    internal val undo = app.undo
+    internal val feedback = app.feedback
+    internal val contribution = app.contribution
+    internal val search = app.search
+    internal val transfer = app.transfer
+    internal val reminders = app.reminders
+    internal val resolve = app.resolve
+    internal val log = app.log
+    internal val library = app.library
+    internal val entryEdit = app.entryEdit
+    internal val foodForm = app.foodForm
+    internal val scan = app.scan
+    internal val review = app.review
+    internal val surfaces = app.surfaces
+
+    private val session = app.session
     val foods: List<FoodRecord> get() = session.foods
     val entries: List<MealEntry> get() = session.entries
-    /** "Not in your foods": the Log ↔ Library resolve frame, the unknown queue and the resolver (see [ResolveFlow]). */
-    internal val resolve: ResolveFlow = ResolveFlow(
-        session = session,
-        store = object : ResolveStore {
-            override fun typed(raw: String) = engine.planner().typed(raw)
-            override fun search(query: String) = engine.search(query)
-            override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
-                engine.cacheFoodAndLog(food, amount, unit, meal, dayKey)
-            }
-        },
-        notices = notices,
-        scope = viewModelScope,
-        compute = Dispatchers.Default,
-        selectedDay = { day.selectedDayKey },
-        openLibrary = { meal, query -> surfaces.openFocusedLibrary(meal, query) },
-        returnToLog = { request, pick -> surfaces.returnToLog(request, pick) },
-    )
-    /** The Log draft and the Log page (see [LogComposer]). */
-    internal val log: LogComposer = LogComposer(
-        session = session,
-        store = object : LogStore {
-            override fun planner(pins: Map<String, FoodRecord>) = engine.planner(pins)
-            override suspend fun save(text: String, meal: MealSlot, dayKey: String, pins: Map<String, FoodRecord>) =
-                engine.save(text, mealSlot = meal, dayKey = dayKey, pins = pins)
-        },
-        selectedDay = { day.selectedDayKey },
-        automaticMeal = ::automaticMealNow,
-        openMeal = ::mealOnScreen,
-        editing = { entryEdit.mode != EntryEditMode.NONE },
-        afterSave = resolve::afterSave,
-        resolvePart = resolve::beginPart,
-        // Typed work comes back after the process was killed: the log draft (and an open food form, in [init]).
-        initial = restoreLogDraft(savedState),
-    )
-    /** The Library list, its bar, the food page and logging from it (see [LibraryState]). */
-    internal val library: LibraryState = LibraryState(
-        session = session,
-        store = object : LibraryStore {
-            override suspend fun foodsMatching(query: String) = engine.foodsMatching(query)
-            override fun planner() = engine.planner()
-            override fun search(phrase: String) = engine.search(phrase)
-            override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
-                engine.cacheFoodAndLog(food, amount, unit, meal, dayKey)
-            }
-            override suspend fun save(text: String, meal: MealSlot, dayKey: String) = engine.save(text, mealSlot = meal, dayKey = dayKey)
-            override suspend fun deleteFood(id: String) { engine.deleteFood(id) }
-        },
-        notices = notices,
-        scope = viewModelScope,
-        io = Dispatchers.IO,
-        main = Dispatchers.Main,
-        compute = Dispatchers.Default,
-        selectedDay = { day.selectedDayKey },
-        resolvingPart = { resolve.resolvingPart },
-        onPartPicked = resolve::finishPart,
-        // Nothing that still holds the deleted food can store it again: its form, a Log pin, an open review.
-        onDeleted = { food ->
-            foodForm.foodDeleted(food.id)
-            log.dropPinsOf(food.id)
-            review.foodDeleted(food.id)
-        },
-        afterSave = resolve::afterSave,
-    )
-    /** The entry detail and the quick and full edits (see [EntryEdit]); an edit shows its meal and returns to Daily through here. */
-    internal val entryEdit: EntryEdit = EntryEdit(
-        session = session,
-        store = object : EntryEditStore {
-            override suspend fun replaceAmountUnit(entryId: String, text: String) = engine.replaceEntryAmountUnit(entryId, text)
-            override suspend fun replaceEntry(entryId: String, foodId: String, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) =
-                engine.replaceEntryDraft(entryId, foodId, amount, unit, meal, dayKey)
-        },
-        openMeal = ::mealOnScreen,
-        // The edit's meal shows beneath it; the Log's error goes, as it always did when an edit began.
-        onBegin = { meal -> surfaces.editBegan(meal) },
-        onEnd = { returnToDaily -> surfaces.editEnded(returnToDaily) },
-        initialEntryId = savedState["entry_id"],
-        saveEntryId = { savedState["entry_id"] = it },
-    )
-    /** New food and Edit food (see [FoodForm]); what it opens over and returns to stays with the resolve flow. */
-    internal val foodForm: FoodForm = FoodForm(
-        session = session,
-        store = object : FoodFormStore {
-            override suspend fun updateFood(food: FoodRecord) = engine.updateFood(food)
-            override suspend fun saveFood(food: NewFood) = engine.saveCustomFood(
-                food.name, food.brand, food.barcode, food.aliases, food.nutrition, food.basisAmount, food.basisUnit,
-                sourceName = food.sourceName, sourceDescription = food.sourceDescription,
-            )
-            override suspend fun saveFoodAndLog(food: NewFood, meal: MealSlot, dayKey: String): FoodRecord {
-                val entry = engine.saveCustomAndLog(
-                    food.name, food.brand, food.barcode, food.aliases, food.nutrition, food.basisAmount, food.basisUnit, meal,
-                    food.basisAmount, food.basisUnit, dayKey = dayKey, sourceName = food.sourceName, sourceDescription = food.sourceDescription,
-                )
-                return engine.foodById(entry.foodId) ?: error("Saved food could not be reloaded.")
-            }
-        },
-        notices = notices,
-        selectedDay = { day.selectedDayKey },
-        openMeal = ::mealOnScreen,
-        queue = resolve::queueView,
-        resolvingPart = { resolve.resolvingPart },
-        offerContribution = contribution::offerAfterLocalSave,
-        startScanFor = { onBarcode -> scan.beginFor(onBarcode) },
-        onOpen = { fromResolver -> surfaces.foodFormOpened(fromResolver) },
-        onClose = resolve::childClosed,
-        onSaved = resolve::foodSaved,
-    )
-    /** The scanner and its barcode lookup (see [ScanSession]); a found product goes to [review], an unknown one to [foodForm]. */
-    internal val scan: ScanSession = ScanSession(
-        lookup = object : BarcodeLookup {
-            override suspend fun localFood(barcode: String) = engine.foodByBarcode(barcode)
-            override suspend fun openFoodFacts(barcode: String) = off.barcode(barcode)
-        },
-        notices = notices,
-        scope = viewModelScope,
-        io = Dispatchers.IO,
-        lookUpBarcodes = { settings.lookUpBarcodes },
-        selectedDay = { day.selectedDayKey },
-        targetMeal = ::mealOnScreen,
-        queueActive = { resolve.queueActive },
-        onProduct = { food, origin -> surfaces.productScanned(food, origin) },
-        onManualForm = { name, brand, barcode, fromOff -> foodForm.open(name, brand, barcode, fromOff = fromOff) },
-    )
-    /** Product review after a scan or a search pick (see [ProductReview]); its queue and resolve hand-offs go to [resolve]. */
-    internal val review: ProductReview = ProductReview(
-        session = session,
-        store = object : ProductStore {
-            override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
-                engine.cacheFoodAndLog(food, amount, unit, meal, dayKey)
-            }
-            override suspend fun updateFood(food: FoodRecord) = engine.updateFood(food)
-            override suspend fun cacheFood(food: FoodRecord) = engine.cacheFood(food)
-        },
-        notices = notices,
-        selectedDay = { day.selectedDayKey },
-        openMeal = ::mealOnScreen,
-        queue = resolve::queueView,
-        resolvingPart = { resolve.resolvingPart },
-        offerContribution = contribution::offerAfterLocalSave,
-        onPartResolved = resolve::finishPart,
-        onLogged = resolve::childLogged,
-        onClosed = resolve::childClosed,
-        openSearch = { fromResolver -> search.open(fromResolver = fromResolver) },
-        startScan = { scan.begin() },
-    )
-    /** What is open and in which order: drawing, Back and the top check (see [Surfaces]); the Meal screen and Settings. */
-    internal val surfaces: Surfaces = Surfaces(
-        session, notices, settings, log, library, resolve, entryEdit, foodForm, search, scan, review, contribution, transfer,
-        initialMeal = savedState.get<String>(MEAL_SLOT_KEY)?.let { runCatching { MealSlot.valueOf(it) }.getOrNull() },
-    )
     val ready: Boolean get() = session.ready
     /** A diary write is running ([DiarySession.write]); user actions that write are refused meanwhile. */
     val busy: Boolean get() = session.busy
     /** Storage failed to open; the dialog stays until a retry opens it. */
     val storageUnavailable: Boolean get() = session.storageUnavailable
 
-    init {
-        restoreFoodForm(savedState)?.let(foodForm::restore)
-        // Every change is mirrored, so an added or cleared draft and a closed or saved form drop their keys.
-        viewModelScope.launch { snapshotFlow { log.savedDraft() }.collect { saveLogDraft(savedState, it) } }
-        viewModelScope.launch { snapshotFlow { foodForm.savedForm() }.collect { saveFoodForm(savedState, it) } }
-        // The meal on screen comes back after process death as the Meal screen (the Library does not reopen).
-        viewModelScope.launch { snapshotFlow { mealOnScreen() }.collect { savedState[MEAL_SLOT_KEY] = it?.name } }
-        // After every committed write, in this order: Undo, "Not right?" feedback, the Library list.
-        session.onChange(undo::onChange)
-        session.onChange(feedback::onChange)
-        session.onChange { change -> if (change.refreshesLibrary) library.refresh() }
-        // Import and Delete all: one reset of everything that referred to the old diary (see [SessionReset]).
-        session.onChange(SessionReset(sessionResetSteps(log, contribution, resolve, entryEdit))::onChange)
-        // A new day start: today follows it at once, and a user on today stays on today (it counts as a return).
-        settings.dayStartHourSetting.observe { day.check(returning = true) }
-        // An Undo offer showing now follows the new window from the moment it was made.
-        settings.undoWindowSetting.observe { undo.windowChanged() }
-        settings.exportReminderSetting.observe(reminders::settingChanged)
-        // "Safety copy" Don't keep also removes the copy kept so far.
-        settings.keepSafetyCopySetting.observe { keep -> if (!keep) transfer.removeSafetyCopy() }
-        openStore()
-    }
-    /** Opens storage; on failure the "Storage unavailable" dialog offers [retryStorage]. The cause goes to the log only. */
-    private fun openStore() = session.open {
-        reminders.check()
-        foodForm.closeIfFoodGone()
-    }
     /** "Try again" on the storage dialog: runs the same open again. */
-    fun retryStorage() = openStore()
+    fun retryStorage() = app.openStore()
     /** The 60-second loop: today is recomputed, while the selected day stays where it is. */
     fun reloadToday() { day.check(returning = false); if (ready) session.refresh() }
     private var stopped = false
@@ -345,18 +180,8 @@ class BreakfastViewModel(application: Application, private val savedState: Saved
         if (ready) session.refresh()
         reminders.check()
     }
-    /**
-     * The meal the "Meal" setting gives a log with no chosen, typed or preset meal, at this moment; null for Ask. The
-     * Log page falls back to it, and the Library preselects it (see [libraryPresetMeal]).
-     */
-    internal fun automaticMealNow(): MealSlot? = automaticMeal(
-        settings.mealMode, java.time.Instant.ofEpochMilli(clock()).atZone(zone).hour, settings.mealBounds, lastUsedMeal(entries), settings.dayStartHour, settings.beforeDayStart,
-    )
-    /** The meal of the screen on show ([Surfaces.mealOnScreen]), for the owners that log to it. */
-    private fun mealOnScreen(): MealSlot? = surfaces.mealOnScreen()
+    /** The meal the "Meal" setting gives a log now ([AppOwners.automaticMealNow]); null for Ask. */
+    internal fun automaticMealNow(): MealSlot? = app.automaticMealNow()
 }
-
-/** The meal on screen in `SavedStateHandle`. */
-private const val MEAL_SLOT_KEY = "meal_slot"
 
 internal const val LOG_TAG = "Breakfast"
