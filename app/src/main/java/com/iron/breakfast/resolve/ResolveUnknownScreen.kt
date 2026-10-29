@@ -2,6 +2,7 @@ package com.iron.breakfast.resolve
 
 import com.iron.breakfast.ui.theme.*
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +16,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -26,6 +28,7 @@ import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.components.ButtonKind
+import com.iron.breakfast.ui.components.ConfirmationSnackbar
 import com.iron.breakfast.ui.components.SearchField
 import com.iron.breakfast.ui.components.SecondaryButton
 import com.iron.breakfast.ui.components.SectionHeading
@@ -51,7 +54,7 @@ import com.iron.breakfast.ui.screens.matchDisplay
     val meta = listOfNotNull(context.ifBlank { null }, "$position of $total").joinToString(". ")
     val typed = listOfNotNull(display.quantity, display.name).joinToString(" ")
     LaunchedEffect(raw) { resolve.onQuery(display.name) }
-    Surface(Modifier.fillMaxSize(), color = colors.bg) {
+    Surface(Modifier.fillMaxSize(), color = colors.bg) { Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter).verticalScroll(rememberScrollState())) {
             TopBar("Resolve", resolve::close, Modifier.padding(top = 8.dp))
             Column(Modifier.padding(top = 14.dp).fillMaxWidth().semantics(mergeDescendants = true) { }) {
@@ -86,5 +89,10 @@ import com.iron.breakfast.ui.screens.matchDisplay
                 }
             }
         }
-    }
+        // A part logged from a screen the resolver opened says "Logged!" here, while the queue goes on.
+        ConfirmationSnackbar(
+            vm.confirmations.message,
+            Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter).padding(bottom = 8.dp),
+        )
+    } }
 }

@@ -93,6 +93,7 @@ class FoodFormTest {
         assertEquals(listOf("save Ayran"), store.calls)
         assertEquals(listOf<DiaryChange>(DiaryChange.FoodsChanged), diary.published)
         assertEquals("Saved to your food library.", notices.message)
+        assertEquals("saved alone, nothing was logged", 0, confirmed)
         assertFalse(form.open)
         assertEquals("", form.draft.name)
         assertEquals(listOf("open fromResolver=false", "saved Ayran new=true advances=false"), events)
@@ -142,6 +143,7 @@ class FoodFormTest {
         assertEquals("an unchanged barcode keeps its spelling", "4006381333931", store.updated.single().barcode)
         assertEquals(listOf<DiaryChange>(DiaryChange.FoodsChanged), diary.published)
         assertEquals("Personal food updated for future logs.", notices.message)
+        assertEquals("an edit logs nothing, so no \"Logged!\"", 0, confirmed)
         assertEquals("the edit reports the food as it was", "saved Kefir new=false advances=false", events.last())
     }
 

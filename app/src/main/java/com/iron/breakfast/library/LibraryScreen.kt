@@ -110,27 +110,31 @@ internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
     // A part being resolved is searched for, not added to a meal the user did not choose here.
     val title = if (vm.resolve.resolvingPart) "Search" else if (root) "Library" else "Add to ${library.target!!.label()}"
     val subtitle = if (root) "${library.foods.size} foods, by last logged" else entryDateLabel(vm.day.selectedDayKey)
-    LazyColumn(modifier.fillMaxSize().background(colors.bg).padding(horizontal = Gutter)) {
-        item {
-            Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (!root) IconButton(onClick = vm.surfaces::exitLibrary, modifier = Modifier.size(44.dp)) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.ink)
+    Box(modifier.fillMaxSize().background(colors.bg)) {
+        LazyColumn(Modifier.fillMaxSize().padding(horizontal = Gutter)) {
+            item {
+                Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (!root) IconButton(onClick = vm.surfaces::exitLibrary, modifier = Modifier.size(44.dp)) {
+                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.ink)
+                    }
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                        Text(title, color = colors.ink, style = BreakfastType.Section)
+                        Text(subtitle, color = colors.soft, style = BreakfastType.Meta)
+                    }
+                    if (root) TertiaryButton("New food", { vm.foodForm.open() }) else Spacer(Modifier.size(44.dp))
                 }
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
-                    Text(title, color = colors.ink, style = BreakfastType.Section)
-                    Text(subtitle, color = colors.soft, style = BreakfastType.Meta)
-                }
-                if (root) TertiaryButton("New food", { vm.foodForm.open() }) else Spacer(Modifier.size(44.dp))
+                Hairline()
             }
-            Hairline()
+            // Rows fade in and out as the list changes, and move to their new place (logged foods go to the top).
+            items(library.foods, key = { it.id }) { food ->
+                LibraryFoodRow(vm, food, root, Modifier.animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem()))
+            }
+            item {
+                Hairline(Modifier.padding(top = 8.dp))
+            }
         }
-        // Rows fade in and out as the list changes, and move to their new place (logged foods go to the top).
-        items(library.foods, key = { it.id }) { food ->
-            LibraryFoodRow(vm, food, root, Modifier.animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem()))
-        }
-        item {
-            Hairline(Modifier.padding(top = 8.dp))
-        }
+        // "Logged!" floats over the end of the list, just above the bar, as on Daily and Meal: nothing moves.
+        ConfirmationSnackbar(vm.confirmations.message, Modifier.align(Alignment.BottomCenter).padding(horizontal = Gutter).padding(bottom = 8.dp))
     }
 }
 
@@ -185,36 +189,32 @@ internal fun LibraryComposer(vm: BreakfastViewModel) {
     val resolveCleared = vm.resolve.resolvingPart && library.query.isEmpty()
     LaunchedEffect(resolveCleared) { if (resolveCleared) { runCatching { focus.requestFocus() }; keyboard?.show() } }
     Column(Modifier.fillMaxWidth().background(colors.bg).then(if (inMeal) Modifier else Modifier.navigationBarsPadding()).padding(horizontal = Gutter, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // "Logged!" sits on the bar; the bar keeps its place in the column.
-        Column {
-            ConfirmationSnackbar(vm.confirmations.message, Modifier.padding(bottom = 8.dp))
-            InkBar(if (inMeal) Modifier.navigationBarsPadding() else Modifier) {
-                BasicTextField(
-                    value = library.input,
-                    onValueChange = library::onInput,
-                    singleLine = true,
-                    textStyle = BreakfastType.Body.copy(color = colors.bg),
-                    cursorBrush = SolidColor(colors.bg),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { library.submitInput() }, onDone = { library.submitInput() }),
-                    modifier = Modifier
-                        .weight(1f)
-                        .focusRequester(focus)
-                        .onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { library.submitInput(); true } else false }
-                        .semantics { contentDescription = "Search foods" },
-                    decorationBox = { inner ->
-                        Box(Modifier.heightIn(min = 22.dp), contentAlignment = Alignment.CenterStart) {
-                            if (library.input.isEmpty()) Text("Search foods", color = colors.bg.copy(alpha = 0.6f), style = BreakfastType.Body)
-                            inner()
-                        }
-                    },
-                )
-                if (library.input.isNotEmpty()) IconButton(onClick = { library.onInput("") }, modifier = Modifier.size(IconTarget)) {
-                    Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = colors.bg, modifier = Modifier.size(20.dp))
-                }
-                IconButton(onClick = vm.scan::begin, modifier = Modifier.size(IconTarget)) {
-                    Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.bg)
-                }
+        InkBar(if (inMeal) Modifier.navigationBarsPadding() else Modifier) {
+            BasicTextField(
+                value = library.input,
+                onValueChange = library::onInput,
+                singleLine = true,
+                textStyle = BreakfastType.Body.copy(color = colors.bg),
+                cursorBrush = SolidColor(colors.bg),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { library.submitInput() }, onDone = { library.submitInput() }),
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(focus)
+                    .onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { library.submitInput(); true } else false }
+                    .semantics { contentDescription = "Search foods" },
+                decorationBox = { inner ->
+                    Box(Modifier.heightIn(min = 22.dp), contentAlignment = Alignment.CenterStart) {
+                        if (library.input.isEmpty()) Text("Search foods", color = colors.bg.copy(alpha = 0.6f), style = BreakfastType.Body)
+                        inner()
+                    }
+                },
+            )
+            if (library.input.isNotEmpty()) IconButton(onClick = { library.onInput("") }, modifier = Modifier.size(IconTarget)) {
+                Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = colors.bg, modifier = Modifier.size(20.dp))
+            }
+            IconButton(onClick = vm.scan::begin, modifier = Modifier.size(IconTarget)) {
+                Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.bg)
             }
         }
         if (!inMeal) BottomNav(selectedToday = false, onToday = { vm.surfaces.closeMeal(); vm.surfaces.closeLibrary() }, onLibrary = {}, onSettings = vm.surfaces::openSettings)

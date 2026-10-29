@@ -185,7 +185,7 @@ class SurfacesTest {
         app.foodForm.open(app.resolve.currentName(), fromResolver = true)
         app.foodForm.draft.calories = "40"
         app.foodForm.save()
-        // "Logged!" is no dialog: it waits on Daily's composer, under the resolver, and goes by itself.
+        // "Logged!" is no dialog: the resolver, back over Daily for the next part, shows it, and it goes by itself.
         shows("DAILY", "RESOLVER")
         assertEquals("Logged!", app.confirmations.message)
         app.foodForm.open(app.resolve.currentName(), fromResolver = true)
