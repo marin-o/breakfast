@@ -289,9 +289,9 @@ class FoodMatcher(
 
 /**
  * [text] with a hyphen between two letters read as a word break, as food names and aliases are matched: "coca-cola" is
- * "coca cola", "кока-кола" "кока кола". A hyphen between letters of two scripts joins them into one word instead, which
- * mixes scripts and so matches nothing: splitting it must not make a match across scripts. A hyphen by a digit ("1-2")
- * is left as it is.
+ * "coca cola", "кока-кола" "кока кола", and "Vitaminka-Витаминка" two words, each in one script (as the matcher's
+ * tokens always split it), so the script rule holds word by word. A hyphen at either end of a word ("coca-", still being
+ * typed) is a break too. A hyphen by a digit ("1-2") is left as it is.
  */
 fun hyphensAsBreaks(text: String): String {
     if ('-' !in text) return text
@@ -300,11 +300,9 @@ fun hyphensAsBreaks(text: String): String {
         val c = text[i]
         val before = text.getOrNull(i - 1)
         val after = text.getOrNull(i + 1)
-        if (c == '-' && before != null && after != null && before.isLetter() && after.isLetter()) {
-            if (scriptOf(before.toString()) == scriptOf(after.toString())) out.append(' ')
-            continue
-        }
-        out.append(c)
+        val byLetter = before?.isLetter() == true || after?.isLetter() == true
+        val byDigit = before?.isDigit() == true || after?.isDigit() == true
+        out.append(if (c == '-' && byLetter && !byDigit) ' ' else c)
     }
     return out.toString()
 }

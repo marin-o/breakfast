@@ -601,7 +601,9 @@ internal fun foodMatchesQuery(food: FoodRecord, query: String): Boolean {
         food.brand?.let { searchText(it).contains(normalized) } == true || barcodeMatchesQuery(food.barcode, query.trim().lowercase())
 }
 
-private fun searchText(text: String): String = hyphensAsBreaks(text).lowercase()
+private fun searchText(text: String): String = hyphensAsBreaks(text).lowercase().replace(SPACES, " ").trim()
+
+private val SPACES = Regex("\\s+")
 
 /** Library search on a barcode: part of the stored digits, or the whole code in any equivalent spelling. */
 internal fun barcodeMatchesQuery(barcode: String?, query: String): Boolean =
