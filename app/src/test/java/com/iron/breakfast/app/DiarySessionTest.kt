@@ -34,7 +34,14 @@ class DiarySessionTest {
         override suspend fun open() { openFailure?.let { throw it } }
         override fun foods(): List<FoodRecord> = emptyList()
         override fun entries(): List<MealEntry> { entryReads++; events += "refresh"; return rows }
-        override suspend fun reloadIfStale(): Boolean = staleOnce.also { staleOnce = false }
+        /** How often the session asked to reload; [hold] keeps a check running. */
+        var checks = 0
+        var hold: CompletableDeferred<Unit>? = null
+        override suspend fun reloadIfStale(): Boolean {
+            checks++
+            hold?.await()
+            return staleOnce.also { staleOnce = false }
+        }
         override fun damagedNoticePending() = damaged
         /** The next reload went on with a fresh diary after damage. */
         var replaced = false
@@ -88,6 +95,32 @@ class DiarySessionTest {
         session.write(change = DiaryChange.MatchConfirmed) {}
         assertEquals(listOf<DiaryChange>(DiaryChange.MatchConfirmed), published)
         assertEquals(0, source.entryReads)
+    }
+
+    /** Review §9 item 13: refreshes during a running check become one more check, not one each. */
+    @Test fun refreshesDuringACheckAreCoalescedIntoOneMore() {
+        opened()
+        source.checks = 0
+        val hold = CompletableDeferred<Unit>().also { source.hold = it }
+        session.refresh()
+        session.refresh()
+        session.refresh()
+        assertEquals("one check in flight", 1, source.checks)
+        source.hold = null
+        hold.complete(Unit)
+        assertEquals("plus the one queued", 2, source.checks)
+        session.refresh()
+        assertEquals("and a later refresh checks again", 3, source.checks)
+    }
+
+    /** A check that reloaded asks once more, as before; the reads follow the reload. */
+    @Test fun aCheckThatReloadedReadsAgainAndChecksOnceMore() {
+        opened()
+        source.checks = 0
+        source.staleOnce = true
+        session.refresh()
+        assertEquals(2, source.checks)
+        assertEquals("read, then read again after the reload", 2, source.entryReads)
     }
 
     /** D15: a reload that went on with a fresh diary after damage resets the session as an import does. */

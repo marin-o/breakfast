@@ -87,15 +87,39 @@ internal class DiarySession(
         }
     }
 
+    /** A [DiarySource.reloadIfStale] is running ([checkStale]). */
+    private var checking = false
+    /** [refresh] was called while one ran: one more check follows it, however many calls came. */
+    private var checkAgain = false
+
     /** Reloads [foods] and [entries]. A write that committed but could not reload the diary is reloaded now, then read again. */
     fun refresh() {
         foods = source.foods()
         entries = source.entries()
         onRefreshed()
+        checkStale()
+    }
+
+    /**
+     * Asks the source to reload what a committed write could not ([DiarySource.reloadIfStale]): at most one check runs
+     * at a time, and the calls made meanwhile become one more check after it. A check that reloaded reads the diary
+     * again, which asks once more, as each refresh did.
+     */
+    private fun checkStale() {
+        if (checking) { checkAgain = true; return }
+        checking = true
         scope.launch {
-            if (!suspendRunCatching { source.reloadIfStale() }.getOrDefault(false)) return@launch
-            // A fresh diary after damage: everything that referred to the old one goes, as after an import.
-            if (source.takeDiaryReplaced()) publish(DiaryChange.DiaryReplaced) else refresh()
+            try {
+                do {
+                    checkAgain = false
+                    if (suspendRunCatching { source.reloadIfStale() }.getOrDefault(false)) {
+                        // A fresh diary after damage: everything that referred to the old one goes, as after an import.
+                        if (source.takeDiaryReplaced()) publish(DiaryChange.DiaryReplaced) else refresh()
+                    }
+                } while (checkAgain)
+            } finally {
+                checking = false
+            }
         }
     }
 
