@@ -290,7 +290,7 @@ internal class AppOwners<D>(
         session.onChange(feedback::onChange)
         session.onChange { change -> if (change.refreshesLibrary) library.refresh() }
         // Import and Delete all: one reset of everything that referred to the old diary (see [SessionReset]).
-        session.onChange(SessionReset(sessionResetSteps(log, contribution, resolve, entryEdit))::onChange)
+        session.onChange(SessionReset(sessionResetSteps(log, contribution, resolve, entryEdit, foodForm))::onChange)
         // A new day start: today follows it at once, and a user on today stays on today (it counts as a return).
         settings.dayStartHourSetting.observe { day.check(returning = true) }
         // An Undo offer showing now follows the new window from the moment it was made.

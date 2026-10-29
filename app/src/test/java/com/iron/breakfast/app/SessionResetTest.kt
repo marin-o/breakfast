@@ -6,6 +6,7 @@ import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionValues
+import com.iron.breakfast.resolve.food
 import com.iron.breakfast.today.entry
 import com.iron.breakfast.transfer.validDiaryText
 import org.junit.Assert.assertEquals
@@ -21,7 +22,8 @@ import org.junit.Test
  * contribution candidate, which referred to the old diary.
  *
  * Over the app as the view model wires it ([AppKit]), so each step of the production [sessionResetSteps] is checked:
- * the Log's pins and its error, the contribution candidate, the resolve queue and resolver, the entry detail.
+ * the Log's pins and its error, the contribution candidate, the resolve queue and resolver, the entry detail, an Edit
+ * food of a food the new diary does not have.
  */
 class SessionResetTest {
     private val app = AppKit()
@@ -83,6 +85,19 @@ class SessionResetTest {
         deleteAll()
         assertTheSessionWasReset()
         assertEquals("ayran, 2 piece Egg", app.log.draft)
+    }
+
+    /** An Edit food whose food the new diary does not have closes; one whose food is there stays. */
+    @Test fun aReplacedDiaryClosesAnEditOfAFoodItDoesNotHave() {
+        app.foodForm.openEdit(food("jam", "Jam"))
+        import()
+        assertFalse(app.foodForm.open)
+        val kept = AppKit(foods = listOf(food("jam", "Jam")))
+        kept.foodForm.openEdit(food("jam", "Jam"))
+        kept.documents.documents["in.json"] = validDiaryText()
+        kept.transfer.import("in.json")
+        kept.transfer.confirmImport()
+        assertTrue(kept.foodForm.open)
     }
 
     @Test fun aReplaceOrDeleteThatFailedResetsNothing() {

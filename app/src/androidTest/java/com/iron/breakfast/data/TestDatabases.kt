@@ -16,3 +16,20 @@ internal fun deleteTestDatabase(context: Context, name: String) {
     listOf("", "-wal", "-shm", "-journal", ".lck").forEach { File(file.path + it).delete() }
     File(context.cacheDir, file.name + ".lck").delete()
 }
+
+/** The names the instrumented tests give their databases; nothing else is ever swept. */
+private val TEST_PREFIXES = listOf("breakfast-test-", "migration-", "damaged-test-", "bench-")
+
+/**
+ * The last cleanup of a test class, after every database it opened was closed (its rules included): any file in the
+ * app's databases or cache dir whose name starts with a test database's name goes, whatever left it (a lock file
+ * Room or the open helper made again after the per-test delete, for one). Finalizers run first, so a connection only
+ * they would close has closed. The app's own `breakfast.db` and its files never match.
+ */
+internal fun sweepTestDatabases(context: Context) {
+    repeat(3) { System.gc(); System.runFinalization() }
+    listOfNotNull(context.getDatabasePath("x").parentFile, context.cacheDir).forEach { dir ->
+        dir.listFiles()?.filter { file -> TEST_PREFIXES.any { file.name.startsWith(it) } && !file.name.startsWith("breakfast.db") }
+            ?.forEach { if (it.isDirectory) it.deleteRecursively() else it.delete() }
+    }
+}

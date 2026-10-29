@@ -54,6 +54,7 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
                 override suspend fun reloadIfStale() = engine.reloadIfStale()
                 override fun damagedNoticePending() = engine.damagedNoticePending()
                 override fun damagedNoticeSeen() = engine.damagedNoticeSeen()
+                override fun takeDiaryReplaced() = engine.takeDiaryReplaced()
             },
             undo = object : UndoStore {
                 override suspend fun deleteEntry(id: String) = engine.deleteEntry(id)
@@ -175,9 +176,10 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
     fun reloadToday() { day.check(returning = false); if (ready) session.refresh() }
     private var stopped = false
     /** The activity left the screen (backgrounded or closed). */
-    fun onAppStopped() { stopped = true; reminders.hide() }
+    fun onAppStopped() { stopped = true; reminders.hide(); announcements.stop() }
     /** The activity is on screen again after a stop: a user following today moves to the new today. */
     fun onAppStarted() {
+        announcements.start()
         if (!stopped) return
         stopped = false
         day.check(returning = true)

@@ -250,6 +250,9 @@ class BreakfastEngine(
 
     fun damagedNoticeSeen() = store.damagedNoticeSeen()
 
+    /** True once after the store went on with a fresh diary during the session (see `BreakfastStore`). */
+    fun takeDiaryReplaced(): Boolean = store.takeDiaryReplaced()
+
     fun foods(): List<FoodRecord> = store.foods()
 
     suspend fun foodByBarcode(barcode: String): FoodRecord? = store.foodByBarcode(barcode)

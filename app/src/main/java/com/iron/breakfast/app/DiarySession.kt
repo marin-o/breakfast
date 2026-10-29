@@ -27,6 +27,8 @@ internal interface DiarySource {
     fun damagedNoticePending(): Boolean = false
     /** The user saw that notice. */
     fun damagedNoticeSeen() {}
+    /** True once after a reload that went on with a fresh diary after damage: the session resets as after an import. */
+    fun takeDiaryReplaced(): Boolean = false
 }
 
 /**
@@ -90,7 +92,11 @@ internal class DiarySession(
         foods = source.foods()
         entries = source.entries()
         onRefreshed()
-        scope.launch { if (suspendRunCatching { source.reloadIfStale() }.getOrDefault(false)) refresh() }
+        scope.launch {
+            if (!suspendRunCatching { source.reloadIfStale() }.getOrDefault(false)) return@launch
+            // A fresh diary after damage: everything that referred to the old one goes, as after an import.
+            if (source.takeDiaryReplaced()) publish(DiaryChange.DiaryReplaced) else refresh()
+        }
     }
 
     /**

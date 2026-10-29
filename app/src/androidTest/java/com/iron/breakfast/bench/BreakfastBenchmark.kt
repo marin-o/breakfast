@@ -12,6 +12,7 @@ import com.iron.breakfast.data.BreakfastDatabase
 import com.iron.breakfast.data.BreakfastStore
 import com.iron.breakfast.data.DiaryRows
 import com.iron.breakfast.data.deleteTestDatabase
+import com.iron.breakfast.data.sweepTestDatabases
 import com.iron.breakfast.data.toAliasEntities
 import com.iron.breakfast.data.toConversionEntities
 import com.iron.breakfast.data.toDomain
@@ -23,6 +24,7 @@ import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.libraryRecencyOrder
 import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.AfterClass
 import org.junit.Assert.assertEquals
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -229,13 +231,18 @@ class BreakfastBenchmark {
         return args.getString("bench") == "true" || args.getString("class").orEmpty().contains("BreakfastBenchmark")
     }
 
-    private companion object {
-        const val TAG = "BreakfastBench"
+    companion object {
+        /** After the whole class: no test database file or lock is left on the device. */
+        @JvmStatic
+        @AfterClass
+        fun sweep() = sweepTestDatabases(ApplicationProvider.getApplicationContext())
+
+        private const val TAG = "BreakfastBench"
         /** Not a JUnit status code (1, 0, -1, -2, -3, -4): `am instrument -r` prints it as a plain status line. */
-        const val BENCH_STATUS = 2
-        const val PASSES = 10
+        private const val BENCH_STATUS = 2
+        private const val PASSES = 10
         /** At least 10, so the JIT and SQLite caches are warm before the timed runs. */
-        const val WARMUP = 10
-        const val ITERATIONS = 20
+        private const val WARMUP = 10
+        private const val ITERATIONS = 20
     }
 }

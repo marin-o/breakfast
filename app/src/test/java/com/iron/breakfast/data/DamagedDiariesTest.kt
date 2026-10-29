@@ -20,7 +20,7 @@ class DamagedDiariesTest {
     private val databases by lazy { temp.newFolder("databases") }
     private val root by lazy { File(temp.root, "no_backup/damaged") }
     private val now = LocalDateTime.parse("2026-10-29T14:05:09").atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-    private val damaged by lazy { DamagedDiaries(root) { now } }
+    private val damaged by lazy { DamagedDiaries(root, clock = { now }) }
 
     private fun file(name: String, bytes: ByteArray) = File(databases, name).apply { writeBytes(bytes) }
 
@@ -81,10 +81,88 @@ class DamagedDiariesTest {
     @Test fun theNoticeComesBackAfterTheAppWasKilledBeforeItWasSeen() {
         damaged.moveAside(file("breakfast.db", byteArrayOf(1)))
         // A new process reads the marker from disk.
-        val afterRestart = DamagedDiaries(root) { now }
+        val afterRestart = DamagedDiaries(root, clock = { now })
         assertTrue(afterRestart.noticePending())
         assertFalse("a move in the old process is not the new store's to reopen", afterRestart.takeMoved())
         afterRestart.noticeSeen()
-        assertFalse(DamagedDiaries(root) { now }.noticePending())
+        assertFalse(DamagedDiaries(root, clock = { now }).noticePending())
+    }
+
+    @Test fun aMoveThatFailsHalfwayPutsBackWhatItMovedAndMarksNothing() {
+        val db = file("breakfast.db", byteArrayOf(1))
+        val wal = file("breakfast.db-wal", byteArrayOf(2))
+        val failing = DamagedDiaries(root, { now }) { from, to ->
+            if (from.name == "breakfast.db") throw java.io.IOException("no room")
+            java.nio.file.Files.move(from.toPath(), to.toPath())
+        }
+        val failure = runCatching { failing.moveAside(db) }.exceptionOrNull()
+        assertEquals("no room", failure?.message)
+        assertArrayEquals("the WAL is back beside its database", byteArrayOf(2), wal.readBytes())
+        assertArrayEquals(byteArrayOf(1), db.readBytes())
+        assertFalse(failing.noticePending())
+        assertFalse(failing.needsReopen)
+        assertTrue("no folder is left", root.listFiles().orEmpty().isEmpty())
+    }
+
+    /** Damage found with a connection open: copied as found now, moved only after the store closed it. */
+    @Test fun aDiaryDamagedWhileOpenIsCopiedAsFoundAndMovedAfterTheClose() {
+        val db = file("breakfast.db", byteArrayOf(1, 1))
+        val wal = file("breakfast.db-wal", byteArrayOf(2, 2))
+        damaged.snapshot(db)
+        val folder = root.listFiles()!!.single()
+        assertArrayEquals(byteArrayOf(1, 1), File(folder, "breakfast.db").readBytes())
+        assertArrayEquals(byteArrayOf(2, 2), File(folder, "breakfast.db-wal").readBytes())
+        assertTrue("the originals stay under the open connection", db.exists() && wal.exists())
+        assertTrue(damaged.closePending)
+        assertTrue(damaged.needsReopen)
+        assertTrue(damaged.noticePending())
+        // A second report before the close copies nothing again.
+        damaged.snapshot(db)
+        assertEquals(1, root.listFiles()!!.size)
+        // The close checkpointed into the database and removed the WAL; that state goes beside the copy.
+        db.writeBytes(byteArrayOf(3))
+        wal.delete()
+        damaged.setAsideAfterClose()
+        assertFalse(db.exists())
+        assertArrayEquals(byteArrayOf(3), File(folder, "${DamagedDiaries.AFTER_CLOSE}/breakfast.db").readBytes())
+        assertArrayEquals("the copy as found is untouched", byteArrayOf(1, 1), File(folder, "breakfast.db").readBytes())
+        assertFalse(damaged.closePending)
+        assertTrue(damaged.takeMoved())
+        assertFalse(damaged.needsReopen)
+    }
+
+    @Test fun aHeaderSqliteCannotReadIsSetAsideBeforeItOpens() {
+        val garbage = "SQLite format 3\u0000".toByteArray() + ByteArray(200) { (it * 37 + 11).toByte() }
+        val db = file("breakfast.db", garbage)
+        val wal = file("breakfast.db-wal", byteArrayOf(5))
+        assertTrue(damaged.setAsideIfUnreadable(db))
+        val folder = root.listFiles()!!.single()
+        assertArrayEquals(garbage, File(folder, "breakfast.db").readBytes())
+        assertArrayEquals(byteArrayOf(5), File(folder, "breakfast.db-wal").readBytes())
+        assertFalse(wal.exists())
+    }
+
+    @Test fun aReadableHeaderAndAnEmptyOrMissingFileStay() {
+        assertFalse(damaged.setAsideIfUnreadable(File(databases, "breakfast.db")))
+        assertFalse(damaged.setAsideIfUnreadable(file("empty.db", ByteArray(0))))
+        assertFalse(damaged.setAsideIfUnreadable(file("short.db", byteArrayOf(1, 2, 3))))
+        assertFalse(damaged.setAsideIfUnreadable(file("good.db", validHeader())))
+        assertTrue(root.listFiles().orEmpty().isEmpty())
+    }
+
+    @Test fun theHeaderCheckIsSqlitesOwn() {
+        assertTrue(readableHeader(validHeader()))
+        assertTrue("page size 1 means 65536", readableHeader(validHeader().also { it[16] = 0; it[17] = 1 }))
+        assertFalse("not SQLite", readableHeader(ByteArray(100)))
+        assertFalse("page size not a power of two", readableHeader(validHeader().also { it[16] = 0x0f; it[17] = 0xa0.toByte() }))
+        assertFalse("file format version 3", readableHeader(validHeader().also { it[18] = 3 }))
+        assertFalse("payload fractions", readableHeader(validHeader().also { it[21] = 63 }))
+        assertTrue("shorter than a header: left to SQLite", readableHeader(ByteArray(10)))
+    }
+
+    /** The first 100 bytes of a real SQLite database with 4096-byte pages in WAL mode. */
+    private fun validHeader(): ByteArray = ByteArray(100).also {
+        "SQLite format 3\u0000".toByteArray().copyInto(it)
+        it[16] = 0x10; it[17] = 0; it[18] = 2; it[19] = 2; it[21] = 64; it[22] = 32; it[23] = 32
     }
 }

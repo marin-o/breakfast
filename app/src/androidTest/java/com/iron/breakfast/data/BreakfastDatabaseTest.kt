@@ -14,9 +14,11 @@ import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionValues
 import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.AfterClass
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -25,7 +27,9 @@ class BreakfastDatabaseTest {
     private lateinit var context: Context
     private lateinit var databaseName: String
     private lateinit var database: BreakfastDatabase
-    private lateinit var migrationHelper: MigrationTestHelper
+    /** A rule, so the databases it opened are closed when each test ends ([sweep] then removes what is left). */
+    @get:Rule
+    val migrationHelper = MigrationTestHelper(InstrumentationRegistry.getInstrumentation(), BreakfastDatabase::class.java, emptyList(), FrameworkSQLiteOpenHelperFactory())
     /** The migration tests' own databases, deleted in [tearDown] also when a test fails. */
     private val migrationNames = mutableListOf<String>()
 
@@ -36,7 +40,6 @@ class BreakfastDatabaseTest {
         database = Room.databaseBuilder(context, BreakfastDatabase::class.java, databaseName)
             .allowMainThreadQueries()
             .build()
-        migrationHelper = MigrationTestHelper(InstrumentationRegistry.getInstrumentation(), BreakfastDatabase::class.java, emptyList(), FrameworkSQLiteOpenHelperFactory())
     }
 
     @After
@@ -44,6 +47,13 @@ class BreakfastDatabaseTest {
         database.close()
         deleteTestDatabase(context, databaseName)
         migrationNames.forEach { deleteTestDatabase(context, it) }
+    }
+
+    companion object {
+        /** After the whole class, every rule and close included: no test file or lock is left on the device. */
+        @JvmStatic
+        @AfterClass
+        fun sweep() = sweepTestDatabases(ApplicationProvider.getApplicationContext())
     }
 
     @Test

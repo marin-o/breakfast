@@ -36,6 +36,9 @@ class DiarySessionTest {
         override fun entries(): List<MealEntry> { entryReads++; events += "refresh"; return rows }
         override suspend fun reloadIfStale(): Boolean = staleOnce.also { staleOnce = false }
         override fun damagedNoticePending() = damaged
+        /** The next reload went on with a fresh diary after damage. */
+        var replaced = false
+        override fun takeDiaryReplaced() = replaced.also { replaced = false }
     }
 
     private val uncaught = mutableListOf<Throwable>()
@@ -85,6 +88,18 @@ class DiarySessionTest {
         session.write(change = DiaryChange.MatchConfirmed) {}
         assertEquals(listOf<DiaryChange>(DiaryChange.MatchConfirmed), published)
         assertEquals(0, source.entryReads)
+    }
+
+    /** D15: a reload that went on with a fresh diary after damage resets the session as an import does. */
+    @Test fun aReloadOntoAFreshDiaryAfterDamagePublishesTheReplace() {
+        opened()
+        source.staleOnce = true
+        source.replaced = true
+        session.refresh()
+        assertEquals(listOf<DiaryChange>(DiaryChange.DiaryReplaced), published)
+        source.staleOnce = true
+        session.refresh()
+        assertEquals("an ordinary stale reload publishes nothing", 1, published.size)
     }
 
     /** D15: a write that found the diary damaged fails, and the fresh diary storage opened instead is loaded. */

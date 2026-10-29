@@ -21,6 +21,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.File
 
 private data class StoreSnapshot(
     val foods: List<FoodRecord> = emptyList(),
@@ -40,21 +41,35 @@ internal fun openBreakfastDatabase(context: Context, name: String, damaged: Dama
         .build()
 
 /**
- * The only writer. [openDatabase] opens `breakfast.db` in the app; tests pass an in-memory one, with no [damaged].
+ * The only writer. [openDatabase] opens `breakfast.db` ([databaseFile]) in the app; tests pass an in-memory one, with
+ * no [damaged].
  *
- * A damaged diary ([damaged]): found while opening, SQLite has already opened the fresh file, so [initialize] goes on
- * there. Found by a later statement, the open connection is gone with the file, so the store opens the database again
- * ([reloadIfStale], or [initialize] when it was found there) and loads the fresh diary.
+ * A damaged diary ([damaged], D15) is set aside, never deleted, and the store goes on with a fresh one:
+ * - a file SQLite could not even read is set aside before it opens ([initialize]);
+ * - found while opening, SQLite set it aside and opened the fresh file itself;
+ * - found by a statement during the session, that call fails; then, under the write lock and once it has unwound, the
+ *   store closes the whole database, the damaged files are set aside, and it opens and loads the fresh diary
+ *   ([reloadIfStale], which the session runs after the failed write; or [initialize] when it was found there). The
+ *   session then resets as after an import ([takeDiaryReplaced]).
  */
 class BreakfastStore internal constructor(
     private val openDatabase: () -> BreakfastDatabase,
     private val damaged: DamagedDiaries? = null,
+    private val databaseFile: File? = null,
 ) {
     internal constructor(database: BreakfastDatabase) : this({ database })
-    constructor(context: Context) : this(DamagedDiaries(java.io.File(context.noBackupFilesDir, "damaged")), context)
-    private constructor(damaged: DamagedDiaries, context: Context) : this({ openBreakfastDatabase(context, "breakfast.db", damaged) }, damaged)
+    constructor(context: Context) : this(DamagedDiaries(File(context.noBackupFilesDir, "damaged")), context)
+    private constructor(damaged: DamagedDiaries, context: Context) : this(
+        { openBreakfastDatabase(context, "breakfast.db", damaged) }, damaged, context.getDatabasePath("breakfast.db"),
+    )
 
+    /** Replaced only under [writeMutex] (a fresh diary after damage); read by the few calls outside it. */
+    
     private var database: BreakfastDatabase = openDatabase()
+
+    /** The store went on with a fresh diary during the session; the session has not reset for it yet. */
+    
+    private var replacedAfterDamage = false
     private val writeMutex = Mutex()
 
     @Volatile
@@ -76,16 +91,18 @@ class BreakfastStore internal constructor(
         writeMutex.withLock {
             if (initialized) return
             withContext(Dispatchers.IO) {
+                // Before SQLite opens it: a file it cannot read is set aside as it is, so nothing acts on its WAL first.
+                databaseFile?.let { damaged?.setAsideIfUnreadable(it) }
                 try {
                     load()
                 } catch (e: Exception) {
-                    // Damage found by a statement here, not by the open: the connection went with the file.
-                    if (damaged?.takeMoved() != true) throw e
-                    reopen()
-                    load()
+                    // Damage found by a statement here, not by the open.
+                    if (damaged?.needsReopen != true) throw e
+                    recoverFromDamage()
                 }
-                // Damage found while opening: SQLite opened the fresh file itself, which [load] just read.
+                // Damage found while opening (or before): the fresh file is the one [load] just read.
                 damaged?.takeMoved()
+                replacedAfterDamage = false
                 // Read the notice markers here, off the main thread, which asks after every reload.
                 damaged?.noticePending()
                 initialized = true
@@ -103,11 +120,26 @@ class BreakfastStore internal constructor(
         model = readSnapshot()
     }
 
-    /** The database open now lost its file to [damaged]: it is closed, and the fresh one opened. */
-    private fun reopen() {
-        runCatching { database.close() }
+    /**
+     * The fresh diary after damage, under [writeMutex] on IO, once the call that found it has unwound: the whole
+     * database closes first (no connection is left on the damaged files), then they are set aside, then the fresh one
+     * opens and loads as at start.
+     */
+    private suspend fun recoverFromDamage() {
+        val damaged = damaged ?: return
+        runCatching { database.close() }.onFailure { Log.w("Breakfast", "The damaged diary did not close cleanly", it) }
+        damaged.setAsideAfterClose()
+        damaged.takeMoved()
         database = openDatabase()
         snapshotStale = false
+        load()
+    }
+
+    /** True once after the store went on with a fresh diary during the session: everything about the old one goes. */
+    fun takeDiaryReplaced(): Boolean {
+        if (!replacedAfterDamage) return false
+        replacedAfterDamage = false
+        return true
     }
 
     /** A damaged diary was set aside and the user has not seen the notice yet. */
@@ -341,12 +373,12 @@ class BreakfastStore internal constructor(
      * aside during the session (the database is opened again and loaded as at start). True when it reloaded.
      */
     suspend fun reloadIfStale(): Boolean {
-        if (!snapshotStale && damaged?.movedSinceTaken != true) return false
+        if (!snapshotStale && damaged?.needsReopen != true) return false
         return writeMutex.withLock {
             withContext(Dispatchers.IO) {
-                if (damaged?.takeMoved() == true) {
-                    reopen()
-                    load()
+                if (damaged?.needsReopen == true) {
+                    recoverFromDamage()
+                    replacedAfterDamage = true
                     return@withContext true
                 }
                 if (!snapshotStale) return@withContext false
