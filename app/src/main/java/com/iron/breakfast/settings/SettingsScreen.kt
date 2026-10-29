@@ -35,7 +35,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.semantics
-import com.iron.breakfast.app.BreakfastViewModel
+import com.iron.breakfast.app.DiarySession
+import com.iron.breakfast.app.Surfaces
+import com.iron.breakfast.transfer.DiaryTransfer
 import com.iron.breakfast.BuildConfig
 import com.iron.breakfast.transfer.DiaryPicker
 import com.iron.breakfast.domain.MealSlot
@@ -53,24 +55,24 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
  * group's own page. On a page the arrow and Back return to the list; on the list they return to the screen beneath.
  */
 @Composable
-internal fun SettingsScreen(vm: BreakfastViewModel) {
+internal fun SettingsScreen(settings: SettingsState, surfaces: Surfaces, transfer: DiaryTransfer<*>, session: DiarySession, licenceText: suspend () -> String) {
     val colors = LocalBreakfastColors.current
-    val page = vm.settings.page
+    val page = settings.page
     // Each page starts at its top.
     key(page) {
         val scroll = rememberScrollState()
         Column(Modifier.fillMaxSize().background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(scroll).padding(horizontal = Gutter, vertical = 4.dp)) {
-            TopBar(page?.title ?: "Settings", vm.surfaces::settingsBack, Modifier.padding(top = 8.dp))
+            TopBar(page?.title ?: "Settings", surfaces::settingsBack, Modifier.padding(top = 8.dp))
             Hairline(Modifier.padding(top = 8.dp))
             when (page) {
-                null -> SETTINGS_GROUPS.forEach { group -> SettingsAction(group.title) { vm.settings.openPage(group) }; Hairline() }
-                SettingsPage.LOGGING -> LoggingPage(vm)
-                SettingsPage.DISPLAY -> DisplayPage(vm)
-                SettingsPage.ACCESSIBILITY -> AccessibilityPage(vm)
-                SettingsPage.SCANNER -> ScannerPage(vm)
-                SettingsPage.DATA -> DataPage(vm)
-                SettingsPage.ABOUT -> AboutPage(vm)
-                SettingsPage.LICENCES -> LicencesPage(vm)
+                null -> SETTINGS_GROUPS.forEach { group -> SettingsAction(group.title) { settings.openPage(group) }; Hairline() }
+                SettingsPage.LOGGING -> LoggingPage(settings)
+                SettingsPage.DISPLAY -> DisplayPage(settings)
+                SettingsPage.ACCESSIBILITY -> AccessibilityPage(settings)
+                SettingsPage.SCANNER -> ScannerPage(settings)
+                SettingsPage.DATA -> DataPage(settings, transfer, session)
+                SettingsPage.ABOUT -> AboutPage(settings)
+                SettingsPage.LICENCES -> LicencesPage(licenceText)
             }
         }
     }
@@ -78,93 +80,93 @@ internal fun SettingsScreen(vm: BreakfastViewModel) {
 
 
 @Composable
-private fun ColumnScope.LoggingPage(vm: BreakfastViewModel) {
-    StepperRow("Day starts at", dayStartLabel(vm.settings.dayStartHour), { vm.settings.shiftDayStart(-1) }, { vm.settings.shiftDayStart(1) })
+private fun ColumnScope.LoggingPage(settings: SettingsState) {
+    StepperRow("Day starts at", dayStartLabel(settings.dayStartHour), { settings.shiftDayStart(-1) }, { settings.shiftDayStart(1) })
     Hairline()
-    ChoiceRow("Undo", UNDO_CHOICES, vm.settings.undoWindow, vm.settings::chooseUndoWindow)
+    ChoiceRow("Undo", UNDO_CHOICES, settings.undoWindow, settings::chooseUndoWindow)
     Hairline()
-    ChoiceRow("Meal", MEAL_MODE_CHOICES, vm.settings.mealMode, vm.settings::chooseMealMode)
+    ChoiceRow("Meal", MEAL_MODE_CHOICES, settings.mealMode, settings::chooseMealMode)
     Hairline()
-    if (vm.settings.mealMode == MealMode.BY_TIME) {
+    if (settings.mealMode == MealMode.BY_TIME) {
         MEAL_BOUND_ROWS.forEach { (meal, label) ->
-            val bounds = vm.settings.mealBounds
+            val bounds = settings.mealBounds
             StepperRow(
-                label, dayStartLabel(bounds.untilOf(meal) ?: 0), { vm.settings.stepMealBound(meal, -1) }, { vm.settings.stepMealBound(meal, 1) },
+                label, dayStartLabel(bounds.untilOf(meal) ?: 0), { settings.stepMealBound(meal, -1) }, { settings.stepMealBound(meal, 1) },
                 decreaseEnabled = canShiftMealBound(bounds, meal, -1), increaseEnabled = canShiftMealBound(bounds, meal, 1),
             )
             Hairline()
         }
-        ChoiceRow("Before day start", BEFORE_DAY_START_CHOICES, vm.settings.beforeDayStart, vm.settings::chooseBeforeDayStart)
+        ChoiceRow("Before day start", BEFORE_DAY_START_CHOICES, settings.beforeDayStart, settings::chooseBeforeDayStart)
         Hairline()
     }
-    ChoiceRow("Count what I'm typing", ON_OFF, vm.settings.countTyping, vm.settings::chooseCountTyping)
+    ChoiceRow("Count what I'm typing", ON_OFF, settings.countTyping, settings::chooseCountTyping)
     Hairline()
-    ChoiceRow("Learn from my picks", ON_OFF, vm.settings.learnFromPicks, vm.settings::chooseLearnFromPicks)
-    Hairline()
-}
-
-@Composable
-private fun ColumnScope.DisplayPage(vm: BreakfastViewModel) {
-    ChoiceRow("Theme", THEME_CHOICES, vm.settings.theme, vm.settings::chooseTheme)
-    Hairline()
-    ChoiceRow("Long draft", LONG_DRAFT_CHOICES, vm.settings.longDraft, vm.settings::chooseLongDraft)
-    Hairline()
-    ChoiceRow("Macros on today", SHOW_HIDE, vm.settings.showMacros, vm.settings::chooseShowMacros)
-    Hairline()
-    ChoiceRow("Missing values note", SHOW_HIDE, vm.settings.showMissingNote, vm.settings::chooseShowMissingNote)
-    Hairline()
-    ChoiceRow("Decimal mark", DECIMAL_MARK_CHOICES, vm.settings.decimalMark, vm.settings::chooseDecimalMark)
+    ChoiceRow("Learn from my picks", ON_OFF, settings.learnFromPicks, settings::chooseLearnFromPicks)
     Hairline()
 }
 
 @Composable
-private fun ColumnScope.AccessibilityPage(vm: BreakfastViewModel) {
-    ChoiceRow("Motion", MOTION_CHOICES, vm.settings.motion, vm.settings::chooseMotion)
+private fun ColumnScope.DisplayPage(settings: SettingsState) {
+    ChoiceRow("Theme", THEME_CHOICES, settings.theme, settings::chooseTheme)
     Hairline()
-    ChoiceRow("Text size", TEXT_SIZE_CHOICES, vm.settings.textSize, vm.settings::chooseTextSize)
+    ChoiceRow("Long draft", LONG_DRAFT_CHOICES, settings.longDraft, settings::chooseLongDraft)
     Hairline()
-    ChoiceRow("Haptics", ON_OFF, vm.settings.haptics, vm.settings::chooseHaptics)
+    ChoiceRow("Macros on today", SHOW_HIDE, settings.showMacros, settings::chooseShowMacros)
     Hairline()
-}
-
-@Composable
-private fun ColumnScope.ScannerPage(vm: BreakfastViewModel) {
-    ChoiceRow("Flashlight at start", ON_OFF, vm.settings.flashlightAtStart, vm.settings::chooseFlashlightAtStart)
+    ChoiceRow("Missing values note", SHOW_HIDE, settings.showMissingNote, settings::chooseShowMissingNote)
     Hairline()
-    ChoiceRow("Look up unknown barcodes", ON_OFF, vm.settings.lookUpBarcodes, vm.settings::chooseLookUpBarcodes)
-    Hairline()
-    ChoiceRow("Contribute", SHOW_HIDE, vm.settings.showContribute, vm.settings::chooseShowContribute)
+    ChoiceRow("Decimal mark", DECIMAL_MARK_CHOICES, settings.decimalMark, settings::chooseDecimalMark)
     Hairline()
 }
 
 @Composable
-private fun ColumnScope.DataPage(vm: BreakfastViewModel) {
-    SettingsAction("Export diary", enabled = vm.ready && !vm.busy) { vm.transfer.requestPicker(DiaryPicker.EXPORT) }
+private fun ColumnScope.AccessibilityPage(settings: SettingsState) {
+    ChoiceRow("Motion", MOTION_CHOICES, settings.motion, settings::chooseMotion)
     Hairline()
-    SettingsAction("Import diary", enabled = vm.ready && !vm.busy) { vm.transfer.requestPicker(DiaryPicker.IMPORT) }
+    ChoiceRow("Text size", TEXT_SIZE_CHOICES, settings.textSize, settings::chooseTextSize)
     Hairline()
-    ChoiceRow("Export reminder", EXPORT_REMINDER_CHOICES, vm.settings.exportReminder, vm.settings::chooseExportReminder)
-    Hairline()
-    ChoiceRow("Safety copy", SAFETY_COPY_CHOICES, vm.settings.keepSafetyCopy, vm.settings::chooseKeepSafetyCopy)
-    Hairline()
-    SettingsAction("Delete all data", enabled = vm.ready && !vm.busy, destructive = true, onClick = vm.transfer::openDeleteAll)
+    ChoiceRow("Haptics", ON_OFF, settings.haptics, settings::chooseHaptics)
     Hairline()
 }
 
 @Composable
-private fun ColumnScope.AboutPage(vm: BreakfastViewModel) {
+private fun ColumnScope.ScannerPage(settings: SettingsState) {
+    ChoiceRow("Flashlight at start", ON_OFF, settings.flashlightAtStart, settings::chooseFlashlightAtStart)
+    Hairline()
+    ChoiceRow("Look up unknown barcodes", ON_OFF, settings.lookUpBarcodes, settings::chooseLookUpBarcodes)
+    Hairline()
+    ChoiceRow("Contribute", SHOW_HIDE, settings.showContribute, settings::chooseShowContribute)
+    Hairline()
+}
+
+@Composable
+private fun ColumnScope.DataPage(settings: SettingsState, transfer: DiaryTransfer<*>, session: DiarySession) {
+    SettingsAction("Export diary", enabled = session.canWrite) { transfer.requestPicker(DiaryPicker.EXPORT) }
+    Hairline()
+    SettingsAction("Import diary", enabled = session.canWrite) { transfer.requestPicker(DiaryPicker.IMPORT) }
+    Hairline()
+    ChoiceRow("Export reminder", EXPORT_REMINDER_CHOICES, settings.exportReminder, settings::chooseExportReminder)
+    Hairline()
+    ChoiceRow("Safety copy", SAFETY_COPY_CHOICES, settings.keepSafetyCopy, settings::chooseKeepSafetyCopy)
+    Hairline()
+    SettingsAction("Delete all data", enabled = session.canWrite, destructive = true, onClick = transfer::openDeleteAll)
+    Hairline()
+}
+
+@Composable
+private fun ColumnScope.AboutPage(settings: SettingsState) {
     ValueRow("Version", versionLabel(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE))
     Hairline()
-    SettingsAction("Licences") { vm.settings.openPage(SettingsPage.LICENCES) }
+    SettingsAction("Licences") { settings.openPage(SettingsPage.LICENCES) }
     Hairline()
 }
 
 /** The bundled licence as plain scrolling text, read off the main thread. */
 @Composable
-private fun LicencesPage(vm: BreakfastViewModel) {
+private fun LicencesPage(licenceText: suspend () -> String) {
     val colors = LocalBreakfastColors.current
     var text by remember { mutableStateOf("") }
-    LaunchedEffect(Unit) { text = vm.licenceText() }
+    LaunchedEffect(Unit) { text = licenceText() }
     Text(text, Modifier.fillMaxWidth().padding(vertical = 16.dp), color = colors.ink, style = BreakfastType.Body)
 }
 

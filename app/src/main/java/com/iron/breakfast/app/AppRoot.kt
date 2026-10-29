@@ -117,12 +117,12 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
                 // The tray rides above the keyboard and clear of a side display cutout.
                 Box(Modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).imePadding()) {
                     // Daily and Meal composers float over their own content; only Library uses this bar.
-                    if (!vm.entryEdit.editing && surface == Surface.LIBRARY) LibraryComposer(vm)
+                    if (!vm.entryEdit.editing && surface == Surface.LIBRARY) LibraryComposer(vm.library, vm.resolve, vm.scan, vm.surfaces)
                 }
             }
         ) { pad ->
             when (surface) {
-                Surface.LIBRARY -> LibraryScreen(vm, Modifier.padding(pad))
+                Surface.LIBRARY -> LibraryScreen(vm.library, vm.resolve, vm.day, vm.surfaces, vm.foodForm, vm.confirmations, vm::automaticMealNow, Modifier.padding(pad))
                 Surface.DAILY -> DailyScreen(vm, Modifier.padding(pad))
                 else -> MealScreen(vm, Modifier.padding(pad))
             }
@@ -133,12 +133,12 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         Surface.ENTRY_QUICK_EDIT -> vm.entryEdit.editingEntry()?.let { EntryQuickEditSheet(vm.entryEdit, vm.session, it) }
         Surface.ENTRY_FULL_EDIT -> vm.entryEdit.editingEntry()?.let { EntryFullEditScreen(vm.entryEdit, vm.session, vm.day, it) }
         Surface.ENTRY_FOOD_PICKER -> EntryFoodPicker(vm.entryEdit, vm.session)
-        Surface.LIBRARY_FOOD_ADD -> vm.library.selectedFood?.let { FocusedFoodAddDialog(vm, it) }
-        Surface.LIBRARY_FOOD -> vm.library.selectedFood?.let { LibraryFoodDetailDialog(vm, it) }
-        Surface.MIXED_MEAL_PICKER -> MixedMealPickerDialog(vm)
-        Surface.BATCH_MEAL_PICKER -> LibraryBatchMealPickerDialog(vm)
+        Surface.LIBRARY_FOOD_ADD -> vm.library.selectedFood?.let { FocusedFoodAddDialog(vm.library, vm.surfaces, it) }
+        Surface.LIBRARY_FOOD -> vm.library.selectedFood?.let { LibraryFoodDetailDialog(vm.library, vm.surfaces, vm.foodForm, vm.contribution, vm.settings, vm::automaticMealNow, it) }
+        Surface.MIXED_MEAL_PICKER -> MixedMealPickerDialog(vm.library)
+        Surface.BATCH_MEAL_PICKER -> LibraryBatchMealPickerDialog(vm.library)
         Surface.FOOD_FORM -> if (vm.foodForm.editingFoodId != null) EditFoodScreen(vm.foodForm, vm.session, vm.library) else CreateFoodScreen(vm.foodForm, vm.session)
-        Surface.SETTINGS -> SettingsScreen(vm)
+        Surface.SETTINGS -> SettingsScreen(vm.settings, vm.surfaces, vm.transfer, vm.session, vm::licenceText)
         // Deleting is for good: past entries keep their own name and numbers.
         Surface.DELETE_FOOD -> AlertDialog(
             onDismissRequest = vm.library::cancelDelete,

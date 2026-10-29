@@ -60,7 +60,14 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import com.iron.breakfast.app.BreakfastViewModel
+import com.iron.breakfast.app.Confirmations
+import com.iron.breakfast.app.Surfaces
+import com.iron.breakfast.contribution.ContributionFlow
+import com.iron.breakfast.food.FoodForm
+import com.iron.breakfast.resolve.ResolveFlow
+import com.iron.breakfast.scan.ScanSession
+import com.iron.breakfast.settings.SettingsState
+import com.iron.breakfast.today.DayState
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealSlot
@@ -102,46 +109,53 @@ import com.iron.breakfast.ui.screens.contributionAvailable
 
 
 @Composable
-internal fun LibraryScreen(vm: BreakfastViewModel, modifier: Modifier) {
+internal fun LibraryScreen(
+    library: LibraryState,
+    resolve: ResolveFlow,
+    day: DayState,
+    surfaces: Surfaces,
+    foodForm: FoodForm,
+    confirmations: Confirmations,
+    automaticMeal: () -> MealSlot?,
+    modifier: Modifier,
+) {
     val colors = LocalBreakfastColors.current
     val motion = rememberMotion()
-    val library = vm.library
     val root = library.target == null
     // A part being resolved is searched for, not added to a meal the user did not choose here.
-    val title = if (vm.resolve.resolvingPart) "Search" else if (root) "Library" else "Add to ${library.target!!.label()}"
-    val subtitle = if (root) "${library.foods.size} foods, by last logged" else entryDateLabel(vm.day.selectedDayKey)
+    val title = if (resolve.resolvingPart) "Search" else if (root) "Library" else "Add to ${library.target!!.label()}"
+    val subtitle = if (root) "${library.foods.size} foods, by last logged" else entryDateLabel(day.selectedDayKey)
     Box(modifier.fillMaxSize().background(colors.bg)) {
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = Gutter)) {
             item {
                 Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (!root) IconButton(onClick = vm.surfaces::exitLibrary, modifier = Modifier.size(44.dp)) {
+                    if (!root) IconButton(onClick = surfaces::exitLibrary, modifier = Modifier.size(44.dp)) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.ink)
                     }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
                         Text(title, color = colors.ink, style = BreakfastType.Section)
                         Text(subtitle, color = colors.soft, style = BreakfastType.Meta)
                     }
-                    if (root) TertiaryButton("New food", { vm.foodForm.open() }) else Spacer(Modifier.size(44.dp))
+                    if (root) TertiaryButton("New food", { foodForm.open() }) else Spacer(Modifier.size(44.dp))
                 }
                 Hairline()
             }
             // Rows fade in and out as the list changes, and move to their new place (logged foods go to the top).
             items(library.foods, key = { it.id }) { food ->
-                LibraryFoodRow(vm, food, root, Modifier.animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem()))
+                LibraryFoodRow(library, automaticMeal, food, root, Modifier.animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem()))
             }
             item {
                 Hairline(Modifier.padding(top = 8.dp))
             }
         }
         // "Logged!" floats over the end of the list, just above the bar, as on Daily and Meal: nothing moves.
-        ConfirmationSnackbar(vm.confirmations.message, Modifier.align(Alignment.BottomCenter).padding(horizontal = Gutter))
+        ConfirmationSnackbar(confirmations.message, Modifier.align(Alignment.BottomCenter).padding(horizontal = Gutter))
     }
 }
 
 @Composable
-private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boolean, modifier: Modifier = Modifier) {
+private fun LibraryFoodRow(library: LibraryState, automaticMeal: () -> MealSlot?, food: FoodRecord, root: Boolean, modifier: Modifier = Modifier) {
     val colors = LocalBreakfastColors.current
-    val library = vm.library
     val last = library.lastLoggedEntry(food)
     val repeatAmount = last?.enteredAmount ?: food.defaultAmount
     val repeatUnit = last?.enteredUnit ?: food.defaultUnit
@@ -166,7 +180,7 @@ private fun LibraryFoodRow(vm: BreakfastViewModel, food: FoodRecord, root: Boole
             Column(Modifier.padding(bottom = 8.dp)) {
                 Text("Add ${repeatAmount.pretty()} ${repeatUnit.displayLabel()} to", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(bottom = 6.dp))
                 // The Meal setting's meal shows selected (none for Ask): one tap logs it, or another meal is tapped.
-                MealChoices(selected = vm.automaticMealNow(), onSelect = { meal -> library.log(food, meal, repeatAmount, repeatUnit); library.collapseFoodPicker() }, singleRow = true)
+                MealChoices(selected = automaticMeal(), onSelect = { meal -> library.log(food, meal, repeatAmount, repeatUnit); library.collapseFoodPicker() }, singleRow = true)
             }
         }
     }
@@ -179,14 +193,13 @@ private fun defaultServingCalories(food: FoodRecord): String = formatKcal(com.ir
  * It filters the list through [LibraryState.submitInput] and does not open the Log page.
  */
 @Composable
-internal fun LibraryComposer(vm: BreakfastViewModel) {
+internal fun LibraryComposer(library: LibraryState, resolve: ResolveFlow, scan: ScanSession, surfaces: Surfaces) {
     val colors = LocalBreakfastColors.current
-    val library = vm.library
     val inMeal = library.target != null
     // While resolving, a cleared search lands here: the bar takes the keyboard so typing goes on.
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    val resolveCleared = vm.resolve.resolvingPart && library.query.isEmpty()
+    val resolveCleared = resolve.resolvingPart && library.query.isEmpty()
     LaunchedEffect(resolveCleared) { if (resolveCleared) { runCatching { focus.requestFocus() }; keyboard?.show() } }
     Column(Modifier.fillMaxWidth().background(colors.bg).then(if (inMeal) Modifier else Modifier.navigationBarsPadding()).padding(horizontal = Gutter, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         InkBar(if (inMeal) Modifier.navigationBarsPadding() else Modifier) {
@@ -213,11 +226,11 @@ internal fun LibraryComposer(vm: BreakfastViewModel) {
             if (library.input.isNotEmpty()) IconButton(onClick = { library.onInput("") }, modifier = Modifier.size(IconTarget)) {
                 Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = colors.bg, modifier = Modifier.size(20.dp))
             }
-            IconButton(onClick = vm.scan::begin, modifier = Modifier.size(IconTarget)) {
+            IconButton(onClick = scan::begin, modifier = Modifier.size(IconTarget)) {
                 Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.bg)
             }
         }
-        if (!inMeal) BottomNav(selectedToday = false, onToday = { vm.surfaces.closeMeal(); vm.surfaces.closeLibrary() }, onLibrary = {}, onSettings = vm.surfaces::openSettings)
+        if (!inMeal) BottomNav(selectedToday = false, onToday = { surfaces.closeMeal(); surfaces.closeLibrary() }, onLibrary = {}, onSettings = surfaces::openSettings)
     }
 }
 
@@ -235,20 +248,28 @@ internal fun servingRowName(conversion: ServingConversion): String {
 }
 
 @Composable
-internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
+internal fun LibraryFoodDetailDialog(
+    library: LibraryState,
+    surfaces: Surfaces,
+    foodForm: FoodForm,
+    contribution: ContributionFlow,
+    settings: SettingsState,
+    automaticMeal: () -> MealSlot?,
+    food: FoodRecord,
+) {
     val colors = LocalBreakfastColors.current
     // Saveable, with the amount sheet's own values, so a configuration change keeps the open sheet as it was.
     var amountSheetOpen by rememberSaveable(food.id) { mutableStateOf(false) }
     var mealMenuOpen by rememberSaveable(food.id) { mutableStateOf(false) }
     // Starts on the meal it was opened from, else the Meal setting's meal (By time, Last used), else Lunch.
-    var targetMeal by rememberSaveable(food.id) { mutableStateOf(libraryPresetMeal(vm.surfaces.mealOnScreen(), vm.automaticMealNow())) }
+    var targetMeal by rememberSaveable(food.id) { mutableStateOf(libraryPresetMeal(surfaces.mealOnScreen(), automaticMeal())) }
     val servings = food.householdServings()
     Column(Modifier.fillMaxSize().background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter, vertical = 4.dp)) {
         TopBar(
             title = "Food",
-            onBack = vm.library::closeFood,
+            onBack = library::closeFood,
             modifier = Modifier.padding(top = 8.dp),
-            trailing = { TertiaryButton("Edit", { vm.library.closeFood(); vm.foodForm.openEdit(food) }) },
+            trailing = { TertiaryButton("Edit", { library.closeFood(); foodForm.openEdit(food) }) },
         )
         Hairline(Modifier.padding(top = 8.dp))
         Text(foodText(food.name), color = colors.ink, style = BreakfastType.Section, modifier = Modifier.padding(top = 8.dp))
@@ -296,10 +317,10 @@ internal fun LibraryFoodDetailDialog(vm: BreakfastViewModel, food: FoodRecord) {
             }
         }
         if (mealMenuOpen) MealChoices(selected = targetMeal, onSelect = { targetMeal = it; mealMenuOpen = false }, modifier = Modifier.padding(top = 8.dp))
-        if (contributionShown(vm.settings.showContribute, contributionAvailable(food))) SecondaryButton("Contribute to Open Food Facts", { vm.library.closeFood(); vm.contribution.openForFood(food) }, Modifier.padding(top = 16.dp))
-        if (food.origin == FoodOrigin.CUSTOM) DestructiveButton("Delete food", { vm.library.askDelete(food) }, Modifier.fillMaxWidth().padding(top = 8.dp), outlined = true)
+        if (contributionShown(settings.showContribute, contributionAvailable(food))) SecondaryButton("Contribute to Open Food Facts", { library.closeFood(); contribution.openForFood(food) }, Modifier.padding(top = 16.dp))
+        if (food.origin == FoodOrigin.CUSTOM) DestructiveButton("Delete food", { library.askDelete(food) }, Modifier.fillMaxWidth().padding(top = 8.dp), outlined = true)
     }
-    if (amountSheetOpen) LibraryAmountSheet(vm, food, targetMeal) { amountSheetOpen = false }
+    if (amountSheetOpen) LibraryAmountSheet(library, food, targetMeal) { amountSheetOpen = false }
 }
 
 @Composable
@@ -326,17 +347,17 @@ private fun LibraryFactRow(label: String, number: String, unit: String) {
 }
 
 @Composable
-internal fun FocusedFoodAddDialog(vm: BreakfastViewModel, food: FoodRecord) {
-    val target = vm.surfaces.mealOnScreen() ?: return
-    LibraryAmountSheet(vm, food, target, vm.library::closeFood)
+internal fun FocusedFoodAddDialog(library: LibraryState, surfaces: Surfaces, food: FoodRecord) {
+    val target = surfaces.mealOnScreen() ?: return
+    LibraryAmountSheet(library, food, target, library::closeFood)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun LibraryAmountSheet(vm: BreakfastViewModel, food: FoodRecord, target: MealSlot, onDismiss: () -> Unit) {
+private fun LibraryAmountSheet(library: LibraryState, food: FoodRecord, target: MealSlot, onDismiss: () -> Unit) {
     val colors = LocalBreakfastColors.current
-    var amountText by rememberSaveable(food.id, target) { mutableStateOf((vm.library.lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount).plain()) }
-    var unit by rememberSaveable(food.id, target) { mutableStateOf(vm.library.lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit) }
+    var amountText by rememberSaveable(food.id, target) { mutableStateOf((library.lastLoggedEntry(food)?.enteredAmount ?: food.defaultAmount).plain()) }
+    var unit by rememberSaveable(food.id, target) { mutableStateOf(library.lastLoggedEntry(food)?.enteredUnit ?: food.defaultUnit) }
     var chosenMeal by rememberSaveable(food.id, target) { mutableStateOf(target) }
     val units = (listOf(food.defaultUnit, food.nutrition.unit) + food.conversions.map { it.unit }).filter { it != MeasureUnit.UNKNOWN }.distinct()
     val calc = amountText.toDoubleOrNull()?.takeIf { it > 0 }?.let { NutritionCalculator().calculate(food, it, unit) }
@@ -359,7 +380,7 @@ private fun LibraryAmountSheet(vm: BreakfastViewModel, food: FoodRecord, target:
                 "Add to ${chosenMeal.label()}",
                 onClick = {
                     val amount = amountText.toDoubleOrNull()
-                    if (amount != null && amount > 0 && calc?.supported == true) { vm.library.log(food, chosenMeal, amount, unit); onDismiss() } else vm.library.invalidAmount()
+                    if (amount != null && amount > 0 && calc?.supported == true) { library.log(food, chosenMeal, amount, unit); onDismiss() } else library.invalidAmount()
                 },
                 enabled = calc?.supported == true,
             )
