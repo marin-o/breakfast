@@ -127,7 +127,7 @@ internal fun MealScreen(vm: BreakfastViewModel, modifier: Modifier) {
                         SecondaryButton("Scan", vm.scan::begin, scanModifier, fillWidth = false)
                     }
                 }
-                if (vm.contribution.actionShown) ContributionAction(vm)
+                if (vm.contribution.actionShown) ContributionAction(vm.contribution)
             }
         }
         // Hidden during an entry edit, which owns the input and its own sheet.

@@ -20,7 +20,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.iron.breakfast.app.BreakfastViewModel
+import com.iron.breakfast.app.Confirmations
+import com.iron.breakfast.food.FoodForm
+import com.iron.breakfast.search.OffSearch
+import com.iron.breakfast.today.UndoController
 import com.iron.breakfast.ui.label
 import com.iron.breakfast.ui.components.foodText
 import com.iron.breakfast.ui.components.FoodRow
@@ -39,13 +42,14 @@ import com.iron.breakfast.ui.screens.matchDisplay
 
 
 /** The unknown-food resolution queue: the kept quantity stays on the sticker; each match logs it for the selected day and meal. */
-@Composable internal fun ResolveUnknownScreen(vm: BreakfastViewModel) {
+@Composable internal fun ResolveUnknownScreen(
+    resolve: ResolveFlow, undo: UndoController, search: OffSearch, foodForm: FoodForm, confirmations: Confirmations,
+) {
     val colors = LocalBreakfastColors.current
-    val resolve = vm.resolve
     val raw = resolve.parts.firstOrNull().orEmpty()
     val display = unknownDisplay(raw, resolve.typed(raw))
     val (position, total) = resolvePosition(resolve.queueTotal, resolve.parts.size)
-    val saved = vm.undo.lastBatchNames()
+    val saved = undo.lastBatchNames()
     val context = listOfNotNull(
         resolve.queueMeal?.label(),
         saved.takeIf { it.isNotEmpty() }?.joinToString(", ")?.let { "$it saved" },
@@ -82,15 +86,15 @@ import com.iron.breakfast.ui.screens.matchDisplay
                     }
                 }
                 Column(Modifier.padding(top = 30.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PrimaryButton("Search Open Food Facts", { vm.search.open(resolve.currentName(), fromResolver = true) }, kind = ButtonKind.Neutral)
-                    SecondaryButton("Create personal food", { vm.foodForm.open(resolve.currentName(), fromResolver = true) })
+                    PrimaryButton("Search Open Food Facts", { search.open(resolve.currentName(), fromResolver = true) }, kind = ButtonKind.Neutral)
+                    SecondaryButton("Create personal food", { foodForm.open(resolve.currentName(), fromResolver = true) })
                     TertiaryButton("Skip", resolve::skip, Modifier.fillMaxWidth(), soft = true)
                 }
             }
         }
         // A part logged from a screen the resolver opened says "Logged!" here, while the queue goes on.
         ConfirmationSnackbar(
-            vm.confirmations.message,
+            confirmations.message,
             Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter),
         )
     } }

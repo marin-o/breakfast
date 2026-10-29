@@ -93,7 +93,6 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
-import com.iron.breakfast.app.BreakfastViewModel
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.asciiDigits
 import com.iron.breakfast.domain.decimalInput
@@ -127,7 +126,7 @@ import com.iron.breakfast.ui.screens.sourceLabel
 
 
 /** Real CameraX preview with the corner-bracket viewfinder, a torch toggle (when the camera has a flash unit) and manual entry. */
-@Composable internal fun ScannerScreen(vm: BreakfastViewModel) {
+@Composable internal fun ScannerScreen(scan: ScanSession, flashlightAtStart: Boolean) {
     val colors = LocalBreakfastColors.current
     val context = LocalContext.current
     val session = remember { ScannerSession() }
@@ -136,19 +135,19 @@ import com.iron.breakfast.ui.screens.sourceLabel
     val lifecycleOwner = LocalLifecycleOwner.current
     var torchAvailable by remember { mutableStateOf(false) }
     // "Flashlight at start": the torch comes on as soon as the camera reports a flash unit.
-    var torchOn by remember { mutableStateOf(vm.settings.flashlightAtStart) }
+    var torchOn by remember { mutableStateOf(flashlightAtStart) }
     var manualOpen by rememberSaveable { mutableStateOf(false) }
     // Asked once per scan session: a configuration change after a denial must not bring the system dialog back.
     var permissionAsked by rememberSaveable { mutableStateOf(false) }
     val hasCameraHardware = remember { context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasPermission = granted; if (!granted) vm.scan.permissionDenied() }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasPermission = granted; if (!granted) scan.permissionDenied() }
     val feather = with(LocalDensity.current) { ScanFeather.toPx() }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
                 hasPermission = granted
-                if (granted && vm.scan.unavailableReason == ScannerUnavailableReason.PERMISSION_DENIED) vm.scan.begin()
+                if (granted && scan.unavailableReason == ScannerUnavailableReason.PERMISSION_DENIED) scan.begin()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -157,17 +156,17 @@ import com.iron.breakfast.ui.screens.sourceLabel
     LaunchedEffect(Unit) {
         if (hasCameraHardware && !hasPermission && !permissionAsked) { permissionAsked = true; launcher.launch(Manifest.permission.CAMERA) }
     }
-    LaunchedEffect(hasCameraHardware) { if (!hasCameraHardware) vm.scan.cameraUnavailable() }
+    LaunchedEffect(hasCameraHardware) { if (!hasCameraHardware) scan.cameraUnavailable() }
     LaunchedEffect(torchOn, torchAvailable) { if (torchAvailable) session.camera?.cameraControl?.enableTorch(torchOn) }
-    if (vm.scan.unavailable) {
+    if (scan.unavailable) {
         ScannerUnavailableScreen(
-            noCamera = !hasCameraHardware || vm.scan.unavailableReason == ScannerUnavailableReason.NO_USABLE_CAMERA,
-            onBack = vm.scan::end,
+            noCamera = !hasCameraHardware || scan.unavailableReason == ScannerUnavailableReason.NO_USABLE_CAMERA,
+            onBack = scan::end,
             onManual = { manualOpen = true },
             onSettings = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) },
         )
     } else Box(Modifier.fillMaxSize().background(colors.cameraGround)) {
-        if (hasPermission && !vm.scan.unavailable) AndroidView(factory = { ctx -> PreviewView(ctx).also { view ->
+        if (hasPermission && !scan.unavailable) AndroidView(factory = { ctx -> PreviewView(ctx).also { view ->
             val providerFuture = ProcessCameraProvider.getInstance(ctx)
             providerFuture.addListener({ runCatching {
                 if (session.disposed.get()) return@runCatching
@@ -195,7 +194,7 @@ import com.iron.breakfast.ui.screens.sourceLabel
                             if (!session.accepts(Rect(box.left.toFloat(), box.top.toFloat(), box.right.toFloat(), box.bottom.toFloat()), frame, feather)) null
                             else scannedProductBarcode(raw, upcE = barcode.format == Barcode.FORMAT_UPC_E)
                         }
-                        code?.let { if (!delivered && !session.disposed.get()) { delivered = true; vm.scan.onBarcode(it) } }
+                        code?.let { if (!delivered && !session.disposed.get()) { delivered = true; scan.onBarcode(it) } }
                     }.addOnCompleteListener { proxy.close() }
                 }
                 // A shared view port crops the analysis frame to what the preview shows, so a box maps straight onto the screen.
@@ -205,11 +204,11 @@ import com.iron.breakfast.ui.screens.sourceLabel
                 } ?: provider.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
                 session.camera = camera
                 torchAvailable = camera.cameraInfo.hasFlashUnit()
-            }.onFailure { if (!session.disposed.get()) { session.dispose(); vm.scan.cameraUnavailable() } } }, ContextCompat.getMainExecutor(ctx))
+            }.onFailure { if (!session.disposed.get()) { session.dispose(); scan.cameraUnavailable() } } }, ContextCompat.getMainExecutor(ctx))
         } }, Modifier.fillMaxSize().onGloballyPositioned { session.previewBounds = it.boundsInRoot() })
         ScannerFrame(
             top = {
-                IconButton(onClick = vm.scan::end, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.cameraMark) }
+                IconButton(onClick = scan::end, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.cameraMark) }
                 Box(Modifier.weight(1f))
                 if (torchAvailable) IconToggleButton(checked = torchOn, onCheckedChange = { torchOn = it }, Modifier.size(44.dp).semantics { role = Role.Switch; stateDescription = if (torchOn) "On" else "Off" }) {
                     Icon(if (torchOn) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff, contentDescription = "Torch", tint = colors.cameraMark)
@@ -217,11 +216,11 @@ import com.iron.breakfast.ui.screens.sourceLabel
             },
             viewfinderModifier = Modifier.onGloballyPositioned { session.viewfinderBounds = it.boundsInRoot() },
         ) {
-            if (vm.scan.lookupBusy) LookupProgress(vm.scan.lookupCode, vm.scan::end)
+            if (scan.lookupBusy) LookupProgress(scan.lookupCode, scan::end)
             else ScannerHint(hasPermission, onManual = { manualOpen = true })
         }
     }
-    if (manualOpen) ManualBarcodeSheet(onDismiss = { manualOpen = false }, onLookup = { code -> manualOpen = false; vm.scan.onBarcode(code) })
+    if (manualOpen) ManualBarcodeSheet(onDismiss = { manualOpen = false }, onLookup = { code -> manualOpen = false; scan.onBarcode(code) })
 }
 
 @Composable
@@ -405,8 +404,7 @@ private fun amountFieldText(review: ProductReview): String =
  * meal on the selected day with the typed amount; closing the sheet writes nothing.
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
-@Composable internal fun ProductReviewSheet(vm: BreakfastViewModel, food: FoodRecord) {
-    val review = vm.review
+@Composable internal fun ProductReviewSheet(review: ProductReview, food: FoodRecord) {
     val colors = LocalBreakfastColors.current
     val letter = sourceLetter(food)
     val basis = food.nutrition

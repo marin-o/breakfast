@@ -29,7 +29,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.iron.breakfast.app.BreakfastViewModel
 import com.iron.breakfast.ui.components.SecondaryButton
 import com.iron.breakfast.data.OffContributionDraft
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
@@ -49,16 +48,16 @@ import com.iron.breakfast.ui.components.TertiaryButton
 import com.iron.breakfast.ui.components.isLargeFont
 
 /** The 48dp outline under a scanned product's log, as M-Food-Detail draws it. */
-@Composable internal fun ContributionAction(vm: BreakfastViewModel) {
-    SecondaryButton("Contribute to Open Food Facts", vm.contribution::review)
+@Composable internal fun ContributionAction(contribution: ContributionFlow) {
+    SecondaryButton("Contribute to Open Food Facts", contribution::review)
 }
 
-@Composable internal fun ContributionReviewScreen(vm: BreakfastViewModel, draft: OffContributionDraft) {
+@Composable internal fun ContributionReviewScreen(contribution: ContributionFlow, draft: OffContributionDraft) {
     val colors = LocalBreakfastColors.current
     val normalized = draft.normalizedNutrition
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter)) {
-            TopBar("Contribute", vm.contribution::dismissReview, Modifier.padding(top = 8.dp))
+            TopBar("Contribute", contribution::dismissReview, Modifier.padding(top = 8.dp))
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                 Text(listOfNotNull(draft.name, draft.brand).joinToString(", "), color = colors.ink, style = BreakfastType.Section, modifier = Modifier.padding(top = 4.dp))
                 Hairline(Modifier.padding(top = 16.dp))
@@ -79,10 +78,10 @@ import com.iron.breakfast.ui.components.isLargeFont
                 if (draft.createNewProduct) {
                     Text("Language", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 24.dp))
                     Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ChoiceOption("EN", vm.contribution.languageCode == "en", { vm.contribution.onLanguage("en") }, Modifier.widthIn(min = 64.dp))
-                        ChoiceOption("MK", vm.contribution.languageCode == "mk", { vm.contribution.onLanguage("mk") }, Modifier.widthIn(min = 64.dp))
+                        ChoiceOption("EN", contribution.languageCode == "en", { contribution.onLanguage("en") }, Modifier.widthIn(min = 64.dp))
+                        ChoiceOption("MK", contribution.languageCode == "mk", { contribution.onLanguage("mk") }, Modifier.widthIn(min = 64.dp))
                     }
-                    if (draft.basisUnit == MeasureUnit.MILLILITER) Field("Package quantity, ml", vm.contribution.packageQuantityMl, { vm.contribution.onPackageQuantityMl(it.decimalInput()) }, Modifier.padding(top = 16.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                    if (draft.basisUnit == MeasureUnit.MILLILITER) Field("Package quantity, ml", contribution.packageQuantityMl, { contribution.onPackageQuantityMl(it.decimalInput()) }, Modifier.padding(top = 16.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                     Text("New product: Breakfast creates it.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 12.dp))
                 }
                 Hairline(Modifier.padding(top = 24.dp))
@@ -92,44 +91,44 @@ import com.iron.breakfast.ui.components.isLargeFont
                 }
             }
             Column(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                PrimaryButton("Continue to sign in", vm.contribution::confirm, kind = ButtonKind.Neutral)
-                TertiaryButton("Decline", vm.contribution::dismissReview, Modifier.fillMaxWidth(), soft = true)
+                PrimaryButton("Continue to sign in", contribution::confirm, kind = ButtonKind.Neutral)
+                TertiaryButton("Decline", contribution::dismissReview, Modifier.fillMaxWidth(), soft = true)
             }
         }
     }
 }
 
-@Composable internal fun ContributionSignInScreen(vm: BreakfastViewModel) {
+@Composable internal fun ContributionSignInScreen(contribution: ContributionFlow) {
     val colors = LocalBreakfastColors.current
     val passwordFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { passwordFocus.requestFocus() }
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter)) {
-            TopBar("Sign in", vm.contribution::dismissAuth, Modifier.padding(top = 8.dp))
+            TopBar("Sign in", contribution::dismissAuth, Modifier.padding(top = 8.dp))
             Text("Open Food Facts account", color = colors.ink, style = BreakfastType.Section, modifier = Modifier.padding(top = 16.dp))
-            Field("Username", vm.contribution.username, vm.contribution::onUsername, Modifier.padding(top = 16.dp))
+            Field("Username", contribution.username, contribution::onUsername, Modifier.padding(top = 16.dp))
             Field(
-                "Password", vm.contribution.password, vm.contribution::onPassword, Modifier.padding(top = 16.dp),
+                "Password", contribution.password, contribution::onPassword, Modifier.padding(top = 16.dp),
                 fieldModifier = Modifier.focusRequester(passwordFocus),
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { vm.contribution.submit() }),
+                keyboardActions = KeyboardActions(onDone = { contribution.submit() }),
             )
             Text("Password is not saved.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 12.dp))
-            PrimaryButton(if (vm.contribution.busy) "Submitting" else "Submit", vm.contribution::submit, Modifier.padding(top = 24.dp), enabled = !vm.contribution.busy, kind = ButtonKind.Neutral)
+            PrimaryButton(if (contribution.busy) "Submitting" else "Submit", contribution::submit, Modifier.padding(top = 24.dp), enabled = !contribution.busy, kind = ButtonKind.Neutral)
             // The arrow, Cancel and system Back are one action, also while it submits ([ContributionFlow.dismissAuth]).
-            TertiaryButton("Cancel", vm.contribution::dismissAuth, Modifier.fillMaxWidth().padding(top = 4.dp), soft = true)
+            TertiaryButton("Cancel", contribution::dismissAuth, Modifier.fillMaxWidth().padding(top = 4.dp), soft = true)
         }
     }
 }
 
-@Composable internal fun ContributionFailureScreen(vm: BreakfastViewModel, message: String) {
+@Composable internal fun ContributionFailureScreen(contribution: ContributionFlow, message: String) {
     val colors = LocalBreakfastColors.current
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter)) {
-            TopBar("Contribute", vm.contribution::dismissFailure, Modifier.padding(top = 8.dp))
+            TopBar("Contribute", contribution::dismissFailure, Modifier.padding(top = 8.dp))
             Column(Modifier.fillMaxWidth().padding(top = 96.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(if (vm.contribution.uncertain) "May have been sent" else "Not sent", color = colors.ink, style = BreakfastType.Title)
+                Text(if (contribution.uncertain) "May have been sent" else "Not sent", color = colors.ink, style = BreakfastType.Title)
                 Text(
                     message,
                     color = colors.soft,
@@ -146,8 +145,8 @@ import com.iron.breakfast.ui.components.isLargeFont
                 )
             }
             Column(Modifier.fillMaxWidth().padding(top = 36.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                PrimaryButton("Retry", vm.contribution::retry, kind = ButtonKind.Neutral)
-                TertiaryButton("Dismiss", vm.contribution::dismissFailure, Modifier.fillMaxWidth(), soft = true)
+                PrimaryButton("Retry", contribution::retry, kind = ButtonKind.Neutral)
+                TertiaryButton("Dismiss", contribution::dismissFailure, Modifier.fillMaxWidth(), soft = true)
             }
         }
     }

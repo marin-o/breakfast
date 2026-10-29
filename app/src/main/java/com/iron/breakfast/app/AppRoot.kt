@@ -151,13 +151,13 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
             confirmButton = { TextButton(vm.foodForm::discard) { Text("Discard") } },
             dismissButton = { TextButton(vm.foodForm::keepEditing) { Text("Keep editing") } },
         )
-        Surface.LIBRARY_NO_MATCH -> LibraryNoMatchScreen(vm)
-        Surface.OFF_SEARCH -> OffSearchScreen(vm)
-        Surface.RESOLVER -> ResolveUnknownScreen(vm)
-        Surface.PRODUCT_REVIEW -> vm.review.product?.let { ProductReviewSheet(vm, it) }
-        Surface.CONTRIBUTION_REVIEW -> vm.contribution.pending?.let { ContributionReviewScreen(vm, it) }
-        Surface.CONTRIBUTION_SIGN_IN -> ContributionSignInScreen(vm)
-        Surface.CONTRIBUTION_FAILURE -> vm.contribution.failure?.let { ContributionFailureScreen(vm, it) }
+        Surface.LIBRARY_NO_MATCH -> LibraryNoMatchScreen(vm.library, vm.surfaces, vm.search, vm.foodForm)
+        Surface.OFF_SEARCH -> OffSearchScreen(vm.search, vm.foodForm, vm.resolve)
+        Surface.RESOLVER -> ResolveUnknownScreen(vm.resolve, vm.undo, vm.search, vm.foodForm, vm.confirmations)
+        Surface.PRODUCT_REVIEW -> vm.review.product?.let { ProductReviewSheet(vm.review, it) }
+        Surface.CONTRIBUTION_REVIEW -> vm.contribution.pending?.let { ContributionReviewScreen(vm.contribution, it) }
+        Surface.CONTRIBUTION_SIGN_IN -> ContributionSignInScreen(vm.contribution)
+        Surface.CONTRIBUTION_FAILURE -> vm.contribution.failure?.let { ContributionFailureScreen(vm.contribution, it) }
         Surface.NOTICE -> vm.notices.message?.let { message -> AlertDialog(onDismissRequest = vm.notices::dismiss, confirmButton = { TextButton(vm.notices::dismiss) { Text("OK") } }, text = { Text(message) }) }
         Surface.REPLACE_DIARY -> AlertDialog(
             onDismissRequest = vm.transfer::cancelImport,
@@ -178,7 +178,7 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         )
         Surface.STORAGE_UNAVAILABLE -> AlertDialog(onDismissRequest = {}, confirmButton = { TextButton(vm::retryStorage) { Text("Try again") } }, title = { Text("Storage unavailable") }, text = { Text("Storage could not be opened.") })
         Surface.ENTRY_DETAIL -> vm.entryEdit.selectedEntry?.let { EntryDetailScreen(vm, it) }
-        Surface.SCANNER -> ScannerScreen(vm)
+        Surface.SCANNER -> ScannerScreen(vm.scan, vm.settings.flashlightAtStart)
     }
 }
 
