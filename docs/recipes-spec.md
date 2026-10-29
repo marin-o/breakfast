@@ -61,6 +61,8 @@ Photos, nested recipes, cooked/raw conversion, sharing, importing recipes from t
 5. **Schema change:** approved (non-destructive migration).
 6. **Text:** the list above is approved, with "g" as the weight unit (it already exists). Any other text the build needs (e.g. a validation message) is proposed to the owner before it ships, not invented.
 
+7. **Total volume (owner, 2026-10-29, after the build):** an optional "Total volume" field in ml (the measured finished dish), beside Total weight. A recipe needs at least one of Portions, Total weight or Total volume. Logging by volume: per ml = total / total volume; "300 ml soup", "3 dl soup", "0.5 l soup" and "33 cl soup" work for a recipe with a volume (the shorthand's existing ml units), and ml is offered only when the recipe has a volume, as g only with a weight. Without portions, the list and page show per 100 g with a weight, else per 100 ml, and a bare count logs that. Schema 7 to 8 adds one nullable column; older files import with no volume.
+
 ## Open questions (answered above)
 
 1. **Settings in the bottom bar.** It is already the gear at the right end of the bar. Keep it as the gear (bar = Meals, Recipes, Library + gear), or make it a fourth labelled tab (Meals, Recipes, Library, Settings)? Proposal: keep the gear. And tab order: Meals, Recipes, Library? Proposal: Meals, Library, Recipes (logging-first order unchanged, the new tab last).
