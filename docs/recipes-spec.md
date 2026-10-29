@@ -1,6 +1,6 @@
-# Recipes: spec (draft, 2026-10-29)
+# Recipes: spec (approved, 2026-10-29)
 
-Status: draft for owner approval. Nothing is built. Owner answers from 2026-10-29 are marked **(owner)**; the rest are proposals, and the open questions at the end need an answer before any build.
+Status: approved by the owner on 2026-10-29; nothing is built yet. Owner answers are marked **(owner)**. The decisions on the open questions are in "Decisions" at the end and override anything above them.
 
 ## What a recipe is
 
@@ -18,7 +18,7 @@ Status: draft for owner approval. Nothing is built. Owner answers from 2026-10-2
 
 ## Making a recipe
 
-- Name (required), number of portions (required, > 0, decimals allowed).
+- Name (required), number of portions (> 0, decimals allowed) and/or total weight; at least one of the two (see Decisions 3).
 - **Ingredients typed like the Log bar** (proposal): one line such as `500 g beef mince, 1 can kidney beans, 200 g rice`, parsed and matched with the same rules, personal foods first, the same "which one?" choices and "Not in your foods" resolution. This reuses the existing parser and resolver instead of a new picker.
 - Optional **total weight of the finished dish** (proposal, see open question 2), used only for logging by weight.
 
@@ -52,7 +52,16 @@ Status: draft for owner approval. Nothing is built. Owner answers from 2026-10-2
 
 Photos, nested recipes, cooked/raw conversion, sharing, importing recipes from the web, scaling ingredient lists, saved meals.
 
-## Open questions for the owner
+## Decisions (owner, 2026-10-29)
+
+1. **Bottom bar:** Settings stays the gear at the right end. Tabs in order: **Meals, Library, Recipes**, then the gear.
+2. **Total weight:** an optional "Total weight" field (the weighed finished dish). Logging by weight uses it.
+3. **Yield by portions, weight or both:** a recipe needs at least one of Portions or Total weight. Only portions: it logs by portion. Only total weight: it logs by g. Both: either. The amount sheet offers the units the recipe has.
+4. **Ingredients:** typed like the Log bar, **plus an optional search**. Picking a food from the search opens the existing amount sheet for that food (same look and feel as logging a food from the Library); confirming adds that ingredient line to the recipe. It must feel smooth and look like the rest of the app (locked Monochrome design, existing components).
+5. **Schema change:** approved (non-destructive migration).
+6. **Text:** the list above is approved, with "g" as the weight unit (it already exists). Any other text the build needs (e.g. a validation message) is proposed to the owner before it ships, not invented.
+
+## Open questions (answered above)
 
 1. **Settings in the bottom bar.** It is already the gear at the right end of the bar. Keep it as the gear (bar = Meals, Recipes, Library + gear), or make it a fourth labelled tab (Meals, Recipes, Library, Settings)? Proposal: keep the gear. And tab order: Meals, Recipes, Library? Proposal: Meals, Library, Recipes (logging-first order unchanged, the new tab last).
 2. **Logging by weight needs the finished dish's weight.** The ingredients' sum is wrong for anything that loses or gains water while cooking. Proposal: an optional "Total weight" field you fill in after weighing the pot; if empty, the recipe logs by portion only (no g in the amount sheet).
