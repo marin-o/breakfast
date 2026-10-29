@@ -26,6 +26,8 @@ class BreakfastDatabaseTest {
     private lateinit var databaseName: String
     private lateinit var database: BreakfastDatabase
     private lateinit var migrationHelper: MigrationTestHelper
+    /** The migration tests' own databases, deleted in [tearDown] also when a test fails. */
+    private val migrationNames = mutableListOf<String>()
 
     @Before
     fun setUp() {
@@ -40,7 +42,8 @@ class BreakfastDatabaseTest {
     @After
     fun tearDown() {
         database.close()
-        context.deleteDatabase(databaseName)
+        deleteTestDatabase(context, databaseName)
+        migrationNames.forEach { deleteTestDatabase(context, it) }
     }
 
     @Test
@@ -96,7 +99,7 @@ class BreakfastDatabaseTest {
 
     @Test
     fun migration1To4PreservesPopulatedRowsAndAddsLocalOverrideFlag() {
-        val name = "migration-${System.nanoTime()}.db"
+        val name = "migration-${System.nanoTime()}.db".also(migrationNames::add)
         val old = migrationHelper.createDatabase(name, 1)
         old.execSQL("CREATE TABLE IF NOT EXISTS foods (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL, origin TEXT NOT NULL, nutrition_amount REAL NOT NULL, nutrition_unit TEXT NOT NULL, calories REAL NOT NULL, protein REAL, carbohydrates REAL, fat REAL, default_amount REAL NOT NULL, default_unit TEXT NOT NULL, source_id TEXT, source_name TEXT, source_release TEXT, preparation TEXT, source_description TEXT)")
         old.execSQL("CREATE TABLE IF NOT EXISTS food_aliases (foodId TEXT NOT NULL, alias TEXT NOT NULL, PRIMARY KEY(foodId, alias))")
@@ -120,12 +123,12 @@ class BreakfastDatabaseTest {
         assertEquals("GRAM", migrated.query("SELECT resolved_base_unit FROM meal_entries WHERE id = 'entry'").use { it.moveToFirst(); it.getString(0) })
         assertEquals(0, migrated.query("SELECT archived FROM foods WHERE id = 'legacy'").use { it.moveToFirst(); it.getInt(0) })
         assertEquals(0, migrated.query("SELECT personal_override FROM foods WHERE id = 'legacy'").use { it.moveToFirst(); it.getInt(0) })
-        migrated.close(); context.deleteDatabase(name)
+        migrated.close(); deleteTestDatabase(context, name)
     }
 
     @Test
     fun migration5To6AddsNullableServingLabelWithoutChangingExistingRows() {
-        val name = "migration-v6-${System.nanoTime()}.db"
+        val name = "migration-v6-${System.nanoTime()}.db".also(migrationNames::add)
         val old = migrationHelper.createDatabase(name, 5)
         old.execSQL("INSERT INTO serving_conversions (foodId, unit, base_units_per_serving, provenance, approximate) VALUES ('legacy','MILLILITER',330.0,'legacy',0)")
         old.close()
@@ -137,12 +140,12 @@ class BreakfastDatabaseTest {
         migrated.execSQL("INSERT INTO serving_conversions VALUES ('legacy','MILLILITER',250.0,'personal',1,'glass')")
         assertEquals(3, migrated.query("SELECT COUNT(*) FROM serving_conversions WHERE foodId = 'legacy'").use { it.moveToFirst(); it.getInt(0) })
         assertEquals("bottle", migrated.query("SELECT label FROM serving_conversions WHERE foodId = 'legacy' AND label = 'bottle'").use { it.moveToFirst(); it.getString(0) })
-        migrated.close(); context.deleteDatabase(name)
+        migrated.close(); deleteTestDatabase(context, name)
     }
 
     @Test
     fun migration2To3PreservesFoodAliasAndEntry() {
-        val name = "migration-v2-${System.nanoTime()}.db"
+        val name = "migration-v2-${System.nanoTime()}.db".also(migrationNames::add)
         val old = migrationHelper.createDatabase(name, 2)
         old.execSQL("INSERT INTO foods (id,name,category,origin,nutrition_amount,nutrition_unit,calories,default_amount,default_unit,barcode) VALUES ('saved','Saved food','test','CUSTOM',100.0,'GRAM',250.0,100.0,'GRAM','1234567890123')")
         old.execSQL("INSERT INTO food_aliases VALUES ('saved','usual food')")
@@ -155,7 +158,7 @@ class BreakfastDatabaseTest {
         assertEquals(0, migrated.query("SELECT personal_override FROM foods WHERE id = 'saved'").use { it.moveToFirst(); it.getInt(0) })
         assertEquals("usual food", migrated.query("SELECT alias FROM food_aliases WHERE foodId = 'saved'").use { it.moveToFirst(); it.getString(0) })
         assertEquals(250.0, migrated.query("SELECT snapshot_calories FROM meal_entries WHERE id = 'saved-entry'").use { it.moveToFirst(); it.getDouble(0) }, 0.0)
-        migrated.close(); context.deleteDatabase(name)
+        migrated.close(); deleteTestDatabase(context, name)
     }
 
     private suspend fun seed(foods: List<com.iron.breakfast.domain.FoodRecord>) {

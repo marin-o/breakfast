@@ -11,6 +11,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.iron.breakfast.data.BreakfastDatabase
 import com.iron.breakfast.data.BreakfastStore
 import com.iron.breakfast.data.DiaryRows
+import com.iron.breakfast.data.deleteTestDatabase
 import com.iron.breakfast.data.toAliasEntities
 import com.iron.breakfast.data.toConversionEntities
 import com.iron.breakfast.data.toDomain
@@ -66,7 +67,7 @@ class BreakfastBenchmark {
     fun tearDown() {
         if (::database.isInitialized) database.close()
         fileDatabase?.close()
-        fileDatabasePath?.let { path -> listOf("", "-wal", "-shm", "-journal").forEach { File(path + it).delete() } }
+        fileDatabasePath?.let { path -> deleteTestDatabase(ApplicationProvider.getApplicationContext(), path) }
     }
 
     private var fileDatabase: BreakfastDatabase? = null
