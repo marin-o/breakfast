@@ -27,12 +27,15 @@ class DiarySessionTest {
         var rows: List<MealEntry> = emptyList()
         var openFailure: Exception? = null
         var staleOnce = false
+        /** A damaged diary was set aside (D15): the notice waits. */
+        var damaged = false
         var entryReads = 0
         val events = mutableListOf<String>()
         override suspend fun open() { openFailure?.let { throw it } }
         override fun foods(): List<FoodRecord> = emptyList()
         override fun entries(): List<MealEntry> { entryReads++; events += "refresh"; return rows }
         override suspend fun reloadIfStale(): Boolean = staleOnce.also { staleOnce = false }
+        override fun damagedNoticePending() = damaged
     }
 
     private val uncaught = mutableListOf<Throwable>()
@@ -82,6 +85,21 @@ class DiarySessionTest {
         session.write(change = DiaryChange.MatchConfirmed) {}
         assertEquals(listOf<DiaryChange>(DiaryChange.MatchConfirmed), published)
         assertEquals(0, source.entryReads)
+    }
+
+    /** D15: a write that found the diary damaged fails, and the fresh diary storage opened instead is loaded. */
+    @Test fun aFailureAfterTheDiaryWasSetAsideReloadsIt() {
+        opened()
+        var failure: Throwable? = null
+        session.write(change = DiaryChange.FoodsLogged, onFailure = { failure = it }) {
+            source.damaged = true
+            source.staleOnce = true
+            error("file is not a database")
+        }
+        assertEquals("file is not a database", failure?.message)
+        assertTrue(published.isEmpty())
+        assertEquals("read, then read again after the reload", 2, source.entryReads)
+        assertFalse(session.busy)
     }
 
     @Test fun aFailureGoesToItsHandlerAndNothingIsPublished() {

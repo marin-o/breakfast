@@ -35,6 +35,7 @@ internal interface UndoStore {
  *   are the session's; a failure says so through [notices].
  * - The entries of the last logged batch outlive its offer, for the resolve header ([lastBatchNames]): batch Undo and
  *   a diary replace clear them.
+ * - Each new offer is said once through [announce] ([undoAnnouncement]), so TalkBack tells that Undo is there.
  *
  * The expiry job runs in [scope] (the view model's) and waits with [sleep]; [clock] stamps and checks offers.
  */
@@ -46,12 +47,14 @@ internal class UndoController(
     private val windowMs: () -> Long?,
     private val clock: () -> Long,
     private val scope: CoroutineScope,
+    /** Reads out a new offer (`app/Announcements`). */
+    private val announce: (String) -> Unit,
     private val sleep: suspend (Long) -> Unit = { delay(it) },
 ) {
     var offer by mutableStateOf<UndoOffer?>(null); private set
     /** The deleted entry the snackbar offers to put back. */
     val deletedEntry: MealEntry? get() = (offer as? UndoOffer.Deleted)?.entry
-    /** The logged batch's snackbar text ("2 foods added to Lunch"). */
+    /** The logged batch's snackbar text ("Logged!"). */
     val loggedMessage: String? get() = (offer as? UndoOffer.Logged)?.message
     private var expiry: Job? = null
     private var lastBatchIds: List<String> = emptyList()
@@ -59,7 +62,10 @@ internal class UndoController(
     /** The session listener: every committed write moves the offer by [undoAfterChange]. */
     fun onChange(change: DiaryChange) {
         val next = undoAfterChange(offer, change, clock())
-        if (next !== offer) replace(next)
+        if (next !== offer) {
+            replace(next)
+            next?.let { announce(undoAnnouncement(it)) }
+        }
         when (change) {
             is DiaryChange.BatchLogged -> lastBatchIds = change.entries.map { it.id }
             DiaryChange.DiaryReplaced -> lastBatchIds = emptyList()

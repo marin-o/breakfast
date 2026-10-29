@@ -60,8 +60,8 @@ import java.time.ZoneOffset
  * `Surfaces` (the view model's coordination, `IronApp`'s composition order and BackHandler order, `topOverlay()`,
  * transcribed here at 6da279d) and passed unchanged against `Surfaces` (B17).
  */
-internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foods: List<FoodRecord> = emptyList()) {
-    val diary = KitDiary().also { it.foods = foods }
+internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foods: List<FoodRecord> = emptyList(), damagedDiary: Boolean = false) {
+    val diary = KitDiary().also { it.foods = foods; it.damaged = damagedDiary }
     /** Writes the fakes received, in order. */
     val calls = mutableListOf<String>()
     /** What the Log's Add and the Library's mixed batch leave unmatched. */
@@ -220,6 +220,8 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
 
 /** The diary the kit's storage holds ([rows], [foods]), read by the session through [source], on an unconfined [scope]. */
 internal class KitDiary {
+    /** A damaged diary was set aside and its notice waits (D15). */
+    var damaged = false
     var rows: List<MealEntry> = emptyList()
     var foods: List<FoodRecord> = emptyList()
     val scope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
@@ -228,5 +230,7 @@ internal class KitDiary {
         override fun foods(): List<FoodRecord> = foods
         override fun entries(): List<MealEntry> = rows
         override suspend fun reloadIfStale() = false
+        override fun damagedNoticePending() = damaged
+        override fun damagedNoticeSeen() { damaged = false }
     }
 }

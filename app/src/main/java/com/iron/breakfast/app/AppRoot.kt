@@ -90,9 +90,9 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     // A recreation (dark mode, resize, locale) stops the old activity, but the user never left.
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { if (stopMeansLeaving(activity?.isChangingConfigurations == true)) vm.onAppStopped() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { vm.onAppStarted() }
-    // TalkBack reads each "Logged!" once, a repeat too, as it read the dialog it replaced; a recreation reads nothing.
+    // TalkBack reads each "Logged!" and each new Undo offer once, a repeat too, in order; a recreation reads nothing.
     val view = LocalView.current
-    LaunchedEffect(vm.confirmations.serial) { vm.confirmations.takeAnnouncement()?.let(view::announceForAccessibility) }
+    LaunchedEffect(vm.announcements.serial) { vm.announcements.take().forEach(view::announceForAccessibility) }
     // What is open and in which order (see [Surfaces]): drawn bottom first, each surface keyed so it keeps its state
     // while others open and close over or under it. The base screen is one Scaffold whichever of the three it shows.
     // A screen that just closed may still be drawn as a picture while it glides out (a [Ghost]); it is not open.

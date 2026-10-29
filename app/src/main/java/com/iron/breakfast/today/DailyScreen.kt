@@ -278,8 +278,8 @@ private fun DailyMealSection(slot: MealSlot, entries: List<MealEntry>, foods: Ma
 internal fun DailyComposer(vm: BreakfastViewModel, modifier: Modifier = Modifier) {
     val tick = rememberTick()
     ComposerFade(modifier) {
-        Reveal(vm.undo.loggedMessage) { Snackbar(it, "Undo", { tick(); vm.undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
-        Reveal(vm.undo.deletedEntry) { Snackbar("${it.foodName} deleted", "Undo", { tick(); vm.undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
+        Reveal(vm.undo.loggedMessage) { Snackbar(it, UNDO, { tick(); vm.undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
+        Reveal(vm.undo.deletedEntry) { Snackbar(deletedText(it), UNDO, { tick(); vm.undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
         ConfirmationSnackbar(vm.confirmations.message)
         if (vm.reminders.shownOnDaily(covered = vm.surfaces.baseCovered())) {
             LaunchedEffect(Unit) { vm.reminders.onScreenNow() }

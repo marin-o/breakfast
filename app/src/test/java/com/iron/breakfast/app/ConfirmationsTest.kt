@@ -10,7 +10,9 @@ import org.junit.Test
 
 class ConfirmationsTest {
     private val time = FakeTime()
-    private val confirmations = Confirmations(CoroutineScope(Dispatchers.Unconfined + SupervisorJob()), sleep = time.sleep)
+    /** What was said for TalkBack ([Announcements.say]). */
+    private val said = mutableListOf<String>()
+    private val confirmations = Confirmations(CoroutineScope(Dispatchers.Unconfined + SupervisorJob()), announce = { said += it }, sleep = time.sleep)
 
     @Test fun loggedShowsLoggedAndGoesByItself() {
         assertNull(confirmations.message)
@@ -21,23 +23,14 @@ class ConfirmationsTest {
         assertNull(confirmations.message)
     }
 
-    @Test fun eachConfirmationIsReadOutOnceARepeatToo() {
-        assertNull("nothing to read at start", confirmations.takeAnnouncement())
+    @Test fun eachConfirmationIsSaidOnceARepeatToo() {
         confirmations.logged()
-        assertEquals("Logged!", confirmations.takeAnnouncement())
-        assertNull("a recreated screen asks again and reads nothing", confirmations.takeAnnouncement())
+        assertEquals(listOf("Logged!"), said)
         // A second log while "Logged!" still shows: the same text, a new confirmation.
         confirmations.logged()
-        assertEquals("Logged!", confirmations.message)
-        assertEquals(2, confirmations.serial)
-        assertEquals("Logged!", confirmations.takeAnnouncement())
-        assertNull(confirmations.takeAnnouncement())
-    }
-
-    @Test fun oneThatHasGoneIsNotReadLate() {
-        confirmations.logged()
+        assertEquals(listOf("Logged!", "Logged!"), said)
         time.advance(CONFIRMATION_MS)
-        assertNull(confirmations.takeAnnouncement())
+        assertEquals("going says nothing", 2, said.size)
     }
 
     @Test fun aNewOneStartsTheTimeAgain() {

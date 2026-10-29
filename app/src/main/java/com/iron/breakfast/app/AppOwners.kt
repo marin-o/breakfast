@@ -4,6 +4,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.SavedStateHandle
 import com.iron.breakfast.contribution.ContributionFlow
 import com.iron.breakfast.contribution.OffContributions
+import com.iron.breakfast.data.DIARY_DAMAGED
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.entry.EntryEdit
 import com.iron.breakfast.entry.EntryEditStore
@@ -107,14 +108,19 @@ internal class AppOwners<D>(
     )
     /** The app's one modal message (see [Notices]); features speak through it. */
     val notices = Notices()
+    /** What TalkBack reads out for the snackbars that come and go, each once (see [Announcements]). */
+    val announcements = Announcements()
     /** "Logged!" after a food is logged to the meal and day the user chose (see [Confirmations]); it goes by itself. */
-    val confirmations = Confirmations(threads.scope, sleep = threads.sleep)
+    val confirmations = Confirmations(threads.scope, announce = announcements::say, sleep = threads.sleep)
     /** The read model and the write gate (see [DiarySession]). */
     val session = DiarySession(
         source = stores.diary,
         scope = threads.scope,
         onOpenFailed = onOpenFailed,
-        onRefreshed = { entryEdit.diaryReloaded() },
+        onRefreshed = {
+            entryEdit.diaryReloaded()
+            showDamagedNotice()
+        },
     )
     /** The pending Undo, its expiry and Delete (see [UndoController]); Daily and Meal talk to it. */
     val undo = UndoController(
@@ -124,6 +130,7 @@ internal class AppOwners<D>(
         windowMs = { undoWindowMs(settings.undoWindow) },
         clock = clock,
         scope = threads.scope,
+        announce = announcements::say,
         sleep = threads.sleep,
     )
     /** "Not right?" after a logged batch (see [MatchFeedback]); held while the resolver is open. */
@@ -308,6 +315,15 @@ internal class AppOwners<D>(
         settings.mealMode, Instant.ofEpochMilli(clock()).atZone(zone()).hour, settings.mealBounds, lastUsedMeal(session.entries),
         settings.dayStartHour, settings.beforeDayStart,
     )
+
+    /**
+     * After a damaged diary was set aside (`data/DamagedDiaries`): its notice, until the user dismissed it, also after
+     * the app was killed before that. Checked after every reload, so damage found during the session shows it too.
+     */
+    private fun showDamagedNotice() {
+        if (!session.damagedNoticePending() || notices.message == DIARY_DAMAGED) return
+        notices.show(DIARY_DAMAGED, onDismiss = session::damagedNoticeSeen)
+    }
 
     /** The meal of the screen on show ([Surfaces.mealOnScreen]), for the owners that log to it. */
     private fun mealOnScreen(): MealSlot? = surfaces.mealOnScreen()

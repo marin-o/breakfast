@@ -75,7 +75,7 @@ class LogComposerTest {
         store.result = SavedMeal(listOf(entry("e1")), NutritionValues.ZERO, unresolvedSegments = listOf("ayran"))
         log.submit()
         assertEquals(listOf("save \"2 eggs, ayran\" LUNCH 2026-10-28 pins=[]"), store.saves)
-        assertEquals(listOf<DiaryChange>(DiaryChange.BatchLogged("1 food added to Lunch", store.result.entries)), diary.published)
+        assertEquals(listOf<DiaryChange>(DiaryChange.BatchLogged("Logged!", store.result.entries)), diary.published)
         assertFalse("the Log closes", log.open)
         val handed = afterSaves.single()
         assertEquals(listOf("ayran"), handed.unresolved)

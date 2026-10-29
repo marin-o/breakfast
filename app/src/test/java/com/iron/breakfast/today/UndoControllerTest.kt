@@ -25,11 +25,27 @@ class UndoControllerTest {
     private val notices = Notices()
     private val time = FakeTime()
     private var window: Long? = 15_000L
-    private val undo = UndoController(diary.session, store, notices, { window }, time.clock, diary.scope, time.sleep)
+    /** What TalkBack was told (`app/Announcements`). */
+    private val said = mutableListOf<String>()
+    private val undo = UndoController(diary.session, store, notices, { window }, time.clock, diary.scope, announce = { said += it }, sleep = time.sleep)
         .also { diary.session.onChange(it::onChange) }
 
     private val egg = entry("egg")
     private val batch = listOf(entry("a", food = "Oats"), entry("b", food = "Milk"))
+
+    /** Each new offer is said once, with its action; re-timing it or its end says nothing. */
+    @Test fun eachNewOfferIsReadOutOnceWithItsUndo() {
+        diary.commit(DiaryChange.BatchLogged("Logged!", batch))
+        undo.delete(egg)
+        assertEquals(listOf("Logged! Undo", "Egg deleted. Undo"), said)
+        window = 30_000L
+        undo.windowChanged()
+        diary.commit(DiaryChange.MatchCorrected)
+        time.advance(30_000L)
+        assertNull(undo.offer)
+        diary.commit(DiaryChange.BatchLogged("Logged!", emptyList()))
+        assertEquals("kept, re-timed, ended or a batch that saved nothing: nothing new", 2, said.size)
+    }
 
     @Test fun aDeleteOffersItsUndoUntilTheWindowEnds() {
         undo.delete(egg)

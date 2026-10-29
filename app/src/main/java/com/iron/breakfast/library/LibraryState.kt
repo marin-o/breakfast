@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.iron.breakfast.app.DiaryChange
+import com.iron.breakfast.app.LOGGED
 import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.app.Notices
 import com.iron.breakfast.domain.FoodOrigin
@@ -20,7 +21,6 @@ import com.iron.breakfast.domain.mealMarkerSlots
 import com.iron.breakfast.isLibraryNoMatch
 import com.iron.breakfast.resolve.ResolveSource
 import com.iron.breakfast.shouldApplyLibraryRefresh
-import com.iron.breakfast.ui.label
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -275,7 +275,7 @@ internal class LibraryState(
         val capturedInput = input
         val day = selectedDay()
         session.write(
-            change = { saved -> DiaryChange.BatchLogged("${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} logged to ${target.label()}", saved.entries) },
+            change = { saved -> DiaryChange.BatchLogged(LOGGED, saved.entries) },
             onSuccess = { saved -> afterSave(saved.unresolvedSegments, target, this@LibraryState, capturedInput) },
             onFailure = { notices.show(it.message ?: "Could not save this batch.") },
         ) { store.save(cleaned, target, day) }

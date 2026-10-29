@@ -28,15 +28,33 @@ private data class StoreSnapshot(
     val preferences: List<Preference> = emptyList()
 )
 
-/** The only writer. [database] is `breakfast.db` in the app; tests pass an in-memory one. */
-class BreakfastStore internal constructor(private val database: BreakfastDatabase) {
-    constructor(context: Context) : this(
-        Room.databaseBuilder(
-            context.applicationContext,
-            BreakfastDatabase::class.java,
-            "breakfast.db"
-        ).addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6).build()
-    )
+/**
+ * The diary database: [name] in the app's databases (`breakfast.db` in the app; a test passes its own name, never
+ * that one), with every migration, and a damaged file set aside in [damaged] instead of deleted (see
+ * [DamageSafeOpenHelperFactory]). The store and its instrumented test open it the same way.
+ */
+internal fun openBreakfastDatabase(context: Context, name: String, damaged: DamagedDiaries): BreakfastDatabase =
+    Room.databaseBuilder(context.applicationContext, BreakfastDatabase::class.java, name)
+        .openHelperFactory(DamageSafeOpenHelperFactory(damaged))
+        .addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6)
+        .build()
+
+/**
+ * The only writer. [openDatabase] opens `breakfast.db` in the app; tests pass an in-memory one, with no [damaged].
+ *
+ * A damaged diary ([damaged]): found while opening, SQLite has already opened the fresh file, so [initialize] goes on
+ * there. Found by a later statement, the open connection is gone with the file, so the store opens the database again
+ * ([reloadIfStale], or [initialize] when it was found there) and loads the fresh diary.
+ */
+class BreakfastStore internal constructor(
+    private val openDatabase: () -> BreakfastDatabase,
+    private val damaged: DamagedDiaries? = null,
+) {
+    internal constructor(database: BreakfastDatabase) : this({ database })
+    constructor(context: Context) : this(DamagedDiaries(java.io.File(context.noBackupFilesDir, "damaged")), context)
+    private constructor(damaged: DamagedDiaries, context: Context) : this({ openBreakfastDatabase(context, "breakfast.db", damaged) }, damaged)
+
+    private var database: BreakfastDatabase = openDatabase()
     private val writeMutex = Mutex()
 
     @Volatile
@@ -58,16 +76,45 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
         writeMutex.withLock {
             if (initialized) return
             withContext(Dispatchers.IO) {
-                database.withTransaction {
-                    deleteArchivedFoods()
-                    seedMissingFixtures()
-                    syncBuiltInFoods()
+                try {
+                    load()
+                } catch (e: Exception) {
+                    // Damage found by a statement here, not by the open: the connection went with the file.
+                    if (damaged?.takeMoved() != true) throw e
+                    reopen()
+                    load()
                 }
-                model = readSnapshot()
+                // Damage found while opening: SQLite opened the fresh file itself, which [load] just read.
+                damaged?.takeMoved()
+                // Read the notice markers here, off the main thread, which asks after every reload.
+                damaged?.noticePending()
                 initialized = true
             }
         }
     }
+
+    /** Clears archived foods, seeds and syncs the catalogue, then reads the diary: what opening storage does. */
+    private suspend fun load() {
+        database.withTransaction {
+            deleteArchivedFoods()
+            seedMissingFixtures()
+            syncBuiltInFoods()
+        }
+        model = readSnapshot()
+    }
+
+    /** The database open now lost its file to [damaged]: it is closed, and the fresh one opened. */
+    private fun reopen() {
+        runCatching { database.close() }
+        database = openDatabase()
+        snapshotStale = false
+    }
+
+    /** A damaged diary was set aside and the user has not seen the notice yet. */
+    fun damagedNoticePending(): Boolean = damaged?.noticePending() == true
+
+    /** The user saw the notice; the damaged copies stay. */
+    fun damagedNoticeSeen() { damaged?.noticeSeen() }
 
     fun foods(): List<FoodRecord> = model.foods
 
@@ -289,11 +336,19 @@ class BreakfastStore internal constructor(private val database: BreakfastDatabas
         }
     }
 
-    /** Reloads the snapshot if the read after a committed write failed. True when it reloaded. */
+    /**
+     * Reloads the snapshot if the read after a committed write failed, or the fresh diary after a damaged one was set
+     * aside during the session (the database is opened again and loaded as at start). True when it reloaded.
+     */
     suspend fun reloadIfStale(): Boolean {
-        if (!snapshotStale) return false
+        if (!snapshotStale && damaged?.movedSinceTaken != true) return false
         return writeMutex.withLock {
             withContext(Dispatchers.IO) {
+                if (damaged?.takeMoved() == true) {
+                    reopen()
+                    load()
+                    return@withContext true
+                }
                 if (!snapshotStale) return@withContext false
                 model = readSnapshot()
                 snapshotStale = false

@@ -18,6 +18,21 @@ import androidx.compose.runtime.setValue
 internal class Notices {
     var message by mutableStateOf<String?>(null); private set
 
-    fun show(message: String) { this.message = message }
-    fun dismiss() { message = null }
+    private var onDismiss: (() -> Unit)? = null
+
+    /**
+     * Shows [message], replacing the one showing. [onDismiss] runs when the user dismisses this one, not when another
+     * replaces it (the damaged-diary notice clears its marker only once it was seen).
+     */
+    fun show(message: String, onDismiss: (() -> Unit)? = null) {
+        this.message = message
+        this.onDismiss = onDismiss
+    }
+
+    fun dismiss() {
+        val seen = onDismiss
+        message = null
+        onDismiss = null
+        seen?.invoke()
+    }
 }

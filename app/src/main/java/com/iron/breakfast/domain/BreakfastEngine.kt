@@ -245,6 +245,11 @@ class BreakfastEngine(
     /** Reloads the stored diary when the read after a committed write failed; true when it reloaded. */
     suspend fun reloadIfStale(): Boolean = store.reloadIfStale()
 
+    /** A damaged diary was set aside and the user has not seen the notice yet (see `data/DamagedDiaries`). */
+    fun damagedNoticePending(): Boolean = store.damagedNoticePending()
+
+    fun damagedNoticeSeen() = store.damagedNoticeSeen()
+
     fun foods(): List<FoodRecord> = store.foods()
 
     suspend fun foodByBarcode(barcode: String): FoodRecord? = store.foodByBarcode(barcode)

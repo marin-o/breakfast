@@ -88,12 +88,24 @@ class AppOwnersTest {
         assertNull(app.documents.safetyCopy)
     }
 
+    /** D15: a diary set aside as damaged is told once storage opens, until dismissed; a new process tells it again. */
+    @Test fun aDamagedDiaryIsToldUntilTheUserDismissesIt() {
+        val app = AppKit(damagedDiary = true)
+        assertEquals("The diary could not be read. Import an export to restore it.", app.notices.message)
+        app.diaryHas()
+        assertEquals("a reload does not stack it", "The diary could not be read. Import an export to restore it.", app.notices.message)
+        app.notices.dismiss()
+        assertFalse("seen: the marker goes", app.diary.damaged)
+        app.diaryHas()
+        assertNull(app.notices.message)
+    }
+
     @Test fun aLogAddOffersItsUndoAndANewDayStartMovesAFollowerOfToday() {
         val app = AppKit()
         app.log.open(MealSlot.LUNCH)
         app.log.onDraft("2 eggs")
         app.log.submit()
-        assertEquals("1 food added to Lunch", app.undo.loggedMessage)
+        assertEquals("the batch keeps its Undo, and says Logged!", "Logged!", app.undo.loggedMessage)
         // Noon: a day that starts at 13:00 has not started yet, so today is yesterday, and the follower goes with it.
         while (app.settings.dayStartHour != 13) app.settings.shiftDayStart(1)
         assertEquals("2026-10-27", app.day.todayKey)

@@ -122,7 +122,7 @@ class MatchFeedbackTest {
     @Test fun aPickReplacesTheEntryLearnsItClosesTheStripAndKeepsTheBatchUndo() {
         // B4 owner decision: a "Not right?" pick keeps the batch Undo.
         val undoTime = FakeTime()
-        val undo = UndoController(diary.session, NoUndoStore, notices, { 15_000L }, undoTime.clock, diary.scope, undoTime.sleep)
+        val undo = UndoController(diary.session, NoUndoStore, notices, { 15_000L }, undoTime.clock, diary.scope, announce = {}, sleep = undoTime.sleep)
         diary.session.onChange(undo::onChange)
         logBatch()
         val offer = undo.offer

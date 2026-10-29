@@ -153,7 +153,7 @@ class LibraryStateTest {
         store.saved = SavedMeal(listOf(entry("e1")), NutritionValues.ZERO, unresolvedSegments = listOf("kefir"))
         library.submitInput()
         assertEquals(listOf("save \"2 egg, kefir\" LUNCH 2026-10-28"), store.calls)
-        assertEquals(listOf<DiaryChange>(DiaryChange.BatchLogged("1 food logged to Lunch", store.saved.entries)), diary.published)
+        assertEquals(listOf<DiaryChange>(DiaryChange.BatchLogged("Logged!", store.saved.entries)), diary.published)
         val handed = afterSaves.single()
         assertEquals(listOf("kefir"), handed.unresolved)
         assertEquals(MealSlot.LUNCH, handed.meal)

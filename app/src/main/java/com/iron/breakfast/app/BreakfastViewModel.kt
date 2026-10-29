@@ -52,6 +52,8 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
                 override fun foods() = engine.foods()
                 override fun entries() = engine.persistedMeal().entries
                 override suspend fun reloadIfStale() = engine.reloadIfStale()
+                override fun damagedNoticePending() = engine.damagedNoticePending()
+                override fun damagedNoticeSeen() = engine.damagedNoticeSeen()
             },
             undo = object : UndoStore {
                 override suspend fun deleteEntry(id: String) = engine.deleteEntry(id)
@@ -142,6 +144,7 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
     internal val day = app.day
     internal val notices = app.notices
     internal val confirmations = app.confirmations
+    internal val announcements = app.announcements
     internal val undo = app.undo
     internal val feedback = app.feedback
     internal val contribution = app.contribution

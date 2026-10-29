@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.iron.breakfast.LogSubmitPlan
 import com.iron.breakfast.app.DiaryChange
+import com.iron.breakfast.app.LOGGED
 import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.app.SavedLogDraft
 import com.iron.breakfast.domain.DraftRow
@@ -22,7 +23,6 @@ import com.iron.breakfast.logTargetMealOf
 import com.iron.breakfast.resolve.LogResolveRequest
 import com.iron.breakfast.resolve.ResolveSource
 import com.iron.breakfast.rowStillInDraft
-import com.iron.breakfast.ui.label
 
 /** What the Log reads and writes; the view model adapts `BreakfastEngine`. */
 internal interface LogStore {
@@ -195,7 +195,7 @@ internal class LogComposer(
         session.write(
             change = { saved ->
                 if (nothingSaved(saved)) null
-                else DiaryChange.BatchLogged("${saved.entries.size} food${if (saved.entries.size == 1) "" else "s"} added to ${target.label()}", saved.entries)
+                else DiaryChange.BatchLogged(LOGGED, saved.entries)
             },
             onSuccess = { saved ->
                 if (nothingSaved(saved)) {

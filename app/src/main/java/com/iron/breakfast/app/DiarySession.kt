@@ -23,6 +23,10 @@ internal interface DiarySource {
     fun entries(): List<MealEntry>
     /** Reloads the snapshot a committed write could not reload; true when it did. */
     suspend fun reloadIfStale(): Boolean
+    /** A damaged diary was set aside (D15) and the user has not seen the notice yet. */
+    fun damagedNoticePending(): Boolean = false
+    /** The user saw that notice. */
+    fun damagedNoticeSeen() {}
 }
 
 /**
@@ -56,6 +60,12 @@ internal class DiarySession(
 
     private val listeners = mutableListOf<(DiaryChange) -> Unit>()
     private var opening = false
+
+    /** A damaged diary was set aside and the user has not seen the notice yet (see [DiarySource.damagedNoticePending]). */
+    fun damagedNoticePending(): Boolean = source.damagedNoticePending()
+
+    /** The user saw that notice. */
+    fun damagedNoticeSeen() = source.damagedNoticeSeen()
 
     /** [listener] runs after each published change, in registration order, after the read model was reloaded. */
     fun onChange(listener: (DiaryChange) -> Unit) { listeners += listener }
@@ -157,7 +167,12 @@ internal class DiarySession(
         onFailure: ((Throwable) -> Unit)?,
         onSuccess: (T) -> Unit,
     ) {
-        val result = if (onFailure == null) run() else suspendRunCatching { run() }.getOrElse { onFailure(it); return }
+        val result = if (onFailure == null) run() else suspendRunCatching { run() }.getOrElse {
+            onFailure(it)
+            // The write found the diary damaged and storage set it aside: the fresh one is loaded now.
+            if (source.damagedNoticePending()) refresh()
+            return
+        }
         change(result)?.let(::publish)
         onSuccess(result)
     }
