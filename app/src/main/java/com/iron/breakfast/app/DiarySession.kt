@@ -218,6 +218,16 @@ internal class DiarySession(
         onSuccess(result)
     }
 
+    /**
+     * A write that is not the user's ([run]: a background merge into a stored food): it never holds or waits for the
+     * user's gate, so no tap is refused for it, and the store's own lock orders it with the user's writes. When [run]
+     * reports a commit, the diary reloads and [change] is published, as after a user write, so open screens follow.
+     * A failure is dropped: nothing the user asked for failed.
+     */
+    fun background(change: DiaryChange, run: suspend () -> Boolean): Job = scope.launch {
+        if (suspendRunCatching { run() }.getOrDefault(false)) publish(change)
+    }
+
     private fun publish(change: DiaryChange) {
         if (change.rowsChanged) refresh()
         listeners.forEach { it(change) }

@@ -27,6 +27,8 @@ class ProductReviewTest {
         var full: FoodRecord? = null
         var fetchFails = false
         var fetchHeld: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+        /** Keeps a merge running, as a slow write would. */
+        var mergeHeld: kotlinx.coroutines.CompletableDeferred<Unit>? = null
         val fetches = mutableListOf<String>()
         override suspend fun fullProduct(barcode: String): FoodRecord? {
             fetches += barcode
@@ -35,6 +37,7 @@ class ProductReviewTest {
             return full
         }
         override suspend fun addServings(expected: FoodRecord, servings: List<ServingConversion>): Boolean {
+            mergeHeld?.await()
             val merged = withServingsAdded(diary.foods.firstOrNull { it.id == expected.id }, expected, servings)
             calls += "add servings ${servings.map { it.name }} to ${expected.id}: ${merged != null}"
             if (merged != null) diary.foods = diary.foods.map { if (it.id == merged.id) merged else it }
@@ -124,7 +127,25 @@ class ProductReviewTest {
         assertEquals("add servings [serving, package] to off-1: true", store.calls.last())
         assertEquals(listOf("serving", "package"), diary.foods.single().conversions.mapNotNull { it.name })
         assertEquals(nutella.nutrition, diary.foods.single().nutrition)
-        assertEquals(listOf<DiaryChange>(DiaryChange.FoodsChanged), diary.published)
+        // The save's change, then the merge's: an open food page shows the servings.
+        assertEquals(listOf<DiaryChange>(DiaryChange.FoodsChanged, DiaryChange.FoodsChanged), diary.published)
+        assertEquals(listOf("serving", "package"), diary.session.foods.single().conversions.mapNotNull { it.name })
+    }
+
+    /** Fix pass, 2: a merge running never holds the user's gate, so a tap meanwhile is not refused. */
+    @Test fun aMergeRunningNeverRefusesAUserWrite() {
+        store.full = nutellaFull
+        store.fetchHeld = kotlinx.coroutines.CompletableDeferred()
+        store.mergeHeld = kotlinx.coroutines.CompletableDeferred()
+        review.choose(nutella)
+        review.saveToLibrary()
+        store.fetchHeld!!.complete(Unit)
+        // The merge has started and waits on the store; the user can still write.
+        assertTrue(diary.session.canWrite)
+        assertFalse(diary.session.busy)
+        diary.commit(DiaryChange.EntryEdited)
+        store.mergeHeld!!.complete(Unit)
+        assertEquals(listOf<DiaryChange>(DiaryChange.FoodsChanged, DiaryChange.EntryEdited, DiaryChange.FoodsChanged), diary.published)
     }
 
     @Test fun aFetchThatFailsChangesNothing() {
@@ -149,6 +170,8 @@ class ProductReviewTest {
         store.fetchHeld!!.complete(Unit)
         assertEquals("add servings [serving, package] to off-1: false", store.calls.last())
         assertEquals(listOf(edited), diary.foods)
+        // Nothing was merged: no change is published for it.
+        assertEquals(listOf<DiaryChange>(DiaryChange.FoodsChanged), diary.published)
     }
 
     @Test fun leavingTheReviewCancelsItsFetch() {

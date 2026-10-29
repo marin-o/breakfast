@@ -153,6 +153,21 @@ class ServingsTest {
         assertEquals(200.0 to Measure(MeasureUnit.GRAM), planner.quantityOf("200 g xyzrice", rice))
     }
 
+    /** Fix pass (search servings), 1: a re-picked result without servings keeps those its stored copy has. */
+    @Test fun aRepickedResultKeepsTheServingsItsStoredCopyHas() {
+        val searched = coke.copy(id = "off-coke", conversions = listOf(ServingConversion(MeasureUnit.MILLILITER, 1.0, "Open Food Facts per 100 ml")), personalOverride = false)
+        val stored = searched.copy(conversions = searched.conversions + ServingConversion(MeasureUnit.MILLILITER, 330.0, "Open Food Facts serving size", label = "can"))
+        val logged = cachedFoodForLogging(searched, stored, null)
+        assertEquals(listOf("can"), logged.conversions.mapNotNull { it.name })
+        assertEquals(searched.nutrition, logged.nutrition)
+        // Its own serving by that name wins; a stored personal edit is kept whole, as before.
+        val own = searched.copy(conversions = searched.conversions + ServingConversion(MeasureUnit.MILLILITER, 250.0, "Open Food Facts serving size", label = "Can"))
+        assertEquals(listOf(250.0), cachedFoodForLogging(own, stored, null).conversions.filter { it.name != null }.map { it.baseUnitsPerServing })
+        val edited = stored.copy(name = "My coke", personalOverride = true)
+        assertEquals(edited, cachedFoodForLogging(searched, edited, null))
+        assertEquals(searched, cachedFoodForLogging(searched, null, null))
+    }
+
     @Test fun weightAndVolumeUnitsWorkWhenTypedAndReadAsTyped() {
         val planner = planner(rice, coke, iceCream)
         fun logged(text: String) = planner.plan(text).entries.single()

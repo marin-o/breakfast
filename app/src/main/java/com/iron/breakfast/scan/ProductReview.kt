@@ -162,11 +162,12 @@ internal class ProductReview(
         current.servings?.let { servings -> if (servingsToAdd(stored, stored.copy(conversions = servings)).isNotEmpty()) mergeInto(stored, servings) }
     }
 
-    /** Adds [servings] to the stored food, without a write of the user's own: it waits for one that runs. */
+    /**
+     * Adds [servings] to the stored food, outside the user's write gate ([DiarySession.background]), so a tap meanwhile
+     * is never refused; a food change follows, so an open food page shows them.
+     */
     private fun mergeInto(stored: FoodRecord, servings: List<ServingConversion>) {
-        session.whenIdle(onSuccess = { added: Boolean -> if (added) session.refresh() }) {
-            suspendRunCatching { store.addServings(stored, servings) }.getOrDefault(false)
-        }
+        session.background(DiaryChange.FoodsChanged) { store.addServings(stored, servings) }
     }
 
     /** The food as the diary has it now, by [id]: what a fetch's servings go to after a save. */

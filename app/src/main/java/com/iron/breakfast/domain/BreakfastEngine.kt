@@ -493,8 +493,19 @@ internal fun snapshotScalable(entry: MealEntry): Boolean = entry.enteredAmount.i
 private fun MealEntry.withScaled(amount: Double, scaled: Calculation) =
     copy(enteredAmount = amount, resolvedBaseAmount = scaled.resolvedBaseAmount, nutritionSnapshot = scaled.nutrition)
 
-internal fun cachedFoodForLogging(candidate: FoodRecord, byId: FoodRecord?, byBarcode: FoodRecord?): FoodRecord =
-    listOfNotNull(byId, byBarcode).firstOrNull { it.personalOverride } ?: candidate
+/**
+ * The food a picked or scanned [candidate] is stored and logged as: a stored personal edit of it wins; else the
+ * candidate, which replaces a stored copy [byId] but keeps the named servings that copy has and it lacks (a search
+ * result has none of its own, so re-picking one never strips a serving its earlier pick brought).
+ */
+internal fun cachedFoodForLogging(candidate: FoodRecord, byId: FoodRecord?, byBarcode: FoodRecord?): FoodRecord {
+    listOfNotNull(byId, byBarcode).firstOrNull { it.personalOverride }?.let { return it }
+    val kept = byId?.conversions.orEmpty().filter { stored ->
+        val name = stored.name ?: return@filter false
+        candidate.conversions.none { it.name?.equals(name, ignoreCase = true) == true }
+    }
+    return if (kept.isEmpty()) candidate else candidate.copy(conversions = candidate.conversions + kept)
+}
 
 /**
  * An amount and its unit as the quick edit types them. [word] is the unit word as typed (a serving's name for
