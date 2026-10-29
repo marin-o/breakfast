@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
+import com.iron.breakfast.domain.Recipe
 import com.iron.breakfast.suspendRunCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -21,6 +22,8 @@ internal interface DiarySource {
     suspend fun open()
     fun foods(): List<FoodRecord>
     fun entries(): List<MealEntry>
+    /** The recipes, each ingredient following its food while it exists. */
+    fun recipes(): List<Recipe> = emptyList()
     /** Reloads the snapshot a committed write could not reload; true when it did. */
     suspend fun reloadIfStale(): Boolean
     /** A damaged diary was set aside (D15) and the user has not seen the notice yet. */
@@ -34,7 +37,7 @@ internal interface DiarySource {
 /**
  * The diary as the app shows it, and the one way to write it.
  *
- * - The read model: [foods] and [entries], reloaded by [refresh]; [ready] once storage opened, [storageUnavailable]
+ * - The read model: [foods], [entries] and [recipes], reloaded by [refresh]; [ready] once storage opened, [storageUnavailable]
  *   while it could not be.
  * - The write gate: [busy] is "one diary write at a time", a UX rule over the store's own lock. Every write goes
  *   through [write], which holds the gate and, after a committed write, reloads the read model and publishes a
@@ -65,6 +68,7 @@ internal class DiarySession(
     val canWrite: Boolean get() = ready && !busy
     var foods by mutableStateOf<List<FoodRecord>>(emptyList()); private set
     var entries by mutableStateOf<List<MealEntry>>(emptyList()); private set
+    var recipes by mutableStateOf<List<Recipe>>(emptyList()); private set
 
     private val listeners = mutableListOf<(DiaryChange) -> Unit>()
     private var opening = false
@@ -98,10 +102,11 @@ internal class DiarySession(
     /** [refresh] was called while one ran: one more check follows it, however many calls came. */
     private var checkAgain = false
 
-    /** Reloads [foods] and [entries]. A write that committed but could not reload the diary is reloaded now, then read again. */
+    /** Reloads [foods], [entries] and [recipes]. A write that committed but could not reload the diary is reloaded now, then read again. */
     fun refresh() {
         foods = source.foods()
         entries = source.entries()
+        recipes = source.recipes()
         onRefreshed()
         checkStale()
     }

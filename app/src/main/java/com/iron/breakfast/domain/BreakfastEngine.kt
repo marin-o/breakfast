@@ -18,7 +18,11 @@ class BreakfastEngine(
 ) {
     private val parser = ShorthandParser()
     private val calculator = NutritionCalculator()
+    /** The Log's matcher: the foods and the recipes ([RecipeIndex.matchable]). */
     private val matchers = MatcherCache()
+    /** The ingredients' matcher: the foods only, as a recipe is never an ingredient. */
+    private val foodMatchers = MatcherCache()
+    private val recipeIndex = RecipeIndex()
 
     suspend fun initialize() = store.initialize()
 
@@ -31,11 +35,8 @@ class BreakfastEngine(
     /** Delete all data, in one transaction; see [BreakfastStore.deleteAllData]. */
     internal suspend fun deleteAllData(alsoPreferences: Boolean) = store.deleteAllData(alsoPreferences)
 
-    private var cachedPlanner: LogPlanner? = null
-    private var plannerMatcher: FoodMatcher? = null
-    private var plannerPreferences: Map<String, Preference>? = null
-    private var plannerPins: Map<String, FoodRecord>? = null
-    private var plannerCountsTyping: Boolean? = null
+    private val logPlanners = PlannerCache()
+    private val ingredientPlanners = PlannerCache()
 
     /** "Count what I'm typing" (Settings): passed to every planner; see [LogPlanner]. */
     val countTyping: Boolean get() = countTypingSetting()
@@ -50,17 +51,30 @@ class BreakfastEngine(
     private fun preferences(): Map<String, Preference> = rankingPreferences(learnFromPicks, store.preferenceMap())
 
     /**
-     * The matcher for the stored foods, rebuilt only when [BreakfastStore.foods] is a new list: the store keeps the
-     * same list after an entry or preference write (MOB-028), so only a food write re-indexes the catalog, the costly
-     * part of matching. Preferences are not in the index; they are passed to each ranking call.
+     * The matcher for the stored foods and the recipes, rebuilt only when [BreakfastStore.foods] or
+     * [BreakfastStore.recipes] is a new list: the store keeps the same lists after an entry or preference write
+     * (MOB-028), so only a food or recipe write re-indexes the catalog, the costly part of matching. Preferences are not
+     * in the index; they are passed to each ranking call.
      */
-    private fun matcher(): FoodMatcher = matchers.matcherFor(store.foods())
+    private fun matcher(): FoodMatcher = matchers.matcherFor(matchable())
+
+    /** The foods and the recipes as foods, what the Log matches ([RecipeIndex]). */
+    private fun matchable(): List<FoodRecord> = recipeIndex.matchable(store.foods(), store.recipes())
+
+    /** The matcher for the foods alone, for ingredients; the Log's own while there are no recipes. */
+    private fun ingredientMatcher(): FoodMatcher {
+        val foods = store.foods()
+        return if (matchable() === foods) matcher() else foodMatchers.matcherFor(foods)
+    }
+
+    /** The recipes, each ingredient following its food while it exists ([Recipe.current]). */
+    fun recipes(): List<Recipe> = recipeIndex.recipes(store.foods(), store.recipes())
 
     /** The matcher in use now; tests check which writes keep it. */
     internal fun matcherForTesting(): FoodMatcher = matcher()
 
     /** Called after every write to the foods, so the next [matcher] call indexes the stored foods again. */
-    private fun invalidateMatcher() = matchers.invalidate()
+    private fun invalidateMatcher() { matchers.invalidate(); foodMatchers.invalidate() }
 
     fun parse(input: String): ParsedSegment = parser.parse(input)
 
@@ -109,16 +123,27 @@ class BreakfastEngine(
         )
     }
 
-    /** The planner for the current foods and preferences. [save] and the Log page both resolve through it. */
-    @Synchronized
-    fun planner(pins: Map<String, FoodRecord> = emptyMap()): LogPlanner {
-        val matcher = matcher()
-        val preferences = preferences()
-        val counts = countTyping
-        // The same foods, preferences, pins and settings give the same planner, so its per-part cache carries across keystrokes.
-        cachedPlanner?.let { if (matcher === plannerMatcher && preferences === plannerPreferences && pins == plannerPins && counts == plannerCountsTyping) return it }
-        return LogPlanner(matcher, preferences, calculator, parser, pins, counts).also {
-            cachedPlanner = it; plannerMatcher = matcher; plannerPreferences = preferences; plannerPins = pins; plannerCountsTyping = counts
+    /** The planner for the current foods, recipes and preferences. [save] and the Log page both resolve through it. */
+    fun planner(pins: Map<String, FoodRecord> = emptyMap()): LogPlanner = logPlanners.plannerFor(matcher(), preferences(), pins, countTyping)
+
+    /** The planner a recipe's ingredients are typed through: the Log's rules over the foods alone. */
+    fun ingredientPlanner(pins: Map<String, FoodRecord> = emptyMap()): LogPlanner =
+        ingredientPlanners.plannerFor(ingredientMatcher(), preferences(), pins, countTyping)
+
+    /** One planner per matcher, preferences, pins and setting, so its per-part cache carries across keystrokes. */
+    private inner class PlannerCache {
+        private var planner: LogPlanner? = null
+        private var matcher: FoodMatcher? = null
+        private var preferences: Map<String, Preference>? = null
+        private var pins: Map<String, FoodRecord>? = null
+        private var counts: Boolean? = null
+
+        @Synchronized
+        fun plannerFor(matcher: FoodMatcher, preferences: Map<String, Preference>, pins: Map<String, FoodRecord>, counts: Boolean): LogPlanner {
+            planner?.let { if (matcher === this.matcher && preferences === this.preferences && pins == this.pins && counts == this.counts) return it }
+            return LogPlanner(matcher, preferences, calculator, parser, pins, counts).also {
+                planner = it; this.matcher = matcher; this.preferences = preferences; this.pins = pins; this.counts = counts
+            }
         }
     }
 
@@ -134,7 +159,8 @@ class BreakfastEngine(
 
     suspend fun replaceEntry(entryId: String, foodId: String): ReplacementResult =
         editEntry(entryId, "That saved entry is no longer available.") { old ->
-            val food = store.foods().firstOrNull { it.id == foodId }
+            // A "Not right?" pick may be a recipe: the Log matched it as a food.
+            val food = matchable().firstOrNull { it.id == foodId }
                 ?: return@editEntry ReplacementResult.Failure("That catalogue record is no longer available.")
             if (!old.enteredAmount.isFinite() || old.enteredAmount <= 0.0) return@editEntry ReplacementResult.Failure("Enter a positive amount.")
             val calculation = calculator.calculate(food, old.enteredAmount, old.enteredUnit)
@@ -350,6 +376,8 @@ class BreakfastEngine(
 
     /** Stores a food for later logs without logging it: the food a Log part was picked as. Returns the food as it is stored. */
     suspend fun cacheFood(food: FoodRecord): FoodRecord {
+        // A recipe is never stored as a food.
+        if (isRecipeId(food.id)) return food
         val effectiveFood = cachedFoodForLogging(food, store.foodById(food.id), food.barcode?.let { store.foodByBarcode(it) })
         store.addFood(effectiveFood)
         invalidateMatcher()
@@ -357,6 +385,7 @@ class BreakfastEngine(
     }
 
     suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, mealSlot: MealSlot, dayKey: String): MealEntry {
+        if (isRecipeId(food.id)) return logRecipe(food, amount, unit, mealSlot, dayKey)
         val effectiveFood = cachedFoodForLogging(
             food,
             store.foodById(food.id),
@@ -373,6 +402,33 @@ class BreakfastEngine(
         invalidateMatcher()
         return entry
     }
+
+    /**
+     * Logs [amount] [unit] of a recipe ([Recipe.asFood]) as one entry with its own snapshot, so editing or deleting the
+     * recipe later never changes it. The recipe is not stored as a food.
+     */
+    suspend fun logRecipe(recipe: FoodRecord, amount: Double, unit: MeasureUnit, mealSlot: MealSlot, dayKey: String): MealEntry {
+        require(amount.isFinite() && amount > 0.0) { "Enter a positive amount." }
+        val calculation = calculator.calculate(recipe, amount, unit)
+        require(calculation.supported) { "That amount/unit is not supported for ${recipe.name}." }
+        val entry = MealEntry(UUID.randomUUID().toString(), recipe.id, recipe.name, amount, unit,
+            calculation.resolvedBaseAmount, calculation.nutrition, calculation.provenance,
+            calculation.approximate, System.currentTimeMillis(), recipe.name, mealSlot, dayKey, recipe.nutrition.unit)
+        store.saveEntries(listOf(entry))
+        return entry
+    }
+
+    /** Saves a new recipe (a blank id gets one) or an edited one; returns it as stored. */
+    suspend fun saveRecipe(recipe: Recipe): Recipe {
+        require(recipe.name.isNotBlank()) { "Name is required" }
+        require(validYield(recipe.portions) || validYield(recipe.totalWeight)) { "Portions or a total weight is required" }
+        val stored = recipe.copy(name = recipe.name.trim(), id = recipe.id.ifBlank { RECIPE_ID_PREFIX + UUID.randomUUID() })
+        store.saveRecipe(stored)
+        return stored
+    }
+
+    /** Deletes a recipe for good; past entries keep their own name and numbers. */
+    suspend fun deleteRecipe(id: String) = store.deleteRecipe(id)
 
     fun persistedMeal(): SavedMeal {
         val entries = store.entries()

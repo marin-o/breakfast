@@ -54,6 +54,7 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
                 override suspend fun open() = engine.initialize()
                 override fun foods() = engine.foods()
                 override fun entries() = engine.persistedMeal().entries
+                override fun recipes() = engine.recipes()
                 override suspend fun reloadIfStale() = engine.reloadIfStale()
                 override fun damagedNoticePending() = engine.damagedNoticePending()
                 override fun damagedNoticeSeen() = engine.damagedNoticeSeen()

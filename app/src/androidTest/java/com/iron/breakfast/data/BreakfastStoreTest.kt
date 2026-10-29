@@ -14,6 +14,7 @@ import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.ReplacementResult
+import com.iron.breakfast.domain.asFood
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -338,6 +339,31 @@ class BreakfastStoreTest {
         assertEquals(110.0, kept[0].nutritionSnapshot.protein!!, 1e-9)
         assertEquals(chili.ingredients[1], kept[1])
         assertEqualsFullRead()
+    }
+
+    /**
+     * A logged recipe is one entry with its own snapshot and never a food: through the Log, the Library's or the
+     * resolver's log, and its numbers stay when the recipe is edited or deleted. The Log matches it; ingredients do not.
+     */
+    @Test
+    fun aLoggedRecipeIsOneEntryWithItsOwnNumbersAndNeverAFood() = runBlocking {
+        val engine = BreakfastEngine(store)
+        store.upsertFood(mince)
+        engine.saveRecipe(chili)
+        assertEquals("recipe-chili", engine.planner().plan("1.5 chili").entries.single().food.id)
+        assertTrue(engine.ingredientPlanner().plan("1.5 chili").entries.isEmpty())
+        val logged = engine.save("1.5 chili", mealSlot = MealSlot.DINNER, dayKey = "2026-10-29").entries.single()
+        val recipeFood = engine.recipes().single().asFood()
+        val byLibrary = engine.cacheFoodAndLog(recipeFood, 300.0, MeasureUnit.GRAM, MealSlot.LUNCH, "2026-10-29")
+        assertTrue(store.foods().none { it.id == chili.id })
+        assertEquals(recipeFood.name, logged.foodName)
+        // 1.5 of 4 portions of (1250 + 300) kcal; 300 g of 1200 g.
+        assertEquals(581.25, logged.nutritionSnapshot.calories, 1e-9)
+        assertEquals(387.5, byLibrary.nutritionSnapshot.calories, 1e-9)
+
+        engine.saveRecipe(chili.copy(name = "Renamed", portions = 2.0))
+        engine.deleteRecipe(chili.id)
+        assertEquals(listOf(logged, byLibrary), store.entries().filter { it.foodId == chili.id })
     }
 
     /** Export, Replace diary and Delete all carry or clear the recipes with everything else. */

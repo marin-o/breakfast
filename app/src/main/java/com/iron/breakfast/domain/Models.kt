@@ -14,7 +14,10 @@ enum class MealSlot { BREAKFAST, LUNCH, DINNER, SNACKS }
 
 @Serializable
 enum class MeasureUnit(val label: String) {
-    GRAM("g"), MILLILITER("ml"), TABLESPOON("tbsp"), TEASPOON("tsp"), PIECE("piece"), UNKNOWN("")
+    GRAM("g"), MILLILITER("ml"), TABLESPOON("tbsp"), TEASPOON("tsp"), PIECE("piece"),
+    /** A recipe's portion: only a recipe with portions has it (see `domain/Recipes.kt`). */
+    PORTION("portion"),
+    UNKNOWN("")
 }
 
 @Serializable

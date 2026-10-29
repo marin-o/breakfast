@@ -3,9 +3,13 @@ package com.iron.breakfast.domain
 import java.util.Locale
 
 /** Library order: the most recently logged food first, then by name. */
-internal fun libraryRecencyOrder(foods: List<FoodRecord>, entries: List<MealEntry>): List<FoodRecord> {
+internal fun libraryRecencyOrder(foods: List<FoodRecord>, entries: List<MealEntry>): List<FoodRecord> =
+    recencyOrder(foods, entries, FoodRecord::id, FoodRecord::name)
+
+/** [items] with the one logged most recently first (by the entries naming its [id]), then by [name]. */
+internal fun <T> recencyOrder(items: List<T>, entries: List<MealEntry>, id: (T) -> String, name: (T) -> String): List<T> {
     val latestByFood = entries.groupBy { it.foodId }.mapValues { (_, values) -> values.maxOfOrNull { it.savedAtEpochMs } ?: Long.MIN_VALUE }
-    return foods.sortedWith(compareByDescending<FoodRecord> { latestByFood[it.id] ?: Long.MIN_VALUE }.thenBy { it.name.lowercase(Locale.ROOT) })
+    return items.sortedWith(compareByDescending<T> { latestByFood[id(it)] ?: Long.MIN_VALUE }.thenBy { name(it).lowercase(Locale.ROOT) })
 }
 
 /**

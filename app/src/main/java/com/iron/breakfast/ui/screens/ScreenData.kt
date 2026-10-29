@@ -65,12 +65,9 @@ internal fun quantityRateDisplay(
     includeRateUnit: Boolean = true,
     asciiMultiply: Boolean = false,
 ): QuantityDisplay {
-    // A counted piece is the amount the user chose ("1 piece"). Its gram conversion and kcal-per-gram rate are not a
-    // quantity to read, so they are not shown; the kcal sits in the row's own column.
-    if (entry.enteredUnit == MeasureUnit.PIECE) {
-        val count = entry.enteredAmount.pretty()
-        return QuantityDisplay(line = "$count ${if (entry.enteredAmount == 1.0) "piece" else "pieces"}")
-    }
+    // A counted piece or portion is the amount the user chose ("1 piece", "2 portions"). Its gram conversion and
+    // kcal-per-gram rate are not a quantity to read, so they are not shown; the kcal sits in the row's own column.
+    countedQuantity(entry.enteredAmount, entry.enteredUnit)?.let { return QuantityDisplay(line = it) }
     val basisUnit = entry.resolvedBaseUnit.takeUnless { it == MeasureUnit.UNKNOWN }
         ?: provenanceBasisUnit(entry.conversionProvenance)
         ?: entry.enteredUnit
@@ -93,6 +90,13 @@ internal fun quantityRateDisplay(
         line = markDecimals(if (includeRateUnit) withRateUnit(line, rateUnit, approximate) else line, mark),
         approximateLabel = entered.takeIf { approximate },
     )
+}
+
+/** A counted amount as it reads: "1 piece", "2 pieces", "1 portion", "1.5 portions"; null for a measured unit (g, ml, tbsp). */
+internal fun countedQuantity(amount: Double, unit: MeasureUnit): String? = when (unit) {
+    MeasureUnit.PIECE -> "${amount.pretty()} ${if (amount == 1.0) "piece" else "pieces"}"
+    MeasureUnit.PORTION -> "${amount.pretty()} ${if (amount == 1.0) "portion" else "portions"}"
+    else -> null
 }
 
 private const val MAX_RATE_UNIT_LINE = 28

@@ -74,6 +74,7 @@ import com.iron.breakfast.today.shortDateLabel
 import com.iron.breakfast.ui.screens.formatKcal
 import com.iron.breakfast.ui.screens.choiceKcalDetail
 import com.iron.breakfast.ui.screens.foodCountLabel
+import com.iron.breakfast.ui.screens.countedQuantity
 
 
 /**
@@ -268,12 +269,9 @@ internal fun syncedInputField(field: TextFieldValue, text: String): TextFieldVal
 internal fun inputFieldFor(text: String): TextFieldValue = TextFieldValue(text, TextRange(text.length))
 
 /**
- * The quantity line of a Log row. Counted pieces read as the user typed them (`2 pieces`, `1 piece`), never with ≈.
- * Other units show ≈ only when the amount was converted (1 tbsp as grams).
+ * The quantity line of a Log row. Counted pieces and portions read as the user typed them (`2 pieces`, `1 portion`),
+ * never with ≈. Other units show ≈ only when the amount was converted (1 tbsp as grams).
  */
 internal fun previewQuantityLine(amount: Double, unit: com.iron.breakfast.domain.MeasureUnit, approximate: Boolean): String =
-    if (unit == com.iron.breakfast.domain.MeasureUnit.PIECE) {
-        "${amount.pretty()} ${if (amount == 1.0) "piece" else "pieces"}"
-    } else {
-        "${if (approximate) "≈" else ""}${amount.pretty()} ${unit.displayLabel()}"
-    }
+    countedQuantity(amount, unit) ?: "${if (approximate) "≈" else ""}${amount.pretty()} ${unit.displayLabel()}"
+

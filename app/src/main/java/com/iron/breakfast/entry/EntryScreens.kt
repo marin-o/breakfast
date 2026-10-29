@@ -84,6 +84,8 @@ import com.iron.breakfast.today.shortDateLabel
 import com.iron.breakfast.ui.screens.plainLine
 import com.iron.breakfast.ui.screens.formatKcal
 import com.iron.breakfast.ui.screens.entrySourceLabel
+import com.iron.breakfast.ui.screens.sourceLabel
+import com.iron.breakfast.domain.isRecipeId
 import com.iron.breakfast.ui.screens.datePickerMaxMs
 
 
@@ -101,7 +103,8 @@ internal fun EntryDetailScreen(entryEdit: EntryEdit, session: DiarySession, surf
                 Text(formatKcal(entry.nutritionSnapshot.calories), color = colors.ink, style = BreakfastType.Hero, modifier = Modifier.padding(top = 22.dp))
                 Text("kilocalories", color = colors.soft, style = BreakfastType.Secondary)
                 MacroTable(entry, Modifier.padding(top = 22.dp))
-                Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 22.dp))
+                // A recipe is the user's own, as a personal food is.
+                Text(if (isRecipeId(entry.foodId)) sourceLabel("P") else entrySourceLabel(food), color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 22.dp))
                 Hairline(Modifier.padding(top = 30.dp))
                 Column(Modifier.fillMaxWidth().padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     // Its food deleted, an entry's amount still changes by its own numbers; not when they cannot scale.
