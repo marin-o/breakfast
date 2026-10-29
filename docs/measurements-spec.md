@@ -1,6 +1,6 @@
 # Measurements: spec (approved, 2026-10-29)
 
-Status: approved by the owner on 2026-10-29, building. Owner answers are marked **(owner)**. The decisions on the open questions are in "Decisions" at the end and override anything above them. The owner may revise details later.
+Status: approved by the owner on 2026-10-29; built, pending device check. Owner answers are marked **(owner)**. The decisions on the open questions are in "Decisions" at the end and override anything above them. The owner may revise details later.
 
 ## Today
 
