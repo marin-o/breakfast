@@ -16,6 +16,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
@@ -166,13 +170,18 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, vm: BreakfastViewModel
     val density = LocalDensity.current
     val quantity = quantityRateDisplay(entry, food, includeRateUnit = false, asciiMultiply = true)
     Box(Modifier.fillMaxWidth().background(colors.bg).onSizeChanged { rowHeight = it.height }) {
-        // Swipe reveals the delete panel; the panel is the only place `bad` fills a surface.
-        if (revealOffset < 0f) Row(
-            Modifier.align(Alignment.CenterEnd).widthIn(min = 96.dp * fontScale).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).background(colors.bad).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { vm.undo.delete(entry) },
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
+        // Swipe reveals the delete panel; the panel is the only place `bad` fills a surface. It shows as wide as the
+        // row has moved, so it grows with the finger; the full panel under it keeps its width, and "Delete" its line.
+        if (revealOffset < 0f) Box(
+            Modifier.align(Alignment.CenterEnd).width(with(density) { (-revealOffset).toDp() }).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).clipToBounds().background(colors.bad).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { vm.undo.delete(entry) },
         ) {
-            Text("Delete", color = swipeLabelOnBad(colors), style = BreakfastType.Button, maxLines = 1, softWrap = false)
+            Row(
+                Modifier.wrapContentWidth(Alignment.Start, unbounded = true).widthIn(min = with(density) { deleteWidth.toDp() }).fillMaxHeight(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Text("Delete", color = swipeLabelOnBad(colors), style = BreakfastType.Button, maxLines = 1, softWrap = false)
+            }
         }
         FoodRow(
             name = entry.foodName,
