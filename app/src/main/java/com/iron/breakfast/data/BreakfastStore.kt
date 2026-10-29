@@ -40,6 +40,9 @@ internal fun openBreakfastDatabase(context: Context, name: String, damaged: Dama
         .addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6)
         .build()
 
+/** A write refused because the diary was found damaged and the fresh one is not open yet (see [BreakfastStore]). */
+internal class DiaryDamagedException : IllegalStateException("The diary is damaged; the fresh one opens on the next reload.")
+
 /**
  * The only writer. [openDatabase] opens `breakfast.db` ([databaseFile]) in the app; tests pass an in-memory one, with
  * no [damaged].
@@ -50,7 +53,9 @@ internal fun openBreakfastDatabase(context: Context, name: String, damaged: Dama
  * - found by a statement during the session, that call fails; then, under the write lock and once it has unwound, the
  *   store closes the whole database, the damaged files are set aside, and it opens and loads the fresh diary
  *   ([reloadIfStale], which the session runs after the failed write; or [initialize] when it was found there). The
- *   session then resets as after an import ([takeDiaryReplaced]).
+ *   session then resets as after an import ([takeDiaryReplaced]). Until then a write is refused
+ *   ([DiaryDamagedException]), so nothing commits into the damaged file; every database access, reads included, runs
+ *   under [writeMutex], so none is still running on it when it closes.
  */
 class BreakfastStore internal constructor(
     private val openDatabase: () -> BreakfastDatabase,
@@ -63,12 +68,12 @@ class BreakfastStore internal constructor(
         { openBreakfastDatabase(context, "breakfast.db", damaged) }, damaged, context.getDatabasePath("breakfast.db"),
     )
 
-    /** Replaced only under [writeMutex] (a fresh diary after damage); read by the few calls outside it. */
-    
+    /** Replaced and used only under [writeMutex] (a fresh diary after damage). */
+    @Volatile
     private var database: BreakfastDatabase = openDatabase()
 
     /** The store went on with a fresh diary during the session; the session has not reset for it yet. */
-    
+    @Volatile
     private var replacedAfterDamage = false
     private val writeMutex = Mutex()
 
@@ -210,15 +215,19 @@ class BreakfastStore internal constructor(
 
     suspend fun foodByBarcode(barcode: String): FoodRecord? {
         requireReady()
-        return withContext(Dispatchers.IO) {
-            // A row matches in whichever form it was stored (UPC-A or its EAN-13); an exact spelling is preferred.
-            val forms = barcodeForms(barcode).ifEmpty { listOf(barcode) }
-            val entity = pickBarcodeMatch(database.foodDao().byBarcodes(forms), barcode) ?: return@withContext null
-            val aliases = database.foodAliasDao().all().filter { it.foodId == entity.id }.map { it.alias }
-            val conversions = database.servingConversionDao().all().filter { it.foodId == entity.id }.map {
-                it.toDomain()
+        // Under the lock, as every database access: a fresh diary after damage must not open while a read still runs
+        // on the damaged one (that connection, closed last, would checkpoint into the moved file and unlink the WAL).
+        return writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                // A row matches in whichever form it was stored (UPC-A or its EAN-13); an exact spelling is preferred.
+                val forms = barcodeForms(barcode).ifEmpty { listOf(barcode) }
+                val entity = pickBarcodeMatch(database.foodDao().byBarcodes(forms), barcode) ?: return@withContext null
+                val aliases = database.foodAliasDao().all().filter { it.foodId == entity.id }.map { it.alias }
+                val conversions = database.servingConversionDao().all().filter { it.foodId == entity.id }.map {
+                    it.toDomain()
+                }
+                entity.toDomain(aliases, conversions)
             }
-            entity.toDomain(aliases, conversions)
         }
     }
 
@@ -353,6 +362,9 @@ class BreakfastStore internal constructor(
      * nothing.
      */
     private suspend fun <T> write(touched: Set<StoreTable>, block: suspend () -> T): T = writeMutex.withLock {
+        // Damage was found and the fresh diary is not open yet: nothing commits into the damaged file. The write fails;
+        // the session then reloads, which opens the fresh diary, and the user tries again there.
+        if (damaged?.needsReopen == true) throw DiaryDamagedException()
         withContext(NonCancellable + Dispatchers.IO) {
             commitThenRefresh(
                 commit = { database.withTransaction { block() } },

@@ -91,10 +91,10 @@ class DamagedDiariesTest {
     @Test fun aMoveThatFailsHalfwayPutsBackWhatItMovedAndMarksNothing() {
         val db = file("breakfast.db", byteArrayOf(1))
         val wal = file("breakfast.db-wal", byteArrayOf(2))
-        val failing = DamagedDiaries(root, { now }) { from, to ->
+        val failing = DamagedDiaries(root, clock = { now }, move = { from, to ->
             if (from.name == "breakfast.db") throw java.io.IOException("no room")
             java.nio.file.Files.move(from.toPath(), to.toPath())
-        }
+        })
         val failure = runCatching { failing.moveAside(db) }.exceptionOrNull()
         assertEquals("no room", failure?.message)
         assertArrayEquals("the WAL is back beside its database", byteArrayOf(2), wal.readBytes())
@@ -102,6 +102,33 @@ class DamagedDiariesTest {
         assertFalse(failing.noticePending())
         assertFalse(failing.needsReopen)
         assertTrue("no folder is left", root.listFiles().orEmpty().isEmpty())
+    }
+
+    /** A full disk: the marker cannot be written while open, yet the notice shows, and the marker comes with the close. */
+    @Test fun aMarkerThatCannotBeWrittenStillLeavesTheNotice() {
+        var diskFull = true
+        val failing = DamagedDiaries(root, clock = { now }, writeMarker = { file, text ->
+            if (diskFull) throw java.io.IOException("no space") else file.writeText(text)
+        })
+        val db = file("breakfast.db", byteArrayOf(1))
+        assertEquals("no space", runCatching { failing.snapshot(db) }.exceptionOrNull()?.message)
+        assertTrue("the notice still shows", failing.noticePending())
+        assertTrue("and the store still closes and sets it aside", failing.closePending)
+        diskFull = false
+        failing.setAsideAfterClose()
+        val folder = root.listFiles()!!.single()
+        assertTrue("written with the set-aside, so it survives a restart", File(folder, DamagedDiaries.NOTICE).exists())
+        assertTrue(DamagedDiaries(root, clock = { now }).noticePending())
+        assertArrayEquals(byteArrayOf(1), File(folder, "${DamagedDiaries.AFTER_CLOSE}/breakfast.db").readBytes())
+    }
+
+    /** A notice already dismissed is not marked again by the set-aside. */
+    @Test fun aSeenNoticeIsNotMarkedAgainAfterTheClose() {
+        damaged.snapshot(file("breakfast.db", byteArrayOf(1)))
+        damaged.noticeSeen()
+        damaged.setAsideAfterClose()
+        assertFalse(damaged.noticePending())
+        assertFalse(DamagedDiaries(root, clock = { now }).noticePending())
     }
 
     /** Damage found with a connection open: copied as found now, moved only after the store closed it. */
@@ -155,7 +182,13 @@ class DamagedDiariesTest {
         assertTrue("page size 1 means 65536", readableHeader(validHeader().also { it[16] = 0; it[17] = 1 }))
         assertFalse("not SQLite", readableHeader(ByteArray(100)))
         assertFalse("page size not a power of two", readableHeader(validHeader().also { it[16] = 0x0f; it[17] = 0xa0.toByte() }))
-        assertFalse("file format version 3", readableHeader(validHeader().also { it[18] = 3 }))
+        assertTrue("write version above 2: SQLite opens it read-only", readableHeader(validHeader().also { it[18] = 3 }))
+        assertTrue("versions 0 are accepted", readableHeader(validHeader().also { it[18] = 0; it[19] = 0 }))
+        assertFalse("read version above 2: SQLite refuses it", readableHeader(validHeader().also { it[19] = 3 }))
+        assertFalse("read version 255", readableHeader(validHeader().also { it[19] = 0xff.toByte() }))
+        assertFalse("fewer than 480 usable bytes", readableHeader(validHeader().also { it[16] = 2; it[17] = 0; it[20] = 40 }))
+        assertTrue("480 usable bytes", readableHeader(validHeader().also { it[16] = 2; it[17] = 0; it[20] = 32 }))
+        assertFalse("page size 256", readableHeader(validHeader().also { it[16] = 1; it[17] = 0 }))
         assertFalse("payload fractions", readableHeader(validHeader().also { it[21] = 63 }))
         assertTrue("shorter than a header: left to SQLite", readableHeader(ByteArray(10)))
     }

@@ -126,6 +126,9 @@ class DamagedDatabaseTest {
         assertTrue("copied as found, still to be closed and set aside", damaged.closePending)
         val folder = damagedRoot.listFiles()!!.single()
         assertArrayEquals("the database as found", asFound, File(folder, name).readBytes())
+        // Until the fresh diary is open, a write is refused, so nothing commits into the damaged file.
+        val refused = runCatching { store.saveEntries(listOf(entry("too early"))) }.exceptionOrNull()
+        assertTrue("refused: $refused", refused is DiaryDamagedException)
         assertTrue(store.reloadIfStale())
         assertTrue("the session resets as after an import", store.takeDiaryReplaced())
         assertFalse(damaged.closePending)

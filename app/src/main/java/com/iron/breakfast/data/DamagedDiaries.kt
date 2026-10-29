@@ -29,6 +29,8 @@ internal class DamagedDiaries(
     private val clock: () -> Long = System::currentTimeMillis,
     /** Moves one file (a same-filesystem rename in the app); tests make it fail. */
     private val move: (File, File) -> Unit = { from, to -> Files.move(from.toPath(), to.toPath()) },
+    /** Writes the notice marker; tests make it fail (a full disk). */
+    private val writeMarker: (File, String) -> Unit = { file, text -> file.writeText(text) },
 ) {
     /** A damaged database was moved aside while no connection was open on it; the store has not reopened yet. */
     @Volatile private var moved = false
@@ -62,8 +64,9 @@ internal class DamagedDiaries(
         val files = filesOf(database)
         if (files.isEmpty()) return null
         val folder = newFolder()
-        val marker = File(folder, NOTICE).apply { writeText(database.name) }
+        val marker = File(folder, NOTICE)
         try {
+            writeMarker(marker, database.name)
             moveAll(files, folder)
         } catch (e: Exception) {
             marker.delete()
@@ -86,8 +89,9 @@ internal class DamagedDiaries(
         if (open != null) return
         val folder = newFolder()
         open = Snapshot(database, folder)
-        File(folder, NOTICE).writeText(database.name)
+        // Pending before the marker: a marker that cannot be written (a full disk) still leaves the notice to show.
         pending = true
+        writeMarker(File(folder, NOTICE), database.name)
         filesOf(database).forEach { Files.copy(it.toPath(), File(folder, it.name).toPath()) }
     }
 
@@ -99,6 +103,9 @@ internal class DamagedDiaries(
     @Synchronized
     fun setAsideAfterClose() {
         val snapshot = open ?: return
+        // The marker [snapshot] could not write, while the notice is still unseen: so it shows after a restart too.
+        val marker = File(snapshot.folder, NOTICE)
+        if (pending == true && !marker.exists()) runCatching { writeMarker(marker, snapshot.database.name) }
         val files = filesOf(snapshot.database)
         if (files.isNotEmpty()) {
             val after = File(snapshot.folder, AFTER_CLOSE).apply { mkdirs() }
@@ -177,17 +184,22 @@ internal class DamagedDiaries(
 }
 
 /**
- * True unless [header] (the first bytes of a database file) is one SQLite would refuse ("file is not a database"):
- * the magic string, a page size that is a power of two from 512 to 65536 (1 means 65536), file format versions 1 or 2,
- * and the payload fractions 64, 32 and 32, which SQLite requires. An empty or short file is left to SQLite.
+ * True unless [header] (the first bytes of a database file) is one SQLite would refuse ("file is not a database"), by
+ * SQLite's own checks of page 1: the magic string, a page size that is a power of two from 512 to 65536 (1 means
+ * 65536), a read version (byte 19) of at most 2, at least 480 usable bytes per page after the reserved ones, and the
+ * payload fractions 64, 32 and 32. The write version (byte 18) is not checked: above 2 SQLite only opens read-only. An
+ * empty or short file is left to SQLite.
  */
 internal fun readableHeader(header: ByteArray): Boolean {
     if (header.size < 100) return true
     if (!header.copyOfRange(0, 16).contentEquals(MAGIC)) return false
-    val pageSize = ((header[16].toInt() and 0xff) shl 8) or (header[17].toInt() and 0xff)
-    val validPage = pageSize == 1 || (pageSize in 512..32768 && pageSize and (pageSize - 1) == 0)
-    val versions = header[18].toInt() in 1..2 && header[19].toInt() in 1..2
-    return validPage && versions && header[21].toInt() == 64 && header[22].toInt() == 32 && header[23].toInt() == 32
+    val stored = ((header[16].toInt() and 0xff) shl 8) or (header[17].toInt() and 0xff)
+    val pageSize = if (stored == 1) 65536 else stored
+    val validPage = pageSize in 512..65536 && pageSize and (pageSize - 1) == 0
+    // Byte 18 (write version) above 2 only makes SQLite open it read-only; byte 19 (read version) above 2 it refuses.
+    val readVersion = (header[19].toInt() and 0xff) <= 2
+    val usable = pageSize - (header[20].toInt() and 0xff) >= 480
+    return validPage && readVersion && usable && header[21].toInt() == 64 && header[22].toInt() == 32 && header[23].toInt() == 32
 }
 
 private val MAGIC = "SQLite format 3\u0000".toByteArray(Charsets.US_ASCII)
