@@ -1,7 +1,7 @@
 package com.iron.breakfast.settings
 
 import java.util.Locale
-import com.iron.breakfast.UNDO_WINDOW_MS
+import com.iron.breakfast.today.UNDO_WINDOW_MS
 import com.iron.breakfast.domain.MealSlot
 
 /** The day start one step from [hour]; it wraps 23 to 00 and 00 to 23. */

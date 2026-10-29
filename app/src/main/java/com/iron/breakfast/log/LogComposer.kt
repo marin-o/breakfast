@@ -4,7 +4,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.iron.breakfast.LogSubmitPlan
 import com.iron.breakfast.app.DiaryChange
 import com.iron.breakfast.app.LOGGED
 import com.iron.breakfast.app.DiarySession
@@ -18,11 +17,8 @@ import com.iron.breakfast.domain.SavedMeal
 import com.iron.breakfast.domain.ShorthandLexicon
 import com.iron.breakfast.domain.mealMarkerSlots
 import com.iron.breakfast.domain.replaceDraftPart
-import com.iron.breakfast.logSubmitPlan
-import com.iron.breakfast.logTargetMealOf
 import com.iron.breakfast.resolve.LogResolveRequest
 import com.iron.breakfast.resolve.ResolveSource
-import com.iron.breakfast.rowStillInDraft
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 

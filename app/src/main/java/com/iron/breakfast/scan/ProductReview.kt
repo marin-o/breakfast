@@ -6,7 +6,6 @@ import androidx.compose.runtime.setValue
 import com.iron.breakfast.app.DiaryChange
 import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.app.Notices
-import com.iron.breakfast.canSaveProductToLibrary
 import com.iron.breakfast.contribution.contributionDraftAfterLocalSave
 import com.iron.breakfast.data.OffContributionDraft
 import com.iron.breakfast.domain.Calculation
@@ -19,9 +18,8 @@ import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.TypedPart
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.domain.toMeasureUnit
-import com.iron.breakfast.productReviewOrigin
 import com.iron.breakfast.resolve.ResolveQueueView
-import com.iron.breakfast.queueLogPlan
+import com.iron.breakfast.resolve.queueLogPlan
 import com.iron.breakfast.ui.pretty
 
 /** The writes product review makes; the view model adapts `BreakfastEngine`. */

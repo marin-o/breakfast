@@ -3,14 +3,14 @@ package com.iron.breakfast.app
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.iron.breakfast.LibraryExit
+import com.iron.breakfast.library.LibraryExit
 import com.iron.breakfast.contribution.ContributionFlow
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.entry.EntryEdit
 import com.iron.breakfast.entry.EntryEditMode
-import com.iron.breakfast.exitLibraryTarget
+import com.iron.breakfast.library.exitLibraryTarget
 import com.iron.breakfast.food.FoodForm
 import com.iron.breakfast.library.LibraryState
 import com.iron.breakfast.log.LogComposer

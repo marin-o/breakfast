@@ -1,10 +1,10 @@
-package com.iron.breakfast
+package com.iron.breakfast.today
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import com.iron.breakfast.today.UndoOffer
+import com.iron.breakfast.app.stopMeansLeaving
 
 class UndoWindowTest {
     private val offered = 1_000_000L

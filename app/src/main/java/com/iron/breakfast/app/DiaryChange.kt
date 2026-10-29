@@ -1,10 +1,9 @@
 package com.iron.breakfast.app
 
-import com.iron.breakfast.DiaryChangeKind
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.today.UndoOffer
-import com.iron.breakfast.undoAfterLog
-import com.iron.breakfast.undoEndsAt
+import com.iron.breakfast.today.undoAfterLog
+import com.iron.breakfast.today.undoEndsAt
 
 /**
  * A committed diary write, published by [DiarySession] after it reloaded the diary. Listeners react to the kind, not
@@ -105,3 +104,10 @@ internal fun undoAfterChange(current: UndoOffer?, change: DiaryChange, nowMs: Lo
     is DiaryChange.EntryDeleted -> UndoOffer.Deleted(change.entry, nowMs)
     else -> if (undoEndsAt(change.kind)) null else current
 }
+
+/**
+ * The kind of a diary change, for [undoEndsAt]. [FOOD_EDIT] is a food saved, edited or deleted without a log;
+ * [UNDO] an Undo applied; [REPLACE] the whole diary replaced (import) or deleted; [EDIT_AFTER_CLOSE] an entry edit
+ * that committed after its edit had closed.
+ */
+internal enum class DiaryChangeKind { LOG, EDIT, EDIT_AFTER_CLOSE, DELETE, NOT_RIGHT_PICK, CONFIRM_MATCH, FOOD_EDIT, UNDO, REPLACE }

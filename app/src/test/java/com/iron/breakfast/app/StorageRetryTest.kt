@@ -1,4 +1,4 @@
-package com.iron.breakfast
+package com.iron.breakfast.app
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking

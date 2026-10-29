@@ -22,7 +22,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.app.BreakfastViewModel
 import com.iron.breakfast.ui.label
-import com.iron.breakfast.resolvePosition
 import com.iron.breakfast.ui.components.foodText
 import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.Hairline

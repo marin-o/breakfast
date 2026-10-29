@@ -4,7 +4,7 @@ import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.today.UndoOffer
-import com.iron.breakfast.undoAfterLog
+import com.iron.breakfast.today.undoAfterLog
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

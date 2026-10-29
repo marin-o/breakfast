@@ -3,6 +3,7 @@ package com.iron.breakfast
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.domain.parseStrictAmountUnit
+import com.iron.breakfast.resolve.resolvePosition
 import com.iron.breakfast.ui.plain
 import org.junit.Assert.assertEquals
 import org.junit.Test

@@ -1,39 +1,19 @@
-package com.iron.breakfast
+package com.iron.breakfast.log
 
 import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.LogPlanner
 import com.iron.breakfast.domain.MealSlot
-import com.iron.breakfast.domain.FoodOrigin
-import com.iron.breakfast.domain.FoodRecord
-import com.iron.breakfast.domain.MeasureUnit
-import com.iron.breakfast.domain.NutritionBasis
-import com.iron.breakfast.domain.NutritionValues
-import com.iron.breakfast.domain.ServingConversion
+import com.iron.breakfast.domain.draftLogPlan
+import com.iron.breakfast.domain.mealMarkerSlots
+import com.iron.breakfast.domain.removeAllMealMarkerTokens
+import com.iron.breakfast.domain.removeMealMarkerToken
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import com.iron.breakfast.domain.removeMealMarkerToken
-import com.iron.breakfast.domain.removeAllMealMarkerTokens
-import com.iron.breakfast.domain.mealMarkerSlots
-import com.iron.breakfast.domain.draftLogPlan
-import com.iron.breakfast.domain.defaultServingCalculation
-import com.iron.breakfast.scan.ProductReviewOrigin
-import com.iron.breakfast.library.libraryLogDraft
-import com.iron.breakfast.library.libraryInputSegments
 
-class MainActivityRoutingTest {
-    @Test fun scannedProductReviewKeepsLibraryOriginSeparateFromMealAndQueue() {
-        assertEquals(ProductReviewOrigin.LIBRARY, productReviewOrigin(null, queueActive = false))
-        assertEquals(ProductReviewOrigin.MEAL, productReviewOrigin(MealSlot.DINNER, queueActive = false))
-        assertEquals(ProductReviewOrigin.QUEUE, productReviewOrigin(null, queueActive = true))
-    }
-
-    @Test fun libraryOriginCanSaveWithoutCreatingDiaryLogPlan() {
-        assertEquals(true, canSaveProductToLibrary(null, queueActive = false))
-        assertEquals(false, canSaveProductToLibrary(null, queueActive = true))
-    }
-
+/** The Log's rules (`LogRules.kt`) and the meal words and drafts they read. */
+class LogRulesTest {
     @Test fun mealWordsInsideFoodNamesAreNotMarkers() {
         assertEquals(emptyList<MealSlot>(), mealMarkerSlots("breakfast cereal, 100g oats"))
         assertEquals(emptyList<MealSlot>(), mealMarkerSlots("100g oats, lunch meat"))
@@ -60,35 +40,6 @@ class MainActivityRoutingTest {
         assertEquals(emptyList<MealSlot>(), mealMarkerSlots("breakfast cereal"))
     }
 
-    @Test fun libraryRepeatDraftCarriesClickedMealAndSingleEntryIntent() {
-        val food = FoodRecord(
-            id = "banana", name = "Banana", aliases = emptyList(), category = "Fruit", origin = FoodOrigin.GENERIC,
-            nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(89.0, 1.1, 23.0, 0.3)),
-            defaultAmount = 1.0, defaultUnit = MeasureUnit.PIECE
-        )
-        val draft = libraryLogDraft(food, MealSlot.DINNER, 2.0, MeasureUnit.PIECE)
-        assertEquals(MealSlot.DINNER, draft.target)
-        assertEquals(2.0, draft.amount, 0.0)
-    }
-
-    @Test fun mixedLibraryInputRetainsQuantifiedAndAmountlessSegments() {
-        val segments = libraryInputSegments("100g chicken, pesto")
-        assertEquals(2, segments.size)
-        assertEquals("chicken", segments[0].foodPhrase)
-        assertEquals(100.0, segments[0].amount)
-        assertEquals("pesto", segments[1].foodPhrase)
-        assertEquals(null, segments[1].amount)
-    }
-
-    @Test fun defaultServingCalculationUsesDefaultQuantityInsteadOfBasisCalories() {
-        val food = FoodRecord(
-            id = "oats", name = "Oats", aliases = emptyList(), category = "Grain", origin = FoodOrigin.GENERIC,
-            nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(50.0, null, null, null)),
-            conversions = listOf(ServingConversion(MeasureUnit.PIECE, 100.0, "one serving")),
-            defaultAmount = 2.0, defaultUnit = MeasureUnit.PIECE
-        )
-        assertEquals(100.0, defaultServingCalculation(food).nutrition.calories, 0.0)
-    }
     @Test fun logMealPickerLabelFollowsTargetOrReadsMeal() {
         assertEquals("Meal", logMealPickerLabel(null))
         assertEquals("Dinner", logMealPickerLabel(MealSlot.DINNER))

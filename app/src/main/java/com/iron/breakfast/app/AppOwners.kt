@@ -10,7 +10,7 @@ import com.iron.breakfast.entry.EntryEdit
 import com.iron.breakfast.entry.EntryEditStore
 import com.iron.breakfast.food.FoodForm
 import com.iron.breakfast.food.FoodFormStore
-import com.iron.breakfast.lastUsedMeal
+import com.iron.breakfast.log.lastUsedMeal
 import com.iron.breakfast.library.LibraryState
 import com.iron.breakfast.library.LibraryStore
 import com.iron.breakfast.log.LogComposer

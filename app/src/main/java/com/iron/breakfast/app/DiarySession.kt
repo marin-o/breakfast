@@ -6,7 +6,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
-import com.iron.breakfast.openStorage
 import com.iron.breakfast.suspendRunCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -14,6 +13,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.cancellation.CancellationException
 
 /** What [DiarySession] reads from storage. The view model adapts `BreakfastEngine`; tests fake it. */
 internal interface DiarySource {
@@ -217,3 +217,18 @@ internal class DiarySession(
         while (!ready || busy) snapshotFlow { ready && !busy }.first { it }
     }
 }
+
+/**
+ * One attempt to open storage: true when [open] completed. A failure goes to [onFailure] (the log) and is not thrown,
+ * so the caller can offer Try again; cancellation is thrown as usual.
+ */
+internal suspend fun openStorage(open: suspend () -> Unit, onFailure: (Exception) -> Unit): Boolean =
+    try {
+        open()
+        true
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        onFailure(e)
+        false
+    }

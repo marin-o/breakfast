@@ -18,9 +18,7 @@ import com.iron.breakfast.domain.SavedMeal
 import com.iron.breakfast.domain.ShorthandParser
 import com.iron.breakfast.domain.libraryRecencyOrder
 import com.iron.breakfast.domain.mealMarkerSlots
-import com.iron.breakfast.isLibraryNoMatch
 import com.iron.breakfast.resolve.ResolveSource
-import com.iron.breakfast.shouldApplyLibraryRefresh
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job

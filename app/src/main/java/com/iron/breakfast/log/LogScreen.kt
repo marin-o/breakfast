@@ -59,7 +59,6 @@ import com.iron.breakfast.domain.DraftRow
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.ui.label
-import com.iron.breakfast.logMealPickerLabel
 import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.components.ChoiceOption
 import com.iron.breakfast.ui.components.FoodRow

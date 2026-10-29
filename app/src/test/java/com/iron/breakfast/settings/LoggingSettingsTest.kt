@@ -13,12 +13,12 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import com.iron.breakfast.UNDO_WINDOW_MS
-import com.iron.breakfast.LogSubmitPlan
-import com.iron.breakfast.logSubmitPlan
-import com.iron.breakfast.undoOpen
-import com.iron.breakfast.undoEndsAt
-import com.iron.breakfast.DiaryChangeKind
+import com.iron.breakfast.today.UNDO_WINDOW_MS
+import com.iron.breakfast.log.LogSubmitPlan
+import com.iron.breakfast.log.logSubmitPlan
+import com.iron.breakfast.today.undoOpen
+import com.iron.breakfast.today.undoEndsAt
+import com.iron.breakfast.app.DiaryChangeKind
 import com.iron.breakfast.log.automaticMeal
 
 /** B9 Logging group: Undo window, Meal, the By-time boundaries, Count what I'm typing, Learn from my picks. */

@@ -2,7 +2,6 @@ package com.iron.breakfast.resolve
 
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.TypedPart
-import com.iron.breakfast.resolvePosition
 
 /**
  * The "Not in your foods" queue while it is being resolved, as the screens opened from it (product review, the food

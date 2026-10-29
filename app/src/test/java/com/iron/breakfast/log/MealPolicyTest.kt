@@ -8,10 +8,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import com.iron.breakfast.LogSubmitPlan
-import com.iron.breakfast.logSubmitPlan
-import com.iron.breakfast.lastUsedMeal
-import com.iron.breakfast.logTargetMealOf
 import com.iron.breakfast.settings.enumOf
 import com.iron.breakfast.settings.MealBounds
 import com.iron.breakfast.settings.BeforeDayStart

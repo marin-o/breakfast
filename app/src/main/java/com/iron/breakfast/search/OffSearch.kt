@@ -5,7 +5,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.iron.breakfast.data.OffSearchResult
 import com.iron.breakfast.domain.FoodRecord
-import com.iron.breakfast.shouldApplyOffSearchResult
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job

@@ -1,4 +1,4 @@
-package com.iron.breakfast
+package com.iron.breakfast.log
 
 import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.FoodMatcher

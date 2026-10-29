@@ -1,8 +1,7 @@
 package com.iron.breakfast.food
 
 import androidx.lifecycle.SavedStateHandle
-import com.iron.breakfast.FoodFormField
-import com.iron.breakfast.ReviewLogPlan
+import com.iron.breakfast.resolve.ReviewLogPlan
 import com.iron.breakfast.app.DiaryChange
 import com.iron.breakfast.app.Notices
 import com.iron.breakfast.app.restoreFoodForm

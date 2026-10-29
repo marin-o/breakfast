@@ -1,78 +1,15 @@
-package com.iron.breakfast
+package com.iron.breakfast.domain
 
 import com.iron.breakfast.data.toConversionEntities
 import com.iron.breakfast.data.toDomain
-import com.iron.breakfast.domain.FoodOrigin
-import com.iron.breakfast.domain.ServingConversion
-import com.iron.breakfast.domain.FoodRecord
-import com.iron.breakfast.domain.MeasureUnit
-import com.iron.breakfast.domain.NutritionBasis
-import com.iron.breakfast.domain.NutritionValues
-import com.iron.breakfast.domain.MealEntry
-import com.iron.breakfast.domain.MealSlot
-import com.iron.breakfast.domain.asciiDigits
-import com.iron.breakfast.domain.decimalInput
-import com.iron.breakfast.domain.normalizeBarcode
-import com.iron.breakfast.domain.validateBarcodeInput
-import com.iron.breakfast.domain.NutritionCalculator
+import com.iron.breakfast.food.FoodDraft
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import com.iron.breakfast.domain.libraryRecencyOrder
-import com.iron.breakfast.domain.editedCustomFoodRecord
-import com.iron.breakfast.scan.productPrefill
-import com.iron.breakfast.scan.parseProductUnit
-import com.iron.breakfast.contribution.contributionDraftAfterLocalSave
-import com.iron.breakfast.scan.productNutritionBasisLabel
-import com.iron.breakfast.food.FoodDraft
 
-class MainActivityTest {
-    @Test
-    fun resolverProductPrefillPreservesEnteredServingAndDirectSearchKeepsBasisDefault() {
-        val pesto = FoodRecord(
-            id = "off-pesto",
-            name = "Branded pesto",
-            aliases = emptyList(),
-            category = "Open Food Facts",
-            origin = FoodOrigin.GENERIC,
-            nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(500.0, 4.0, 10.0, 48.0)),
-            defaultAmount = 100.0,
-            defaultUnit = MeasureUnit.GRAM
-        )
-
-        // A queued part prefills from the planner's reading, as the resolve flow passes it; a glued part keeps its amount.
-        val planner = com.iron.breakfast.domain.LogPlanner(com.iron.breakfast.domain.FoodMatcher(com.iron.breakfast.domain.FoodCatalog.fixtures))
-        val resolver = productPrefill(pesto, planner.typed("1 tbsp pesto"))
-        assertEquals(1.0, resolver.amount)
-        assertEquals(MeasureUnit.TABLESPOON, resolver.unit)
-
-        val glued = productPrefill(pesto, planner.typed("млеко200г"))
-        assertEquals(200.0, glued.amount)
-        assertEquals(MeasureUnit.GRAM, glued.unit)
-
-        val directSearch = productPrefill(pesto, planner.typed("pesto"))
-        assertEquals(100.0, directSearch.amount)
-        assertEquals(MeasureUnit.GRAM, directSearch.unit)
-
-        assertEquals(MeasureUnit.MILLILITER, parseProductUnit(" ml "))
-        assertEquals(MeasureUnit.TABLESPOON, parseProductUnit(" tbsp "))
-        assertNull(parseProductUnit(" cups "))
-    }
-
-    @Test
-    fun contributionRequiresExplicitScanProvenanceAfterLocalSave() {
-        val scanned = FoodRecord(
-            id = "off-scan", name = "Scanned drink", aliases = emptyList(), category = "Open Food Facts",
-            origin = FoodOrigin.GENERIC,
-            nutrition = NutritionBasis(100.0, MeasureUnit.MILLILITER, NutritionValues(42.0, null, null, null)),
-            defaultAmount = 100.0, defaultUnit = MeasureUnit.MILLILITER,
-            sourceName = "Open Food Facts", barcode = "4006381333931"
-        )
-        assertNull(contributionDraftAfterLocalSave(scanned, fromScan = false))
-        assertEquals("4006381333931", contributionDraftAfterLocalSave(scanned, fromScan = true)?.barcode)
-    }
-
+/** Editing a food (personal or cached), the barcode rule, and the Library's order. */
+class FoodEditRulesTest {
     @Test
     fun customFoodEditPreservesAliasesAndAlignsDefaultServingToNewBasis() {
         val original = FoodRecord(
@@ -109,15 +46,6 @@ class MainActivityTest {
         assertEquals(1.0, edited.defaultAmount)
         assertEquals(MeasureUnit.TABLESPOON, edited.defaultUnit)
         assertTrue(edited.personalOverride)
-    }
-
-    @Test
-    fun productLabelUsesActualNutritionBasis() {
-        val food = FoodRecord(
-            id = "basis", name = "Soup", aliases = emptyList(), category = "Open Food Facts", origin = FoodOrigin.GENERIC,
-            nutrition = NutritionBasis(250.0, MeasureUnit.GRAM, NutritionValues(300.0, null, null, null))
-        )
-        assertEquals("Calories per 250 g", productNutritionBasisLabel(food))
     }
 
     private fun food(id: String, name: String, origin: FoodOrigin = FoodOrigin.GENERIC, barcode: String? = null, sourceId: String? = null) = FoodRecord(

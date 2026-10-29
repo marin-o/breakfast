@@ -10,8 +10,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import com.iron.breakfast.FoodFormBack
-import com.iron.breakfast.foodFormBack
 
 /** Back asks before discarding a food form only when something typed differs from the form as it opened. */
 class FoodDraftDirtyTest {

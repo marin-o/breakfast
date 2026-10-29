@@ -1,4 +1,4 @@
-package com.iron.breakfast
+package com.iron.breakfast.food
 
 import com.iron.breakfast.domain.NutritionInput
 import com.iron.breakfast.domain.resolveNutrition

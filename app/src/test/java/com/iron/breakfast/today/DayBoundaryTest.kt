@@ -1,4 +1,4 @@
-package com.iron.breakfast
+package com.iron.breakfast.today
 
 import com.iron.breakfast.domain.dayKeyFor
 import org.junit.Assert.assertEquals

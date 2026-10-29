@@ -8,8 +8,6 @@ import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.app.Notices
 import com.iron.breakfast.app.undoAfterChange
 import com.iron.breakfast.domain.MealEntry
-import com.iron.breakfast.undoOpen
-import com.iron.breakfast.undoRemainingMs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay

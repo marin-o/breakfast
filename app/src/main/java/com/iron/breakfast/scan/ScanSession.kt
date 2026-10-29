@@ -8,8 +8,6 @@ import com.iron.breakfast.data.OffResult
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.normalizeBarcode
-import com.iron.breakfast.productReviewOrigin
-import com.iron.breakfast.scannerUnavailableTransition
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job

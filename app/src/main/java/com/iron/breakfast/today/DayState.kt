@@ -5,7 +5,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.iron.breakfast.app.SavedDay
 import com.iron.breakfast.domain.dayKeyFor
-import com.iron.breakfast.resolveSelectedDay
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -69,5 +68,28 @@ internal class DayState(
         followingToday = following
         save(SavedDay(value, following))
         onSelected()
+    }
+}
+
+/**
+ * The day the diary shows. While the app is on screen ([returning] false) the selection never moves: once the day
+ * starts over, the old day simply stops being today. Back from the background, or reopened or restored after being
+ * closed, a user who was [followingToday] lands on the new today; an older day they picked stays, and a day that is
+ * no longer past (the clock or the day start moved) becomes today. Today is [dayKeyFor] at [nowMs].
+ */
+internal fun resolveSelectedDay(
+    selected: String?,
+    followingToday: Boolean,
+    returning: Boolean,
+    nowMs: Long,
+    zone: ZoneId,
+    dayStartHour: Int,
+): String {
+    val today = dayKeyFor(nowMs, zone, dayStartHour)
+    return when {
+        selected == null -> today
+        !returning -> selected
+        followingToday || selected > today -> today
+        else -> selected
     }
 }

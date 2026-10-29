@@ -37,7 +37,6 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import com.iron.breakfast.transfer.DiaryPicker
 import com.iron.breakfast.data.diaryFileName
 import com.iron.breakfast.transfer.DIARY_FILE_TYPES
-import com.iron.breakfast.stopMeansLeaving
 import com.iron.breakfast.scan.ScannerScreen
 import com.iron.breakfast.scan.ScanReviewBackdrop
 import com.iron.breakfast.entry.EntryDetailScreen
@@ -182,3 +181,6 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         Surface.SCANNER -> ScannerScreen(vm)
     }
 }
+
+/** An activity stop counts as leaving the app unless it is a recreation for a configuration change. */
+internal fun stopMeansLeaving(changingConfigurations: Boolean): Boolean = !changingConfigurations

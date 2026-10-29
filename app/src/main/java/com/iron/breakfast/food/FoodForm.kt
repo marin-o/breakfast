@@ -3,7 +3,6 @@ package com.iron.breakfast.food
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.iron.breakfast.FoodFormBack
 import com.iron.breakfast.app.DiaryChange
 import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.app.Notices
@@ -21,11 +20,9 @@ import com.iron.breakfast.domain.normalizeBarcode
 import com.iron.breakfast.domain.resolveNutrition
 import com.iron.breakfast.domain.sameBarcode
 import com.iron.breakfast.domain.validateBarcodeInput
-import com.iron.breakfast.foodFormBack
-import com.iron.breakfast.ReviewLogPlan
-import com.iron.breakfast.foodSaveRefusal
+import com.iron.breakfast.resolve.ReviewLogPlan
 import com.iron.breakfast.resolve.ResolveQueueView
-import com.iron.breakfast.queueLogPlan
+import com.iron.breakfast.resolve.queueLogPlan
 
 /** The food writes the form makes; the view model adapts `BreakfastEngine`. */
 internal interface FoodFormStore {

@@ -37,7 +37,6 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.app.BreakfastViewModel
-import com.iron.breakfast.FoodFormField
 import com.iron.breakfast.domain.asciiDigits
 import com.iron.breakfast.domain.parseNutritionShorthand
 import com.iron.breakfast.domain.validateBarcodeInput
