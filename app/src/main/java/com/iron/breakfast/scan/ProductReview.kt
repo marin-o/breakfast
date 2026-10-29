@@ -133,7 +133,7 @@ internal class ProductReview(
     /** Add in the review sheet: logs the reviewed product to [chosen] (or the queue's meal) on the selected day. */
     fun add(chosen: MealSlot) {
         val food = product ?: return
-        if (!session.ready || session.busy) return
+        if (!session.canWrite) return
         if (resolvingPart()) { resolvePart(); return }
         val draft = draft(food) ?: run {
             notices.show("Enter a positive amount, a supported unit, and valid calories.")
@@ -167,7 +167,7 @@ internal class ProductReview(
         if (resolvingPart()) { resolvePart(); return }
         val resolveQueue = queue()
         if (!canSaveProductToLibrary(openMeal(), queueActive = resolveQueue != null)) return
-        if (!session.ready || session.busy) return
+        if (!session.canWrite) return
         val draft = draft(food) ?: run { notices.show("Enter a positive amount, a supported unit, and valid calories."); return }
         session.write(
             change = DiaryChange.FoodsChanged,
@@ -184,7 +184,7 @@ internal class ProductReview(
     /** A product picked while a Log part is being resolved: stored as the food it is, then picked for the part. */
     private fun resolvePart() {
         val food = product ?: return
-        if (!session.ready || session.busy) return
+        if (!session.canWrite) return
         val draft = draft(food) ?: run {
             notices.show("Enter a positive amount, a supported unit, and valid calories.")
             return

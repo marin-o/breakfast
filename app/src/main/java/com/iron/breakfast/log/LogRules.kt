@@ -22,7 +22,7 @@ internal fun lastUsedMeal(entries: List<MealEntry>): MealSlot? = entries.maxByOr
 internal fun logMealPickerLabel(target: MealSlot?): String = target?.label() ?: "Meal"
 
 internal sealed interface LogSubmitPlan {
-    /** Nothing to do: the app is not ready or a save is already running. */
+    /** Nothing to do: the session cannot start a write (storage closed or a save running, `DiarySession.canWrite`). */
     data object Ignore : LogSubmitPlan
     data class Error(val message: String) : LogSubmitPlan
     /** No meal is known: open the Log's meal menu; choosing a meal submits. */
@@ -32,10 +32,9 @@ internal sealed interface LogSubmitPlan {
 
 /** Decides what Add does with the Log input. Pure, so the no-meal path and the busy guard can be unit-tested. */
 internal fun logSubmitPlan(
-    ready: Boolean, busy: Boolean, input: String, typedMarkers: List<MealSlot>, chosen: MealSlot?, preset: MealSlot?,
-    automatic: MealSlot? = null,
+    canWrite: Boolean, input: String, typedMarkers: List<MealSlot>, chosen: MealSlot?, preset: MealSlot?, automatic: MealSlot? = null,
 ): LogSubmitPlan {
-    if (!ready || busy) return LogSubmitPlan.Ignore
+    if (!canWrite) return LogSubmitPlan.Ignore
     if (input.isBlank()) return LogSubmitPlan.Error("Add at least one food.")
     if (typedMarkers.size > 1) return LogSubmitPlan.Error("Choose one meal marker, or remove the extra markers.")
     val target = logTargetMealOf(chosen, typedMarkers, preset, automatic) ?: return LogSubmitPlan.OpenMenu

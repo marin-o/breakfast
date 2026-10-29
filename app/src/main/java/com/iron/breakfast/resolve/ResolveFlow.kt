@@ -201,7 +201,6 @@ internal class ResolveFlow(
         val typed = typed(raw)
         val amount = typed.amount ?: food.defaultAmount
         val unit = typed.unit ?: food.defaultUnit
-        if (!session.ready || session.busy) return
         val day = selectedDay()
         session.write(
             change = DiaryChange.QueuedPartLogged,

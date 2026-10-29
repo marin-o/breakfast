@@ -21,4 +21,4 @@ internal fun safetyCopyStep(keep: Boolean, deletingAll: Boolean): SafetyCopyStep
     if (keep || deletingAll) SafetyCopyStep.WRITE else SafetyCopyStep.DELETE
 
 /** Delete all data runs only from its confirm dialog, once storage is open and no other write runs. */
-internal fun deleteAllAllowed(dialogOpen: Boolean, ready: Boolean, busy: Boolean): Boolean = dialogOpen && ready && !busy
+internal fun deleteAllAllowed(dialogOpen: Boolean, canWrite: Boolean): Boolean = dialogOpen && canWrite

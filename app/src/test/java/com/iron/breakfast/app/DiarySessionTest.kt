@@ -97,6 +97,19 @@ class DiarySessionTest {
         assertEquals(0, source.entryReads)
     }
 
+    /** The gate's one rule: a write can start once storage is open and while no write runs. */
+    @Test fun canWriteIsOpenAndNotBusy() {
+        assertFalse("not open yet", session.canWrite)
+        opened()
+        assertTrue(session.canWrite)
+        val gate = CompletableDeferred<Unit>()
+        session.write(DiaryChange.FoodsChanged) { gate.await() }
+        assertFalse("a write runs", session.canWrite)
+        assertNull("and refuses another", session.write(DiaryChange.FoodsChanged) {})
+        gate.complete(Unit)
+        assertTrue(session.canWrite)
+    }
+
     /** Review §9 item 13: refreshes during a running check become one more check, not one each. */
     @Test fun refreshesDuringACheckAreCoalescedIntoOneMore() {
         opened()

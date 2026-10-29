@@ -57,6 +57,12 @@ internal class DiarySession(
     var busy by mutableStateOf(false); private set
     /** Storage failed to open; the dialog stays until a retry ([open] again) opens it. */
     var storageUnavailable by mutableStateOf(false); private set
+
+    /**
+     * A user write could start now: storage is open and no write runs. The one rule of the gate: [write] refuses by it,
+     * and an owner asks it only to refuse earlier, before it validates, says something or changes its own state.
+     */
+    val canWrite: Boolean get() = ready && !busy
     var foods by mutableStateOf<List<FoodRecord>>(emptyList()); private set
     var entries by mutableStateOf<List<MealEntry>>(emptyList()); private set
 
@@ -147,7 +153,7 @@ internal class DiarySession(
         onSuccess: (T) -> Unit = {},
         run: suspend () -> T,
     ): Job? {
-        if (!ready || busy) return null
+        if (!canWrite) return null
         busy = true
         return launchHolding(waitForIdle = false, nonCancellable, onFailure, change, onSuccess, run)
     }

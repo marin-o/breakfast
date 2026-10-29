@@ -61,28 +61,27 @@ class LogRulesTest {
         assertEquals(null, logTargetMealOf(null, markers, null))
         assertEquals(
             LogSubmitPlan.Error("Choose one meal marker, or remove the extra markers."),
-            logSubmitPlan(ready = true, busy = false, input = "lunch, 2 eggs, dinner", typedMarkers = markers, chosen = null, preset = null),
+            logSubmitPlan(canWrite = true, input = "lunch, 2 eggs, dinner", typedMarkers = markers, chosen = null, preset = null),
         )
     }
 
     @Test fun addWithNoMealOpensTheMenuAndChoosingAMealSubmits() {
-        assertEquals(LogSubmitPlan.OpenMenu, logSubmitPlan(true, false, "2 eggs", emptyList(), null, null))
+        assertEquals(LogSubmitPlan.OpenMenu, logSubmitPlan(true, "2 eggs", emptyList(), null, null))
         // Once a meal is chosen from the menu, the same input saves to it.
-        assertEquals(LogSubmitPlan.Save(MealSlot.DINNER), logSubmitPlan(true, false, "2 eggs", emptyList(), MealSlot.DINNER, null))
+        assertEquals(LogSubmitPlan.Save(MealSlot.DINNER), logSubmitPlan(true, "2 eggs", emptyList(), MealSlot.DINNER, null))
     }
 
     @Test fun addWithAPresetOrTypedMealSavesWithoutTheMenu() {
-        assertEquals(LogSubmitPlan.Save(MealSlot.SNACKS), logSubmitPlan(true, false, "2 eggs", emptyList(), null, MealSlot.SNACKS))
-        assertEquals(LogSubmitPlan.Save(MealSlot.LUNCH), logSubmitPlan(true, false, "lunch, 2 eggs", listOf(MealSlot.LUNCH), null, MealSlot.SNACKS))
+        assertEquals(LogSubmitPlan.Save(MealSlot.SNACKS), logSubmitPlan(true, "2 eggs", emptyList(), null, MealSlot.SNACKS))
+        assertEquals(LogSubmitPlan.Save(MealSlot.LUNCH), logSubmitPlan(true, "lunch, 2 eggs", listOf(MealSlot.LUNCH), null, MealSlot.SNACKS))
     }
 
     @Test fun busyOrNotReadyIgnoresSubmitSoADoubleTapSavesOnce() {
-        assertEquals(LogSubmitPlan.Ignore, logSubmitPlan(true, true, "2 eggs", emptyList(), MealSlot.LUNCH, null))
-        assertEquals(LogSubmitPlan.Ignore, logSubmitPlan(false, false, "2 eggs", emptyList(), MealSlot.LUNCH, null))
+        assertEquals(LogSubmitPlan.Ignore, logSubmitPlan(false, "2 eggs", emptyList(), MealSlot.LUNCH, null))
     }
 
     @Test fun blankInputIsAnErrorNotAMenu() {
-        assertEquals(LogSubmitPlan.Error("Add at least one food."), logSubmitPlan(true, false, "  ", emptyList(), null, null))
+        assertEquals(LogSubmitPlan.Error("Add at least one food."), logSubmitPlan(true, "  ", emptyList(), null, null))
     }
 
     @Test fun removeAllMealMarkerTokensDropsMealWordsOnly() {

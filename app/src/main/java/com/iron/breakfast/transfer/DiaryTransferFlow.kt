@@ -93,7 +93,7 @@ internal class DiaryTransfer<D>(
     var deleteAllOpen by mutableStateOf(false); private set
     var deleteAllAlsoSettings by mutableStateOf(false); private set
 
-    fun requestPicker(picker: DiaryPicker) { if (session.ready && !session.busy) pickerRequest = picker }
+    fun requestPicker(picker: DiaryPicker) { if (session.canWrite) pickerRequest = picker }
     fun pickerLaunched() { pickerRequest = null }
 
     /**
@@ -157,7 +157,7 @@ internal class DiaryTransfer<D>(
      */
     fun confirmImport() {
         val pending = pendingImport ?: return
-        if (!session.ready || session.busy) return
+        if (!session.canWrite) return
         pendingImport = null
         session.write(
             change = { replaced: Boolean -> DiaryChange.DiaryReplaced.takeIf { replaced } },
@@ -180,7 +180,7 @@ internal class DiaryTransfer<D>(
         }
     }
 
-    fun openDeleteAll() { if (session.ready && !session.busy) { deleteAllAlsoSettings = false; deleteAllOpen = true } }
+    fun openDeleteAll() { if (session.canWrite) { deleteAllAlsoSettings = false; deleteAllOpen = true } }
     fun toggleDeleteAllAlsoSettings() { deleteAllAlsoSettings = !deleteAllAlsoSettings }
     fun cancelDeleteAll() { deleteAllOpen = false; deleteAllAlsoSettings = false }
 
@@ -190,7 +190,7 @@ internal class DiaryTransfer<D>(
      * learned preferences go in the same transaction and every setting returns to its default.
      */
     fun confirmDeleteAll() {
-        if (!deleteAllAllowed(deleteAllOpen, session.ready, session.busy)) return
+        if (!deleteAllAllowed(deleteAllOpen, session.canWrite)) return
         val alsoSettings = deleteAllAlsoSettings
         cancelDeleteAll()
         session.write(

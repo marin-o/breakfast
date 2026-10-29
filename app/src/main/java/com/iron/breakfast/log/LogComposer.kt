@@ -172,8 +172,7 @@ internal class LogComposer(
     fun submit() {
         // Add finishes the draft in both "Count what I'm typing" modes: it saves what the finished draft counts.
         committed = true
-        if (!session.ready || session.busy) return
-        when (val plan = logSubmitPlan(session.ready, session.busy, draft, mealMarkerSlots(draft), chosen, preset, automaticMeal())) {
+        when (val plan = logSubmitPlan(session.canWrite, draft, mealMarkerSlots(draft), chosen, preset, automaticMeal())) {
             LogSubmitPlan.Ignore -> Unit
             is LogSubmitPlan.Error -> error = plan.message
             LogSubmitPlan.OpenMenu -> {
@@ -186,7 +185,7 @@ internal class LogComposer(
     }
 
     private fun save(target: MealSlot) {
-        if (!session.ready || session.busy) return
+        if (!session.canWrite) return
         // Save takes the draft as typed: the planner skips meal words by span, so save and the rows share one segmentation.
         val captured = draft
         val capturedPins = pins.toMap()
@@ -222,7 +221,7 @@ internal class LogComposer(
      * (a keystroke since) names a span that may no longer hold its text, and does nothing.
      */
     fun resolveNotInFoods(row: DraftRow.Unresolved) {
-        if (!session.ready || session.busy || !rowStillInDraft(draft, row)) return
+        if (!session.canWrite || !rowStillInDraft(draft, row)) return
         val part = draft.substring(row.start, row.end)
         val query = store.planner(pins.toMap()).libraryQueryFor(part)
         val request = LogResolveRequest(draft, row.start, row.end, part, preset, chosen, openMeal())

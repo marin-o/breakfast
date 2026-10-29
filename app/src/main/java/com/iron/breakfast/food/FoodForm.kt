@@ -172,7 +172,7 @@ internal class FoodForm(
     /** Save on New food or Edit food. */
     fun save() {
         // A tap while the save runs is ignored, not reported as invalid.
-        if (!session.ready || session.busy) return
+        if (!session.canWrite) return
         val name = draft.name; val brand = draft.brand; val barcode = draft.barcode.trim()
         val aliasList = draft.allAliases(); val servingList = draft.servings
         val input = draft.nutritionInput()

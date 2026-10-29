@@ -180,18 +180,19 @@ internal class LibraryState(
 
     /** Logs [food] to [target]; while resolving, it is the part's pick instead and keeps the part's typed amount and meal. */
     fun log(food: FoodRecord, target: MealSlot, amount: Double, unit: MeasureUnit) {
-        if (!session.ready || session.busy) return
+        if (!session.canWrite) return
         if (resolvingPart()) { onPartPicked(food); return }
         logBatch(listOf(libraryLogDraft(food, target, amount, unit)), target)
     }
 
     private fun pick(food: FoodRecord) {
-        if (!session.ready || session.busy) return
+        if (!session.canWrite) return
         onPartPicked(food)
     }
 
     private fun logBatch(drafts: List<LibraryLogDraft>, target: MealSlot) {
-        if (!session.ready || session.busy || drafts.isEmpty()) return
+        // The write itself refuses while storage is closed or a write runs.
+        if (drafts.isEmpty()) return
         val day = selectedDay()
         session.write(
             change = DiaryChange.FoodsLogged,
@@ -215,7 +216,7 @@ internal class LibraryState(
     /** Done in the bar. */
     fun submitInput() {
         val raw = input.trim()
-        if (raw.isBlank() || !session.ready || session.busy) return
+        if (raw.isBlank() || !session.canWrite) return
         // While a part is being resolved, Done searches; it never logs.
         if (resolvingPart()) { onQuery(raw); return }
         val markers = mealMarkerSlots(raw)
@@ -264,7 +265,7 @@ internal class LibraryState(
     fun chooseMixedMeal(target: MealSlot) {
         mixedMealPickerOpen = false
         val raw = input.trim()
-        if (raw.isBlank() || !session.ready || session.busy) return
+        if (raw.isBlank()) return
         saveMixed(raw, target)
     }
 
@@ -294,7 +295,7 @@ internal class LibraryState(
     fun confirmDelete() {
         val food = deleteRequest ?: return
         // A tap while another write runs is ignored, as elsewhere; the dialog stays for another tap.
-        if (!session.ready || session.busy) return
+        if (!session.canWrite) return
         deleteRequest = null
         session.write(
             change = DiaryChange.FoodsChanged,

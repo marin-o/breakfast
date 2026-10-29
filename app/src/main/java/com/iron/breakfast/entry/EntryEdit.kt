@@ -157,7 +157,7 @@ internal class EntryEdit(
     fun saveQuick(text: String) {
         if (mode != EntryEditMode.QUICK) return
         // A tap while a save runs is ignored, not reported as invalid.
-        if (!session.ready || session.busy) return
+        if (!session.canWrite) return
         if (text.isBlank()) { cancel(); return }
         val id = editingEntryId ?: return
         val edit = editSession
@@ -180,7 +180,7 @@ internal class EntryEdit(
         val id = editingEntryId ?: return
         val edit = editSession
         // A tap while the save runs is ignored, not reported as invalid.
-        if (!session.ready || session.busy) return
+        if (!session.canWrite) return
         val parsedAmount = amount.toDoubleOrNull()
         if (parsedAmount == null || parsedAmount <= 0.0 || foodId.isBlank()) {
             error = "Enter a positive amount and choose a food."

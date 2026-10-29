@@ -75,10 +75,9 @@ class DataSettingsTest {
     }
 
     @Test fun deleteAllRunsOnlyFromItsDialog() {
-        assertTrue(deleteAllAllowed(dialogOpen = true, ready = true, busy = false))
-        assertFalse(deleteAllAllowed(dialogOpen = false, ready = true, busy = false))
-        assertFalse(deleteAllAllowed(dialogOpen = true, ready = false, busy = false))
-        assertFalse(deleteAllAllowed(dialogOpen = true, ready = true, busy = true))
+        assertTrue(deleteAllAllowed(dialogOpen = true, canWrite = true))
+        assertFalse(deleteAllAllowed(dialogOpen = false, canWrite = true))
+        assertFalse("storage closed or a write running", deleteAllAllowed(dialogOpen = true, canWrite = false))
     }
 
     @Test fun dontKeepRemovesTheCopyAndItsTempFile() {

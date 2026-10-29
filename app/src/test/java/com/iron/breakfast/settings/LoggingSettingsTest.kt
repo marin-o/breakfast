@@ -30,7 +30,7 @@ class LoggingSettingsTest {
         assertEquals(MealBounds(12, 17, 22), MealBounds())
         // Ask is the meal menu: no automatic meal, so a draft with no meal still opens it.
         assertNull(automaticMeal(MealMode.ASK, 9, MealBounds(), MealSlot.LUNCH))
-        assertEquals(LogSubmitPlan.OpenMenu, logSubmitPlan(true, false, "2 eggs", emptyList(), null, null, automatic = null))
+        assertEquals(LogSubmitPlan.OpenMenu, logSubmitPlan(true, "2 eggs", emptyList(), null, null, automatic = null))
     }
 
     @Test fun undoWindowsAreFiveFifteenThirtyOrUntilTheNextAction() {

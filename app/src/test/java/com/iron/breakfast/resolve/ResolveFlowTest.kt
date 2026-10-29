@@ -99,6 +99,19 @@ class ResolveFlowTest {
         assertNull(flow.queueMeal)
     }
 
+    /** A pick while another write runs: the session's gate refuses it, and the queue stays on its part. */
+    @Test fun aPickWhileAnotherWriteRunsWritesNothing() {
+        flow.afterSave(listOf("ayran200ml"), MealSlot.DINNER, TypedText("ayran200ml"), "ayran200ml")
+        val gate = CompletableDeferred<Unit>()
+        diary.session.write(DiaryChange.FoodsChanged) { gate.await() }
+        flow.resolve(ayran)
+        assertTrue(store.calls.isEmpty())
+        assertEquals(listOf("ayran200ml"), flow.parts)
+        gate.complete(Unit)
+        flow.resolve(ayran)
+        assertEquals(1, store.calls.size)
+    }
+
     @Test fun aSaveWhoseTextChangedMeanwhileLeavesTheNewText() {
         val draft = TypedText("2 eggs, kefir, banana")
         flow.afterSave(listOf("kefir"), MealSlot.LUNCH, draft, typedAtSave = "2 eggs, kefir")

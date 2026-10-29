@@ -37,7 +37,7 @@ class MealPolicyTest {
         assertEquals(MealSlot.SNACKS, mealByTime(23, bounds, 4, BeforeDayStart.DINNER))
         // The Meal setting passes them through; Ask before the day start opens the menu.
         assertNull(automaticMeal(MealMode.BY_TIME, 2, bounds, MealSlot.LUNCH, dayStartHour = 4, before = BeforeDayStart.ASK))
-        assertEquals(LogSubmitPlan.OpenMenu, logSubmitPlan(true, false, "2 eggs", emptyList(), null, null, mealByTime(2, bounds, 4, BeforeDayStart.ASK)))
+        assertEquals(LogSubmitPlan.OpenMenu, logSubmitPlan(true, "2 eggs", emptyList(), null, null, mealByTime(2, bounds, 4, BeforeDayStart.ASK)))
         assertEquals(BeforeDayStart.SNACKS, enumOf(null, BeforeDayStart.SNACKS))
     }
 
@@ -73,8 +73,8 @@ class MealPolicyTest {
         assertEquals(MealSlot.DINNER, logTargetMealOf(null, listOf(MealSlot.DINNER), MealSlot.BREAKFAST, auto))
         assertEquals(MealSlot.BREAKFAST, logTargetMealOf(null, emptyList(), MealSlot.BREAKFAST, auto))
         assertEquals(auto, logTargetMealOf(null, emptyList(), null, auto))
-        assertEquals(LogSubmitPlan.Save(auto), logSubmitPlan(true, false, "2 eggs", emptyList(), null, null, auto))
+        assertEquals(LogSubmitPlan.Save(auto), logSubmitPlan(true, "2 eggs", emptyList(), null, null, auto))
         // Two typed meal words are still an error, whatever the setting.
-        assertTrue(logSubmitPlan(true, false, "lunch 2 eggs dinner", listOf(MealSlot.LUNCH, MealSlot.DINNER), null, null, auto) is LogSubmitPlan.Error)
+        assertTrue(logSubmitPlan(true, "lunch 2 eggs dinner", listOf(MealSlot.LUNCH, MealSlot.DINNER), null, null, auto) is LogSubmitPlan.Error)
     }
 }

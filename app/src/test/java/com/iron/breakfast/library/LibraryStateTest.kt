@@ -209,6 +209,21 @@ class LibraryStateTest {
         assertEquals(listOf("delete kefir"), store.calls)
     }
 
+    /** The session's gate (`DiarySession.canWrite`) refuses these writes; what the user picked closes as before. */
+    @Test fun whileAnotherWriteRunsALogOrAMixedBatchWritesNothing() {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        diary.session.write(DiaryChange.FoodsChanged) { gate.await() }
+        library.show(MealSlot.LUNCH, "")
+        library.log(kefir, MealSlot.LUNCH, 200.0, MeasureUnit.MILLILITER)
+        library.onInput("2 eggs, ayran")
+        library.chooseMixedMeal(MealSlot.LUNCH)
+        assertFalse(library.mixedMealPickerOpen)
+        assertEquals("nothing was written", emptyList<String>(), store.calls)
+        assertEquals(emptyList<String>(), picked)
+        assertNull(notices.message)
+        gate.complete(Unit)
+    }
+
     @Test fun onlyAPersonalFoodCanBeDeleted() {
         library.askDelete(egg)
         assertNull(library.deleteRequest)

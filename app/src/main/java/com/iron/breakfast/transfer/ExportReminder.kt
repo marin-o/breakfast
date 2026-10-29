@@ -77,7 +77,7 @@ internal class ExportReminders(
 
     /** The reminder's Export: the same save picker as Settings, Export diary. */
     fun export() {
-        if (!session.ready || session.busy) return
+        if (!session.canWrite) return
         visible = false
         requestExport()
     }
