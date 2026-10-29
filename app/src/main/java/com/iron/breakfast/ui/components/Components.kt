@@ -706,7 +706,7 @@ fun InkBar(modifier: Modifier = Modifier, endPadding: Dp = 4.dp, content: @Compo
 @Composable
 fun BottomNav(selectedToday: Boolean, onToday: () -> Unit, onLibrary: () -> Unit, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth().padding(vertical = 4.dp).selectableGroup(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        NavTab("Today", selected = selectedToday, onClick = onToday)
+        NavTab("Meals", selected = selectedToday, onClick = onToday)
         Spacer(Modifier.width(40.dp))
         NavTab("Library", selected = !selectedToday, onClick = onLibrary)
     }
