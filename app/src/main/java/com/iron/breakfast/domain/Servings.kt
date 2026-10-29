@@ -59,6 +59,37 @@ private fun singularForms(word: String): Set<String> {
     }
 }
 
+/**
+ * The singular of a printed plural, chosen deliberately: "berries" is "berry" and "cookies" "cookie", "peaches" "peach",
+ * "glasses" "glass", "slices" "slice", "bars" "bar". A word it cannot tell ("tomatoes", "candies") is kept as printed:
+ * a spelling is never invented.
+ */
+internal fun printedSingular(word: String): String {
+    if (scriptOf(word) != TextScript.LATIN) return word
+    val lower = word.lowercase(Locale.ROOT)
+    return when {
+        lower.endsWith("ies") && lower.length > 4 -> {
+            val stem = lower.dropLast(3)
+            when {
+                // A doubled consonant before it: "berries", "cherries", "patties".
+                stem.length >= 2 && stem.last() == stem[stem.length - 2] && stem.last() !in VOWELS -> stem + "y"
+                // Words that end in "ie": "cookies", "pies", "brownies".
+                (stem + "ie") in IE_WORDS -> stem + "ie"
+                else -> word
+            }
+        }
+        listOf("ches", "shes", "xes", "sses").any(lower::endsWith) -> word.dropLast(2)
+        lower.endsWith("oes") || lower.endsWith("ss") || lower.endsWith("us") || lower.endsWith("is") -> word
+        lower.endsWith("s") && lower.length > 2 -> word.dropLast(1)
+        else -> word
+    }
+}
+
+private const val VOWELS = "aeiou"
+
+/** Singulars that end in "ie", whose plural a rule cannot tell from a "-y" word's. */
+private val IE_WORDS = setOf("cookie", "pie", "brownie", "smoothie", "veggie", "hoagie", "rotie", "tie", "pastie")
+
 /** [name] for [amount] of it: "slice", "2 slices", "1.5 cans"; a Cyrillic or already plural name is kept as it is. */
 fun servingNameFor(name: String, amount: Double): String {
     if (amount == 1.0 || scriptOf(name) != TextScript.LATIN) return name
@@ -95,13 +126,16 @@ fun FoodRecord.typedMeasure(unit: MeasureUnit, word: String?, label: String? = n
  */
 fun FoodRecord.measures(): List<Measure> {
     val units = listOf(defaultUnit, nutrition.unit) +
-        conversions.filter { it.name == null || it.name == defaultServingName(it.unit) }.map { it.unit } +
+        conversions.filter { (it.name == null || it.name == defaultServingName(it.unit)) && !crossesFamily(this, it.unit) }.map { it.unit } +
         listOfNotNull(density?.let { otherFamily(nutrition.unit) })
     val named = conversions.mapNotNull { serving -> serving.name?.takeIf { it != defaultServingName(serving.unit) } }
         .distinctBy { it.lowercase(Locale.ROOT) }
     return units.filter { it != MeasureUnit.UNKNOWN && it != MeasureUnit.SERVING }.distinct().map { Measure(it) } +
         named.map { Measure(MeasureUnit.SERVING, it) }
 }
+
+/** [unit] is g on a food on ml, or ml on one on g: only its density crosses that, never a serving row. */
+internal fun crossesFamily(food: FoodRecord, unit: MeasureUnit): Boolean = otherFamily(food.nutrition.unit) == unit
 
 /** g for a food on ml and ml for one on g: the family a density opens; null for another basis. */
 private fun otherFamily(basis: MeasureUnit): MeasureUnit? = when (basis) {
@@ -124,7 +158,7 @@ fun servingFromLabel(text: String?, basis: MeasureUnit, fallbackName: String): S
         if (sizeUnit(match.groupValues[4]) != basis) return null
         val script = scriptOf(word)
         if (script == TextScript.MIXED || script == TextScript.NONE || word.split(' ').size > 2) return null
-        val name = if (count == 1.0) word else singularForms(word).minByOrNull { it.length } ?: word
+        val name = if (count == 1.0) word else printedSingular(word)
         return ServingConversion(basis, amount / count, "Open Food Facts serving size", label = name)
     }
     BARE_SIZE.matchEntire(printed)?.let { match ->

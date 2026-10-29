@@ -242,9 +242,12 @@ internal class LibraryState(
             return
         }
         scope.launch(compute) {
+            val planner = store.planner()
             val drafts = segments.mapNotNull { segment ->
                 store.search(segment.foodPhrase).firstOrNull()?.food?.let { food ->
-                    LibraryLogDraft(food, segment.amount!!, segment.unit ?: food.defaultUnit)
+                    // A serving of the food typed where a unit goes ("2 cans coke") logs that serving.
+                    val (amount, measure) = planner.quantityOf(segment.raw, food)
+                    LibraryLogDraft(food, amount, measure.unit, servingName = measure.name.takeIf { measure.unit == MeasureUnit.SERVING })
                 }
             }
             withContext(main) {

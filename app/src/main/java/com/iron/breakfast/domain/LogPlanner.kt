@@ -113,6 +113,7 @@ class LogPlanner(
     private val coverCache: MutableMap<String, Boolean> = java.util.Collections.synchronizedMap(HashMap())
     private val wholeWordCache: MutableMap<String, Boolean> = java.util.Collections.synchronizedMap(HashMap())
     private val servingWordCache: MutableMap<String, Boolean> = java.util.Collections.synchronizedMap(HashMap())
+    private val headServingCache: MutableMap<String, Boolean> = java.util.Collections.synchronizedMap(HashMap())
 
     /** Resolves one segment. Null when no food matches. An unsupported unit still resolves; check [SegmentResolution.supported]. */
     fun resolve(raw: String): SegmentResolution? {
@@ -250,6 +251,12 @@ class LogPlanner(
         return calculate(food, amount, measure)
     }
 
+    /**
+     * The amount and measure [raw] logs as for a [food] picked for it (in the resolver, or the Library bar's batch): a
+     * serving of [food] named where a unit goes ("2 cans coke" with a can), else as the part reads.
+     */
+    fun quantityOf(raw: String, food: FoodRecord): Pair<Double, Measure> = quantityFor(readingFor(raw, food), food)
+
     /** The food text the Log shows for [raw]: the whole part when it is a name, else the part without its amount. */
     fun phraseOf(raw: String): String = reading(raw).phrase
 
@@ -348,8 +355,13 @@ class LogPlanner(
 
         override fun matchesWholeWord(word: String): Boolean = wholeWordCache.getOrPut(word) { matcher.matchesWholeWord(word) }
 
-        override fun isServingWord(word: String): Boolean =
-            word.any(Char::isLetter) && servingWordCache.getOrPut(word) { matcher.hasServingNamed(word) }
+        // First the cheap question, whether any food has a serving by that name (most input has none), then the head's food.
+        override fun isServingWord(word: String, head: String): Boolean = word.any(Char::isLetter) &&
+            servingWordCache.getOrPut(word) { matcher.hasServingNamed(word) } &&
+            headServingCache.getOrPut("$word\u0000$head") {
+                // The food the words before the amount name, as they read on their own: does it have that serving?
+                resolve(head)?.takeIf { !it.needsChoice }?.food?.servingNamed(word) != null
+            }
     }
 
     /** The parts of [input] the Log page works with, meal words included. Every caller segments through here. */

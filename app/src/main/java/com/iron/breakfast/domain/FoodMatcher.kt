@@ -162,7 +162,10 @@ class FoodMatcher(
         return indexedCatalog.any { indexed -> queries.all { hit(it, indexed) != null } }
     }
 
-    /** True when some food has a serving named [word] ("cans" for a can), under the script rule ([servingNameMatches]). */
+    /**
+     * True when some food has a serving named [word] ("cans" for a can), under the script rule: only the cheap first
+     * check before the planner asks whether the food a part names has it.
+     */
     fun hasServingNamed(word: String): Boolean = catalog.any { it.servingNamed(word) != null }
 
     /** True when some food names [word] as a whole word, through any tier except a prefix of a longer word. */

@@ -108,6 +108,51 @@ class ServingsTest {
         }
     }
 
+    /**
+     * Fix pass, 1: a serving keeps "N word" with the food before it only when that food has it. A serving of another
+     * food (an Open Food Facts product's "cookie") never joins two foods typed without a comma.
+     */
+    @Test fun aServingOfAnotherFoodNeverJoinsTwoFoods() {
+        val coffee = food("custom-coffee", "Coffee", MeasureUnit.MILLILITER, kcal = 2.0)
+        val biscuits = food("off-biscuits", "Butter biscuits", servings = listOf(ServingConversion(MeasureUnit.GRAM, 12.5, "Open Food Facts serving size", label = "cookie")))
+        val cookies = food("custom-cookies", "Cookies", kcal = 480.0)
+        val before = LogPlanner(FoodMatcher(FoodCatalog.fixtures + coffee + cookies))
+        val after = LogPlanner(FoodMatcher(FoodCatalog.fixtures + coffee + cookies + biscuits))
+        for (text in listOf("coffee 2 cookies", "200 ml coffee 2 cookies", "coffee 2 cookies 1 banana")) {
+            assertEquals(text, before.segments(text).map { it.text }, after.segments(text).map { it.text })
+        }
+        assertEquals(listOf("coffee", "2 cookies"), after.segments("coffee 2 cookies").map { it.text })
+        // The head food's own serving still goes with its amount.
+        assertEquals(listOf("coke 1 can"), planner(coke).segments("coke 1 can").map { it.text })
+    }
+
+    /** Fix pass, 3: a unit word that begins a food's name ("cup noodles") does not end the food before it. */
+    @Test fun aUnitWordThatBeginsAFoodsNameDoesNotEndTheFoodBeforeIt() {
+        val planner = planner(cupNoodles)
+        assertEquals(listOf("banana", "1 cup noodles"), planner.segments("banana 1 cup noodles").map { it.text })
+        assertEquals(listOf("banana", "custom-cup-noodles"), planner.plan("banana 1 cup noodles").entries.map { it.food.id })
+        assertEquals(listOf("2 cups milk"), planner.segments("2 cups milk").map { it.text })
+    }
+
+    /** Fix pass, 4: an unnamed row in the other of g and ml never stands for that unit; only the density crosses. */
+    @Test fun anUnnamedRowInTheOtherFamilyNeverCountsTheUnit() {
+        val milk = coke.copy(conversions = coke.conversions + ServingConversion(MeasureUnit.GRAM, 30.0, "personal serving"), density = 104.0)
+        assertEquals(100.0 * 100.0 / 104.0, calculator.calculate(milk, 100.0, MeasureUnit.GRAM).resolvedBaseAmount, 1e-9)
+        assertFalse(calculator.calculate(milk.copy(density = null), 100.0, MeasureUnit.GRAM).supported)
+        val flour = rice.copy(conversions = rice.conversions + ServingConversion(MeasureUnit.MILLILITER, 30.0, "personal serving"))
+        assertFalse(calculator.calculate(flour, 100.0, MeasureUnit.MILLILITER).supported)
+        assertEquals(listOf(Measure(MeasureUnit.GRAM)), flour.measures())
+    }
+
+    /** Fix pass, 5: a part's serving of the food picked for it (resolver, Library bar) is that serving; else as typed. */
+    @Test fun aPickedFoodTakesTheServingTyped() {
+        val planner = planner(coke, rice)
+        assertEquals(2.0 to Measure(MeasureUnit.SERVING, "can"), planner.quantityOf("2 cans xyzcoke", coke))
+        assertEquals(2.0 to Measure(MeasureUnit.SERVING, "can"), planner.quantityOf("xyzcoke 2 cans", coke))
+        assertEquals(2.0 to Measure(MeasureUnit.GRAM), planner.quantityOf("2 cans xyzrice", rice))
+        assertEquals(200.0 to Measure(MeasureUnit.GRAM), planner.quantityOf("200 g xyzrice", rice))
+    }
+
     @Test fun weightAndVolumeUnitsWorkWhenTypedAndReadAsTyped() {
         val planner = planner(rice, coke, iceCream)
         fun logged(text: String) = planner.plan(text).entries.single()
@@ -156,6 +201,17 @@ class ServingsTest {
         assertNull(parseEditAmount("1 can coke"))
         // The strict reading (the product review's) keeps refusing a word that is no unit.
         assertNull(parseStrictAmountUnit("1 can"))
+    }
+
+    /** Fix pass, 2: a printed plural's singular is chosen deliberately, never invented. */
+    @Test fun aPrintedPluralIsMadeSingularDeliberately() {
+        val expected = mapOf(
+            "slices" to "slice", "pieces" to "piece", "cookies" to "cookie", "biscuits" to "biscuit", "peaches" to "peach",
+            "glasses" to "glass", "bars" to "bar", "berries" to "berry", "boxes" to "box", "dishes" to "dish",
+            "tomatoes" to "tomatoes", "candies" to "candies", "кутии" to "кутии",
+        )
+        expected.forEach { (plural, singular) -> assertEquals(plural, singular, printedSingular(plural)) }
+        assertEquals("slice" to 12.5, servingFromLabel("2 slices (25 g)", MeasureUnit.GRAM, "serving")?.let { it.name to it.baseUnitsPerServing })
     }
 
     /** A product's printed serving size, only when it reads clearly and in its basis. */

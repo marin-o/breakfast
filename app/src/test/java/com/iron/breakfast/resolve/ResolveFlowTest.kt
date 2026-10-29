@@ -44,9 +44,12 @@ class ResolveFlowTest {
         // "ayran200ml" reads as ayran, 200 ml, as the planner reads a glued amount.
         override fun typed(raw: String) = if (raw == "ayran200ml") TypedPart("ayran", 200.0, MeasureUnit.MILLILITER) else TypedPart(raw, null, null)
         override fun search(query: String) = found[query].orEmpty()
-        override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
+        /** A part read with a serving of the picked food, as the planner reads one ("2 cans coke" with a can). */
+        val servings = mutableMapOf<Pair<String, String>, Pair<Double, com.iron.breakfast.domain.Measure>>()
+        override fun quantityOf(raw: String, food: FoodRecord) = servings[raw to food.id] ?: super.quantityOf(raw, food)
+        override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String, servingName: String?) {
             hold?.await()
-            calls += "log ${food.id} $amount ${unit.name} $meal $dayKey"
+            calls += "log ${food.id} $amount ${unit.name} $meal $dayKey" + (servingName?.let { " $it" } ?: "")
         }
     }
 
@@ -127,6 +130,14 @@ class ResolveFlowTest {
         assertFalse(flow.continuation)
         assertNull(flow.queueMeal)
         assertNull(flow.queueView())
+    }
+
+    /** "2 cans coke" picked as a food with cans logs two cans, by the serving's name. */
+    @Test fun aPickTakesTheServingTypedWhenThePickedFoodHasIt() {
+        store.servings["2 cans coke" to "coke"] = 2.0 to com.iron.breakfast.domain.Measure(MeasureUnit.SERVING, "can")
+        flow.afterSave(listOf("2 cans coke"), MealSlot.LUNCH, TypedText("2 cans coke"), "2 cans coke")
+        flow.resolve(food("coke", "Coke"))
+        assertEquals(listOf("log coke 2.0 SERVING LUNCH 2026-10-28 can"), store.calls)
     }
 
     @Test fun aPickLogsThePartWithItsTypedAmountToTheQueuesMealAndMovesOn() {

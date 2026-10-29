@@ -7,6 +7,7 @@ import com.iron.breakfast.app.DiaryChange
 import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.app.Notices
 import com.iron.breakfast.domain.FoodRecord
+import com.iron.breakfast.domain.Measure
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.RankedFood
@@ -23,8 +24,14 @@ internal interface ResolveStore {
     fun typed(raw: String): TypedPart
     /** The resolver's local search, ranked. */
     fun search(query: String): List<RankedFood>
-    /** Stores [food] as needed and logs it. */
-    suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String)
+    /**
+     * The amount and measure part [raw] logs as for [food], picked for it: a serving of [food] named where a unit goes,
+     * else the typed amount and unit (the food's defaults where none was typed).
+     */
+    fun quantityOf(raw: String, food: FoodRecord): Pair<Double, Measure> =
+        typed(raw).let { (it.amount ?: food.defaultAmount) to Measure(it.unit ?: food.defaultUnit) }
+    /** Stores [food] as needed and logs it; [servingName] names the serving for [MeasureUnit.SERVING]. */
+    suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String, servingName: String?)
 }
 
 /** Where a queue's parts were typed (the Log draft, the Library bar): what is left of them is shown there. */
@@ -198,15 +205,14 @@ internal class ResolveFlow(
     fun resolve(food: FoodRecord) {
         val raw = parts.firstOrNull() ?: return
         val meal = queueMeal.takeIf { queueActive } ?: return
-        val typed = typed(raw)
-        val amount = typed.amount ?: food.defaultAmount
-        val unit = typed.unit ?: food.defaultUnit
+        // A serving of the picked food typed where a unit goes ("2 cans") is that serving; else the part as typed.
+        val (amount, measure) = store.quantityOf(raw, food)
         val day = selectedDay()
         session.write(
             change = DiaryChange.QueuedPartLogged,
             onSuccess = { advance() },
             onFailure = { notices.show(it.message ?: "Could not resolve this food.") },
-        ) { store.cacheFoodAndLog(food, amount, unit, meal, day) }
+        ) { store.cacheFoodAndLog(food, amount, measure.unit, meal, day, measure.name.takeIf { measure.unit == MeasureUnit.SERVING }) }
     }
 
     /**

@@ -136,6 +136,9 @@ fun Recipe.asFood(): FoodRecord {
         ServingConversion(unit, if (unit == basisUnit) amount else basisAmount / amount, "recipe ${unit.name.lowercase()}")
     }
     val (defaultAmount, defaultUnit) = shownServing()
+    // With both a weight and a volume, the dish's own density crosses g and ml (only a density ever does).
+    val weightOf100Ml = (totalWeight?.takeIf(::validYield) to totalVolume?.takeIf(::validYield))
+        .let { (weight, volume) -> if (weight != null && volume != null) weight / volume * 100.0 else null }
     return FoodRecord(
         id = id,
         name = name,
@@ -147,6 +150,7 @@ fun Recipe.asFood(): FoodRecord {
         defaultAmount = defaultAmount,
         defaultUnit = defaultUnit,
         personalOverride = true,
+        density = weightOf100Ml,
     )
 }
 

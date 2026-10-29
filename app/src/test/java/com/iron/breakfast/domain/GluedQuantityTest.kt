@@ -10,7 +10,8 @@ class GluedQuantityTest {
         id = "custom_mleko", name = "Mleko", aliases = emptyList(), category = "Dairy", origin = FoodOrigin.CUSTOM,
         nutrition = NutritionBasis(100.0, MeasureUnit.MILLILITER, NutritionValues(60.0, 3.2, 4.7, 3.2)),
         defaultAmount = 200.0, defaultUnit = MeasureUnit.MILLILITER,
-        conversions = listOf(ServingConversion(MeasureUnit.GRAM, 1.0, "1 g")),
+        // g on this ml food through its density (100 ml = 100 g); a serving row never crosses g and ml (measurements).
+        density = 100.0,
     )
     private val vitamin = FoodRecord(
         id = "custom_b12", name = "Vitamin B12 tablet", aliases = emptyList(), category = "Supplement", origin = FoodOrigin.CUSTOM,

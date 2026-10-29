@@ -75,8 +75,9 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
             resolve = object : ResolveStore {
                 override fun typed(raw: String) = engine.planner().typed(raw)
                 override fun search(query: String) = engine.search(query)
-                override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
-                    engine.cacheFoodAndLog(food, amount, unit, meal, dayKey)
+                override fun quantityOf(raw: String, food: FoodRecord) = engine.planner().quantityOf(raw, food)
+                override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String, servingName: String?) {
+                    engine.cacheFoodAndLog(food, amount, unit, meal, dayKey, servingName)
                 }
             },
             log = object : LogStore {

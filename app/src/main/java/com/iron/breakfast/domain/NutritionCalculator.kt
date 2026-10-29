@@ -52,11 +52,13 @@ class NutritionCalculator {
     /**
      * The food's own conversion for [unit]: one with no name of its own (or the unit's own, "piece", "tbsp"), so a named
      * serving in g ("slice = 30 g") never stands for "g". A piece or spoon row that only has another name is kept as
-     * before, when nothing else is in that unit.
+     * before, when nothing else is in that unit. g on ml and ml on g never come from a row: only from the density.
      */
-    private fun unitConversion(food: FoodRecord, unit: MeasureUnit): ServingConversion? =
-        food.conversions.firstOrNull { it.unit == unit && (it.name == null || it.name == defaultServingName(unit)) }
+    private fun unitConversion(food: FoodRecord, unit: MeasureUnit): ServingConversion? {
+        if (crossesFamily(food, unit)) return null
+        return food.conversions.firstOrNull { it.unit == unit && (it.name == null || it.name == defaultServingName(unit)) }
             ?: food.conversions.firstOrNull { it.unit == unit }.takeIf { defaultServingName(unit) != null }
+    }
 
     private fun familyConversion(food: FoodRecord, unit: MeasureUnit): PerUnit? {
         val basis = food.nutrition

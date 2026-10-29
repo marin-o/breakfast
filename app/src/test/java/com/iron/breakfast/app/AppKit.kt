@@ -98,7 +98,7 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
             resolve = object : ResolveStore {
                 override fun typed(raw: String) = plannerFor(emptyMap()).typed(raw)
                 override fun search(query: String) = emptyList<RankedFood>()
-                override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
+                override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String, servingName: String?) {
                     calls += "queue log ${food.id} $meal"
                 }
             },

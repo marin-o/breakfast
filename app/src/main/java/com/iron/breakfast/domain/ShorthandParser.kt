@@ -19,8 +19,11 @@ interface FoodProbe {
     /** True when some food names [word] as a whole word (not as part of a longer word). */
     fun matchesWholeWord(word: String): Boolean
 
-    /** True when some food has a serving named [word] ("cans"): after an amount it goes with it, as a unit does. */
-    fun isServingWord(word: String): Boolean = false
+    /**
+     * True when the food [head] names ("coke") has a serving named [word] ("cans"): after an amount that follows [head],
+     * the word goes with it, as a unit does ("coke 1 can"). A serving of any other food never joins two foods.
+     */
+    fun isServingWord(word: String, head: String): Boolean = false
 }
 
 /** One part of the typed input: its text and where it sits in the input. */
@@ -100,8 +103,10 @@ class ShorthandParser {
                 val head = spanOf(input, span.start, span.start + words[words.size - 2].range.last + 1)
                 // Only a plain word is a fragment: "150ml" and "60g" are quantities, never a word being typed.
                 val plainWord = word.all { it.isLetter() }
-                // A serving's name after an amount ("coke 1 can") goes with the amount: it is not a word being typed.
-                if (plainWord && isFoodWord(word) && !probe.matchesWholeWord(word) && !probe.isServingWord(word) && probe.isWholeFood(head.text)) {
+                // The head food's serving after an amount ("coke 1 can") goes with the amount: it is not a word being typed.
+                if (plainWord && isFoodWord(word) && !probe.matchesWholeWord(word) &&
+                    !probe.isServingWord(word, parse(head.text).foodPhrase) && probe.isWholeFood(head.text)
+                ) {
                     out += head
                     out += spanOf(input, span.start + last.range.first, span.end)
                     continue
@@ -154,11 +159,13 @@ class ShorthandParser {
                 i++
                 continue
             }
-            val quantityEnd = quantityEnd(texts, i, probe)
+            // A serving word goes with a quantity only after the food that has it: the words of this part so far.
+            val head = current.filter { isFoodWord(texts[it]) }.joinToString(" ") { texts[it] }.ifBlank { null }
+            val quantityEnd = quantityEnd(texts, i, probe, head)
             if (quantityEnd != null) {
                 val hasFood = current.any { isFoodWord(texts[it]) }
                 val foodFollows = foodWordBeforeSeparator(texts, quantityEnd)
-                if (hasFood && foodFollows && (leadingQuantity || trailingQuantity || !hasUnit(texts, i, quantityEnd, probe))) {
+                if (hasFood && foodFollows && (leadingQuantity || trailingQuantity || !hasUnit(texts, i, quantityEnd, probe, head))) {
                     flush(nextWordBreak = false)
                     leadingQuantity = true
                 } else if (hasFood) {
@@ -173,7 +180,7 @@ class ShorthandParser {
             // A food word after a trailing quantity starts the next food: "oats 60g milk" is two parts.
             if (trailingQuantity && isFoodWord(word)) flush(nextWordBreak = false)
             // A leading meal word before a quantity is its own part: "lunch 1 banana" is two parts.
-            if (current.isEmpty() && ShorthandLexicon.mealSlotOf(word) != null && quantityEnd(texts, i + 1, probe) != null) {
+            if (current.isEmpty() && ShorthandLexicon.mealSlotOf(word) != null && quantityEnd(texts, i + 1, probe, null) != null) {
                 current += i
                 flush(nextWordBreak = false)
                 i++
@@ -268,9 +275,10 @@ class ShorthandParser {
 
     /**
      * Exclusive end of the quantity that starts at [i], or null when no quantity starts there. A number's unit may be a
-     * word some food has a serving by ([FoodProbe.isServingWord]): "coke 1 can" stays one part, as "bread 2 slices" does.
+     * serving of the food before it, [head] ([FoodProbe.isServingWord]): "coke 1 can" stays one part, as "bread 2
+     * slices" does. A unit word that came with measurements and begins a food's name ("1 cup noodles") is not a unit.
      */
-    private fun quantityEnd(texts: List<String>, i: Int, probe: FoodProbe? = null): Int? {
+    private fun quantityEnd(texts: List<String>, i: Int, probe: FoodProbe? = null, head: String? = null): Int? {
         val word = texts.getOrNull(i) ?: return null
         val next = texts.getOrNull(i + 1)
         return when {
@@ -278,19 +286,36 @@ class ShorthandParser {
                 if (next?.startsWith("%") == true) return null
                 var end = i + 1
                 if (next != null && isQuantityFraction(next, texts.getOrNull(i + 2))) end++
-                val unit = texts.getOrNull(end)
-                if (unit?.toMeasureUnit() != null || (unit != null && probe?.isServingWord(unit) == true)) end++
+                if (unitAt(texts, end, probe) || servingAt(texts, end, probe, head)) end++
                 end
             }
-            isQuantityFraction(word, next) -> if (next?.toMeasureUnit() != null) i + 2 else i + 1
+            isQuantityFraction(word, next) -> if (unitAt(texts, i + 1, probe)) i + 2 else i + 1
             ATTACHED_QUANTITY.matchEntire(word)?.let { it.groupValues[2].toMeasureUnit() != null } == true -> i + 1
             MULTIPLIER.matches(word) -> i + 1
-            else -> wordQuantityEnd(texts, i)
+            else -> wordQuantityEnd(texts, i, probe)
         }
     }
 
+    /**
+     * True when the word at [index] is a unit of the quantity before it. A unit word that came with measurements (cup,
+     * oz, lb: [ShorthandLexicon.nameUnitWords]) is not one when it and the words after it are a food's name ("banana 1
+     * cup noodles" is banana and "1 cup noodles", as before cups were a unit).
+     */
+    private fun unitAt(texts: List<String>, index: Int, probe: FoodProbe?): Boolean {
+        val word = texts.getOrNull(index) ?: return false
+        if (word.toMeasureUnit() == null) return false
+        if (probe == null || word.lowercase(Locale.ROOT) !in ShorthandLexicon.nameUnitWords) return true
+        return (texts.size downTo index + 2).none { end -> probe.covers(texts.subList(index, end).joinToString(" ")) }
+    }
+
+    /** True when the word at [index] is a serving of the [head] food (not a unit word, which [unitAt] reads). */
+    private fun servingAt(texts: List<String>, index: Int, probe: FoodProbe?, head: String?): Boolean {
+        val word = texts.getOrNull(index) ?: return false
+        return head != null && probe != null && word.toMeasureUnit() == null && probe.isServingWord(word, head)
+    }
+
     /** End of a number word at [i] ("two", "half", "a couple of", "a half") with its optional unit, or null. */
-    private fun wordQuantityEnd(texts: List<String>, i: Int): Int? {
+    private fun wordQuantityEnd(texts: List<String>, i: Int, probe: FoodProbe? = null): Int? {
         val lower = texts.getOrNull(i)?.lowercase(Locale.ROOT) ?: return null
         val next = texts.getOrNull(i + 1)?.lowercase(Locale.ROOT)
         var end = when {
@@ -301,7 +326,7 @@ class ShorthandParser {
         if (next == "couple" && texts.getOrNull(end)?.lowercase(Locale.ROOT) == "of") end++
         // "half a tbsp" takes its article after the word.
         if (ShorthandLexicon.isFractionWord(lower) && texts.getOrNull(end)?.lowercase(Locale.ROOT) == "a") end++
-        if (texts.getOrNull(end)?.toMeasureUnit() != null) end++
+        if (unitAt(texts, end, probe)) end++
         return end
     }
 
@@ -311,9 +336,12 @@ class ShorthandParser {
         return numerator < 10 && following?.lowercase(Locale.ROOT) !in COMPOSITION_WORDS
     }
 
-    /** True when the quantity words in [from, to) carry a unit ("60g", "1 kg", "2 tbsp", "1 can"); a bare number does not. */
-    private fun hasUnit(texts: List<String>, from: Int, to: Int, probe: FoodProbe? = null): Boolean = (from until to).any { index ->
-        texts[index].toMeasureUnit() != null || probe?.isServingWord(texts[index]) == true ||
+    /**
+     * True when the quantity words in [from, to) carry a unit ("60g", "1 kg", "2 tbsp", "1 can" of a [head] food that has
+     * cans); a bare number does not.
+     */
+    private fun hasUnit(texts: List<String>, from: Int, to: Int, probe: FoodProbe? = null, head: String? = null): Boolean = (from until to).any { index ->
+        texts[index].toMeasureUnit() != null || servingAt(texts, index, probe, head) ||
             ATTACHED_QUANTITY.matchEntire(texts[index])?.let { it.groupValues[2].toMeasureUnit() != null } == true
     }
 
