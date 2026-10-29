@@ -26,7 +26,7 @@ Status: approved by the owner on 2026-10-29; built, pending device check. Owner 
 
 - **Log bar:** `1 chili`, `1.5 chili`, `2 portions chili`, `300 g chili` work like foods. **(owner)** A recipe's name and aliases are matched like a personal food's, with the same script rule (Latin only matches Latin, Cyrillic only Cyrillic).
 - **Recipes tab "+":** the same amount sheet as foods, with a **portion** unit and **g** (g only when a weight is known).
-- The confirmation is "Logged!" with Undo, as for foods.
+- The confirmation is "Logged!", as for a food added from the Library: the Recipes tab's "+" offers no Undo (a Library add has none since the owner's earlier change). A recipe logged from the Log bar keeps the Log's batch Undo.
 - An entry stores its own snapshot (name, amount, nutrition), so **editing or deleting a recipe later never changes past entries**. **(owner)**
 
 ## Nutrition
