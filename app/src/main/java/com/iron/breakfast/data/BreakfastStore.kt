@@ -1,5 +1,7 @@
 package com.iron.breakfast.data
 
+import com.iron.breakfast.domain.searchKey
+import com.iron.breakfast.domain.searchFinds
 import android.content.Context
 import android.util.Log
 import androidx.room.Room
@@ -9,14 +11,11 @@ import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.BuiltInCatalogSync
 import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.MealEntry
-import com.iron.breakfast.domain.MeasureUnit
-import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.Preference
 import com.iron.breakfast.domain.Recipe
 import com.iron.breakfast.domain.following
 import com.iron.breakfast.domain.barcodeForms
 import com.iron.breakfast.domain.canonicalBarcode
-import com.iron.breakfast.domain.hyphensAsBreaks
 import com.iron.breakfast.domain.sameBarcode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -591,19 +590,15 @@ internal fun pickBarcodeMatch(rows: List<FoodEntity>, barcode: String): FoodEnti
 }
 
 /**
- * The Library's search: [query] is part of a name, an alias or the brand, or the barcode. A hyphen between letters is a
- * word break on both sides ([hyphensAsBreaks]): "coca-cola zero" finds "Coca Cola Zero" and "coca cola" "Coca-Cola".
+ * The Library's search: [query] is part of a name, an alias or the brand, or the barcode. Names read as the Log matcher
+ * reads them ([searchFinds]): a hyphen between letters is a word break on both sides, "coca-cola zero" finds "Coca Cola
+ * Zero", "cevapi" finds "Ćevapi", and a query never crosses scripts.
  */
 internal fun foodMatchesQuery(food: FoodRecord, query: String): Boolean {
-    val normalized = searchText(query.trim())
-    if (normalized.isBlank()) return true
-    return food.allNames().any { searchText(it).contains(normalized) } ||
-        food.brand?.let { searchText(it).contains(normalized) } == true || barcodeMatchesQuery(food.barcode, query.trim().lowercase())
+    if (searchKey(query).isBlank()) return true
+    return food.allNames().any { searchFinds(it, query) } ||
+        food.brand?.let { searchFinds(it, query) } == true || barcodeMatchesQuery(food.barcode, query.trim())
 }
-
-private fun searchText(text: String): String = hyphensAsBreaks(text).lowercase().replace(SPACES, " ").trim()
-
-private val SPACES = Regex("\\s+")
 
 /** Library search on a barcode: part of the stored digits, or the whole code in any equivalent spelling. */
 internal fun barcodeMatchesQuery(barcode: String?, query: String): Boolean =

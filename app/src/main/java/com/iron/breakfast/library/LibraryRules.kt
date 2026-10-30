@@ -2,15 +2,7 @@ package com.iron.breakfast.library
 
 import com.iron.breakfast.domain.MealSlot
 
-// The Library's pure decisions, unit-tested: which refresh applies, when "No local match" shows, where leaving goes.
-
-internal fun shouldApplyLibraryRefresh(
-    responseGeneration: Long,
-    currentGeneration: Long,
-    responseQuery: String,
-    currentQuery: String,
-    libraryOpen: Boolean,
-): Boolean = libraryOpen && responseGeneration == currentGeneration && responseQuery == currentQuery
+// The Library's pure decisions, unit-tested: when "No local match" shows, where leaving goes.
 
 /** The "No local match" screen shows only once a finished library search for the current query is empty and nothing sits over it. */
 internal fun isLibraryNoMatch(ready: Boolean, libraryOpen: Boolean, query: String, resultsQuery: String?, noResults: Boolean, otherScreenOpen: Boolean): Boolean =

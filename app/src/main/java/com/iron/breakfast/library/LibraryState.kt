@@ -1,5 +1,7 @@
 package com.iron.breakfast.library
 
+import com.iron.breakfast.domain.lastLoggedEntry
+import com.iron.breakfast.app.LatestSearch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -21,7 +23,6 @@ import com.iron.breakfast.domain.mealMarkerSlots
 import com.iron.breakfast.resolve.ResolveSource
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -47,7 +48,7 @@ internal interface LibraryStore {
  * - **List:** whether it is [open], the meal it adds to ([target]: the meal it was opened from or for, null on the
  *   Library tab), the [query] the list is filtered by and the results ([foods], for [resultsQuery]). A refresh runs in
  *   [scope], its read on [io], and applies on [main] only
- *   while it still matches what is shown ([shouldApplyLibraryRefresh]). A quantified batch's foods are looked up on
+ *   while it still matches what is shown ([LatestSearch]). A quantified batch's foods are looked up on
  *   [compute] (the matcher, as the resolver's search) and the batch applies on [main].
  * - **Bar:** [input], the bar's own text, never the Log draft. Done ([submitInput]) searches, logs a quantified batch
  *   (asking for a meal when none is known: [batchMealPickerOpen]), or saves a mixed batch (asking first:
@@ -92,8 +93,7 @@ internal class LibraryState(
     /** The food "Delete food" asks about (the confirmation is open); null otherwise. */
     var deleteRequest by mutableStateOf<FoodRecord?>(null); private set
     private var pendingBatch: List<LibraryLogDraft> = emptyList()
-    private var refreshJob: Job? = null
-    private var refreshGeneration = 0L
+    private val refreshing = LatestSearch<List<FoodRecord>>(scope, io, main)
     private val parser = ShorthandParser()
 
     /** Opens the list for [target], filtered by [query], with [bar] in the bar (the query unless told otherwise). */
@@ -110,8 +110,7 @@ internal class LibraryState(
 
     /** Closes the Library and everything open in it; a refresh still running no longer applies. */
     fun close() {
-        refreshJob?.cancel()
-        refreshGeneration++
+        refreshing.cancel()
         open = false
         target = null
         selectedFood = null
@@ -142,18 +141,14 @@ internal class LibraryState(
 
     fun refresh() {
         if (!session.ready) return
-        refreshJob?.cancel()
-        val generation = ++refreshGeneration
         val captured = query
         val capturedEntries = session.entries
-        refreshJob = scope.launch(io) {
-            val ordered = libraryRecencyOrder(store.foodsMatching(captured), capturedEntries)
-            withContext(main) {
-                if (shouldApplyLibraryRefresh(generation, refreshGeneration, captured, query, open)) {
-                    foods = ordered
-                    resultsQuery = captured
-                }
-            }
+        refreshing.launch(
+            load = { libraryRecencyOrder(store.foodsMatching(captured), capturedEntries) },
+            wanted = { open && captured == query },
+        ) { ordered ->
+            foods = ordered
+            resultsQuery = captured
         }
     }
 
@@ -172,9 +167,7 @@ internal class LibraryState(
     fun toggleFoodPicker(food: FoodRecord) { expandedFoodId = if (expandedFoodId == food.id) null else food.id }
     fun collapseFoodPicker() { expandedFoodId = null }
 
-    fun lastLoggedEntry(food: FoodRecord): MealEntry? = session.entries.asSequence()
-        .filter { it.foodId == food.id }
-        .maxByOrNull { it.savedAtEpochMs }
+    fun lastLoggedEntry(food: FoodRecord): MealEntry? = lastLoggedEntry(session.entries, food.id)
 
     fun invalidAmount() { notices.show("Enter a positive amount and a supported unit such as g, ml, tbsp, tsp, or piece.") }
 

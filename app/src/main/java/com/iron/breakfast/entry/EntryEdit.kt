@@ -1,5 +1,6 @@
 package com.iron.breakfast.entry
 
+import com.iron.breakfast.domain.positiveAmountOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -189,8 +190,8 @@ internal class EntryEdit(
         val edit = editSession
         // A tap while the save runs is ignored, not reported as invalid.
         if (!session.canWrite) return
-        val parsedAmount = amount.toDoubleOrNull()
-        if (parsedAmount == null || parsedAmount <= 0.0 || foodId.isBlank()) {
+        val parsedAmount = positiveAmountOf(amount)
+        if (parsedAmount == null || foodId.isBlank()) {
             error = "Enter a positive amount and choose a food."
             return
         }

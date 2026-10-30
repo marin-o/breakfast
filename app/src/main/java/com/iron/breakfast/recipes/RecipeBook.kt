@@ -1,5 +1,6 @@
 package com.iron.breakfast.recipes
 
+import com.iron.breakfast.domain.lastLoggedEntry
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -81,9 +82,7 @@ internal class RecipeBook(
     fun dismissLog() { loggingId = null }
 
     /** The entry this recipe was last logged as, whose amount the sheet starts with. */
-    fun lastLoggedEntry(recipe: Recipe): MealEntry? = session.entries.asSequence()
-        .filter { it.foodId == recipe.id }
-        .maxByOrNull { it.savedAtEpochMs }
+    fun lastLoggedEntry(recipe: Recipe): MealEntry? = lastLoggedEntry(session.entries, recipe.id)
 
     /**
      * The sheet's Add: [amount] [unit] of [recipe] to [meal] on the selected day, as one entry with its own snapshot,

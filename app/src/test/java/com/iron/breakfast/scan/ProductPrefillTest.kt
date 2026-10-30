@@ -49,15 +49,6 @@ class ProductPrefillTest {
     }
 
     @Test
-    fun productLabelUsesActualNutritionBasis() {
-        val food = FoodRecord(
-            id = "basis", name = "Soup", aliases = emptyList(), category = "Open Food Facts", origin = FoodOrigin.GENERIC,
-            nutrition = NutritionBasis(250.0, MeasureUnit.GRAM, NutritionValues(300.0, null, null, null))
-        )
-        assertEquals("Calories per 250 g", productNutritionBasisLabel(food))
-    }
-
-    @Test
     fun contributionRequiresExplicitScanProvenanceAfterLocalSave() {
         val scanned = FoodRecord(
             id = "off-scan", name = "Scanned drink", aliases = emptyList(), category = "Open Food Facts",

@@ -33,6 +33,7 @@ class FoodMatcher(
         val normalizedNames: Set<String>,
         val normalizedAliases: Set<String>
     ) {
+        /** The name words [sameScript] lets [query] match, kept by script so one call per food stays cheap. */
         fun inScriptOf(query: QueryToken): NameWords? = when (query.script) {
             TextScript.NONE -> all
             TextScript.MIXED -> null
@@ -185,13 +186,11 @@ class FoodMatcher(
         val word = tokens(expandAbbreviations(fragment)).lastOrNull() ?: return emptyList()
         val script = scriptOf(word)
         if (script == TextScript.MIXED) return emptyList()
-        val cyrillic = script == TextScript.CYRILLIC
         val folded = foldDiacritics(word)
         val now = nowMs()
         // Scripts never cross, word by word: a fragment matches only the name words in its own script, so "Протеин bar"
         // is found by "про" and by "bar", and a food with no word in that script is not suggested at all.
-        val inScript = { nameWord: String -> scriptOf(nameWord).let { it != TextScript.MIXED && (it == TextScript.CYRILLIC) == cyrillic } }
-        val starts = { nameWord: String -> inScript(nameWord) && foldDiacritics(nameWord).startsWith(folded) }
+        val starts = { nameWord: String -> sameScript(script, scriptOf(nameWord)) && foldDiacritics(nameWord).startsWith(folded) }
         return catalog.mapNotNull { food ->
             val names = food.allNames().map(::tokens)
             if (names.none { words -> words.any(starts) }) return@mapNotNull null
@@ -212,19 +211,11 @@ class FoodMatcher(
         ).take(limit).map { it.first }
     }
 
-    /** Lowercase with the Latin diacritics folded (č and ć to c, š to s, ž to z, đ to d). */
-    private fun foldDiacritics(text: String): String = text.lowercase(Locale.ROOT)
-        .replace('č', 'c').replace('ć', 'c').replace('š', 's').replace('ž', 'z').replace('đ', 'd')
-
     fun expandAbbreviations(phrase: String): String = phrase.lowercase(Locale.ROOT)
         .split(WHITESPACE)
         .joinToString(" ") { abbreviations[it] ?: it }
 
-    private fun tokens(value: String): List<String> = hyphensAsBreaks(value)
-        .lowercase(Locale.ROOT)
-        // An apostrophe joins its word ("Jerry's" is one word), so its "s" is never a word of its own.
-        .replace("'", "").replace("’", "")
-        .let { foldDiacritics(it) }
+    private fun tokens(value: String): List<String> = matchText(value)
         .replace(TOKEN_CHARACTER_PATTERN, " ")
         .split(WHITESPACE_PATTERN)
         .filter { it.isNotBlank() && it !in STOP_WORDS }
@@ -305,6 +296,38 @@ fun hyphensAsBreaks(text: String): String {
         out.append(if (c == '-' && byLetter && !byDigit) ' ' else c)
     }
     return out.toString()
+}
+
+/** Lowercase with the Latin diacritics folded (č and ć to c, š to s, ž to z, đ to d). */
+internal fun foldDiacritics(text: String): String = text.lowercase(Locale.ROOT)
+    .replace('č', 'c').replace('ć', 'c').replace('š', 's').replace('ž', 'z').replace('đ', 'd')
+
+/** [text] as every match reads it: hyphens as breaks, lowercase, an apostrophe joining its word ("Jerry's" is one), folded. */
+internal fun matchText(text: String): String = foldDiacritics(hyphensAsBreaks(text).replace("'", "").replace("’", ""))
+
+/** [text] as a substring search reads it: [matchText] with its spaces collapsed. */
+internal fun searchKey(text: String): String = matchText(text).replace(SEARCH_SPACES, " ").trim()
+
+private val SEARCH_SPACES = Regex("\\s+")
+
+/**
+ * True when [query] is part of [text], by the [searchKey] of both and within one script: a query word that mixes scripts
+ * finds nothing, and neither a Latin nor a Cyrillic query finds a name word that mixes them.
+ */
+internal fun searchFinds(text: String, query: String): Boolean {
+    val key = searchKey(query)
+    if (key.split(' ').any { scriptOf(it) == TextScript.MIXED }) return false
+    return searchKey(text).split(' ').filter { scriptOf(it) != TextScript.MIXED }.joinToString(" ").contains(key)
+}
+
+/**
+ * Whether a word in script [query] may match a word in script [word]: never from or to a mix of scripts, only its own
+ * script otherwise; a query with no letters (a number) matches any word without a mix.
+ */
+internal fun sameScript(query: TextScript, word: TextScript): Boolean = when {
+    query == TextScript.MIXED || word == TextScript.MIXED -> false
+    query == TextScript.NONE -> true
+    else -> query == word
 }
 
 /** The script a word is written in. Matching never crosses scripts, and a word that mixes them matches nothing. */

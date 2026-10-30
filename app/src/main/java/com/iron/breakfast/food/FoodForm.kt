@@ -1,5 +1,6 @@
 package com.iron.breakfast.food
 
+import com.iron.breakfast.domain.POSITIVE_AMOUNT_MESSAGE
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -190,7 +191,7 @@ internal class FoodForm(
         }
         val kcal = resolved.calories ?: return
         // "100 ml =" a number that is not a positive one: the field shows it, and nothing is saved.
-        if (draft.densityError()) { notices.show("Enter a positive amount."); return }
+        if (draft.densityError()) { notices.show(POSITIVE_AMOUNT_MESSAGE); return }
         val density = draft.densityValue()
         // A new or changed code is stored in its canonical form; an unchanged one keeps the spelling it has.
         val storedBarcode = if (barcodeUnchanged && originalBarcode != null) originalBarcode else canonicalBarcode(barcode) ?: barcode

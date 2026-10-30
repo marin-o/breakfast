@@ -45,14 +45,6 @@ class LibraryRulesTest {
         assertFalse("another screen is on top", isLibraryNoMatch(true, true, "barley", "barley", true, true))
     }
 
-    @Test
-    fun staleLibraryResponsesRequireCurrentOpenQueryAndGeneration() {
-        assertTrue(shouldApplyLibraryRefresh(4, 4, "oats", "oats", true))
-        assertFalse(shouldApplyLibraryRefresh(3, 4, "oats", "oats", true))
-        assertFalse(shouldApplyLibraryRefresh(4, 4, "oats", "milk", true))
-        assertFalse(shouldApplyLibraryRefresh(4, 4, "oats", "oats", false))
-    }
-
     @Test fun libraryRepeatDraftCarriesClickedMealAndSingleEntryIntent() {
         val food = FoodRecord(
             id = "banana", name = "Banana", aliases = emptyList(), category = "Fruit", origin = FoodOrigin.GENERIC,

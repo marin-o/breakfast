@@ -1,5 +1,6 @@
 package com.iron.breakfast.scan
 
+import com.iron.breakfast.domain.positiveAmountOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -27,7 +28,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.iron.breakfast.ui.pretty
 
 /** The writes product review makes; the view model adapts `BreakfastEngine`. */
 internal interface ProductStore {
@@ -289,10 +289,10 @@ internal class ProductReview(
 
     /** The product as the fields now describe it, with what the amount comes to; null while a field does not read. */
     private fun draft(food: FoodRecord): ProductDraft? {
-        val amount = amount.toDoubleOrNull()
+        val amount = positiveAmountOf(amount)
         val unit = parseProductUnit(unit)
         val kcal = calories.toDoubleOrNull()
-        if (amount == null || !amount.isFinite() || amount <= 0.0 || unit == null ||
+        if (amount == null || unit == null ||
             kcal == null || !kcal.isFinite() || kcal < 0.0
         ) return null
         val draftFood = food.copy(
@@ -322,9 +322,6 @@ internal fun servingsToAdd(food: FoodRecord, full: FoodRecord): List<ServingConv
     }.distinctBy { it.name!!.lowercase() }
 
 internal data class ProductPrefill(val amount: Double, val unit: MeasureUnit)
-
-internal fun productNutritionBasisLabel(food: FoodRecord): String =
-    "Calories per ${food.nutrition.amount.pretty()} ${food.nutrition.unit.label}"
 
 /** A queued part's typed amount and unit, else 100 of the food's basis unit. */
 internal fun productPrefill(food: FoodRecord, typed: TypedPart): ProductPrefill = ProductPrefill(

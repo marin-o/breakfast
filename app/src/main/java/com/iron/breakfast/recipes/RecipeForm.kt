@@ -1,5 +1,6 @@
 package com.iron.breakfast.recipes
 
+import com.iron.breakfast.app.LatestSearch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -22,7 +23,6 @@ import com.iron.breakfast.log.rowStillInDraft
 import kotlinx.serialization.Serializable
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -85,8 +85,7 @@ internal class RecipeForm(
     var adding by mutableStateOf<FoodRecord?>(null); private set
     /** The "Not in your foods" part the search was opened for; a food picked there replaces it. */
     private var resolving: DraftRow.Unresolved? = null
-    private var searchJob: Job? = null
-    private var searchGeneration = 0L
+    private val searching = LatestSearch<List<FoodRecord>>(scope, io, main)
 
     /** New recipe. */
     fun openNew() = begin(null, RecipeFields(), emptyMap())
@@ -167,8 +166,7 @@ internal class RecipeForm(
     fun closeSearch() = endSearch()
 
     private fun endSearch() {
-        searchJob?.cancel()
-        searchGeneration++
+        searching.cancel()
         searchOpen = false
         query = ""
         results = emptyList()
@@ -179,13 +177,11 @@ internal class RecipeForm(
     fun onQuery(value: String) {
         query = value
         if (!session.ready) return
-        searchJob?.cancel()
-        val generation = ++searchGeneration
         val entries = session.entries
-        searchJob = scope.launch(io) {
-            val found = libraryRecencyOrder(store.foodsMatching(value), entries)
-            withContext(main) { if (generation == searchGeneration && searchOpen) results = found }
-        }
+        searching.launch(
+            load = { libraryRecencyOrder(store.foodsMatching(value), entries) },
+            wanted = { searchOpen },
+        ) { results = it }
     }
 
     /**

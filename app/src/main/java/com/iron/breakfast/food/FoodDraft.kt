@@ -1,5 +1,6 @@
 package com.iron.breakfast.food
 
+import com.iron.breakfast.domain.positiveAmountOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -82,7 +83,7 @@ class FoodDraft {
     }
 
     fun commitServing(): Boolean {
-        val amount = servingAmount.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 } ?: return false
+        val amount = positiveAmountOf(servingAmount) ?: return false
         val label = servingLabel.trim().ifBlank { null }
         // A serving is kept in the food's basis units: one typed in the other of g and ml goes through the density.
         val base = servingInBasis(amount, servingUnit, if (basisUnit == MeasureUnit.MILLILITER.label) MeasureUnit.MILLILITER else MeasureUnit.GRAM, densityValue())

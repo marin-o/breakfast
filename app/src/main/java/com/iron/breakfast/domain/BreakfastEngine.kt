@@ -98,23 +98,7 @@ class BreakfastEngine(
         // the store's lock is taken.
         val plan = withContext(compute) { planner(pins).plan(input) }
         val entries = plan.entries.mapIndexed { index, resolved ->
-            MealEntry(
-                id = UUID.randomUUID().toString(),
-                foodId = resolved.food.id,
-                foodName = resolved.food.name,
-                enteredAmount = resolved.amount,
-                enteredUnit = resolved.unit,
-                resolvedBaseAmount = resolved.calculation.resolvedBaseAmount,
-                nutritionSnapshot = resolved.calculation.nutrition,
-                conversionProvenance = resolved.calculation.provenance,
-                approximateConversion = resolved.calculation.approximate,
-                savedAtEpochMs = orderedSavedAt(nowMs, index),
-                sourcePhrase = resolved.raw,
-                mealSlot = mealSlot,
-                dayKey = dayKey,
-                resolvedBaseUnit = resolved.food.nutrition.unit,
-                enteredUnitLabel = resolved.label,
-            )
+            entryOf(resolved.food, resolved.amount, resolved.unit, resolved.calculation, mealSlot, dayKey, orderedSavedAt(nowMs, index), resolved.raw, resolved.label)
         }
         if (entries.isNotEmpty()) store.saveEntries(entries)
         return SavedMeal(
@@ -338,7 +322,7 @@ class BreakfastEngine(
     ): MealEntry {
         require(name.isNotBlank()) { "Name is required" }
         require(basisAmount.isFinite() && basisAmount > 0.0) { "Nutrition basis must be positive" }
-        require(amount.isFinite() && amount > 0.0) { "Amount must be positive" }
+        requirePositive(amount)
         require(nutrition.calories.isFinite() && nutrition.calories >= 0.0) { "Calories are required" }
         val id = "custom-" + UUID.randomUUID()
         val food = FoodRecord(
@@ -360,9 +344,7 @@ class BreakfastEngine(
         )
         val calculation = calculator.calculate(food, amount, amountUnit)
         require(calculation.supported) { "Amount unit is incompatible with the nutrition basis" }
-        val entry = MealEntry(UUID.randomUUID().toString(), id, food.name, amount, amountUnit,
-            calculation.resolvedBaseAmount, calculation.nutrition, calculation.provenance,
-            calculation.approximate, nowMs, name.trim(), mealSlot, dayKey, basisUnit)
+        val entry = entryOf(food, amount, amountUnit, calculation, mealSlot, dayKey, nowMs, name.trim())
         store.addFoodAndEntry(food, entry)
         invalidateMatcher()
         return entry
@@ -418,30 +400,55 @@ class BreakfastEngine(
             store.foodById(food.id),
             food.barcode?.let { store.foodByBarcode(it) }
         )
-        require(amount.isFinite() && amount > 0.0) { "Enter a positive amount." }
+        requirePositive(amount)
         val calculation = calculator.calculate(effectiveFood, amount, unit, servingName)
         require(calculation.supported) { "Amount unit is incompatible with the nutrition basis" }
-        val now = System.currentTimeMillis()
-        val entry = MealEntry(UUID.randomUUID().toString(), effectiveFood.id, effectiveFood.name, amount, unit,
-            calculation.resolvedBaseAmount, calculation.nutrition, calculation.provenance,
-            calculation.approximate, now, effectiveFood.name, mealSlot, dayKey, effectiveFood.nutrition.unit,
-            enteredUnitLabel = servingName.takeIf { unit == MeasureUnit.SERVING })
+        val entry = entryOf(effectiveFood, amount, unit, calculation, mealSlot, dayKey, System.currentTimeMillis(), effectiveFood.name, servingName.takeIf { unit == MeasureUnit.SERVING })
         store.addFoodAndEntry(effectiveFood, entry)
         invalidateMatcher()
         return entry
     }
+
+    private fun requirePositive(amount: Double) = require(amount.isFinite() && amount > 0.0) { POSITIVE_AMOUNT_MESSAGE }
+
+    /** One new entry: [amount] [unit] of [food] with its own snapshot of [calculation]. */
+    private fun entryOf(
+        food: FoodRecord,
+        amount: Double,
+        unit: MeasureUnit,
+        calculation: Calculation,
+        meal: MealSlot,
+        dayKey: String,
+        savedAt: Long,
+        phrase: String,
+        label: String? = null,
+    ) = MealEntry(
+        id = UUID.randomUUID().toString(),
+        foodId = food.id,
+        foodName = food.name,
+        enteredAmount = amount,
+        enteredUnit = unit,
+        resolvedBaseAmount = calculation.resolvedBaseAmount,
+        nutritionSnapshot = calculation.nutrition,
+        conversionProvenance = calculation.provenance,
+        approximateConversion = calculation.approximate,
+        savedAtEpochMs = savedAt,
+        sourcePhrase = phrase,
+        mealSlot = meal,
+        dayKey = dayKey,
+        resolvedBaseUnit = food.nutrition.unit,
+        enteredUnitLabel = label,
+    )
 
     /**
      * Logs [amount] [unit] of a recipe ([Recipe.asFood]) as one entry with its own snapshot, so editing or deleting the
      * recipe later never changes it. The recipe is not stored as a food.
      */
     suspend fun logRecipe(recipe: FoodRecord, amount: Double, unit: MeasureUnit, mealSlot: MealSlot, dayKey: String): MealEntry {
-        require(amount.isFinite() && amount > 0.0) { "Enter a positive amount." }
+        requirePositive(amount)
         val calculation = calculator.calculate(recipe, amount, unit)
         require(calculation.supported) { "That amount/unit is not supported for ${recipe.name}." }
-        val entry = MealEntry(UUID.randomUUID().toString(), recipe.id, recipe.name, amount, unit,
-            calculation.resolvedBaseAmount, calculation.nutrition, calculation.provenance,
-            calculation.approximate, System.currentTimeMillis(), recipe.name, mealSlot, dayKey, recipe.nutrition.unit)
+        val entry = entryOf(recipe, amount, unit, calculation, mealSlot, dayKey, System.currentTimeMillis(), recipe.name)
         store.saveEntries(listOf(entry))
         return entry
     }

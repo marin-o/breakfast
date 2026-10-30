@@ -2,6 +2,10 @@ package com.iron.breakfast.domain
 
 import java.util.Locale
 
+/** The entry [foodId] was last logged as: what a repeat of it starts from. */
+internal fun lastLoggedEntry(entries: List<MealEntry>, foodId: String): MealEntry? =
+    entries.asSequence().filter { it.foodId == foodId }.maxByOrNull { it.savedAtEpochMs }
+
 /** Library order: the most recently logged food first, then by name. */
 internal fun libraryRecencyOrder(foods: List<FoodRecord>, entries: List<MealEntry>): List<FoodRecord> =
     recencyOrder(foods, entries, FoodRecord::id, FoodRecord::name)
