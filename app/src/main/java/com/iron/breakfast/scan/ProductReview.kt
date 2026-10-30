@@ -1,9 +1,10 @@
 package com.iron.breakfast.scan
 
+import kotlinx.serialization.Serializable
+import com.iron.breakfast.domain.isPositiveAmount
+import com.iron.breakfast.domain.fieldNumber
 import com.iron.breakfast.library.libraryPresetMeal
-import com.iron.breakfast.ui.screens.editableNumber
-import com.iron.breakfast.domain.parseDecimal
-import com.iron.breakfast.domain.positiveAmountOf
+import com.iron.breakfast.domain.editableNumber
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -74,10 +75,6 @@ internal class ProductReview(
     private val notices: Notices,
     private val selectedDay: () -> String,
     private val openMeal: () -> MealSlot?,
-    /** The Library tab is on screen: a review opened there saves to the Library; anywhere else it logs. */
-    private val libraryTab: () -> Boolean,
-    /** The Log page is open beneath: a review opened there becomes a part of its draft. */
-    private val logOpen: () -> Boolean,
     /** The Meal setting's meal now, null for Ask: where the choice starts with no meal open. */
     private val automaticMeal: () -> MealSlot?,
     private val queue: () -> ResolveQueueView?,
@@ -89,7 +86,8 @@ internal class ProductReview(
     private val onLogPart: (food: FoodRecord, amount: Double, unit: MeasureUnit) -> Unit,
     private val onLogged: (advancesQueue: Boolean) -> Unit,
     private val onClosed: () -> Unit,
-    private val openSearch: (fromResolver: Boolean) -> Unit,
+    /** The search for "Find better match"; [origin] goes on to what it picks, when this review was logging. */
+    private val openSearch: (fromResolver: Boolean, origin: ProductReviewOrigin?) -> Unit,
     private val startScan: () -> Unit,
     /** Add logged the product to the meal the user chose: "Logged!" (see `Confirmations`). */
     private val confirmLogged: () -> Unit,
@@ -107,6 +105,8 @@ internal class ProductReview(
     var carbs by mutableStateOf(""); private set
     var fat by mutableStateOf(""); private set
     private val calculator = NutritionCalculator()
+    /** The exact amount [amount] was filled with, which it stands for until edited. */
+    private var filledAmount: Double? = null
 
     /**
      * The fetch of a reviewed search result's full product. [servings] are what it brought, once it arrived; [saved] the
@@ -119,13 +119,19 @@ internal class ProductReview(
     }
     private var fetch: ServingFetch? = null
 
-    /** Reviews [food]; [origin] defaults to where the review opens from. A queued part prefills its typed amount. */
-    fun choose(food: FoodRecord, fromScan: Boolean = false, origin: ProductReviewOrigin? = null) {
+    /**
+     * Reviews [food]. [origin] is what the entry point opened it for (a scan, or the search reached from one); without
+     * one, the queue's part while there is a queue, a meal's while one is open, else Save to Library, so a search from
+     * Daily's "Not right?" never writes a second entry. A queued part prefills its typed amount. [fetchServings] false
+     * goes to no network: a food just made by hand has no product to fetch.
+     */
+    fun choose(food: FoodRecord, fromScan: Boolean = false, origin: ProductReviewOrigin? = null, fetchServings: Boolean = true) {
         val resolveQueue = queue()
         product = food
         this.fromScan = fromScan
-        this.origin = origin ?: productReviewOrigin(libraryTab(), queueActive = resolveQueue != null, logOpen = logOpen())
+        this.origin = origin ?: productReviewOrigin(libraryTab = openMeal() == null, queueActive = resolveQueue != null)
         val prefill = resolveQueue?.let { productPrefill(food, it.current) } ?: ProductPrefill(100.0, food.nutrition.unit)
+        filledAmount = prefill.amount
         amount = editableNumber(prefill.amount)
         unit = prefill.unit.displayLabel()
         name = food.name
@@ -135,7 +141,7 @@ internal class ProductReview(
         fat = editableNumber(food.nutrition.values.fat)
         leaveFetch()
         // A scanned product is already the full one; a search result is fetched by its barcode for its servings.
-        food.barcode?.takeIf { !fromScan }?.let { startFetch(food, it) }
+        food.barcode?.takeIf { !fromScan && fetchServings }?.let { startFetch(food, it) }
     }
 
     private fun startFetch(food: FoodRecord, barcode: String) {
@@ -200,7 +206,11 @@ internal class ProductReview(
     fun foodDeleted(foodId: String) { if (product?.id == foodId) close() }
 
     /** "Find better match": the search, which returns to the resolver when the review came from a queue. */
-    fun findBetterMatch() { close(); openSearch(queue() != null) }
+    fun findBetterMatch() {
+        val logging = origin.takeIf { it.logs }
+        close()
+        openSearch(queue() != null, logging)
+    }
 
     /** "Rescan": the scanner again. */
     fun rescan() { close(); startScan() }
@@ -323,9 +333,9 @@ internal class ProductReview(
 
     /** The product as the fields now describe it, with what the amount comes to; null while a field does not read. */
     private fun draft(food: FoodRecord): ProductDraft? {
-        val amount = positiveAmountOf(amount)
+        val amount = fieldNumber(amount, filledAmount)?.takeIf(::isPositiveAmount)
         val unit = parseProductUnit(unit)
-        val kcal = parseDecimal(calories)
+        val kcal = fieldNumber(calories, food.nutrition.values.calories)
         if (amount == null || unit == null ||
             kcal == null || !kcal.isFinite() || kcal < 0.0
         ) return null
@@ -334,7 +344,7 @@ internal class ProductReview(
             nutrition = NutritionBasis(
                 food.nutrition.amount,
                 food.nutrition.unit,
-                NutritionValues(kcal, parseDecimal(protein), parseDecimal(carbs), parseDecimal(fat)),
+                NutritionValues(kcal, fieldNumber(protein, food.nutrition.values.protein), fieldNumber(carbs, food.nutrition.values.carbohydrates), fieldNumber(fat, food.nutrition.values.fat)),
             ),
         )
         val calculation = calculator.calculate(draftFood, amount, unit)
@@ -342,7 +352,13 @@ internal class ProductReview(
     }
 }
 
-enum class ProductReviewOrigin { MEAL, LIBRARY, QUEUE, LOG_PART }
+@Serializable
+enum class ProductReviewOrigin {
+    MEAL, LIBRARY, QUEUE, LOG_PART;
+
+    /** What is made or found for it goes on to its review: a meal's log, or a part of the Log's draft. */
+    val logs: Boolean get() = this == MEAL || this == LOG_PART
+}
 
 /**
  * The servings a fetched [full] product adds to [food]: its named servings in [food]'s basis unit that [food] has no

@@ -20,7 +20,11 @@ class SuggestionNameOnlyTest {
     private val foods = listOf(oil, other, egg, bar, otherBar, noodles, bread)
     private val matcher = FoodMatcher(foods)
     private val planner = LogPlanner(matcher)
-    private fun pinned(food: FoodRecord) = LogPlanner(matcher, pins = mapOf(food.name to food))
+    /** The planner with [food] pinned to the parts of [input] that hold its name, as `DraftPins` gives them. */
+    private fun pinned(food: FoodRecord, input: String) = DraftPins().let { pins ->
+        pins.add(input, food.name, food, input.indexOf(food.name))
+        LogPlanner(matcher, pins = pins.keys(input) { LogPlanner(matcher, pins = it) })
+    }
 
     private fun entries(after: LogPlanner, input: String) =
         after.plan(input).also { assertTrue("unresolved: ${it.unresolved}", it.unresolved.isEmpty()) }.entries
@@ -36,7 +40,7 @@ class SuggestionNameOnlyTest {
     }
 
     @Test fun addingNothingLogsTheDefaultAndNeedsNoChoice() {
-        val after = pinned(oil)
+        val after = pinned(oil, "Extra virgin olive oil ")
         val only = entries(after, "Extra virgin olive oil ").single()
         assertEquals("oil", only.food.id)
         assertEquals(100.0 to MeasureUnit.GRAM, only.amount to only.unit)
@@ -46,25 +50,25 @@ class SuggestionNameOnlyTest {
     }
 
     @Test fun anAmountAfterTheNameCountsForThatFood() {
-        val typed = entries(pinned(oil), "Extra virgin olive oil 200 g").single()
+        val typed = entries(pinned(oil, "Extra virgin olive oil 200 g"), "Extra virgin olive oil 200 g").single()
         assertEquals("oil", typed.food.id)
         assertEquals(200.0 to MeasureUnit.GRAM, typed.amount to typed.unit)
-        val second = entries(pinned(oil), "2 Egg, Extra virgin olive oil 200 g")
+        val second = entries(pinned(oil, "2 Egg, Extra virgin olive oil 200 g"), "2 Egg, Extra virgin olive oil 200 g")
         assertEquals(listOf("egg", "oil"), second.map { it.food.id })
         assertEquals(200.0, second.last().amount, 0.0)
     }
 
     @Test fun aNameWithANumberOrAUnitWordTakesTheAmountAfterIt() {
-        val bars = entries(pinned(bar), "Protein 2 bar 200 g").single()
+        val bars = entries(pinned(bar, "Protein 2 bar 200 g"), "Protein 2 bar 200 g").single()
         assertEquals("bar", bars.food.id)
         assertEquals(200.0 to MeasureUnit.GRAM, bars.amount to bars.unit)
-        val cups = entries(pinned(noodles), "Cup noodles 2 pieces").single()
+        val cups = entries(pinned(noodles, "Cup noodles 2 pieces"), "Cup noodles 2 pieces").single()
         assertEquals("noodles", cups.food.id)
         assertEquals(2.0 to MeasureUnit.PIECE, cups.amount to cups.unit)
     }
 
     @Test fun aServingNameAfterTheNameCounts() {
-        val slices = entries(pinned(bread), "Bread 2 slices").single()
+        val slices = entries(pinned(bread, "Bread 2 slices"), "Bread 2 slices").single()
         assertEquals("bread", slices.food.id)
         assertEquals(2.0, slices.amount, 0.0)
         assertEquals(MeasureUnit.SERVING, slices.unit)
@@ -72,14 +76,13 @@ class SuggestionNameOnlyTest {
     }
 
     @Test fun aCommaNextStartsANewPart() {
-        val after = pinned(oil)
-        assertEquals(listOf("oil"), entries(after, "Extra virgin olive oil , ").map { it.food.id })
-        assertEquals(listOf("oil", "egg"), entries(after, "Extra virgin olive oil , 2 Egg").map { it.food.id })
-        assertEquals(listOf("oil", "egg"), entries(after, "Extra virgin olive oil 200 g, 2 Egg").map { it.food.id })
+        assertEquals(listOf("oil"), entries(pinned(oil, "Extra virgin olive oil , "), "Extra virgin olive oil , ").map { it.food.id })
+        assertEquals(listOf("oil", "egg"), entries(pinned(oil, "Extra virgin olive oil , 2 Egg"), "Extra virgin olive oil , 2 Egg").map { it.food.id })
+        assertEquals(listOf("oil", "egg"), entries(pinned(oil, "Extra virgin olive oil 200 g, 2 Egg"), "Extra virgin olive oil 200 g, 2 Egg").map { it.food.id })
     }
 
     @Test fun wordsThatAreNotAnAmountReadAsTyped() {
-        // The pin holds the name only; "oil and" is not an amount, so it is matched on its own words.
-        assertEquals(null, pinned(oil).resolve("Extra virgin olive oil zzq")?.takeIf { it.food.id == "oil" && !it.needsChoice && it.ranked.size == 1 && it.ranked.first().reasons == listOf("picked") })
+        val input = "Extra virgin olive oil zzq"
+        assertEquals(emptyMap<String, FoodRecord>(), DraftPins().let { it.add(input, oil.name, oil); it.keys(input) { pins -> LogPlanner(matcher, pins = pins) } })
     }
 }

@@ -4,7 +4,7 @@ import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.macroTotalsOf
 import com.iron.breakfast.ui.screens.basisLabel
-import com.iron.breakfast.ui.screens.editableNumber
+import com.iron.breakfast.domain.editableNumber
 import com.iron.breakfast.ui.screens.macroStats
 import com.iron.breakfast.ui.screens.previewQuantityLine
 import org.junit.Assert.assertEquals
@@ -48,6 +48,14 @@ class FormatTest {
         assertEquals("0", editableNumber(0.0))
     }
 
+    @Test fun aFieldLeftAsItWasStandsForTheExactValue() {
+        val third = 1.0 / 3
+        assertEquals(third, com.iron.breakfast.domain.fieldNumber("0.333", third)!!, 0.0)
+        assertEquals(0.5, com.iron.breakfast.domain.fieldNumber("0.5", third)!!, 0.0)
+        assertEquals("0.3333333333333333", com.iron.breakfast.domain.fieldText("0.333", third))
+        assertEquals("0.5", com.iron.breakfast.domain.fieldText("0.5", third))
+    }
+
     @Test fun aTinyValueIsNeverExponentOrZero() {
         assertEquals("0.0005", editableNumber(5.0E-4))
         assertEquals(5.0E-4, com.iron.breakfast.domain.parseDecimal(editableNumber(5.0E-4))!!, 0.0)
@@ -57,6 +65,8 @@ class FormatTest {
     @Test fun aTypedAmountOfAnUnknownPartUsesThePlural() {
         assertEquals("2 cups", com.iron.breakfast.ui.screens.unknownDisplay("2 cups milk").quantity)
         assertEquals("1 cup", com.iron.breakfast.ui.screens.unknownDisplay("1 cup milk").quantity)
+        assertEquals("2 pieces", com.iron.breakfast.ui.screens.unknownDisplay("2 pieces oats").quantity)
+        assertEquals("2 tbsp", com.iron.breakfast.ui.screens.unknownDisplay("2 tbsp oats").quantity)
     }
 
     @Test fun aRecipeWithNoIngredientsKnowsNoMacroButAnEmptyDayIsZero() {

@@ -129,7 +129,7 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
             },
             foodForm = object : FoodFormStore {
                 override suspend fun updateFood(food: FoodRecord) { calls += "update ${food.id}" }
-                override suspend fun saveFood(food: NewFood): FoodRecord { calls += "save food ${food.name}"; return food(food.name.lowercase(), food.name) }
+                override suspend fun saveFood(food: NewFood): FoodRecord { calls += "save food ${food.name}"; return food(food.name.lowercase(), food.name).copy(barcode = food.barcode.ifBlank { null }) }
                 override suspend fun saveFoodAndLog(food: NewFood, meal: MealSlot, dayKey: String): FoodRecord {
                     calls += "save and log ${food.name} $meal"
                     return food(food.name.lowercase(), food.name)
@@ -141,6 +141,7 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
                 }
                 override suspend fun updateFood(food: FoodRecord) { calls += "review save ${food.id}" }
                 override suspend fun cacheFood(food: FoodRecord): FoodRecord { calls += "review store ${food.id}"; return food }
+                override suspend fun fullProduct(barcode: String): FoodRecord? { calls += "fetch $barcode"; return null }
             },
             barcodes = object : BarcodeLookup {
                 override suspend fun localFood(barcode: String) = barcodes[barcode]

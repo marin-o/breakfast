@@ -1,5 +1,6 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.scan.ProductReviewOrigin
 import androidx.lifecycle.SavedStateHandle
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -54,7 +55,7 @@ internal data class SavedFoodForm(
     val editingFoodId: String?,
     val draft: FoodDraftState,
     val baseline: FoodDraftFields,
-    val logAfterSave: Boolean = false,
+    val reviewAfterSave: ProductReviewOrigin? = null,
 )
 
 private val formJson = Json { ignoreUnknownKeys = true }

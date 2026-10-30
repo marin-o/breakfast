@@ -59,8 +59,6 @@ class ProductReviewTest {
     /** How often "Logged!" was asked for. */
     private var confirmed = 0
     private var meal: MealSlot? = null
-    private var onDaily = false
-    private var logOpen = false
     private var automatic: MealSlot? = null
     private var queue: ResolveQueueView? = null
     private var resolvingPart = false
@@ -70,8 +68,6 @@ class ProductReviewTest {
         diary.session, store, notices,
         selectedDay = { "2026-10-28" },
         openMeal = { meal },
-        libraryTab = { meal == null && !onDaily },
-        logOpen = { logOpen },
         automaticMeal = { automatic },
         queue = { queue },
         resolvingPart = { resolvingPart },
@@ -80,7 +76,7 @@ class ProductReviewTest {
         onLogPart = { food, amount, unit -> events += "part ${food.id} $amount ${unit.label}" },
         onLogged = { events += "logged advances=$it" },
         onClosed = { events += "closed" },
-        openSearch = { events += "search fromResolver=$it" },
+        openSearch = { fromResolver, origin -> events += "search fromResolver=$fromResolver" + (origin?.let { " $it" } ?: "") },
         startScan = { events += "scan" },
         confirmLogged = { confirmed++ },
         scope = diary.scope,
@@ -206,8 +202,7 @@ class ProductReviewTest {
     }
 
     @Test fun aReviewFromTheLogStoresTheFoodAndHandsItBackWithItsAmount() {
-        logOpen = true
-        review.choose(nutella, fromScan = true)
+        review.choose(nutella, fromScan = true, origin = ProductReviewOrigin.LOG_PART)
         assertEquals(ProductReviewOrigin.LOG_PART, review.origin)
         review.onAmount("30")
         review.addToLog()
@@ -218,16 +213,14 @@ class ProductReviewTest {
     }
 
     @Test fun closingAReviewFromTheLogWritesNothing() {
-        logOpen = true
-        review.choose(nutella, fromScan = true)
+        review.choose(nutella, fromScan = true, origin = ProductReviewOrigin.LOG_PART)
         review.close()
         assertTrue(store.calls.isEmpty())
     }
 
     @Test fun aReviewFromDailyLogsStartingOnTheAutomaticMeal() {
-        onDaily = true
         automatic = MealSlot.DINNER
-        review.choose(nutella)
+        review.choose(nutella, origin = ProductReviewOrigin.MEAL)
         assertEquals(ProductReviewOrigin.MEAL, review.origin)
         assertEquals(MealSlot.DINNER, review.initialMeal())
         automatic = null
@@ -237,10 +230,40 @@ class ProductReviewTest {
     }
 
     @Test fun aReviewFromDailyCannotJustSaveToTheLibrary() {
-        onDaily = true
-        review.choose(nutella)
+        review.choose(nutella, origin = ProductReviewOrigin.MEAL)
         review.saveToLibrary()
         assertTrue(store.calls.isEmpty())
+    }
+
+    @Test fun withNoOriginGivenAReviewWithNoMealOpenSavesToTheLibrary() {
+        // Daily's "Not right?" search: a log here would write a second entry beside the wrong one.
+        review.choose(nutella)
+        assertEquals(ProductReviewOrigin.LIBRARY, review.origin)
+    }
+
+    @Test fun aFoodJustMadeByHandFetchesNothing() {
+        store.full = nutellaFull
+        review.choose(nutella, origin = ProductReviewOrigin.MEAL, fetchServings = false)
+        assertTrue("no network request", store.fetches.isEmpty())
+        assertEquals(nutella, review.product)
+    }
+
+    @Test fun findBetterMatchCarriesALoggingOriginOnly() {
+        review.choose(nutella, origin = ProductReviewOrigin.LOG_PART)
+        review.findBetterMatch()
+        assertEquals("search fromResolver=false LOG_PART", events.last())
+        review.choose(nutella)
+        review.findBetterMatch()
+        assertEquals("search fromResolver=false", events.last())
+    }
+
+    @Test fun anUntouchedReviewKeepsTheExactNumbers() {
+        val third = nutella.copy(nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(100.0 / 3, 1.0 / 3, 0.0, null)))
+        review.choose(third, origin = ProductReviewOrigin.MEAL)
+        assertEquals("0.333", review.protein)
+        assertEquals(1.0 / 3, review.calculation(third)!!.nutrition.protein!!, 1e-12)
+        review.onProtein("0.5")
+        assertEquals(0.5, review.calculation(third)!!.nutrition.protein!!, 1e-12)
     }
 
     @Test fun aTinyOpenFoodFactsValueSurvivesTheReview() {

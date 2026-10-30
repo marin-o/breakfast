@@ -122,8 +122,7 @@ class LogPlanner(
     }
 
     private fun computeResolution(raw: String): SegmentResolution? {
-        pins[raw]?.let { picked -> return pickedResolution(raw, picked, readingFor(raw, picked)) }
-        namePinWithAmount(raw)?.let { (picked, reading) -> return pickedResolution(raw, picked, reading) }
+        pins[raw]?.let { picked -> return pickedResolution(raw, picked) }
         val reading = reading(raw)
         // A word separator left inside one part ("Ben & Jerry's") names one food only when one food covers all of it.
         if (parser.hasWordSeparator(raw) && !matcher.covers(reading.phrase)) return null
@@ -144,27 +143,54 @@ class LogPlanner(
         return if (recipe != null && recipe.supported && !recipe.needsChoice) recipe else plain
     }
 
-    private fun pickedResolution(raw: String, picked: FoodRecord, reading: Reading): SegmentResolution {
-        val (amount, measure) = quantityFor(reading, picked)
+    private fun pickedResolution(raw: String, picked: FoodRecord): SegmentResolution {
+        val (amount, measure) = quantityFor(amountAfterName(raw, picked) ?: readingFor(raw, picked), picked)
         val ranked = RankedFood(picked, score = 1.0, reasons = listOf("picked"), fullMatch = true, wholeMatch = true)
         return SegmentResolution(raw, listOf(ranked), picked, amount, measure.unit, calculate(picked, amount, measure), label = measure.name)
     }
 
     /**
-     * A food's name pinned by a tapped suggestion, with the amount typed after it ("Extra virgin olive oil 200 g", "Bread
-     * 2 slices"): that food, whatever the words of its name would read as ("Protein 2 bar 200 g"). Null when what follows
-     * the name is not an amount.
+     * [raw] as a picked food's name with the amount typed after it ("Extra virgin olive oil 200 g", "Bread 2 slices"),
+     * whatever the words of its name would read as ("Protein 2 bar 200 g"). Null when it is not that.
      */
-    private fun namePinWithAmount(raw: String): Pair<FoodRecord, Reading>? {
-        val picked = pins.entries.firstOrNull { (part, food) -> part == food.name && raw.startsWith("$part ") }?.value ?: return null
+    private fun amountAfterName(raw: String, picked: FoodRecord): Reading? {
+        if (!raw.startsWith("${picked.name} ")) return null
         val tail = parser.parse(raw.substring(picked.name.length + 1).trim())
         if (tail.amount == null) return null
         val word = tail.foodPhrase.trim()
         if (word.isNotEmpty() && (tail.unit != null || picked.servingNamed(word) == null)) return null
-        return picked to Reading(tail.copy(foodPhrase = picked.name), wholeName = false, servingWord = word.ifEmpty { null })
+        return Reading(tail.copy(foodPhrase = picked.name), wholeName = false, servingWord = word.ifEmpty { null })
     }
 
-    private fun isPinned(raw: String): Boolean = pins.containsKey(raw) || namePinWithAmount(raw) != null
+    /**
+     * Whether a pin on [food] still names [part], which is its name with [left] and [right] around it: an amount on one
+     * side, and not the whole name of another food ("Milk 3.2" beside a pinned Milk).
+     */
+    internal fun pinFits(part: String, left: String, right: String, food: FoodRecord): Boolean {
+        if (left.isEmpty() && right.isEmpty()) return true
+        if (left.isNotEmpty() && right.isNotEmpty()) return false
+        if (matcher.isExactName(part)) return false
+        val typed = parser.parse(left + right)
+        if (typed.amount == null) return false
+        val word = typed.foodPhrase.trim()
+        return word.isEmpty() || food.servingNamed(word) != null || (takesPortions(food) && PORTION_WORD.matches(word))
+    }
+
+    /** The food picked for this [occurrence] of the part [raw]: its own pin, else one for every part with that text. */
+    private fun pinOf(raw: String, occurrence: Int): FoodRecord? = pins["$raw$PIN_OCCURRENCE$occurrence"] ?: pins[raw]
+
+    /** The part [raw], the [occurrence]-th with that text: parts with one text may be pinned to different foods. */
+    private fun resolvePart(raw: String, occurrence: Int): SegmentResolution? =
+        pins["$raw$PIN_OCCURRENCE$occurrence"]?.let { pickedResolution(raw, it) } ?: resolve(raw)
+
+    /** Each of [parts] with how many before it had the same text. */
+    private fun <T> withOccurrences(parts: List<T>, text: (T) -> String): List<Pair<T, Int>> {
+        val seen = HashMap<String, Int>()
+        return parts.map { part -> part to seen.getOrDefault(text(part), 0).also { seen[text(part)] = it + 1 } }
+    }
+
+    private fun isPinned(raw: String): Boolean =
+        pins.containsKey(raw) || pins.keys.any { it.startsWith("$raw$PIN_OCCURRENCE") }
 
     private fun resolutionOf(raw: String, reading: Reading, ranked: List<RankedFood>): SegmentResolution? {
         val top = ranked.firstOrNull() ?: return null
@@ -426,16 +452,17 @@ class LogPlanner(
 
     private fun heldPartOf(input: String, typing: Boolean, known: List<String>?): String? {
         if (countTyping || !typing || input.isBlank() || endsOpen(input)) return null
-        val last = (known ?: parser.split(input, probe)).lastOrNull() ?: return null
-        return last.takeUnless { isPinned(it) || ShorthandLexicon.mealSlotOf(it) != null }
+        val parts = known ?: parser.split(input, probe)
+        val last = parts.lastOrNull() ?: return null
+        return last.takeUnless { pinOf(it, parts.count { part -> part == it } - 1) != null || ShorthandLexicon.mealSlotOf(it) != null }
     }
 
     private fun planOf(parts: List<String>): LogPlan {
         val entries = mutableListOf<SegmentResolution>()
         val unresolved = mutableListOf<String>()
-        parts.forEach { raw ->
+        withOccurrences(parts) { it }.forEach { (raw, occurrence) ->
             if (ShorthandLexicon.mealSlotOf(raw) != null) return@forEach
-            val resolution = resolve(raw)
+            val resolution = resolvePart(raw, occurrence)
             if (resolution != null && resolution.supported && !resolution.needsChoice) entries += resolution else unresolved += raw
         }
         return LogPlan(entries, unresolved)
@@ -451,17 +478,19 @@ class LogPlanner(
         val parts = segments(input)
         val open = typing && !endsOpen(input)
         val activeText = if (open) parts.lastOrNull()?.text.orEmpty() else ""
-        val finished = (if (open) parts.dropLast(1) else parts).filter { ShorthandLexicon.mealSlotOf(it.text) == null }
-        val rows = finished.map { rowFor(it) }.toMutableList()
+        val counted0 = withOccurrences(parts) { it.text }
+        val finished = (if (open) counted0.dropLast(1) else counted0).filter { ShorthandLexicon.mealSlotOf(it.first.text) == null }
+        val rows = finished.map { (span, occurrence) -> rowFor(span, occurrence) }.toMutableList()
+        val activeOccurrence = counted0.lastOrNull()?.second ?: 0
 
         var active: SegmentResolution? = null
         var suggestions: List<RankedFood> = emptyList()
         var counted: SegmentResolution? = null
         if (activeText.isNotBlank() && ShorthandLexicon.mealSlotOf(activeText) == null) {
-            val resolution = resolve(activeText)
+            val resolution = resolvePart(activeText, activeOccurrence)
             // Add saves the part being typed by the same rule as every other part (see [plan]), unless it is held back
             // until it is finished or picked ("Count what I'm typing" off).
-            val counts = countTyping || isPinned(activeText)
+            val counts = countTyping || pinOf(activeText, activeOccurrence) != null
             counted = resolution?.takeIf { counts && it.supported && !it.needsChoice }
             // Each outcome renders the part exactly once: a suggestion group, a choice group, an entry row, or a
             // Not-in-your-foods row.
@@ -499,8 +528,8 @@ class LogPlanner(
         )
     }
 
-    private fun rowFor(span: SegmentSpan): DraftRow {
-        val resolution = resolve(span.text)
+    private fun rowFor(span: SegmentSpan, occurrence: Int): DraftRow {
+        val resolution = resolvePart(span.text, occurrence)
         return if (resolution != null && resolution.supported && !resolution.needsChoice) DraftRow.Entry(resolution)
         else DraftRow.Unresolved(span.text, span.start, span.end)
     }
@@ -519,6 +548,7 @@ class LogPlanner(
         private val LEADING_ARTICLE = Regex("(?iu)^(?:a|an)\\s+")
         /** "portion chili", "portions of chili": the food text of a part that may name a recipe's portions. */
         private val PORTION_WORDS = Regex("(?iu)^portions?(?:\\s+of)?\\s+(.+)$")
+        private val PORTION_WORD = Regex("(?iu)^portions?$")
     }
 }
 

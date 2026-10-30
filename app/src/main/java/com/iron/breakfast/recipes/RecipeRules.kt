@@ -13,7 +13,7 @@ import com.iron.breakfast.domain.millilitresIn
 import com.iron.breakfast.domain.parseStrictAmountUnit
 import com.iron.breakfast.domain.splitAliases
 import com.iron.breakfast.domain.validYield
-import com.iron.breakfast.ui.screens.editableNumber
+import com.iron.breakfast.domain.editableNumber
 import kotlinx.serialization.Serializable
 
 // The recipe form's pure decisions, unit-tested: what its fields read as, when it may save, and how a recipe goes into

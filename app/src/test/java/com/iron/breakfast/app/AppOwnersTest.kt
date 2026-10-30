@@ -80,10 +80,39 @@ class AppOwnersTest {
         app.foodForm.draft.calories = "100"
         app.foodForm.save()
         assertFalse(app.foodForm.open)
+        assertTrue("Look up unknown barcodes is Off: no request", app.calls.none { it.startsWith("fetch") })
         assertEquals(ProductReviewOrigin.LOG_PART, app.review.origin)
         assertEquals("Ajvar", app.review.product?.name)
         assertEquals("100 g oil", app.log.draft)
         assertTrue(app.log.open)
+    }
+
+    @Test fun findBetterMatchFromTheLogThenCreateFoodComesBackToTheLog() {
+        val coke = food("coke", "Coke Zero")
+        val app = AppKit(foods = listOf(coke))
+        app.barcodes["4006381333931"] = coke
+        app.log.open(null)
+        app.log.onDraft("100 g oil")
+        app.scan.begin()
+        app.scan.onBarcode("4006381333931")
+        app.review.findBetterMatch()
+        assertEquals(ProductReviewOrigin.LOG_PART, app.owners.search.reviewOrigin)
+        app.foodForm.open("Ajvar", reviewAfterSave = app.owners.search.reviewOrigin)
+        app.foodForm.draft.calories = "100"
+        app.foodForm.save()
+        assertEquals(ProductReviewOrigin.LOG_PART, app.review.origin)
+        assertEquals("Ajvar", app.review.product?.name)
+        app.review.addToLog()
+        assertTrue(app.log.draft, app.log.draft.startsWith("100 g oil, "))
+        assertTrue(app.log.draft, app.log.draft.endsWith("Ajvar"))
+    }
+
+    @Test fun notRightSearchOnDailyStillSavesToTheLibrary() {
+        val coke = food("coke", "Coke Zero")
+        val app = AppKit()
+        app.owners.search.open("coke")
+        app.owners.search.choose(coke)
+        assertEquals(ProductReviewOrigin.LIBRARY, app.review.origin)
     }
 
     @Test fun aRestoredEditFoodClosesWhenStorageOpensWithoutItsFood() {

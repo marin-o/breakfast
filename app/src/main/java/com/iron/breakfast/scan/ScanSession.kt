@@ -53,8 +53,8 @@ internal class ScanSession(
     /** A resolve queue is being resolved: a found product reviews as its part. */
     private val queueActive: () -> Boolean,
     private val onProduct: (food: FoodRecord, origin: ProductReviewOrigin) -> Unit,
-    /** An unknown barcode: New food; with [logging], the food saved goes on to the same review. */
-    private val onManualForm: (name: String, brand: String, barcode: String, fromOff: Boolean, logging: Boolean) -> Unit,
+    /** An unknown barcode: New food; with [reviewAfterSave], the food saved goes on to a review for that. */
+    private val onManualForm: (name: String, brand: String, barcode: String, fromOff: Boolean, reviewAfterSave: ProductReviewOrigin?) -> Unit,
 ) {
     var open by mutableStateOf(false); private set
     /** The scanner is still open but its camera preview cannot be used. */
@@ -145,7 +145,7 @@ internal class ScanSession(
         val day = originDay
         val meal = originMeal
         val reviewOrigin = productReviewOrigin(originLibraryTab, queueActive(), originLog)
-        val logging = reviewOrigin != ProductReviewOrigin.LIBRARY && reviewOrigin != ProductReviewOrigin.QUEUE
+        val logging = reviewOrigin.takeIf { it.logs }
         val step = unknownBarcodeStep(lookUpBarcodes())
         lookupCode = barcode
         lookupBusy = true

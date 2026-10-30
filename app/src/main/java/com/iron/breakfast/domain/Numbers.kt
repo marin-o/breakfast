@@ -1,5 +1,9 @@
 package com.iron.breakfast.domain
 
+import java.math.BigDecimal
+import java.math.MathContext
+import java.math.RoundingMode
+
 // Typed numbers and the comma that separates items: one rule for every field.
 
 /**
@@ -38,3 +42,24 @@ fun positiveAmountOf(text: String): Double? = parseDecimal(text)?.takeIf(::isPos
 
 /** What a field or a refused save says about an amount that is not positive. */
 const val POSITIVE_AMOUNT_MESSAGE = "Enter a positive amount."
+
+/**
+ * A number as a field shows it: never in exponent form, whole values without ".0", at most three decimals, trimmed
+ * (1/3 of a cup is 0.333). A value too small for three keeps its first digit (0.0005), so it never becomes 0. This is
+ * display only: a field left as it was stands for the exact stored value ([fieldNumber], [fieldText]).
+ */
+fun editableNumber(value: Double?): String {
+    if (value == null || !value.isFinite()) return ""
+    val exact = BigDecimal.valueOf(value)
+    val tiny = exact.signum() != 0 && exact.abs() < BigDecimal("0.001")
+    val shown = if (tiny) exact.round(MathContext(1, RoundingMode.HALF_UP)) else exact.setScale(3, RoundingMode.HALF_UP)
+    return shown.stripTrailingZeros().toPlainString()
+}
+
+/** The number a pre-filled field stands for: [exact] while it still reads as it was filled, else what was typed. */
+fun fieldNumber(text: String, exact: Double?): Double? =
+    if (exact != null && text == editableNumber(exact)) exact else parseDecimal(text)
+
+/** [text] to hand on as typed: the whole of [exact] while the field still reads as it was filled. */
+fun fieldText(text: String, exact: Double?): String =
+    if (exact != null && exact.isFinite() && text == editableNumber(exact)) BigDecimal.valueOf(exact).stripTrailingZeros().toPlainString() else text

@@ -57,6 +57,14 @@ class SearchKeyTest {
         assertFalse(servingNameMatches("2", "2"))
     }
 
+    @Test fun onlyPunctuationFindsNothingButAnEmptyQueryFindsAll() {
+        val food = FoodRecord("m", "Mleko", emptyList(), "Test", FoodOrigin.CUSTOM, NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(1.0, null, null, null)))
+        assertTrue(com.iron.breakfast.data.foodMatchesQuery(food, ""))
+        assertTrue(com.iron.breakfast.data.foodMatchesQuery(food, "  "))
+        assertFalse(com.iron.breakfast.data.foodMatchesQuery(food, "&"))
+        assertFalse(com.iron.breakfast.data.foodMatchesQuery(food, "-"))
+    }
+
     @Test fun cyrillicLettersAreNotFolded() {
         assertTrue(searchFinds("Ќебапи", "ќеб"))
         assertFalse(searchFinds("Ќебапи", "кеб"))

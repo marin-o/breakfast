@@ -1,5 +1,6 @@
 package com.iron.breakfast.ui.screens
 
+import com.iron.breakfast.domain.editableNumber
 import com.iron.breakfast.ui.shortDateLabel
 import com.iron.breakfast.ui.countLabel
 import com.iron.breakfast.contribution.contributionAvailable

@@ -56,6 +56,15 @@ class ScannedPartTest {
         assertEquals(listOf("oil", "milk"), after.plan("100 g Olive oil, $part").entries.map { it.food.id })
     }
 
+    @Test fun aNameWithSeveralCommasStaysOnePart() {
+        val yogurt = testFood("yogurt", "Yogurt, strawberry, low fat")
+        val part = planner.partText(yogurt, 150.0, MeasureUnit.GRAM)
+        val after = LogPlanner(FoodMatcher(listOf(yogurt, oil)), pins = mapOf(part to yogurt))
+        val input = "100 g Olive oil, $part"
+        assertEquals(listOf("100 g Olive oil", part), after.segments(input).map { it.text })
+        assertEquals(listOf("oil", "yogurt"), after.plan(input).entries.map { it.food.id })
+    }
+
     @Test fun aNameWithAUnitWordStaysOneFood() {
         val part = planner.partText(noodles, 80.0, MeasureUnit.GRAM)
         resolves("100 g oil, $part", part, noodles, 80.0, MeasureUnit.GRAM)

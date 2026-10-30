@@ -1,8 +1,8 @@
 package com.iron.breakfast.recipes
 
+import com.iron.breakfast.domain.DraftPins
 import com.iron.breakfast.domain.LatestSearch
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.iron.breakfast.app.DiaryChange
@@ -75,7 +75,7 @@ internal class RecipeForm(
     /** Done finished the ingredients, so their last part is no longer being typed. */
     var committed by mutableStateOf(false); private set
     // Observable, so a pin added without a text change still recomputes the rows.
-    private val pins = mutableStateMapOf<String, FoodRecord>()
+    private val pins = DraftPins()
     var discardOpen by mutableStateOf(false); private set
 
     var searchOpen by mutableStateOf(false); private set
@@ -101,8 +101,7 @@ internal class RecipeForm(
         fields = start
         baseline = start
         committed = id != null
-        pins.clear()
-        pins.putAll(startPins)
+        pins.restore(start.ingredients, startPins)
         discardOpen = false
         endSearch()
         open = true
@@ -116,7 +115,7 @@ internal class RecipeForm(
 
     /** The ingredients' typing. Clearing them also drops the foods picked for them. */
     fun onIngredients(value: String) {
-        fields = fields.copy(ingredients = value)
+        setIngredients(value)
         committed = false
         if (value.isBlank()) pins.clear()
     }
@@ -125,7 +124,12 @@ internal class RecipeForm(
     fun commitIngredients() { committed = true }
 
     /** The pins as they are now, for a view computed off the main thread. */
-    fun pinsSnapshot(): Map<String, FoodRecord> = pins.toMap()
+    fun pinsSnapshot(): Map<String, FoodRecord> = pins.keys(fields.ingredients, store::ingredientPlanner)
+
+    private fun setIngredients(value: String) {
+        pins.edited(fields.ingredients, value)
+        fields = fields.copy(ingredients = value)
+    }
 
     /** The rows and choices for [text], as the Log page shows them, on [compute]. */
     suspend fun computeView(text: String, committed: Boolean, pins: Map<String, FoodRecord>): IngredientsView =
@@ -138,9 +142,10 @@ internal class RecipeForm(
 
     /** A choice or a suggestion tapped: the part becomes the amount, unit and name it would save, pinned to that food. */
     fun chooseSuggestion(food: FoodRecord) {
-        val picked = store.ingredientPlanner(pins.toMap()).choose(fields.ingredients, food, typing = !committed)
-        picked.part?.let { pins[it] = food }
-        fields = fields.copy(ingredients = picked.input)
+        val picked = store.ingredientPlanner(pinsSnapshot()).choose(fields.ingredients, food, typing = !committed)
+        val before = fields.ingredients
+        setIngredients(picked.input)
+        picked.part?.let { pins.add(picked.input, it, food, picked.input.commonPrefixWith(before).length.coerceAtMost(picked.input.lastIndexOf(it))) }
         committed = false
     }
 
@@ -148,7 +153,7 @@ internal class RecipeForm(
     fun resolveNotInFoods(row: DraftRow.Unresolved) {
         if (!rowStillInDraft(fields.ingredients, row)) return
         val part = fields.ingredients.substring(row.start, row.end)
-        showSearch(store.ingredientPlanner(pins.toMap()).libraryQueryFor(part))
+        showSearch(store.ingredientPlanner(pinsSnapshot()).libraryQueryFor(part))
         resolving = row
     }
 
@@ -192,9 +197,9 @@ internal class RecipeForm(
         val row = resolving
         if (row == null) { adding = food; return }
         if (rowStillInDraft(fields.ingredients, row)) {
-            val text = store.ingredientPlanner(pins.toMap()).pickedText(row.text, food)
-            pins[text] = food
-            fields = fields.copy(ingredients = replaceDraftPart(fields.ingredients, row.start, row.end, text))
+            val text = store.ingredientPlanner(pinsSnapshot()).pickedText(row.text, food)
+            setIngredients(replaceDraftPart(fields.ingredients, row.start, row.end, text))
+            pins.add(fields.ingredients, text, food, row.start)
         }
         endSearch()
     }
@@ -207,10 +212,10 @@ internal class RecipeForm(
 
     /** The sheet's Add: [amount] of [measure] of [food] ("2 slices") is the last ingredient, pinned to it. */
     fun addIngredient(food: FoodRecord, amount: Double, measure: Measure) {
-        val planner = store.ingredientPlanner(pins.toMap())
+        val planner = store.ingredientPlanner(pinsSnapshot())
         val text = planner.partText(food, amount, measure)
-        pins[text] = food
-        fields = fields.copy(ingredients = planner.withPartAdded(fields.ingredients, text))
+        setIngredients(planner.withPartAdded(fields.ingredients, text))
+        pins.add(fields.ingredients, text, food, fields.ingredients.length - text.length)
         endSearch()
     }
 
@@ -242,7 +247,7 @@ internal class RecipeForm(
         if (!session.canWrite) return
         val id = editingRecipeId
         val captured = fields
-        val capturedPins = pins.toMap()
+        val capturedPins = pinsSnapshot()
         session.write(
             change = { saved: Recipe? -> saved?.let { DiaryChange.RecipesChanged } },
             onSuccess = { saved ->
@@ -262,7 +267,7 @@ internal class RecipeForm(
     fun recipeDeleted(id: String) { if (editingRecipeId == id) close() }
 
     /** Food [id] was deleted: a part pinned to it is matched again, so Save cannot keep that food. */
-    fun dropPinsOf(foodId: String) { pins.entries.removeAll { it.value.id == foodId } }
+    fun dropPinsOf(foodId: String) { pins.dropFood(foodId) }
 
     /** A restored or replaced diary: an Edit of a recipe it does not have has nothing to edit. */
     fun closeIfRecipeGone() {
@@ -277,11 +282,11 @@ internal class RecipeForm(
     fun diaryReplaced() {
         closeIfRecipeGone()
         val foodIds = session.foods.mapTo(HashSet()) { it.id }
-        pins.entries.removeAll { it.value.id !in foodIds && it.value.category != SNAPSHOT_CATEGORY }
+        pins.dropWhere { it.id !in foodIds && it.category != SNAPSHOT_CATEGORY }
     }
 
     /** The open form for `SavedStateHandle`; null when closed. */
-    fun savedForm(): SavedRecipeForm? = if (!open) null else SavedRecipeForm(editingRecipeId, fields, baseline, committed, pins.toMap())
+    fun savedForm(): SavedRecipeForm? = if (!open) null else SavedRecipeForm(editingRecipeId, fields, baseline, committed, pinsSnapshot())
 
     /** Puts back a form saved before the process was killed. */
     fun restore(form: SavedRecipeForm) {

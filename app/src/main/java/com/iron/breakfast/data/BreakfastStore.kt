@@ -595,7 +595,9 @@ internal fun pickBarcodeMatch(rows: List<FoodEntity>, barcode: String): FoodEnti
  * Zero", "cevapi" finds "Ćevapi", and a query never crosses scripts.
  */
 internal fun foodMatchesQuery(food: FoodRecord, query: String): Boolean {
-    if (searchKey(query).isBlank()) return true
+    if (query.isBlank()) return true
+    // Only punctuation ("&", "-") names nothing: it does not list every food.
+    if (searchKey(query).isBlank()) return false
     return food.allNames().any { searchFinds(it, query) } ||
         food.brand?.let { searchFinds(it, query) } == true || barcodeMatchesQuery(food.barcode, query.trim())
 }

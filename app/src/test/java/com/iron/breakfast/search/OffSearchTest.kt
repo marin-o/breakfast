@@ -37,7 +37,7 @@ class OffSearchTest {
     private val chosen = mutableListOf<FoodRecord>()
     private val search = OffSearch(
         off, CoroutineScope(Dispatchers.Unconfined + SupervisorJob()), Dispatchers.Unconfined, { ready },
-        onOpen = { events += "open fromResolver=$it" }, onClose = { events += "close" }, onChoose = { chosen += it },
+        onOpen = { events += "open fromResolver=$it" }, onClose = { events += "close" }, onChoose = { food, _ -> chosen += food },
     )
 
     private fun product(name: String) = FoodRecord(name, name, emptyList(), "off", FoodOrigin.GENERIC, NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(50.0, null, null, null)))

@@ -96,13 +96,13 @@ class ShorthandParser {
      * words before it are a food on their own: "2 eggs zzq" is "2 eggs" and "zzq". The word is then a fragment the
      * user may still be typing, and the head stays a food row.
      */
-    /** Parts that together are a picked food's text are one part: "330 ml Protein 2 bar" is never "2 bar" on its own. */
+    /** Parts that together are a picked food's text are one part, its commas too: "330 ml Protein 2 bar" is never "2 bar" alone. */
     private fun joinPinned(input: String, spans: List<SegmentSpan>, probe: FoodProbe): List<SegmentSpan> {
         val out = mutableListOf<SegmentSpan>()
         var i = 0
         while (i < spans.size) {
             val last = (spans.lastIndex downTo i + 1).firstOrNull { end ->
-                !input.substring(spans[i].start, spans[end].end).contains(',') && probe.isPinned(input.substring(spans[i].start, spans[end].end))
+                probe.isPinned(input.substring(spans[i].start, spans[end].end))
             }
             if (last == null) { out += spans[i]; i++ } else { out += spanOf(input, spans[i].start, spans[last].end); i = last + 1 }
         }

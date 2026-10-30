@@ -1,5 +1,7 @@
 package com.iron.breakfast.ui.components
 
+import com.iron.breakfast.domain.isPositiveAmount
+import com.iron.breakfast.domain.fieldNumber
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -24,10 +26,9 @@ import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionCalculator
 import com.iron.breakfast.domain.POSITIVE_AMOUNT_MESSAGE
 import com.iron.breakfast.domain.measures
-import com.iron.breakfast.domain.positiveAmountOf
 import com.iron.breakfast.ui.label
 import com.iron.breakfast.ui.macroLine
-import com.iron.breakfast.ui.screens.editableNumber
+import com.iron.breakfast.domain.editableNumber
 import com.iron.breakfast.ui.screens.entrySourceLabel
 import com.iron.breakfast.ui.screens.kcalLabel
 import com.iron.breakfast.ui.theme.BreakfastType
@@ -58,7 +59,8 @@ internal fun FoodAmountSheet(
     var servingName by rememberSaveable(food.id, startMeal) { mutableStateOf(startMeasure.name.takeIf { startMeasure.unit == MeasureUnit.SERVING }) }
     val measure = Measure(unit, servingName)
     var chosenMeal by rememberSaveable(food.id, startMeal) { mutableStateOf(startMeal) }
-    val calc = positiveAmountOf(amountText)?.let { NutritionCalculator().calculate(food, it, unit, servingName) }
+    val exactAmount = fieldNumber(amountText, startAmount)?.takeIf(::isPositiveAmount)
+    val calc = exactAmount?.let { NutritionCalculator().calculate(food, it, unit, servingName) }
     Sheet(onDismissRequest = onDismiss, skipPartiallyExpanded = true) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(foodText(food.name), color = colors.ink, style = BreakfastType.Section)
@@ -77,7 +79,7 @@ internal fun FoodAmountSheet(
             PrimaryButton(
                 chosenMeal?.let { "Add to ${it.label()}" } ?: "Add",
                 onClick = {
-                    val amount = positiveAmountOf(amountText)
+                    val amount = exactAmount
                     if (amount != null && calc?.supported == true) onAdd(amount, measure, chosenMeal) else onInvalid()
                 },
                 enabled = calc?.supported == true,

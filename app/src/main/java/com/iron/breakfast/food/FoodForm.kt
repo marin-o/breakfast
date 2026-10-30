@@ -1,5 +1,6 @@
 package com.iron.breakfast.food
 
+import com.iron.breakfast.scan.ProductReviewOrigin
 import com.iron.breakfast.domain.POSITIVE_AMOUNT_MESSAGE
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -85,11 +86,11 @@ internal class FoodForm(
     private val onSaved: (food: FoodRecord, newFood: Boolean, advancesQueue: Boolean) -> Unit,
     /** A new food was saved and logged to the meal the user chose: "Logged!" (see `Confirmations`). */
     private val confirmLogged: () -> Unit,
-    /** A food made for a logging scan was saved: it goes on to the review a known product gets. */
-    private val onSavedToLog: (FoodRecord) -> Unit = {},
+    /** A food made for a logging scan or search was saved: it goes on to the review a known product gets. */
+    private val onSavedToLog: (FoodRecord, ProductReviewOrigin) -> Unit = { _, _ -> },
 ) {
-    /** This New food is for a logging scan ([open]): Save stores it alone and [onSavedToLog] takes it on. */
-    private var logAfterSave = false
+    /** This New food is for a logging review ([open]): Save stores it alone and [onSavedToLog] takes it on. */
+    private var reviewAfterSave: ProductReviewOrigin? = null
     var open by mutableStateOf(false); private set
     var editingFoodId by mutableStateOf<String?>(null); private set
     val draft = FoodDraft()
@@ -101,9 +102,9 @@ internal class FoodForm(
     private var focusSerial = 0L
 
     /** New food, prefilled; [fromOff] when Open Food Facts had the product without usable nutrition. */
-    fun open(name: String = "", brand: String = "", barcode: String = "", fromResolver: Boolean = false, fromOff: Boolean = false, logAfterSave: Boolean = false) {
+    fun open(name: String = "", brand: String = "", barcode: String = "", fromResolver: Boolean = false, fromOff: Boolean = false, reviewAfterSave: ProductReviewOrigin? = null) {
         onOpen(fromResolver)
-        this.logAfterSave = logAfterSave
+        this.reviewAfterSave = reviewAfterSave
         editingFoodId = null
         draft.reset()
         draft.name = name
@@ -118,7 +119,7 @@ internal class FoodForm(
 
     /** Edit food for [food]. */
     fun openEdit(food: FoodRecord) {
-        logAfterSave = false
+        reviewAfterSave = null
         editingFoodId = food.id
         draft.load(food)
         baseline = draft.fields()
@@ -164,14 +165,14 @@ internal class FoodForm(
     fun focusHandled() { focus = null }
 
     /** The open form for `SavedStateHandle`; null when closed or while resolving. */
-    fun savedForm(): SavedFoodForm? = if (!open || resolvingPart() || queue() != null) null else SavedFoodForm(editingFoodId, draft.state(), baseline, logAfterSave)
+    fun savedForm(): SavedFoodForm? = if (!open || resolvingPart() || queue() != null) null else SavedFoodForm(editingFoodId, draft.state(), baseline, reviewAfterSave)
 
     /** Puts back a form saved before the process was killed. */
     fun restore(form: SavedFoodForm) {
         draft.restore(form.draft)
         baseline = form.baseline
         editingFoodId = form.editingFoodId
-        logAfterSave = form.logAfterSave
+        reviewAfterSave = form.reviewAfterSave
         open = true
     }
 
@@ -202,8 +203,8 @@ internal class FoodForm(
         val basisUnit = resolved.basisUnit
         val nutrition = NutritionValues(kcal, resolved.protein, resolved.carbohydrates, resolved.fat)
         val resolveQueue = queue()
-        val thenLog = logAfterSave && editingId == null && !resolvingPart() && resolveQueue == null
-        val plan = if (thenLog) null else foodSaveTarget(resolvingPart(), resolveQueue, openMeal())
+        val thenReview = reviewAfterSave.takeIf { editingId == null && !resolvingPart() && resolveQueue == null }
+        val plan = if (thenReview != null) null else foodSaveTarget(resolvingPart(), resolveQueue, openMeal())
         val saveTarget = plan?.meal
         val resolvesQueue = plan?.advancesQueue == true
         if (resolveQueue != null && saveTarget == null) {
@@ -235,12 +236,12 @@ internal class FoodForm(
                 when {
                     editingId != null -> notices.show("Personal food updated for future logs.")
                     saveTarget != null -> confirmLogged()
-                    thenLog -> Unit
+                    thenReview != null -> Unit
                     else -> notices.show("Saved to your food library.")
                 }
-                logAfterSave = false
+                reviewAfterSave = null
                 onSaved(saved, editingId == null, resolvesQueue)
-                if (thenLog) onSavedToLog(saved)
+                if (thenReview != null) onSavedToLog(saved, thenReview)
             },
             onFailure = { notices.show(it.message ?: "Could not save this food.") },
         ) {

@@ -53,7 +53,7 @@ class ScanSessionTest {
         logOpen = { logOpen },
         queueActive = { queueActive },
         onProduct = { food, origin -> events += "review ${food.name} $origin" },
-        onManualForm = { name, brand, barcode, fromOff, logging -> events += "form '$name' '$brand' $barcode fromOff=$fromOff" + if (logging) " logging" else "" },
+        onManualForm = { name, brand, barcode, fromOff, origin -> events += "form '$name' '$brand' $barcode fromOff=$fromOff" + if (origin != null) " logging" else "" },
     )
 
     private val nutella = FoodRecord("off-1", "Nutella", emptyList(), "Spreads", FoodOrigin.GENERIC, NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(539.0, 6.3, 57.5, 30.9)))

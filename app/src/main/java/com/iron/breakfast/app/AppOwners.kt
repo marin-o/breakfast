@@ -160,7 +160,7 @@ internal class AppOwners<D>(
         ready = { session.ready },
         onOpen = { fromResolver -> surfaces.searchOpened(fromResolver) },
         onClose = { resolve.childClosed() },
-        onChoose = { food -> review.choose(food) },
+        onChoose = { food, origin -> review.choose(food, origin = origin) },
     )
     /** Export, import, Delete all and the safety copy (see [DiaryTransfer]); the root launches its pickers. */
     val transfer = DiaryTransfer(
@@ -250,7 +250,7 @@ internal class AppOwners<D>(
         onClose = resolve::childClosed,
         onSaved = resolve::foodSaved,
         confirmLogged = confirmations::logged,
-        onSavedToLog = { food -> review.choose(food) },
+        onSavedToLog = { food, origin -> review.choose(food, origin = origin, fetchServings = false) },
     )
     /** The scanner and its barcode lookup (see [ScanSession]); a found product goes to [review], an unknown one to [foodForm]. */
     val scan: ScanSession = ScanSession(
@@ -265,7 +265,7 @@ internal class AppOwners<D>(
         logOpen = { log.open },
         queueActive = { resolve.queueActive },
         onProduct = { food, origin -> surfaces.productScanned(food, origin) },
-        onManualForm = { name, brand, barcode, fromOff, logging -> foodForm.open(name, brand, barcode, fromOff = fromOff, logAfterSave = logging) },
+        onManualForm = { name, brand, barcode, fromOff, reviewAfterSave -> foodForm.open(name, brand, barcode, fromOff = fromOff, reviewAfterSave = reviewAfterSave) },
     )
     /** Product review after a scan or a search pick (see [ProductReview]); its queue and resolve hand-offs go to [resolve]. */
     val review: ProductReview = ProductReview(
@@ -274,8 +274,6 @@ internal class AppOwners<D>(
         notices = notices,
         selectedDay = { day.selectedDayKey },
         openMeal = ::mealOnScreen,
-        libraryTab = ::libraryTabOnScreen,
-        logOpen = { log.open },
         automaticMeal = ::automaticMealNow,
         queue = resolve::queueView,
         resolvingPart = { resolve.resolvingPart },
@@ -284,7 +282,7 @@ internal class AppOwners<D>(
         onLogPart = log::addScannedPart,
         onLogged = resolve::childLogged,
         onClosed = resolve::childClosed,
-        openSearch = { fromResolver -> search.open(fromResolver = fromResolver) },
+        openSearch = { fromResolver, origin -> search.open(fromResolver = fromResolver, reviewOrigin = origin) },
         startScan = { scan.begin() },
         confirmLogged = confirmations::logged,
         scope = threads.scope,

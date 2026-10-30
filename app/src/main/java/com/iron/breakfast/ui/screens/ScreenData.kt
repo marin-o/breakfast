@@ -1,8 +1,5 @@
 package com.iron.breakfast.ui.screens
 
-import java.math.RoundingMode
-import java.math.MathContext
-import java.math.BigDecimal
 import com.iron.breakfast.domain.KCAL_PER_GRAM_CARBS
 import com.iron.breakfast.domain.KCAL_PER_GRAM_FAT
 import com.iron.breakfast.domain.KCAL_PER_GRAM_PROTEIN
@@ -90,12 +87,15 @@ internal fun quantityRateDisplay(
 internal fun countedQuantity(amount: Double, unit: MeasureUnit, label: String? = null): String? = when {
     unit == MeasureUnit.SERVING -> label?.let { "${amount.pretty()} ${servingNameFor(it, amount)}" }
     label != null -> ShorthandLexicon.factorOf(label)?.let { factor -> "${(amount / factor).pretty()} $label" }
-    unit == MeasureUnit.PIECE || unit == MeasureUnit.PORTION -> "${amount.pretty()} ${servingNameFor(unit.displayLabel(), amount)}"
+    unit == MeasureUnit.PIECE || unit == MeasureUnit.PORTION -> "${amount.pretty()} ${unit.labelFor(amount)}"
     else -> null
 }
 
-/** A unit's label for [amount] of it: "cups" for more than one cup, else its label. */
-internal fun MeasureUnit.labelFor(amount: Double): String = if (this == MeasureUnit.CUP) servingNameFor(displayLabel(), amount) else displayLabel()
+/** A unit's label for [amount] of it, the one plural rule: "2 cups", "2 pieces"; an abbreviation stays ("2 tbsp"). */
+internal fun MeasureUnit.labelFor(amount: Double): String = when (this) {
+    MeasureUnit.CUP, MeasureUnit.PIECE, MeasureUnit.PORTION -> servingNameFor(displayLabel(), amount)
+    else -> displayLabel()
+}
 
 /**
  * The one amount line of a row: counted pieces and portions read as the user typed them (`2 pieces`, `1 portion`), never
@@ -111,18 +111,6 @@ internal fun withRateUnit(line: String, rateUnit: String, approximate: Boolean):
     if (approximate || rateUnit.isBlank()) return line
     val withUnit = "$line kcal/$rateUnit"
     return if (withUnit.length <= MAX_RATE_UNIT_LINE) withUnit else line
-}
-
-/**
- * A number for an editable field: never in exponent form, whole values without ".0", at most three decimals, trimmed
- * (1/3 of a cup is 0.333). A value too small for three keeps its first digit (0.0005), so it never becomes 0.
- */
-internal fun editableNumber(value: Double?): String {
-    if (value == null || !value.isFinite()) return ""
-    val exact = BigDecimal.valueOf(value)
-    val tiny = exact.signum() != 0 && exact.abs() < BigDecimal("0.001")
-    val shown = if (tiny) exact.round(MathContext(1, RoundingMode.HALF_UP)) else exact.setScale(3, RoundingMode.HALF_UP)
-    return shown.stripTrailingZeros().toPlainString()
 }
 
 /** Source label beside the O/B/P box on the entry detail. */

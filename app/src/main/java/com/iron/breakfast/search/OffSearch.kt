@@ -1,5 +1,6 @@
 package com.iron.breakfast.search
 
+import com.iron.breakfast.scan.ProductReviewOrigin
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -34,7 +35,7 @@ internal class OffSearch(
     private val ready: () -> Boolean,
     private val onOpen: (fromResolver: Boolean) -> Unit,
     private val onClose: () -> Unit,
-    private val onChoose: (FoodRecord) -> Unit,
+    private val onChoose: (FoodRecord, ProductReviewOrigin?) -> Unit,
 ) {
     var open by mutableStateOf(false); private set
     var query by mutableStateOf(""); private set
@@ -46,8 +47,12 @@ internal class OffSearch(
     private var job: Job? = null
     private var generation = 0L
 
+    /** What this search was opened for, when a logging review opened it: what it picks or creates goes on to that. */
+    var reviewOrigin by mutableStateOf<ProductReviewOrigin?>(null); private set
+
     /** Opens the search on [prefill]; [fromResolver] when the resolver opened it, so closing returns there. */
-    fun open(prefill: String? = null, fromResolver: Boolean = false) {
+    fun open(prefill: String? = null, fromResolver: Boolean = false, reviewOrigin: ProductReviewOrigin? = null) {
+        this.reviewOrigin = reviewOrigin
         drop()
         busy = false
         onOpen(fromResolver)
@@ -82,7 +87,7 @@ internal class OffSearch(
     /** A result row: the search gives way to product review for [food]. */
     fun choose(food: FoodRecord) {
         hide()
-        onChoose(food)
+        onChoose(food, reviewOrigin)
     }
 
     fun submit() {

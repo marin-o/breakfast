@@ -1,8 +1,8 @@
 package com.iron.breakfast.log
 
+import com.iron.breakfast.domain.DraftPins
 import com.iron.breakfast.domain.MeasureUnit
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.iron.breakfast.app.DiaryChange
@@ -72,19 +72,19 @@ internal class LogComposer(
     /** True when the meal menu was opened by Add with no meal known, so choosing a meal logs straight away. */
     private var submitPending = false
     // Observable, so a pin added without a text change still recomputes the Log page's draft.
-    private val pins = mutableStateMapOf<String, FoodRecord>()
+    private val pins = DraftPins()
 
     /** The draft for `SavedStateHandle`. */
     fun savedDraft(): SavedLogDraft = SavedLogDraft(draft, committed)
 
     /** The pins as they are now, for a draft computed off the main thread. */
-    fun pinsSnapshot(): Map<String, FoodRecord> = pins.toMap()
+    fun pinsSnapshot(): Map<String, FoodRecord> = pins.keys(draft, store::planner)
 
     /** The foods picked for the old diary are dropped with it (see `SessionReset`). */
     fun clearPins() { pins.clear() }
 
     /** A food was deleted: a part pinned to it is matched again, so Add cannot log (or bring back) that food. */
-    fun dropPinsOf(foodId: String) { pins.entries.removeAll { it.value.id == foodId } }
+    fun dropPinsOf(foodId: String) { pins.dropFood(foodId) }
 
     /** A meal, the Library or an entry edit opened, or the diary was replaced: the Log's error no longer applies. */
     fun clearError() { error = null }
@@ -125,6 +125,7 @@ internal class LogComposer(
 
     /** The Log page's typing. Clearing the draft also drops the foods picked for it. */
     fun onDraft(value: String) {
+        pins.edited(draft, value)
         draft = value
         committed = false
         if (value.isBlank()) pins.clear()
@@ -149,9 +150,11 @@ internal class LogComposer(
      * tapped food so it stays that food. Pins live as long as the draft (cleared on Add or an empty draft).
      */
     fun chooseSuggestion(food: FoodRecord) {
-        val picked = store.planner(pins.toMap()).choose(draft, food, typing = !committed)
-        picked.part?.let { pins[it] = food }
+        val picked = store.planner(pinsSnapshot()).choose(draft, food, typing = !committed)
+        val before = draft
         onDraft(picked.input)
+        // The tapped part is the last one: from where the text before it ends.
+        picked.part?.let { pins.add(picked.input, it, food, picked.input.commonPrefixWith(before).length.coerceAtMost(picked.input.lastIndexOf(it))) }
     }
 
     /**
@@ -159,10 +162,11 @@ internal class LogComposer(
      * as exactly that food. The Log's meal and the rest of the draft stay.
      */
     fun addScannedPart(food: FoodRecord, amount: Double, unit: MeasureUnit) {
-        val planner = store.planner(pins.toMap())
+        val planner = store.planner(pinsSnapshot())
         val part = planner.partText(food, amount, unit)
-        pins[part] = food
-        onDraft(planner.withPartAdded(draft, part))
+        val next = planner.withPartAdded(draft, part)
+        onDraft(next)
+        pins.add(next, part, food, next.length - part.length)
     }
 
     /** Add on the Log page. */
@@ -185,7 +189,8 @@ internal class LogComposer(
         if (!session.canWrite) return
         // Save takes the draft as typed: the planner skips meal words by span, so save and the rows share one segmentation.
         val captured = draft
-        val capturedPins = pins.toMap()
+        val capturedPins = pinsSnapshot()
+        val usedPins = pins.current()
         if (store.planner(capturedPins).segments(captured).none { ShorthandLexicon.mealSlotOf(it.text) == null }) {
             error = "Add at least one food."
             return
@@ -203,7 +208,7 @@ internal class LogComposer(
                     return@write
                 }
                 // Only the pins this save used: one added while it planned off the main thread belongs to the new text.
-                capturedPins.forEach { (part, food) -> if (pins[part] == food) pins.remove(part) }
+                pins.forget(usedPins)
                 close()
                 afterSave(saved.unresolvedSegments, target, this@LogComposer, captured)
                 error = if (saved.unresolvedSegments.isNotEmpty()) NEEDS_A_MATCH else null
@@ -220,7 +225,7 @@ internal class LogComposer(
     fun resolveNotInFoods(row: DraftRow.Unresolved) {
         if (!session.canWrite || !rowStillInDraft(draft, row)) return
         val part = draft.substring(row.start, row.end)
-        val query = store.planner(pins.toMap()).libraryQueryFor(part)
+        val query = store.planner(pinsSnapshot()).libraryQueryFor(part)
         val request = LogResolveRequest(draft, row.start, row.end, part, preset, chosen, openMeal())
         open = false
         error = null
@@ -232,10 +237,15 @@ internal class LogComposer(
      * with [pick] in place of the part, pinned so the part resolves to it.
      */
     fun resume(request: LogResolveRequest, pick: FoodRecord?) {
-        draft = if (pick == null) request.draftText else {
-            val text = store.planner(pins.toMap()).pickedText(request.part, pick)
-            pins[text] = pick
-            replaceDraftPart(request.draftText, request.start, request.end, text)
+        if (pick == null) {
+            pins.edited(draft, request.draftText)
+            draft = request.draftText
+        } else {
+            val text = store.planner(pinsSnapshot()).pickedText(request.part, pick)
+            val next = replaceDraftPart(request.draftText, request.start, request.end, text)
+            pins.edited(draft, next)
+            draft = next
+            pins.add(next, text, pick, request.start)
         }
         committed = false
         error = null
@@ -246,7 +256,7 @@ internal class LogComposer(
 
     /** The draft as the resolve queue's source: what is left of its parts is written back here. */
     override val text: String get() = draft
-    override fun putBack(left: String) { draft = left }
+    override fun putBack(left: String) { pins.edited(draft, left); draft = left }
     /** Every part Add left was matched in the resolver: "Some foods need a match." no longer applies. A skipped part keeps it. */
     override fun allMatched() { if (error == NEEDS_A_MATCH) error = null }
 }

@@ -6,7 +6,7 @@ import com.iron.breakfast.ui.components.NutrientFields
 import com.iron.breakfast.ui.components.NutrientField
 import com.iron.breakfast.ui.components.SubScreen
 import com.iron.breakfast.ui.screens.kcalLabel
-import com.iron.breakfast.ui.screens.editableNumber
+import com.iron.breakfast.domain.editableNumber
 import com.iron.breakfast.domain.sourceLetter
 import com.iron.breakfast.domain.parseDecimal
 import com.iron.breakfast.ui.theme.*

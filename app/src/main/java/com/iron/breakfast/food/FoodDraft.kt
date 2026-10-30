@@ -1,6 +1,9 @@
 package com.iron.breakfast.food
 
-import com.iron.breakfast.ui.screens.editableNumber
+import com.iron.breakfast.domain.isPositiveAmount
+import com.iron.breakfast.domain.fieldText
+import com.iron.breakfast.domain.fieldNumber
+import com.iron.breakfast.domain.editableNumber
 import com.iron.breakfast.domain.positiveAmountOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -10,7 +13,6 @@ import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionInput
 import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.splitAliases
-import com.iron.breakfast.domain.parseDecimal
 import kotlinx.serialization.Serializable
 
 /**
@@ -23,6 +25,8 @@ class FoodDraft {
     var barcode by mutableStateOf("")
     /** The barcode was seeded by a scan; the create form tags it "from scan" until it is edited. */
     var barcodeFromScan by mutableStateOf(false)
+    /** The food this draft loaded, whose exact numbers its untouched fields stand for. */
+    private var loaded: FoodRecord? = null
     var shorthand by mutableStateOf("")
     var calories by mutableStateOf("")
     var protein by mutableStateOf("")
@@ -51,9 +55,19 @@ class FoodDraft {
 
     fun reset() = load(null)
 
-    fun nutritionInput() = NutritionInput(shorthand, calories, protein, carbs, fat, basisAmount, basisUnit)
+    /** The numbers as the save reads them: a field left as it loaded is the stored value, not its rounded display. */
+    fun nutritionInput(): NutritionInput {
+        val stored = loaded?.nutrition
+        return NutritionInput(
+            shorthand,
+            fieldText(calories, stored?.values?.calories), fieldText(protein, stored?.values?.protein),
+            fieldText(carbs, stored?.values?.carbohydrates), fieldText(fat, stored?.values?.fat),
+            fieldText(basisAmount, stored?.amount), basisUnit,
+        )
+    }
 
     fun load(food: FoodRecord?) {
+        loaded = food
         name = food?.name.orEmpty(); brand = food?.brand.orEmpty(); barcode = food?.barcode.orEmpty(); shorthand = ""
         calories = food?.nutrition?.values?.calories.let(::editableNumber)
         protein = food?.nutrition?.values?.protein.let(::editableNumber)
@@ -70,7 +84,7 @@ class FoodDraft {
     }
 
     /** The density typed: a positive number, or null (blank, or not one). */
-    fun densityValue(): Double? = parseDecimal(density)?.takeIf { it.isFinite() && it > 0.0 }
+    fun densityValue(): Double? = fieldNumber(density, loaded?.density)?.takeIf(::isPositiveAmount)
 
     /** Something typed as the density that is not a positive number: it shows as an error and Save refuses it. */
     fun densityError(): Boolean = density.isNotBlank() && densityValue() == null

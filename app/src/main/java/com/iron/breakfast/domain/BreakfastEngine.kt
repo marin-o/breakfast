@@ -487,7 +487,7 @@ private val NO_PREFERENCES: Map<String, Preference> = emptyMap()
  * figure left. Null for another unit (nothing to convert with) or a stored amount that is not a positive number.
  */
 internal fun snapshotScaled(entry: MealEntry, amount: Double, unit: MeasureUnit, servingName: String? = null): Calculation? {
-    if (unit != entry.enteredUnit || !amount.isFinite() || amount <= 0.0 || !snapshotScalable(entry)) return null
+    if (unit != entry.enteredUnit || !isPositiveAmount(amount) || !snapshotScalable(entry)) return null
     // A serving is its own unit: only the same name scales.
     if (unit == MeasureUnit.SERVING && (servingName == null || entry.enteredUnitLabel?.let { servingNameMatches(servingName, it) } != true)) return null
     val factor = amount / entry.enteredAmount
@@ -495,7 +495,7 @@ internal fun snapshotScaled(entry: MealEntry, amount: Double, unit: MeasureUnit,
 }
 
 /** Whether an entry's amount can change without its food: [snapshotScaled] needs a positive stored amount. */
-internal fun snapshotScalable(entry: MealEntry): Boolean = entry.enteredAmount.isFinite() && entry.enteredAmount > 0.0
+internal fun snapshotScalable(entry: MealEntry): Boolean = isPositiveAmount(entry.enteredAmount)
 
 private fun MealEntry.withScaled(amount: Double, scaled: Calculation) =
     copy(enteredAmount = amount, resolvedBaseAmount = scaled.resolvedBaseAmount, nutritionSnapshot = scaled.nutrition)
@@ -527,7 +527,7 @@ private val SERVING_WORD = Regex("\\p{L}+")
 /** Strict amount/unit parsing used by saved-entry quick edit. */
 fun parseStrictAmountUnit(text: String): ParsedAmountUnit? {
     val parsed = ShorthandParser().parse(text)
-    val amount = parsed.amount?.takeIf { it.isFinite() && it > 0.0 } ?: return null
+    val amount = parsed.amount?.takeIf(::isPositiveAmount) ?: return null
     val rest = parsed.foodPhrase.trim()
     return when {
         // The word is kept only when it may be a serving's name ("slice"), not the unit's own label ("g").
@@ -546,7 +546,7 @@ fun parseStrictAmountUnit(text: String): ParsedAmountUnit? {
 fun parseEditAmount(text: String): ParsedAmountUnit? {
     parseStrictAmountUnit(text)?.let { return it }
     val parsed = ShorthandParser().parse(text)
-    val amount = parsed.amount?.takeIf { it.isFinite() && it > 0.0 } ?: return null
+    val amount = parsed.amount?.takeIf(::isPositiveAmount) ?: return null
     val word = parsed.foodPhrase.trim()
     return if (parsed.unit == null && SERVING_WORD.matches(word)) ParsedAmountUnit(amount, MeasureUnit.SERVING, word) else null
 }

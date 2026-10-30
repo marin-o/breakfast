@@ -1,5 +1,8 @@
 package com.iron.breakfast.entry
 
+import com.iron.breakfast.domain.isPositiveAmount
+import com.iron.breakfast.domain.fieldText
+import com.iron.breakfast.domain.fieldNumber
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.customActions
@@ -16,7 +19,7 @@ import com.iron.breakfast.domain.parseDecimal
 import com.iron.breakfast.domain.macroTotalsOf
 import com.iron.breakfast.ui.screens.macroStats
 import com.iron.breakfast.ui.screens.kcalLabel
-import com.iron.breakfast.ui.screens.editableNumber
+import com.iron.breakfast.domain.editableNumber
 import com.iron.breakfast.ui.components.DayTotal
 import com.iron.breakfast.ui.shortDateLabel
 import com.iron.breakfast.ui.macroLine
@@ -126,7 +129,7 @@ internal fun EntryQuickEditSheet(entryEdit: EntryEdit, session: DiarySession, en
     val measure = Measure(unit, servingName)
     val food = entryEdit.foodOf(entry.foodId)
     val units = food?.measures().orEmpty().ifEmpty { listOf(entry.measure()) }
-    val preview = positiveAmountOf(amount)?.let { entryEdit.preview(entry, entry.foodId, it, unit, servingName) }
+    val preview = fieldNumber(amount, entry.enteredAmount)?.takeIf(::isPositiveAmount)?.let { entryEdit.preview(entry, entry.foodId, it, unit, servingName) }
     val changed = entryDraftNutritionChanged(entry, amount, measure, entry.foodId)
     // A save error stays until the amount or unit changes.
     LaunchedEffect(amount, unit, servingName) { entryEdit.inputChanged() }
@@ -142,7 +145,7 @@ internal fun EntryQuickEditSheet(entryEdit: EntryEdit, session: DiarySession, en
                     "Amount", amount, { amount = it }, Modifier.weight(1f),
                     labelVisible = false, amountStyle = true,
                     imeAction = ImeAction.Done,
-                    keyboardActions = KeyboardActions(onDone = { keyboard?.hide(); entryEdit.saveQuick("${amount.trim()} ${measure.label}") }),
+                    keyboardActions = KeyboardActions(onDone = { keyboard?.hide(); entryEdit.saveQuick("${fieldText(amount.trim(), entry.enteredAmount)} ${measure.label}") }),
                     fieldModifier = Modifier.focusRequester(requester),
                 )
                 AddCircle("Increase amount", { amount = adjustAmount(amount, 1.0) })
@@ -163,14 +166,14 @@ internal fun EntryQuickEditSheet(entryEdit: EntryEdit, session: DiarySession, en
                 }
                 if (changed) Text("was ${formatKcal(entry.nutritionSnapshot.calories)}", color = colors.soft, style = BreakfastType.Secondary)
             }
-            PrimaryButton("Save", { entryEdit.saveQuick("${amount.trim()} ${measure.label}") }, enabled = positiveAmountOf(amount) != null)
+            PrimaryButton("Save", { entryEdit.saveQuick("${fieldText(amount.trim(), entry.enteredAmount)} ${measure.label}") }, enabled = positiveAmountOf(amount) != null)
             entryEdit.error?.let { Text(it, color = colors.bad, style = BreakfastType.Meta) }
         }
     }
 }
 
 private fun adjustAmount(value: String, delta: Double): String = (parseDecimal(value)?.plus(delta)?.coerceAtLeast(0.1) ?: 1.0).let { if (it % 1.0 == 0.0) it.toInt().toString() else "%.1f".format(Locale.ROOT, it) }
-private fun entryDraftNutritionChanged(entry: MealEntry, amount: String, measure: Measure, foodId: String?): Boolean = foodId != entry.foodId || parseDecimal(amount)?.let { it != entry.enteredAmount } != false || measure != entry.measure()
+internal fun entryDraftNutritionChanged(entry: MealEntry, amount: String, measure: Measure, foodId: String?): Boolean = foodId != entry.foodId || fieldNumber(amount, entry.enteredAmount)?.let { it != entry.enteredAmount } != false || measure != entry.measure()
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -188,7 +191,7 @@ internal fun EntryFullEditScreen(entryEdit: EntryEdit, session: DiarySession, da
     val units = selectedFood?.measures().orEmpty().ifEmpty { listOf(entry.measure()) }
     // With the entry's food deleted and no other chosen, the entry itself: its amount in its own unit, scaled.
     val foodId = selectedFood?.id ?: entry.foodId
-    val preview = positiveAmountOf(amount)?.let { entryEdit.preview(entry, foodId, it, unit, servingName) }
+    val preview = fieldNumber(amount, entry.enteredAmount)?.takeIf(::isPositiveAmount)?.let { entryEdit.preview(entry, foodId, it, unit, servingName) }
     LaunchedEffect(selectedFood?.id) { if (measure !in units) units.first().let { unit = it.unit; servingName = it.name } }
     // A save error stays until something being edited changes.
     LaunchedEffect(selectedFood?.id, amount, unit, servingName, meal, dayKey) { entryEdit.inputChanged() }
@@ -210,7 +213,7 @@ internal fun EntryFullEditScreen(entryEdit: EntryEdit, session: DiarySession, da
             Text(kcalLabel(shown.calories), style = BreakfastType.Section, color = colors.ink)
             Text(macroLine(shown), color = colors.soft, style = BreakfastType.Secondary)
         }
-        PrimaryButton("Save", { entryEdit.saveFull(foodId, amount, unit, meal, dayKey, servingName) }, enabled = !session.busy)
+        PrimaryButton("Save", { entryEdit.saveFull(foodId, fieldText(amount, entry.enteredAmount), unit, meal, dayKey, servingName) }, enabled = !session.busy)
         entryEdit.error?.let { Text(it, Modifier.padding(top = 12.dp), color = colors.bad, style = BreakfastType.Meta) }
     }
     if (datePickerOpen) DayPickerDialog(dayKey, dayState.todayKey, onDismiss = { datePickerOpen = false }, onPick = { dayKey = it; datePickerOpen = false })

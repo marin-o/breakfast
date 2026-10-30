@@ -83,7 +83,7 @@ import com.iron.breakfast.ui.screens.formatKcal
                 }
             }
             search.message?.let { message ->
-                val createPersonal = { foodForm.open(search.query.trim(), fromResolver = resolve.continuation) }
+                val createPersonal = { foodForm.open(search.query.trim(), fromResolver = resolve.continuation, reviewAfterSave = search.reviewOrigin) }
                 when (offSearchStatus(search.unavailable, message)) {
                     OffSearchStatus.Offline -> SearchStatus(
                         title = "No connection",

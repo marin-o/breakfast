@@ -33,7 +33,7 @@ import com.iron.breakfast.ui.components.DecimalField
 import com.iron.breakfast.ui.components.Field
 import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
-import com.iron.breakfast.ui.screens.editableNumber
+import com.iron.breakfast.domain.editableNumber
 
 
 /**
