@@ -1,5 +1,8 @@
 package com.iron.breakfast.contribution
 
+import com.iron.breakfast.domain.sameBarcode
+import com.iron.breakfast.domain.normalizeBarcode
+import com.iron.breakfast.domain.isOpenFoodFactsSource
 import com.iron.breakfast.domain.scriptOf
 import com.iron.breakfast.domain.TextScript
 import com.iron.breakfast.domain.FoodRecord
@@ -14,6 +17,17 @@ internal fun contributionLanguageFor(name: String): String =
 
 internal fun contributionDraftAfterLocalSave(food: FoodRecord, fromScan: Boolean): OffContributionDraft? =
     if (fromScan) OffContributionDraft.fromFood(food) else null
+
+/**
+ * Open Food Facts foods keep their source code in `sourceId`; once the local barcode no longer
+ * matches it, edited numbers must not be submitted under a different product code.
+ */
+internal fun contributionAvailable(food: FoodRecord): Boolean {
+    val barcode = normalizeBarcode(food.barcode ?: return false) ?: return false
+    // A food that cannot become a draft (implausible per 100 g, no g or ml basis) offers no action that would only refuse.
+    if (OffContributionDraft.fromFood(food) == null) return false
+    return !isOpenFoodFactsSource(food) || sameBarcode(food.sourceId, barcode)
+}
 
 /** The Contribute to Open Food Facts action shows where it is [available], unless "Contribute" is Hide. */
 internal fun contributionShown(show: Boolean, available: Boolean): Boolean = show && available

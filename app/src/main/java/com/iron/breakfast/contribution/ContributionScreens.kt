@@ -1,5 +1,7 @@
 package com.iron.breakfast.contribution
 
+import com.iron.breakfast.ui.macroText
+import com.iron.breakfast.ui.screens.basisLabel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.WindowInsets
@@ -68,11 +70,11 @@ import com.iron.breakfast.ui.components.isLargeFont
                         draft.brand?.let { ContributionLine("Brand", it) }
                     }
                     ContributionLine("Barcode", draft.barcode)
-                    Text("per 100 ${draft.basisUnit.label}", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 10.dp))
+                    Text(basisLabel(100.0, draft.basisUnit), color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 10.dp))
                     ContributionLine("Energy", normalized.calories.pretty(), "kcal")
-                    ContributionLine("Fat", normalized.fat?.pretty() ?: "0", "g")
-                    ContributionLine("Carbohydrate", normalized.carbohydrates?.pretty() ?: "0", "g")
-                    ContributionLine("Protein", normalized.protein?.pretty() ?: "0", "g")
+                    ContributionLine("Fat", macroText(normalized.fat), "g")
+                    ContributionLine("Carbohydrate", macroText(normalized.carbohydrates), "g")
+                    ContributionLine("Protein", macroText(normalized.protein), "g")
                     if (!draft.createNewProduct) Text("Existing product: only nutrition changes.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 16.dp))
                 }
                 if (draft.createNewProduct) {

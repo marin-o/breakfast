@@ -1,5 +1,7 @@
 package com.iron.breakfast.resolve
 
+import com.iron.breakfast.ui.screens.plainLine
+import com.iron.breakfast.ui.screens.QuantityDisplay
 import com.iron.breakfast.ui.theme.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -76,10 +78,9 @@ import com.iron.breakfast.ui.screens.matchDisplay
                     SectionHeading("Local matches", Modifier.padding(top = 30.dp, bottom = 4.dp))
                     resolve.results.forEach { ranked ->
                         val match = matchDisplay(ranked.food, raw)
-                        val detail = match.approximateLabel?.let { "≈$it, ${match.detail}" } ?: match.detail
                         FoodRow(
                             name = ranked.food.name,
-                            quantityLine = detail,
+                            quantityLine = QuantityDisplay(match.detail, match.approximateLabel).plainLine(),
                             calories = match.kcal,
                             onClick = { resolve.resolve(ranked.food) },
                         )

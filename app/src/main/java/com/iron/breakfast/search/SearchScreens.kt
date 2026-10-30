@@ -1,5 +1,7 @@
 package com.iron.breakfast.search
 
+import com.iron.breakfast.ui.screens.kcalBasisLabel
+import com.iron.breakfast.ui.countLabel
 import com.iron.breakfast.ui.theme.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -26,7 +28,6 @@ import com.iron.breakfast.app.Surfaces
 import com.iron.breakfast.food.FoodForm
 import com.iron.breakfast.library.LibraryState
 import com.iron.breakfast.resolve.ResolveFlow
-import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.LinearProgress
@@ -91,8 +92,8 @@ import com.iron.breakfast.ui.screens.formatKcal
                     }
                     search.results.isNotEmpty() -> {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("${search.results.size} results from Open Food Facts", color = colors.soft, style = BreakfastType.Secondary)
-                            Text("kcal per ${search.results.first().nutrition.amount.pretty()} ${search.results.first().nutrition.unit.label}", color = colors.soft, style = BreakfastType.Secondary)
+                            Text("${countLabel(search.results.size, "result", "results")} from Open Food Facts", color = colors.soft, style = BreakfastType.Secondary)
+                            Text(search.results.first().nutrition.let { kcalBasisLabel(it.amount, it.unit) }, color = colors.soft, style = BreakfastType.Secondary)
                         }
                         Hairline(Modifier.padding(top = 10.dp))
                         search.results.forEach { food ->

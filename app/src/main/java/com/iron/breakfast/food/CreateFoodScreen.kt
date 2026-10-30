@@ -48,7 +48,6 @@ import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.components.ScanBarcodeIcon
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
-import com.iron.breakfast.ui.screens.createFoodState
 import com.iron.breakfast.ui.screens.editableNumber
 
 

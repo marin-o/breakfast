@@ -3,6 +3,7 @@ package com.iron.breakfast.food
 import com.iron.breakfast.domain.NutritionInput
 import com.iron.breakfast.domain.ResolvedNutrition
 import com.iron.breakfast.domain.parseDecimal
+import com.iron.breakfast.domain.resolveNutrition
 
 // The food form's pure decisions, unit-tested: what a refused save points at, and what Back does.
 
@@ -45,3 +46,21 @@ internal fun foodFormBack(saving: Boolean, dirty: Boolean): FoodFormBack = when 
     dirty -> FoodFormBack.ASK
     else -> FoodFormBack.CLOSE
 }
+
+/** What the create form resolves to and whether it can be saved. Calories are required. */
+internal data class CreateFoodState(
+    val nutrition: ResolvedNutrition,
+    val caloriesMissing: Boolean,
+    /** The red ring and "Required: kcal" tag: shown once the user has started on nutrition. */
+    val showRequired: Boolean,
+    val canSave: Boolean,
+)
+
+internal fun createFoodState(input: NutritionInput, name: String, barcodeError: String?): CreateFoodState {
+    val nutrition = resolveNutrition(input)
+    val missing = nutrition.calories == null
+    val touched = listOf(input.shorthand, input.calories, input.protein, input.carbs, input.fat).any { it.isNotBlank() }
+    return CreateFoodState(nutrition, missing, showRequired = missing && touched, canSave = !missing && name.isNotBlank() && barcodeError == null)
+}
+
+

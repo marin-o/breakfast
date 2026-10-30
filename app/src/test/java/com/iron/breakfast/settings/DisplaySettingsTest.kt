@@ -1,5 +1,6 @@
 package com.iron.breakfast.settings
 
+import com.iron.breakfast.ui.screens.dailyMacroNote
 import android.app.UiModeManager
 import android.content.res.Configuration
 import com.iron.breakfast.domain.MacroTotal
@@ -7,7 +8,6 @@ import com.iron.breakfast.domain.MacroTotals
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionValues
-import com.iron.breakfast.today.dailyMacroNote
 import com.iron.breakfast.ui.screens.quantityRateDisplay
 import org.junit.After
 import org.junit.Assert.assertEquals

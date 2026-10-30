@@ -2,6 +2,24 @@ package com.iron.breakfast.domain
 
 import java.util.Locale
 
+/**
+ * Source boxes describe the local record's provenance. Personal overrides remain P even when
+ * their underlying record came from OFF. A bundled marker is reserved for an actual catalogue
+ * fixture; an otherwise unknown generic record has no trustworthy source and is marked "?".
+ */
+internal fun sourceLetter(food: FoodRecord?): String = when {
+    food == null -> "?"
+    food.origin == FoodOrigin.CUSTOM || food.personalOverride -> "P"
+    FoodCatalog.fixtures.any { it.id == food.id } -> "B"
+    isOpenFoodFactsSource(food) -> "O"
+    else -> "?"
+}
+
+/** OFF provenance is independent from the source box: local overrides still may be contributed. */
+internal fun isOpenFoodFactsSource(food: FoodRecord): Boolean =
+    food.sourceName?.contains("open food facts", ignoreCase = true) == true ||
+        food.sourceId?.startsWith("off", ignoreCase = true) == true
+
 /** The entry [foodId] was last logged as: what a repeat of it starts from. */
 internal fun lastLoggedEntry(entries: List<MealEntry>, foodId: String): MealEntry? =
     entries.asSequence().filter { it.foodId == foodId }.maxByOrNull { it.savedAtEpochMs }

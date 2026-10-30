@@ -1,5 +1,15 @@
 package com.iron.breakfast.library
 
+import com.iron.breakfast.ui.screens.previewQuantityLine
+import com.iron.breakfast.contribution.contributionAvailable
+import com.iron.breakfast.domain.positiveAmountOf
+import com.iron.breakfast.domain.POSITIVE_AMOUNT_MESSAGE
+import com.iron.breakfast.ui.screens.kcalLabel
+import com.iron.breakfast.ui.screens.editableNumber
+import com.iron.breakfast.ui.macroLine
+import com.iron.breakfast.ui.macroText
+import com.iron.breakfast.ui.shortDateLabel
+import com.iron.breakfast.ui.countLabel
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.PaddingValues
@@ -75,13 +85,11 @@ import com.iron.breakfast.domain.NutritionCalculator
 import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.Measure
 import com.iron.breakfast.domain.measures
-import com.iron.breakfast.log.previewQuantityLine
 import androidx.compose.foundation.layout.FlowRow
 import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.ui.label
 import com.iron.breakfast.contribution.contributionShown
-import com.iron.breakfast.ui.plain
 import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.components.isLargeFont
 import com.iron.breakfast.ui.components.foodText
@@ -101,11 +109,9 @@ import com.iron.breakfast.ui.components.SectionHeading
 import com.iron.breakfast.ui.components.rememberMotion
 import com.iron.breakfast.ui.components.LocalScreenBody
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
-import com.iron.breakfast.ui.screens.entryDateLabel
 import com.iron.breakfast.ui.screens.formatKcal
 import com.iron.breakfast.ui.screens.entrySourceLabel
 import com.iron.breakfast.ui.screens.basisLabel
-import com.iron.breakfast.ui.screens.contributionAvailable
 
 
 @Composable
@@ -125,7 +131,7 @@ internal fun LibraryScreen(
     val root = target == null
     // A part being resolved is searched for, not added to a meal the user did not choose here.
     val title = if (resolve.resolvingPart) "Search" else if (root) "Library" else "Add to ${target!!.label()}"
-    val subtitle = if (root) "${library.foods.size} foods, by last logged" else entryDateLabel(day.selectedDayKey)
+    val subtitle = if (root) "${countLabel(library.foods.size, "food", "foods")}, by last logged" else shortDateLabel(day.selectedDayKey)
     Box(modifier.fillMaxSize().background(colors.bg)) {
         // The bottom area floats over the end of the list, which rides above the keyboard while the search has it.
         LazyColumn(
@@ -280,9 +286,9 @@ internal fun LibraryFoodDetailDialog(
         Hairline(Modifier.padding(top = 16.dp))
         SectionHeading(basisLabel(food.nutrition.amount, food.nutrition.unit), Modifier.padding(top = 16.dp))
         LibraryFactRow("Energy", formatKcal(food.nutrition.values.calories), "kcal")
-        LibraryFactRow("Fat", food.nutrition.values.fat?.pretty() ?: "—", "g")
-        LibraryFactRow("Carbohydrate", food.nutrition.values.carbohydrates?.pretty() ?: "—", "g")
-        LibraryFactRow("Protein", food.nutrition.values.protein?.pretty() ?: "—", "g")
+        LibraryFactRow("Fat", macroText(food.nutrition.values.fat), "g")
+        LibraryFactRow("Carbohydrate", macroText(food.nutrition.values.carbohydrates), "g")
+        LibraryFactRow("Protein", macroText(food.nutrition.values.protein), "g")
         if (servings.isNotEmpty()) {
             Hairline(Modifier.padding(top = 16.dp))
             SectionHeading("Servings", Modifier.padding(top = 16.dp))
@@ -386,14 +392,14 @@ internal fun FoodAmountSheet(
     onDismiss: () -> Unit,
 ) {
     val colors = LocalBreakfastColors.current
-    var amountText by rememberSaveable(food.id, startMeal) { mutableStateOf(startAmount.plain()) }
+    var amountText by rememberSaveable(food.id, startMeal) { mutableStateOf(editableNumber(startAmount)) }
     val measures = food.measures()
     // The unit and a serving's name, saved apart (a Measure is not a Bundle value).
     var unit by rememberSaveable(food.id, startMeal) { mutableStateOf(startMeasure.unit) }
     var servingName by rememberSaveable(food.id, startMeal) { mutableStateOf(startMeasure.name.takeIf { startMeasure.unit == MeasureUnit.SERVING }) }
     val measure = Measure(unit, servingName)
     var chosenMeal by rememberSaveable(food.id, startMeal) { mutableStateOf(startMeal) }
-    val calc = amountText.toDoubleOrNull()?.takeIf { it > 0 }?.let { NutritionCalculator().calculate(food, it, unit, servingName) }
+    val calc = positiveAmountOf(amountText)?.let { NutritionCalculator().calculate(food, it, unit, servingName) }
     Sheet(onDismissRequest = onDismiss, skipPartiallyExpanded = true) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(foodText(food.name), color = colors.ink, style = BreakfastType.Section)
@@ -410,13 +416,13 @@ internal fun FoodAmountSheet(
                 MealChoices(selected = meal, onSelect = { chosenMeal = it }, singleRow = true)
             }
             Hairline()
-            Text(calc?.let { "${formatKcal(it.nutrition.calories)} kcal" } ?: "Enter a positive amount", color = colors.ink, style = BreakfastType.Section)
-            Text(calc?.let { "P ${it.nutrition.protein?.pretty() ?: "—"}  C ${it.nutrition.carbohydrates?.pretty() ?: "—"}  F ${it.nutrition.fat?.pretty() ?: "—"}" } ?: "", color = colors.soft, style = BreakfastType.Secondary)
+            Text(calc?.let { kcalLabel(it.nutrition.calories) } ?: POSITIVE_AMOUNT_MESSAGE, color = colors.ink, style = BreakfastType.Section)
+            Text(calc?.let { macroLine(it.nutrition) } ?: "", color = colors.soft, style = BreakfastType.Secondary)
             PrimaryButton(
                 chosenMeal?.let { "Add to ${it.label()}" } ?: "Add",
                 onClick = {
-                    val amount = amountText.toDoubleOrNull()
-                    if (amount != null && amount > 0 && calc?.supported == true) onAdd(amount, measure, chosenMeal) else onInvalid()
+                    val amount = positiveAmountOf(amountText)
+                    if (amount != null && calc?.supported == true) onAdd(amount, measure, chosenMeal) else onInvalid()
                 },
                 enabled = calc?.supported == true,
             )

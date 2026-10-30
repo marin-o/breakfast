@@ -1,5 +1,7 @@
 package com.iron.breakfast.today
 
+import com.iron.breakfast.ui.screens.dailyMacroNote
+import com.iron.breakfast.ui.screens.macroStats
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.macroTotalsOf
 import org.junit.Assert.assertEquals
@@ -9,7 +11,7 @@ import org.junit.Test
 /** The Daily macro columns: "—" when no entry has the macro, "12 g ?" when some do, and one line when any shows "?". */
 class DailyMacroStatsTest {
     private fun stats(vararg values: NutritionValues) = macroTotalsOf(values.toList()).let { macros ->
-        dailyMacroStats(values.sumOf { it.calories }, macros) to dailyMacroNote(macros)
+        macroStats(values.sumOf { it.calories }, macros) to dailyMacroNote(macros)
     }
 
     @Test fun knownMacrosReadAsToday() {

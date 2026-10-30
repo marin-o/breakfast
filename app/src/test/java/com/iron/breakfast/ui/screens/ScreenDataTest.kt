@@ -1,5 +1,9 @@
 package com.iron.breakfast.ui.screens
 
+import com.iron.breakfast.ui.shortDateLabel
+import com.iron.breakfast.ui.countLabel
+import com.iron.breakfast.contribution.contributionAvailable
+import com.iron.breakfast.domain.sourceLetter
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.FoodRecord
@@ -184,9 +188,10 @@ class ScreenDataTest {
 
     @Test
     fun foodCountPluralises() {
-        assertEquals("0 foods", foodCountLabel(0))
-        assertEquals("1 food", foodCountLabel(1))
-        assertEquals("13 foods", foodCountLabel(13))
+        assertEquals("0 foods", countLabel(0, "food", "foods"))
+        assertEquals("1 food", countLabel(1, "food", "foods"))
+        assertEquals("13 foods", countLabel(13, "food", "foods"))
+        assertEquals("1 result", countLabel(1, "result", "results"))
     }
 
     @Test
@@ -213,7 +218,7 @@ class ScreenDataTest {
 
     @Test
     fun entryDateLineHasNoComma() {
-        assertEquals("Wed 14 October", entryDateLabel("2026-10-14"))
+        assertEquals("Wed 14 Oct", shortDateLabel("2026-10-14"))
     }
 
     @Test

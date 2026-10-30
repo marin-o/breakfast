@@ -1,10 +1,20 @@
 package com.iron.breakfast.entry
 
+import com.iron.breakfast.domain.POSITIVE_AMOUNT_MESSAGE
+import com.iron.breakfast.domain.positiveAmountOf
+import com.iron.breakfast.domain.parseDecimal
+import com.iron.breakfast.domain.macroTotalsOf
+import com.iron.breakfast.ui.screens.macroStats
+import com.iron.breakfast.ui.screens.kcalLabel
+import com.iron.breakfast.ui.screens.editableNumber
+import com.iron.breakfast.ui.components.DayTotal
+import com.iron.breakfast.ui.shortDateLabel
+import com.iron.breakfast.ui.macroLine
+import com.iron.breakfast.ui.clockLabel
 import com.iron.breakfast.ui.theme.*
 import android.app.DatePickerDialog
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,7 +67,6 @@ import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.decimalInput
-import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.ui.label
 import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.components.foodText
@@ -66,7 +75,6 @@ import com.iron.breakfast.ui.components.ChoiceOption
 import com.iron.breakfast.ui.components.DestructiveButton
 import com.iron.breakfast.ui.components.Field
 import com.iron.breakfast.ui.components.Hairline
-import com.iron.breakfast.ui.components.MacroTrack
 import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.components.SecondaryButton
 import com.iron.breakfast.ui.components.SectionHeading
@@ -75,16 +83,13 @@ import com.iron.breakfast.ui.components.TertiaryButton
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.components.ButtonKind
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
-import java.math.BigDecimal
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 import java.util.Locale
 import com.iron.breakfast.ui.screens.quantityRateDisplay
 import com.iron.breakfast.ui.screens.labelFor
 import com.iron.breakfast.domain.Measure
 import com.iron.breakfast.domain.measures
 import androidx.compose.foundation.layout.FlowRow
-import com.iron.breakfast.today.shortDateLabel
 import com.iron.breakfast.ui.screens.plainLine
 import com.iron.breakfast.ui.screens.formatKcal
 import com.iron.breakfast.ui.screens.entrySourceLabel
@@ -101,12 +106,15 @@ internal fun EntryDetailScreen(entryEdit: EntryEdit, session: DiarySession, surf
     Surface(Modifier.fillMaxSize(), color = colors.bg) {
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)).navigationBarsPadding()) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Gutter, vertical = 8.dp)) {
-                TopBar("Entry", entryEdit::closeDetail, subtitle = "${entry.mealSlot.label()}, ${shortDateLabel(entry.dayKey)}, ${entry.savedAtEpochMs.formatClock()}")
+                TopBar("Entry", entryEdit::closeDetail, subtitle = "${entry.mealSlot.label()}, ${shortDateLabel(entry.dayKey)}, ${clockLabel(entry.savedAtEpochMs)}")
                 Text(foodText(entry.foodName), color = colors.ink, style = BreakfastType.Section, modifier = Modifier.padding(top = 22.dp))
                 Text(quantity.plainLine(), color = colors.soft, style = BreakfastType.Secondary)
-                Text(formatKcal(entry.nutritionSnapshot.calories), color = colors.ink, style = BreakfastType.Hero, modifier = Modifier.padding(top = 22.dp))
-                Text("kilocalories", color = colors.soft, style = BreakfastType.Secondary)
-                MacroTable(entry, Modifier.padding(top = 22.dp))
+                DayTotal(
+                    formatKcal(entry.nutritionSnapshot.calories),
+                    macroStats(entry.nutritionSnapshot.calories, macroTotalsOf(listOf(entry.nutritionSnapshot))),
+                    Modifier.padding(top = 22.dp),
+                    caption = "kilocalories",
+                )
                 // A recipe is the user's own, as a personal food is.
                 Text(if (isRecipeId(entry.foodId)) sourceLabel("P") else entrySourceLabel(food), color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 22.dp))
                 Hairline(Modifier.padding(top = 30.dp))
@@ -124,44 +132,18 @@ internal fun EntryDetailScreen(entryEdit: EntryEdit, session: DiarySession, surf
     }
 }
 
-@Composable
-private fun MacroTable(entry: MealEntry, modifier: Modifier = Modifier) {
-    val colors = LocalBreakfastColors.current
-    val nutrition = entry.nutritionSnapshot
-    val total = nutrition.calories
-    fun share(kcal: Double?): Float = if (total > 0.0 && kcal != null) (kcal / total).toFloat() else 0f
-    Column(modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            listOf(
-                Triple("Protein", nutrition.protein, share(nutrition.protein?.times(4.0))),
-                Triple("Carbs", nutrition.carbohydrates, share(nutrition.carbohydrates?.times(4.0))),
-                Triple("Fat", nutrition.fat, share(nutrition.fat?.times(9.0))),
-            ).forEach { (label, grams, fraction) ->
-                Column(Modifier.weight(1f)) {
-                    MacroTrack(fraction)
-                    Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.Bottom) {
-                        Text(grams?.pretty() ?: "0", color = colors.ink, style = BreakfastType.MacroValue)
-                        Text(" g", color = colors.soft, style = BreakfastType.Secondary)
-                    }
-                    Text(label, color = colors.soft, style = BreakfastType.Meta)
-                }
-            }
-        }
-    }
-}
-
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun EntryQuickEditSheet(entryEdit: EntryEdit, session: DiarySession, entry: MealEntry) {
     val colors = LocalBreakfastColors.current
     // Saveable: a dark-mode or font-size change recreates the activity and must not reset what was typed.
-    var amount by rememberSaveable(entry.id) { mutableStateOf(editAmountText(entry.enteredAmount)) }
+    var amount by rememberSaveable(entry.id) { mutableStateOf(editableNumber(entry.enteredAmount)) }
     var unit by rememberSaveable(entry.id) { mutableStateOf(entry.enteredUnit) }
     var servingName by rememberSaveable(entry.id) { mutableStateOf(entry.measure().name) }
     val measure = Measure(unit, servingName)
     val food = entryEdit.foodOf(entry.foodId)
     val units = food?.measures().orEmpty().ifEmpty { listOf(entry.measure()) }
-    val preview = amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { entryEdit.preview(entry, entry.foodId, it, unit, servingName) }
+    val preview = positiveAmountOf(amount)?.let { entryEdit.preview(entry, entry.foodId, it, unit, servingName) }
     val changed = entryDraftNutritionChanged(entry, amount, measure, entry.foodId)
     // A save error stays until the amount or unit changes.
     LaunchedEffect(amount, unit, servingName) { entryEdit.inputChanged() }
@@ -192,21 +174,20 @@ internal fun EntryQuickEditSheet(entryEdit: EntryEdit, session: DiarySession, en
                     val base = "${preview.resolvedBaseAmount.pretty()} ${baseUnit.labelFor(preview.resolvedBaseAmount)}"
                     val shownBase = if (preview.approximate && food != null && unit != food.nutrition.unit) "≈ $base" else base
                     Text(shownBase, color = colors.ink, style = BreakfastType.BodyMedium)
-                    Text("${formatKcal(preview.nutrition.calories)} kcal", color = colors.ink, style = BreakfastType.BodyMedium)
+                    Text(kcalLabel(preview.nutrition.calories), color = colors.ink, style = BreakfastType.BodyMedium)
                 } else {
-                    Text("Enter a positive amount", color = colors.soft, style = BreakfastType.Secondary)
+                    Text(POSITIVE_AMOUNT_MESSAGE, color = colors.soft, style = BreakfastType.Secondary)
                 }
                 if (changed) Text("was ${formatKcal(entry.nutritionSnapshot.calories)}", color = colors.soft, style = BreakfastType.Secondary)
             }
-            PrimaryButton("Save", { entryEdit.saveQuick("${amount.trim()} ${measure.label}") }, enabled = amount.toDoubleOrNull()?.let { it > 0 } == true)
+            PrimaryButton("Save", { entryEdit.saveQuick("${amount.trim()} ${measure.label}") }, enabled = positiveAmountOf(amount) != null)
             entryEdit.error?.let { Text(it, color = colors.bad, style = BreakfastType.Meta) }
         }
     }
 }
 
-private fun editAmountText(value: Double): String = BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
-private fun adjustAmount(value: String, delta: Double): String = (value.toDoubleOrNull()?.plus(delta)?.coerceAtLeast(0.1) ?: 1.0).let { if (it % 1.0 == 0.0) it.toInt().toString() else "%.1f".format(Locale.ROOT, it) }
-private fun entryDraftNutritionChanged(entry: MealEntry, amount: String, measure: Measure, foodId: String?): Boolean = foodId != entry.foodId || amount.toDoubleOrNull()?.let { it != entry.enteredAmount } != false || measure != entry.measure()
+private fun adjustAmount(value: String, delta: Double): String = (parseDecimal(value)?.plus(delta)?.coerceAtLeast(0.1) ?: 1.0).let { if (it % 1.0 == 0.0) it.toInt().toString() else "%.1f".format(Locale.ROOT, it) }
+private fun entryDraftNutritionChanged(entry: MealEntry, amount: String, measure: Measure, foodId: String?): Boolean = foodId != entry.foodId || parseDecimal(amount)?.let { it != entry.enteredAmount } != false || measure != entry.measure()
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -214,7 +195,7 @@ internal fun EntryFullEditScreen(entryEdit: EntryEdit, session: DiarySession, da
     val colors = LocalBreakfastColors.current
     val selectedFood = entryEdit.editingFood() ?: entryEdit.foodOf(entry.foodId)
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
-    var amount by rememberSaveable(entry.id) { mutableStateOf(editAmountText(entry.enteredAmount)) }
+    var amount by rememberSaveable(entry.id) { mutableStateOf(editableNumber(entry.enteredAmount)) }
     var unit by rememberSaveable(entry.id) { mutableStateOf(entry.enteredUnit) }
     var servingName by rememberSaveable(entry.id) { mutableStateOf(entry.measure().name) }
     val measure = Measure(unit, servingName)
@@ -225,7 +206,7 @@ internal fun EntryFullEditScreen(entryEdit: EntryEdit, session: DiarySession, da
     val units = selectedFood?.measures().orEmpty().ifEmpty { listOf(entry.measure()) }
     // With the entry's food deleted and no other chosen, the entry itself: its amount in its own unit, scaled.
     val foodId = selectedFood?.id ?: entry.foodId
-    val preview = amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { entryEdit.preview(entry, foodId, it, unit, servingName) }
+    val preview = positiveAmountOf(amount)?.let { entryEdit.preview(entry, foodId, it, unit, servingName) }
     LaunchedEffect(selectedFood?.id) { if (measure !in units) units.first().let { unit = it.unit; servingName = it.name } }
     // A save error stays until something being edited changes.
     LaunchedEffect(selectedFood?.id, amount, unit, servingName, meal, dayKey) { entryEdit.inputChanged() }
@@ -257,14 +238,14 @@ internal fun EntryFullEditScreen(entryEdit: EntryEdit, session: DiarySession, da
                         .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(date.format(DateTimeFormatter.ofPattern("EEE dd.MM.yyyy", Locale.ENGLISH)), Modifier.weight(1f), color = colors.ink, style = BreakfastType.Body)
+                    Text(shortDateLabel(dayKey), Modifier.weight(1f), color = colors.ink, style = BreakfastType.Body)
                     Icon(Icons.Default.CalendarMonth, "Change date", tint = colors.ink)
                 }
             }
             val shown = preview?.nutrition ?: entry.nutritionSnapshot
             Column(Modifier.fillMaxWidth().padding(horizontal = Gutter, vertical = 24.dp), horizontalAlignment = Alignment.End) {
-                Text("${formatKcal(shown.calories)} kcal", style = BreakfastType.Section, color = colors.ink)
-                Text("P ${shown.protein?.pretty() ?: "—"}   C ${shown.carbohydrates?.pretty() ?: "—"}   F ${shown.fat?.pretty() ?: "—"}", color = colors.soft, style = BreakfastType.Secondary)
+                Text(kcalLabel(shown.calories), style = BreakfastType.Section, color = colors.ink)
+                Text(macroLine(shown), color = colors.soft, style = BreakfastType.Secondary)
             }
             PrimaryButton("Save", { entryEdit.saveFull(foodId, amount, unit, meal, dayKey, servingName) }, Modifier.padding(horizontal = Gutter), enabled = !session.busy)
             entryEdit.error?.let { Text(it, Modifier.padding(Gutter), color = colors.bad, style = BreakfastType.Meta) }
@@ -285,4 +266,3 @@ internal fun EntryFoodPicker(entryEdit: EntryEdit, session: DiarySession) {
     }
 }
 
-private fun Long.formatClock(): String = java.time.Instant.ofEpochMilli(this).atZone(java.time.ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT))

@@ -1,5 +1,7 @@
 package com.iron.breakfast.food
 
+import com.iron.breakfast.domain.POSITIVE_AMOUNT_MESSAGE
+import com.iron.breakfast.domain.positiveAmountOf
 import com.iron.breakfast.ui.theme.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -93,7 +95,7 @@ internal fun EditFoodScreen(form: FoodForm, session: DiarySession, library: Libr
             }
         }
         if (draft.servingFormOpen) {
-            val amountError = draft.servingAmount.toDoubleOrNull()?.let { !it.isFinite() || it <= 0.0 } ?: true
+            val amountError = positiveAmountOf(draft.servingAmount) == null
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 // "1 [name] = [amount]", then the unit choices, as drawn.
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
@@ -124,7 +126,7 @@ internal fun EditFoodScreen(form: FoodForm, session: DiarySession, library: Libr
             "100 ml =", draft.density, { draft.density = it.decimalInput() },
             hint = "g",
             error = draft.densityError(),
-            errorMessage = if (draft.densityError()) "Enter a positive amount." else null,
+            errorMessage = if (draft.densityError()) POSITIVE_AMOUNT_MESSAGE else null,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         )
         SectionHeading("Aliases")

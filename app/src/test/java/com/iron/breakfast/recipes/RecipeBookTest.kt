@@ -1,5 +1,9 @@
 package com.iron.breakfast.recipes
 
+import com.iron.breakfast.ui.screens.yieldLine
+import com.iron.breakfast.ui.screens.macroFact
+import com.iron.breakfast.ui.screens.previewQuantityLine
+import com.iron.breakfast.ui.countLabel
 import com.iron.breakfast.app.DiaryChange
 import com.iron.breakfast.app.Notices
 import com.iron.breakfast.domain.FoodCatalog
@@ -134,16 +138,18 @@ class RecipeBookTest {
     }
 
     @Test fun theListAndThePageReadAsTheyShouldShow() {
-        assertEquals("1 recipe", recipeCountLabel(1))
-        assertEquals("3 recipes", recipeCountLabel(3))
-        assertEquals("0 recipes", recipeCountLabel(0))
+        assertEquals("1 recipe", countLabel(1, "recipe", "recipes"))
+        assertEquals("3 recipes", countLabel(3, "recipe", "recipes"))
+        assertEquals("0 recipes", countLabel(0, "recipe", "recipes"))
         assertEquals("4 portions, 1600 g", yieldLine(chili))
         assertEquals("1 portion", yieldLine(chili.copy(portions = 1.0, totalWeight = null)))
         assertEquals("900 g", yieldLine(chili.copy(portions = null, totalWeight = 900.0)))
         assertEquals("4 portions, 1600 g, 1500 ml", yieldLine(chili.copy(totalVolume = 1500.0)))
         assertEquals("1500 ml", yieldLine(chili.copy(portions = null, totalWeight = null, totalVolume = 1500.0)))
-        assertEquals("100 g", amountLine(100.0, MeasureUnit.GRAM))
-        assertEquals("1 portion", amountLine(1.0, MeasureUnit.PORTION))
+        assertEquals("100 g", previewQuantityLine(100.0, MeasureUnit.GRAM))
+        assertEquals("1 portion", previewQuantityLine(1.0, MeasureUnit.PORTION))
+        assertEquals("2 cups", previewQuantityLine(2.0, MeasureUnit.CUP))
+        assertEquals("2 pieces", previewQuantityLine(2.0, MeasureUnit.PIECE))
         assertEquals("—" to "g", macroFact(com.iron.breakfast.domain.MacroTotal(0.0, 0, 2)))
         assertEquals("12.5" to "g ?", macroFact(com.iron.breakfast.domain.MacroTotal(12.5, 1, 1)))
         assertEquals("12" to "g", macroFact(com.iron.breakfast.domain.MacroTotal(12.0, 2, 0)))

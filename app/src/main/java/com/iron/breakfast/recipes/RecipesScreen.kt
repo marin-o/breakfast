@@ -1,5 +1,9 @@
 package com.iron.breakfast.recipes
 
+import com.iron.breakfast.ui.screens.yieldLine
+import com.iron.breakfast.ui.screens.macroFact
+import com.iron.breakfast.ui.screens.previewQuantityLine
+import com.iron.breakfast.ui.countLabel
 import androidx.compose.foundation.layout.PaddingValues
 import com.iron.breakfast.ui.components.BottomAreaClearance
 import androidx.compose.foundation.background
@@ -25,17 +29,13 @@ import com.iron.breakfast.app.Surfaces
 import com.iron.breakfast.domain.MacroTotal
 import com.iron.breakfast.domain.Measure
 import com.iron.breakfast.domain.MealSlot
-import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.Recipe
 import com.iron.breakfast.domain.asFood
-import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.domain.nutritionFor
 import com.iron.breakfast.domain.shownServing
-import com.iron.breakfast.domain.yields
 import com.iron.breakfast.library.FoodAmountSheet
 import com.iron.breakfast.library.LibraryFactRow
 import com.iron.breakfast.library.libraryPresetMeal
-import com.iron.breakfast.log.previewQuantityLine
 import com.iron.breakfast.ui.components.AddCircle
 import com.iron.breakfast.ui.components.DestructiveButton
 import com.iron.breakfast.ui.components.FoodRow
@@ -46,9 +46,7 @@ import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.components.foodText
 import com.iron.breakfast.ui.components.rememberMotion
 import com.iron.breakfast.ui.components.LocalScreenBody
-import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.screens.basisLabel
-import com.iron.breakfast.ui.screens.countedQuantity
 import com.iron.breakfast.ui.screens.formatKcal
 import com.iron.breakfast.ui.theme.BreakfastType
 import com.iron.breakfast.ui.theme.Gutter
@@ -74,7 +72,7 @@ internal fun RecipesScreen(recipes: RecipeBook, onNew: (() -> Unit)?, modifier: 
                 Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Recipes", color = colors.ink, style = BreakfastType.Section)
-                        Text(recipeCountLabel(list.size), color = colors.soft, style = BreakfastType.Meta)
+                        Text(countLabel(list.size, "recipe", "recipes"), color = colors.soft, style = BreakfastType.Meta)
                     }
                     if (onNew != null) TertiaryButton("New recipe", onNew)
                 }
@@ -96,7 +94,7 @@ private fun RecipeRow(recipes: RecipeBook, recipe: Recipe, modifier: Modifier) {
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         FoodRow(
             name = recipe.name,
-            quantityLine = amountLine(amount, unit),
+            quantityLine = previewQuantityLine(amount, unit),
             calories = formatKcal(recipe.nutritionFor(amount, unit)?.values?.calories ?: 0.0),
             modifier = Modifier.weight(1f),
             onClick = { recipes.openRecipe(recipe) },
@@ -166,20 +164,4 @@ internal fun RecipeLogSheet(recipes: RecipeBook, surfaces: Surfaces, automaticMe
         onInvalid = {},
         onDismiss = recipes::dismissLog,
     )
-}
-
-/** "1 recipe", "4 recipes": the Recipes tab's count line. */
-internal fun recipeCountLabel(count: Int): String = if (count == 1) "1 recipe" else "$count recipes"
-
-/** "1 portion", "2 portions", "100 g": an amount as a row's quantity line reads it. */
-internal fun amountLine(amount: Double, unit: MeasureUnit): String = countedQuantity(amount, unit) ?: "${amount.pretty()} ${unit.displayLabel()}"
-
-/** What a recipe makes: "4 portions", "1600 g", "1500 ml", or what it has of them, "4 portions, 1600 g, 1500 ml". */
-internal fun yieldLine(recipe: Recipe): String = recipe.yields().joinToString(", ") { (unit, amount) -> amountLine(amount, unit) }
-
-/** A macro's value and unit on the page: "—" with none known, "12" and "g ?" with some unknown, else "12" and "g". */
-internal fun macroFact(total: MacroTotal): Pair<String, String> = when {
-    total.allUnknown || total.known == 0 -> "—" to "g"
-    total.partial -> total.sum.pretty() to "g ?"
-    else -> total.sum.pretty() to "g"
 }

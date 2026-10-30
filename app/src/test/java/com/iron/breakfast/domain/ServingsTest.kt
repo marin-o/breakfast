@@ -1,6 +1,6 @@
 package com.iron.breakfast.domain
 
-import com.iron.breakfast.log.previewQuantityLine
+import com.iron.breakfast.ui.screens.previewQuantityLine
 import com.iron.breakfast.ui.screens.countedQuantity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

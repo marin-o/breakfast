@@ -1,5 +1,8 @@
 package com.iron.breakfast.log
 
+import com.iron.breakfast.ui.shortDateLabel
+import com.iron.breakfast.ui.countLabel
+import com.iron.breakfast.ui.screens.previewQuantityLine
 import com.iron.breakfast.ui.theme.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -60,9 +63,7 @@ import com.iron.breakfast.today.DayState
 import com.iron.breakfast.domain.DraftRow
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealSlot
-import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.ui.label
-import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.components.ChoiceOption
 import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.isLargeFont
@@ -71,12 +72,8 @@ import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.components.foodText
 import com.iron.breakfast.ui.components.rememberTick
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
-import com.iron.breakfast.today.shortDateLabel
 import com.iron.breakfast.ui.screens.formatKcal
 import com.iron.breakfast.ui.screens.choiceKcalDetail
-import com.iron.breakfast.ui.screens.foodCountLabel
-import com.iron.breakfast.ui.screens.countedQuantity
-import com.iron.breakfast.ui.screens.labelFor
 
 
 /**
@@ -158,7 +155,7 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
         val sum: @Composable (Modifier) -> Unit = { modifier ->
             Column(modifier) {
                 Text("+${formatKcal(kcal)}", color = colors.ink, style = BreakfastType.Section)
-                Text("kcal, ${foodCountLabel(logged.size)}", color = colors.soft, style = BreakfastType.Meta)
+                Text("kcal, ${countLabel(logged.size, "food", "foods")}", color = colors.soft, style = BreakfastType.Meta)
             }
         }
         val addButton: @Composable (Boolean) -> Unit = { fill ->
@@ -280,11 +277,3 @@ internal fun syncedInputField(field: TextFieldValue, text: String): TextFieldVal
 
 /** The Log field for [text] with the caret at the end: a page that opens again starts there, not at the start. */
 internal fun inputFieldFor(text: String): TextFieldValue = TextFieldValue(text, TextRange(text.length))
-
-/**
- * The quantity line of a Log row. Counted pieces and portions read as the user typed them (`2 pieces`, `1 portion`),
- * never with ≈. Other units show ≈ only when the amount was converted (1 tbsp as grams).
- */
-internal fun previewQuantityLine(amount: Double, unit: com.iron.breakfast.domain.MeasureUnit, approximate: Boolean, label: String? = null): String =
-    countedQuantity(amount, unit, label) ?: "${if (approximate) "≈" else ""}${amount.pretty()} ${unit.labelFor(amount)}"
-

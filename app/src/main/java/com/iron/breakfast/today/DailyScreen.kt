@@ -1,5 +1,8 @@
 package com.iron.breakfast.today
 
+import com.iron.breakfast.ui.screens.dailyMacroNote
+import com.iron.breakfast.ui.screens.macroStats
+import com.iron.breakfast.ui.shortDateLabel
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import com.iron.breakfast.ui.components.BottomAreaClearance
@@ -53,20 +56,16 @@ import com.iron.breakfast.search.OffSearch
 import com.iron.breakfast.settings.SettingsState
 import com.iron.breakfast.contribution.ContributionAction
 import com.iron.breakfast.domain.FoodRecord
-import com.iron.breakfast.domain.MacroTotal
-import com.iron.breakfast.domain.MacroTotals
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.nutritionTotalOf
 import com.iron.breakfast.domain.macroTotalsOf
 import com.iron.breakfast.ui.label
-import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.components.LocalScreenBody
 import com.iron.breakfast.ui.components.ChoiceOption
 import com.iron.breakfast.ui.components.DayHeader
 import com.iron.breakfast.ui.components.DayTotal
 import com.iron.breakfast.ui.components.FoodRow
-import com.iron.breakfast.ui.components.MacroStat
 import com.iron.breakfast.ui.components.MealHeader
 import com.iron.breakfast.ui.components.AnimatedRows
 import com.iron.breakfast.ui.components.Motion
@@ -76,8 +75,6 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 import kotlin.math.abs
 import com.iron.breakfast.ui.screens.formatKcal
 import com.iron.breakfast.ui.screens.earliestMealTime
@@ -154,7 +151,7 @@ internal fun DailyScreen(
                 val macros = macroTotalsOf(selected.map { it.nutritionSnapshot })
                 DayTotal(
                     formatKcal(total.calories),
-                    if (settings.showMacros) dailyMacroStats(total.calories, macros) else emptyList(),
+                    if (settings.showMacros) macroStats(total.calories, macros) else emptyList(),
                     Modifier.padding(top = 18.dp),
                     note = dailyMacroNote(macros, showMacros = settings.showMacros, showNote = settings.showMissingNote),
                 )
@@ -219,33 +216,6 @@ private fun DayPickerDialog(dayKey: String, todayKey: String, onDismiss: () -> U
     ) { DatePicker(state = state) }
 }
 
-/**
- * Macro columns for the day total. Each bar is the macro's known share of the day's kcal. A macro no entry has reads
- * "—", as the Library shows an unknown value; a sum that leaves out entries without the macro reads "12 g ?".
- */
-internal fun dailyMacroStats(kcal: Double, macros: MacroTotals): List<MacroStat> {
-    fun stat(label: String, total: MacroTotal, kcalPerGram: Double): MacroStat {
-        val share = if (kcal > 0.0) (total.sum * kcalPerGram / kcal).toFloat() else 0f
-        return when {
-            total.allUnknown -> MacroStat(label, "—", "g", share)
-            total.partial -> MacroStat(label, total.sum.pretty(), "g ?", share)
-            else -> MacroStat(label, total.sum.pretty(), "g", share)
-        }
-    }
-    return listOf(
-        stat("Protein", macros.protein, 4.0),
-        stat("Carbs", macros.carbohydrates, 4.0),
-        stat("Fat", macros.fat, 9.0),
-    )
-}
-
-/**
- * The one line under the macros when any of them shows "?". Never drawn when the macros are hidden ("Macros on today"
- * Hide) or the note is ("Missing values note" Hide).
- */
-internal fun dailyMacroNote(macros: MacroTotals, showMacros: Boolean = true, showNote: Boolean = true): String? =
-    if (showMacros && showNote && macros.anyPartial) "? some foods have no value" else null
-
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun DailyMealSection(
@@ -304,6 +274,3 @@ internal fun CorrectionStrip(feedback: MatchFeedback, search: OffSearch, entry: 
         }
     }
 }
-
-/** "Wed 14 Oct", English. */
-internal fun shortDateLabel(dayKey: String): String = runCatching { LocalDate.parse(dayKey).format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH)) }.getOrDefault(dayKey)

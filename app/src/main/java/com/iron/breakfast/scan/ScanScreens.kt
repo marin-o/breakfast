@@ -1,5 +1,10 @@
 package com.iron.breakfast.scan
 
+import com.iron.breakfast.ui.shortMacroLine
+import com.iron.breakfast.ui.screens.kcalLabel
+import com.iron.breakfast.ui.screens.editableNumber
+import com.iron.breakfast.domain.sourceLetter
+import com.iron.breakfast.domain.parseDecimal
 import com.iron.breakfast.ui.theme.*
 import android.Manifest
 import android.content.pm.PackageManager
@@ -100,7 +105,6 @@ import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.domain.normalizeBarcode
 import com.iron.breakfast.domain.scannedProductBarcode
 import com.iron.breakfast.ui.label
-import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.components.foodText
 import com.iron.breakfast.ui.components.ButtonKind
 import com.iron.breakfast.ui.components.Field
@@ -117,8 +121,6 @@ import com.iron.breakfast.ui.components.TertiaryButton
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.domain.NutritionValues
 import java.util.concurrent.atomic.AtomicBoolean
-import com.iron.breakfast.ui.screens.sourceLetter
-import com.iron.breakfast.ui.screens.parseProductAmount
 import com.iron.breakfast.ui.screens.productApproxLabel
 import com.iron.breakfast.ui.screens.basisLabel
 import com.iron.breakfast.ui.screens.formatKcal
@@ -397,7 +399,7 @@ internal fun nutrientFieldsFitRow(availableDp: Float, fontScale: Float): Boolean
 }
 
 private fun amountFieldText(review: ProductReview): String =
-    "${review.amount.toDoubleOrNull()?.pretty() ?: review.amount} ${review.unit}".trim()
+    "${parseDecimal(review.amount)?.let(::editableNumber) ?: review.amount} ${review.unit}".trim()
 
 /**
  * Review of a scanned (or Open Food Facts) product before anything is written. Add logs it to the chosen
@@ -425,8 +427,7 @@ private fun amountFieldText(review: ProductReview): String =
         review.carbs.toDoubleOrNull(),
         review.fat.toDoubleOrNull(),
     )
-    val per100 = "${basisLabel(basis.amount, basis.unit)}: ${formatKcal(values.calories)} kcal, " +
-        "P ${values.protein?.pretty() ?: "—"}, C ${values.carbohydrates?.pretty() ?: "—"}, F ${values.fat?.pretty() ?: "—"}"
+    val per100 = "${basisLabel(basis.amount, basis.unit)}: ${kcalLabel(values.calories)}, ${shortMacroLine(values)}"
     Sheet(onDismissRequest = review::close, skipPartiallyExpanded = true) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState())) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -457,7 +458,7 @@ private fun amountFieldText(review: ProductReview): String =
                 onValueChange = {
                     amountText = it
                     val next = parseProductAmount(it, basis.unit)
-                    review.onAmount(next?.amount?.toString().orEmpty())
+                    review.onAmount(editableNumber(next?.amount))
                     if (next != null) review.onUnit(next.unit.displayLabel())
                 },
                 modifier = Modifier.padding(top = 16.dp),

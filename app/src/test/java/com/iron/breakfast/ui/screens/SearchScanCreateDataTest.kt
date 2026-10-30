@@ -1,5 +1,7 @@
 package com.iron.breakfast.ui.screens
 
+import com.iron.breakfast.food.createFoodState
+import com.iron.breakfast.scan.parseProductAmount
 import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.FoodOrigin
@@ -24,13 +26,6 @@ class SearchScanCreateDataTest {
         nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(120.0, 2.0, 9.0, 8.0)),
         conversions = listOf(ServingConversion(MeasureUnit.TABLESPOON, 15.0, "estimate", approximate = true)),
     )
-
-    @Test
-    fun basisCaptionFollowsTheProductsOwnUnit() {
-        assertEquals("/100 g", basisCaption(100.0, MeasureUnit.GRAM))
-        assertEquals("/100 ml", basisCaption(100.0, MeasureUnit.MILLILITER))
-        assertEquals("/250 ml", basisCaption(250.0, MeasureUnit.MILLILITER))
-    }
 
     @Test
     fun unknownDisplayKeepsTheTypedQuantity() {

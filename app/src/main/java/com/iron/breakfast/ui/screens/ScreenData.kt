@@ -1,50 +1,32 @@
 package com.iron.breakfast.ui.screens
 
-import com.iron.breakfast.domain.FoodOrigin
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.KCAL_PER_GRAM_CARBS
+import com.iron.breakfast.domain.KCAL_PER_GRAM_FAT
+import com.iron.breakfast.domain.KCAL_PER_GRAM_PROTEIN
+import com.iron.breakfast.domain.MacroTotal
+import com.iron.breakfast.domain.MacroTotals
+import com.iron.breakfast.domain.Recipe
+import com.iron.breakfast.domain.yields
+import com.iron.breakfast.domain.sourceLetter
+import com.iron.breakfast.ui.clockLabel
+import com.iron.breakfast.ui.components.MacroStat
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.Calculation
 import com.iron.breakfast.domain.NutritionCalculator
-import com.iron.breakfast.domain.NutritionInput
-import com.iron.breakfast.domain.ParsedAmountUnit
-import com.iron.breakfast.domain.ResolvedNutrition
 import com.iron.breakfast.domain.ShorthandParser
 import com.iron.breakfast.domain.TypedPart
-import com.iron.breakfast.domain.parseStrictAmountUnit
-import com.iron.breakfast.domain.parseDecimal
-import com.iron.breakfast.domain.resolveNutrition
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.domain.ShorthandLexicon
 import com.iron.breakfast.domain.servingNameFor
 import com.iron.breakfast.settings.DisplayDecimal
 import com.iron.breakfast.settings.markDecimals
 import com.iron.breakfast.ui.pretty
-import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.round
-
-/**
- * Source boxes describe the local record's provenance. Personal overrides remain P even when
- * their underlying record came from OFF. A bundled marker is reserved for an actual catalogue
- * fixture; an otherwise unknown generic record has no trustworthy source and is marked "?".
- */
-internal fun sourceLetter(food: FoodRecord?): String = when {
-    food == null -> "?"
-    food.origin == FoodOrigin.CUSTOM || food.personalOverride -> "P"
-    FoodCatalog.fixtures.any { it.id == food.id } -> "B"
-    isOpenFoodFactsSource(food) -> "O"
-    else -> "?"
-}
-
-/** OFF provenance is independent from the source box: local overrides still may be contributed. */
-private fun isOpenFoodFactsSource(food: FoodRecord): Boolean =
-    food.sourceName?.contains("open food facts", ignoreCase = true) == true ||
-        food.sourceId?.startsWith("off", ignoreCase = true) == true
 
 internal data class QuantityDisplay(
     val line: String,
@@ -57,9 +39,12 @@ internal fun QuantityDisplay.plainLine(): String = approximateLabel?.let { "≈$
 /** Whole kcal, used the same way in every row, total and sheet. */
 internal fun formatKcal(value: Double): String = round(value).toInt().toString()
 
+/** "233 kcal". */
+internal fun kcalLabel(value: Double): String = "${formatKcal(value)} kcal"
+
 /** The kcal a Log choice shows. None when the choice cannot be counted, so it never reads "0 kcal". */
 internal fun choiceKcalDetail(calculation: Calculation): String? =
-    calculation.takeIf { it.supported }?.let { "${formatKcal(it.nutrition.calories)} kcal" }
+    calculation.takeIf { it.supported }?.let { kcalLabel(it.nutrition.calories) }
 
 internal fun quantityRateDisplay(
     entry: MealEntry,
@@ -102,13 +87,19 @@ internal fun quantityRateDisplay(
 internal fun countedQuantity(amount: Double, unit: MeasureUnit, label: String? = null): String? = when {
     unit == MeasureUnit.SERVING -> label?.let { "${amount.pretty()} ${servingNameFor(it, amount)}" }
     label != null -> ShorthandLexicon.factorOf(label)?.let { factor -> "${(amount / factor).pretty()} $label" }
-    unit == MeasureUnit.PIECE -> "${amount.pretty()} ${if (amount == 1.0) "piece" else "pieces"}"
-    unit == MeasureUnit.PORTION -> "${amount.pretty()} ${if (amount == 1.0) "portion" else "portions"}"
+    unit == MeasureUnit.PIECE || unit == MeasureUnit.PORTION -> "${amount.pretty()} ${servingNameFor(unit.displayLabel(), amount)}"
     else -> null
 }
 
 /** A unit's label for [amount] of it: "cups" for more than one cup, else its label. */
-internal fun MeasureUnit.labelFor(amount: Double): String = if (this == MeasureUnit.CUP && amount != 1.0) "cups" else displayLabel()
+internal fun MeasureUnit.labelFor(amount: Double): String = if (this == MeasureUnit.CUP) servingNameFor(displayLabel(), amount) else displayLabel()
+
+/**
+ * The one amount line of a row: counted pieces and portions read as the user typed them (`2 pieces`, `1 portion`), never
+ * with ≈; other units show ≈ only when the amount was converted (1 tbsp as grams).
+ */
+internal fun previewQuantityLine(amount: Double, unit: MeasureUnit, approximate: Boolean = false, label: String? = null): String =
+    countedQuantity(amount, unit, label) ?: "${if (approximate) "≈" else ""}${amount.pretty()} ${unit.labelFor(amount)}"
 
 private const val MAX_RATE_UNIT_LINE = 28
 
@@ -124,11 +115,6 @@ internal fun editableNumber(value: Double?): String {
     if (value == null || !value.isFinite()) return ""
     return java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
 }
-
-/** "Wed 14 October", the date part of the entry detail line. */
-internal fun entryDateLabel(dayKey: String): String =
-    runCatching { java.time.LocalDate.parse(dayKey) }.getOrNull()
-        ?.format(DateTimeFormatter.ofPattern("EEE d MMMM", Locale.ENGLISH)) ?: dayKey
 
 /** The last moment a date picker may offer: the end of [todayKey] in [zone], so no day after today can be picked. */
 internal fun datePickerMaxMs(todayKey: String, zone: ZoneId): Long =
@@ -184,29 +170,15 @@ private fun formatAmount(value: Double, digits: Int): String {
 
 internal fun earliestMealTime(entries: List<MealEntry>, zoneId: ZoneId = ZoneId.systemDefault()): String? {
     val savedAt = entries.minOfOrNull { it.savedAtEpochMs } ?: return null
-    return DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT)
-        .withZone(zoneId).format(Instant.ofEpochMilli(savedAt))
+    return clockLabel(savedAt, zoneId)
 }
 
 
 /** "Per 100 g", "Per 250 ml": always the food's real nutrition basis. */
 internal fun basisLabel(amount: Double, unit: MeasureUnit): String = "Per ${amount.pretty()} ${unit.label}"
 
-/**
- * Open Food Facts foods keep their source code in `sourceId`; once the local barcode no longer
- * matches it, edited numbers must not be submitted under a different product code.
- */
-internal fun contributionAvailable(food: FoodRecord): Boolean {
-    val barcode = com.iron.breakfast.domain.normalizeBarcode(food.barcode ?: return false) ?: return false
-    // A food that cannot become a draft (implausible per 100 g, no g or ml basis) offers no action that would only refuse.
-    if (com.iron.breakfast.data.OffContributionDraft.fromFood(food) == null) return false
-    return !isOpenFoodFactsSource(food) || com.iron.breakfast.domain.sameBarcode(food.sourceId, barcode)
-}
-
-internal fun foodCountLabel(count: Int): String = if (count == 1) "1 food" else "$count foods"
-
-/** "/100 g" or "/100 ml": the caption under an Open Food Facts kcal figure, by the product's own basis unit. */
-internal fun basisCaption(amount: Double, unit: MeasureUnit): String = "/${amount.pretty()} ${unit.label}"
+/** "kcal per 100 ml": the column of a list of kcal figures on a food's basis. */
+internal fun kcalBasisLabel(amount: Double, unit: MeasureUnit): String = "kcal per ${amount.pretty()} ${unit.label}"
 
 /** The unresolved quote of the resolve queue: its kept quantity ("2 tbsp", when typed) and the food words. */
 internal data class UnknownDisplay(val quantity: String?, val name: String)
@@ -228,7 +200,7 @@ internal fun matchDisplay(food: FoodRecord, raw: String, calculator: NutritionCa
     val amount = parsed.amount ?: food.defaultAmount
     val unit = parsed.unit ?: food.defaultUnit
     val calculation = calculator.calculate(food, amount, unit)
-    val entered = "${amount.pretty()} ${unit.displayLabel()}".trim()
+    val entered = previewQuantityLine(amount, unit).trim()
     if (!calculation.supported) return MatchDisplay("—", null, entered)
     val converted = unit != food.nutrition.unit
     val base = "(${calculation.resolvedBaseAmount.pretty()} ${food.nutrition.unit.label})"
@@ -244,32 +216,40 @@ internal fun matchDisplay(food: FoodRecord, raw: String, calculator: NutritionCa
     )
 }
 
-/** Review amount field: "2 tbsp", or a bare number meaning the product's own basis unit. Null while it cannot be logged. */
-internal fun parseProductAmount(text: String, basisUnit: MeasureUnit): ParsedAmountUnit? {
-    val bare = parseDecimal(text)
-    if (bare != null) return if (bare > 0.0) ParsedAmountUnit(bare, basisUnit) else null
-    return parseStrictAmountUnit(text)
-}
-
 /** "30 g" for the red chip beside a household-measure amount; null for exact amounts. */
 internal fun productApproxLabel(calculation: Calculation?, enteredUnit: MeasureUnit?, basisUnit: MeasureUnit): String? =
     calculation?.takeIf { it.supported && it.approximate && enteredUnit != null && enteredUnit != basisUnit }
         ?.let { "${it.resolvedBaseAmount.pretty()} ${basisUnit.label}" }
 
-/** What the create form resolves to and whether it can be saved. Calories are required. */
-internal data class CreateFoodState(
-    val nutrition: ResolvedNutrition,
-    val caloriesMissing: Boolean,
-    /** The red ring and "Required: kcal" tag: shown once the user has started on nutrition. */
-    val showRequired: Boolean,
-    val canSave: Boolean,
-)
-
-internal fun createFoodState(input: NutritionInput, name: String, barcodeError: String?): CreateFoodState {
-    val nutrition = resolveNutrition(input)
-    val missing = nutrition.calories == null
-    val touched = listOf(input.shorthand, input.calories, input.protein, input.carbs, input.fat).any { it.isNotBlank() }
-    return CreateFoodState(nutrition, missing, showRequired = missing && touched, canSave = !missing && name.isNotBlank() && barcodeError == null)
+/** A macro's value and unit as shown: "—" with none known, "12" and "g ?" with some unknown, else "12" and "g". */
+internal fun macroFact(total: MacroTotal): Pair<String, String> = when {
+    total.allUnknown -> "—" to "g"
+    total.partial -> total.sum.pretty() to "g ?"
+    else -> total.sum.pretty() to "g"
 }
 
+/**
+ * The three macro columns under a kcal figure ([macros] of [kcal]), each with its known share of the kcal: a day's total
+ * and one entry's. A macro nothing has reads "—"; a sum that leaves some out reads "12 g ?".
+ */
+internal fun macroStats(kcal: Double, macros: MacroTotals): List<MacroStat> {
+    fun stat(label: String, total: MacroTotal, kcalPerGram: Double): MacroStat {
+        val (value, unit) = macroFact(total)
+        return MacroStat(label, value, unit, total.shareOf(kcal, kcalPerGram))
+    }
+    return listOf(
+        stat("Protein", macros.protein, KCAL_PER_GRAM_PROTEIN),
+        stat("Carbs", macros.carbohydrates, KCAL_PER_GRAM_CARBS),
+        stat("Fat", macros.fat, KCAL_PER_GRAM_FAT),
+    )
+}
 
+/**
+ * The one line under the macros when any of them shows "?". Never drawn when the macros are hidden ("Macros on today"
+ * Hide) or the note is ("Missing values note" Hide).
+ */
+internal fun dailyMacroNote(macros: MacroTotals, showMacros: Boolean = true, showNote: Boolean = true): String? =
+    if (showMacros && showNote && macros.anyPartial) "? some foods have no value" else null
+
+/** What a recipe makes: "4 portions", "1600 g", "1500 ml", or what it has of them, "4 portions, 1600 g, 1500 ml". */
+internal fun yieldLine(recipe: Recipe): String = recipe.yields().joinToString(", ") { (unit, amount) -> previewQuantityLine(amount, unit) }

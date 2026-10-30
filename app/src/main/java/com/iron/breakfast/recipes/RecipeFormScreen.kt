@@ -1,5 +1,7 @@
 package com.iron.breakfast.recipes
 
+import com.iron.breakfast.domain.POSITIVE_AMOUNT_MESSAGE
+import com.iron.breakfast.ui.screens.previewQuantityLine
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,7 +43,6 @@ import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.Measure
 import com.iron.breakfast.domain.decimalInput
-import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.library.FoodAmountSheet
 import com.iron.breakfast.library.defaultServingCalories
 import com.iron.breakfast.log.DraftParts
@@ -57,7 +58,6 @@ import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.components.SearchField
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.components.rememberMotion
-import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.theme.Gutter
 import com.iron.breakfast.ui.theme.IconTarget
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
@@ -116,7 +116,7 @@ private fun TotalField(form: RecipeForm) {
         Field(
             "Total", fields.total, form::onTotal, Modifier.weight(1.6f),
             error = error,
-            errorMessage = if (error) "Enter a positive amount." else null,
+            errorMessage = if (error) POSITIVE_AMOUNT_MESSAGE else null,
         )
         listOf(MeasureUnit.GRAM, MeasureUnit.MILLILITER).forEach { candidate ->
             ChoiceOption(candidate.label, unit == candidate, { form.onTotalUnit(candidate) }, Modifier.weight(1f))
@@ -131,7 +131,7 @@ private fun YieldField(label: String, value: String, onValue: (String) -> Unit, 
     Field(
         label, value, { onValue(it.decimalInput()) }, modifier,
         error = error,
-        errorMessage = if (error) "Enter a positive amount." else null,
+        errorMessage = if (error) POSITIVE_AMOUNT_MESSAGE else null,
         hint = hint,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
     )
@@ -190,7 +190,7 @@ internal fun RecipeIngredientSearch(form: RecipeForm) {
                 items(form.results, key = { it.id }) { food ->
                     FoodRow(
                         name = food.name,
-                        quantityLine = "${food.defaultAmount.pretty()} ${food.defaultUnit.displayLabel()}",
+                        quantityLine = previewQuantityLine(food.defaultAmount, food.defaultUnit),
                         calories = defaultServingCalories(food),
                         modifier = Modifier.animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem()),
                         onClick = { form.pick(food) },
