@@ -54,11 +54,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.core.Animatable
@@ -816,12 +815,11 @@ fun BottomNav(
     val memory = LocalNavMemory.current
     val active = if (settingsOpen) GEAR else selected.ordinal
     // Where each item sits in the bar, in px: the line goes under the one that is active.
-    val spans = remember { mutableStateMapOf<Int, Pair<Float, Float>>() }
-    var barLeft by remember { mutableFloatStateOf(0f) }
+    val spans = remember { NavSpans() }
     val start = remember { Animatable(0f) }
     val width = remember { Animatable(0f) }
     var placed by remember { mutableStateOf(false) }
-    val target = spans[active]
+    val target = spans.of(active)
     LaunchedEffect(active, target) {
         val (toStart, toWidth) = target ?: return@LaunchedEffect
         if (!placed) {
@@ -839,7 +837,7 @@ fun BottomNav(
     Row(
         modifier
             .fillMaxWidth()
-            .onGloballyPositioned { barLeft = it.positionInRoot().x }
+            .onGloballyPositioned { spans.bar = it; spans.measure() }
             .drawBehind {
                 if (placed && width.value > 0f) {
                     val y = size.height - 8.dp.toPx()
@@ -849,7 +847,7 @@ fun BottomNav(
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        fun Modifier.span(item: Int) = onGloballyPositioned { spans[item] = (it.positionInRoot().x - barLeft) to it.size.width.toFloat() }
+        fun Modifier.span(item: Int) = onGloballyPositioned { spans.items[item] = it; spans.measure() }
         // Equal sides keep the tabs centred; each side is at least the icon's width.
         Spacer(Modifier.weight(1f).widthIn(min = IconTarget))
         Row(Modifier.selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
@@ -867,6 +865,28 @@ fun BottomNav(
             IconButton(onClick = onSettings, modifier = Modifier.size(IconTarget)) {
                 Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = tint, modifier = Modifier.size(22.dp).span(GEAR))
             }
+        }
+    }
+}
+
+/**
+ * Where the bar's items sit, measured in the bar itself: whichever of the bar and an item is placed last measures them
+ * all, so no inset between the bar and the window counts. A span is written only when it moved, so the bar riding the
+ * keyboard (each frame of its animation) does not draw it again.
+ */
+private class NavSpans {
+    var bar: LayoutCoordinates? = null
+    val items = arrayOfNulls<LayoutCoordinates>(GEAR + 1)
+    private val spans = mutableStateMapOf<Int, Pair<Float, Float>>()
+
+    fun of(item: Int): Pair<Float, Float>? = spans[item]
+
+    fun measure() {
+        val bar = bar?.takeIf { it.isAttached } ?: return
+        items.forEachIndexed { item, coords ->
+            if (coords == null || !coords.isAttached) return@forEachIndexed
+            val span = bar.localPositionOf(coords, Offset.Zero).x to coords.size.width.toFloat()
+            if (spans[item] != span) spans[item] = span
         }
     }
 }
@@ -958,6 +978,7 @@ fun Snackbar(
 @Composable
 internal fun ConfirmationSnackbar(message: String?, modifier: Modifier = Modifier) {
     // [modifier] places the whole reveal (an align in a Box must sit on it); the 8dp gap comes and goes with the bar.
+    if (LocalScreenLeaving.current) return
     Reveal(message, modifier) { Snackbar(it, modifier = Modifier.padding(bottom = 8.dp)) }
 }
 

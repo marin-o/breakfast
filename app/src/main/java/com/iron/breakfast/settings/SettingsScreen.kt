@@ -2,7 +2,6 @@ package com.iron.breakfast.settings
 
 import com.iron.breakfast.ui.components.inert
 import com.iron.breakfast.ui.components.rememberMotion
-import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -68,7 +67,8 @@ internal fun SettingsScreen(settings: SettingsState, surfaces: Surfaces, transfe
         transitionSpec = { motion.pageChange(deeper = pageDepth(targetState) > pageDepth(initialState)) },
         label = "settings page",
     ) { page ->
-        val leaving = transition.targetState == EnterExitState.PostExit
+        // Leaving from the frame the change starts, so a quick second tap cannot reach it.
+        val leaving = page != settings.page
         val scroll = rememberScrollState()
         Column(Modifier.fillMaxSize().then(if (leaving) Modifier.inert() else Modifier).background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(scroll).padding(horizontal = Gutter, vertical = 4.dp)) {
             TopBar(page?.title ?: "Settings", surfaces::settingsBack, Modifier.padding(top = 8.dp))

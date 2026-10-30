@@ -169,6 +169,12 @@ internal enum class BaseMove { FORWARD, BACK, RISE, FALL, NONE }
  */
 internal val LocalScreenBody = compositionLocalOf<Modifier> { Modifier }
 
+/**
+ * Whether this base screen or Settings page is on its way out: it then takes no input, shows no snackbar (the screen
+ * coming in shows it) and asks for no keyboard.
+ */
+internal val LocalScreenLeaving = compositionLocalOf { false }
+
 /** The [Motion] for this composition: reduced by [rememberMotionReduced]. */
 @Composable
 internal fun rememberMotion(): Motion {

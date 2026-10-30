@@ -106,6 +106,7 @@ import com.iron.breakfast.ui.components.NavTab
 import com.iron.breakfast.ui.components.ConfirmationSnackbar
 import com.iron.breakfast.ui.components.rememberMotion
 import com.iron.breakfast.ui.components.LocalScreenBody
+import com.iron.breakfast.ui.components.LocalScreenLeaving
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import com.iron.breakfast.ui.screens.entryDateLabel
 import com.iron.breakfast.ui.screens.formatKcal
@@ -212,7 +213,8 @@ internal fun LibraryComposer(library: LibraryState, resolve: ResolveFlow, scan: 
     // While resolving, a cleared search lands here: the bar takes the keyboard so typing goes on.
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    val resolveCleared = resolve.resolvingPart && library.query.isEmpty()
+    // A Library on its way out leaves the keyboard to the screen coming in.
+    val resolveCleared = resolve.resolvingPart && library.query.isEmpty() && !LocalScreenLeaving.current
     LaunchedEffect(resolveCleared) { if (resolveCleared) { runCatching { focus.requestFocus() }; keyboard?.show() } }
     Column(Modifier.fillMaxWidth().background(colors.bg).then(if (inMeal) Modifier else Modifier.navigationBarsPadding()).padding(horizontal = Gutter, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         InkBar(if (inMeal) Modifier.navigationBarsPadding() else Modifier) {

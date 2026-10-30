@@ -69,6 +69,7 @@ import com.iron.breakfast.ui.label
 import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.components.BottomNav
 import com.iron.breakfast.ui.components.LocalScreenBody
+import com.iron.breakfast.ui.components.LocalScreenLeaving
 import com.iron.breakfast.ui.components.NavTab
 import com.iron.breakfast.ui.components.ChoiceOption
 import com.iron.breakfast.ui.components.Composer
@@ -324,12 +325,15 @@ internal fun DailyComposer(
 ) {
     val tick = rememberTick()
     ComposerFade(modifier) {
-        Reveal(undo.loggedMessage) { Snackbar(it, UNDO, { tick(); undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
-        Reveal(undo.deletedEntry) { Snackbar(deletedText(it), UNDO, { tick(); undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
-        ConfirmationSnackbar(confirmations.message)
-        if (reminders.shownOnDaily(covered = surfaces.baseCovered())) {
-            LaunchedEffect(Unit) { reminders.onScreenNow() }
-            Snackbar("Export your diary.", "Export", reminders::export, Modifier.padding(bottom = 8.dp))
+        // A Daily on its way out leaves its snackbars to the screen coming in, so they show once.
+        if (!LocalScreenLeaving.current) {
+            Reveal(undo.loggedMessage) { Snackbar(it, UNDO, { tick(); undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
+            Reveal(undo.deletedEntry) { Snackbar(deletedText(it), UNDO, { tick(); undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
+            ConfirmationSnackbar(confirmations.message)
+            if (reminders.shownOnDaily(covered = surfaces.baseCovered())) {
+                LaunchedEffect(Unit) { reminders.onScreenNow() }
+                Snackbar("Export your diary.", "Export", reminders::export, Modifier.padding(bottom = 8.dp))
+            }
         }
         val draft = log.draft.isNotBlank()
         Composer(

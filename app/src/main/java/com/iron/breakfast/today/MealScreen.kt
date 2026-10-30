@@ -75,6 +75,7 @@ import com.iron.breakfast.ui.components.Motion
 import com.iron.breakfast.ui.components.Reveal
 import com.iron.breakfast.ui.components.rememberMotion
 import com.iron.breakfast.ui.components.LocalScreenBody
+import com.iron.breakfast.ui.components.LocalScreenLeaving
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.theme.BreakfastType
 import com.iron.breakfast.ui.theme.Gutter
@@ -176,9 +177,12 @@ internal fun MealComposer(
     val draft = log.draft.isNotBlank()
     val tick = rememberTick()
     ComposerFade(modifier) {
-        Reveal(undo.loggedMessage) { Snackbar(it, UNDO, { tick(); undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
-        Reveal(undo.deletedEntry) { deleted -> Snackbar(deletedText(deleted), UNDO, { tick(); undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
-        ConfirmationSnackbar(confirmations.message)
+        // A meal on its way out leaves its snackbars to the screen coming in, so they show once.
+        if (!LocalScreenLeaving.current) {
+            Reveal(undo.loggedMessage) { Snackbar(it, UNDO, { tick(); undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
+            Reveal(undo.deletedEntry) { deleted -> Snackbar(deletedText(deleted), UNDO, { tick(); undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
+            ConfirmationSnackbar(confirmations.message)
+        }
         Composer(
             placeholder = if (draft) log.draft else "Add to ${target.label()}",
             onClick = { log.open(target) },

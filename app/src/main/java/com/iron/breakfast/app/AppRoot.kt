@@ -28,9 +28,9 @@ import com.iron.breakfast.ui.components.inert
 import com.iron.breakfast.ui.components.LocalNavMemory
 import com.iron.breakfast.ui.components.NavMemory
 import com.iron.breakfast.ui.components.LocalScreenBody
+import com.iron.breakfast.ui.components.LocalScreenLeaving
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -223,17 +223,27 @@ private fun BaseScreens(vm: BreakfastViewModel, surface: Surface) {
     })
     val last = remember { BaseScreenMemory(shown.screen) }
     val move = remember(shown.screen) { baseMove(last.screen, shown.screen).also { last.screen = shown.screen } }
-    AnimatedContent(targetState = shown, transitionSpec = { motion.baseChange() }, label = "base") { state ->
-        val leaving = transition.targetState == EnterExitState.PostExit
+    // The Library and a meal's Library are one screen to it, as before: one search bar, which keeps its focus and
+    // keyboard when the Library changes between the two.
+    AnimatedContent(targetState = shown, transitionSpec = { motion.baseChange() }, contentKey = { it.key }, label = "base") { state ->
+        // Leaving from the frame the change starts, so a quick second tap cannot reach it.
+        val leaving = state.key != shown.key
         val body = Modifier.animateEnterExit(enter = motion.baseBodyIn(move), exit = motion.baseBodyOut(move))
-        CompositionLocalProvider(LocalScreenBody provides body) {
+        CompositionLocalProvider(LocalScreenBody provides body, LocalScreenLeaving provides leaving) {
             Box(if (leaving) Modifier.inert() else Modifier) { BaseScaffold(vm, state.screen.surface(), state.meal) }
         }
     }
 }
 
 /** A base screen and the meal it is about (the Meal screen's, or the one a meal's Library adds to). */
-private data class BaseShown(val screen: BaseScreen, val meal: MealSlot?)
+private data class BaseShown(val screen: BaseScreen, val meal: MealSlot?) {
+    /** Which composition draws it: a meal's own, the one Library, or the screen's. */
+    val key: Any get() = when (screen) {
+        BaseScreen.MEAL -> screen to meal
+        BaseScreen.LIBRARY, BaseScreen.MEAL_LIBRARY -> BaseScreen.LIBRARY
+        else -> screen
+    }
+}
 
 /** The base screen shown last, so a change knows where it comes from. */
 private class BaseScreenMemory(var screen: BaseScreen)
