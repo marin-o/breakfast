@@ -7,6 +7,9 @@ interface FoodProbe {
     /** True when [text], amount included, resolves to a food. */
     fun resolves(text: String): Boolean
 
+    /** True when [text] names a food the user picked, whatever its words would otherwise read as: it stays one part. */
+    fun isPinned(text: String): Boolean = false
+
     /** True when a single food covers every word of [phrase]. An exact name or alias counts. */
     fun covers(phrase: String): Boolean
 
@@ -85,7 +88,7 @@ class ShorthandParser {
             }
             start = end + 1
         }
-        return if (probe == null) spans else splitTrailingFragments(input, spans, probe)
+        return if (probe == null) spans else splitTrailingFragments(input, joinPinned(input, spans, probe), probe)
     }
 
     /**
@@ -93,6 +96,19 @@ class ShorthandParser {
      * words before it are a food on their own: "2 eggs zzq" is "2 eggs" and "zzq". The word is then a fragment the
      * user may still be typing, and the head stays a food row.
      */
+    /** Parts that together are a picked food's text are one part: "330 ml Protein 2 bar" is never "2 bar" on its own. */
+    private fun joinPinned(input: String, spans: List<SegmentSpan>, probe: FoodProbe): List<SegmentSpan> {
+        val out = mutableListOf<SegmentSpan>()
+        var i = 0
+        while (i < spans.size) {
+            val last = (spans.lastIndex downTo i + 1).firstOrNull { end ->
+                !input.substring(spans[i].start, spans[end].end).contains(',') && probe.isPinned(input.substring(spans[i].start, spans[end].end))
+            }
+            if (last == null) { out += spans[i]; i++ } else { out += spanOf(input, spans[i].start, spans[last].end); i = last + 1 }
+        }
+        return out
+    }
+
     private fun splitTrailingFragments(input: String, spans: List<SegmentSpan>, probe: FoodProbe): List<SegmentSpan> {
         val out = mutableListOf<SegmentSpan>()
         for (span in spans) {

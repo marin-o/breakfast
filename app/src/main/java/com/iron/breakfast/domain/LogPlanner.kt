@@ -122,11 +122,8 @@ class LogPlanner(
     }
 
     private fun computeResolution(raw: String): SegmentResolution? {
-        pins[raw]?.let { picked ->
-            val (amount, measure) = quantityFor(readingFor(raw, picked), picked)
-            val ranked = RankedFood(picked, score = 1.0, reasons = listOf("picked"), fullMatch = true, wholeMatch = true)
-            return SegmentResolution(raw, listOf(ranked), picked, amount, measure.unit, calculate(picked, amount, measure), label = measure.name)
-        }
+        pins[raw]?.let { picked -> return pickedResolution(raw, picked, readingFor(raw, picked)) }
+        namePinWithAmount(raw)?.let { (picked, reading) -> return pickedResolution(raw, picked, reading) }
         val reading = reading(raw)
         // A word separator left inside one part ("Ben & Jerry's") names one food only when one food covers all of it.
         if (parser.hasWordSeparator(raw) && !matcher.covers(reading.phrase)) return null
@@ -146,6 +143,28 @@ class LogPlanner(
         val recipe = resolutionOf(raw, portions, recipes)
         return if (recipe != null && recipe.supported && !recipe.needsChoice) recipe else plain
     }
+
+    private fun pickedResolution(raw: String, picked: FoodRecord, reading: Reading): SegmentResolution {
+        val (amount, measure) = quantityFor(reading, picked)
+        val ranked = RankedFood(picked, score = 1.0, reasons = listOf("picked"), fullMatch = true, wholeMatch = true)
+        return SegmentResolution(raw, listOf(ranked), picked, amount, measure.unit, calculate(picked, amount, measure), label = measure.name)
+    }
+
+    /**
+     * A food's name pinned by a tapped suggestion, with the amount typed after it ("Extra virgin olive oil 200 g", "Bread
+     * 2 slices"): that food, whatever the words of its name would read as ("Protein 2 bar 200 g"). Null when what follows
+     * the name is not an amount.
+     */
+    private fun namePinWithAmount(raw: String): Pair<FoodRecord, Reading>? {
+        val picked = pins.entries.firstOrNull { (part, food) -> part == food.name && raw.startsWith("$part ") }?.value ?: return null
+        val tail = parser.parse(raw.substring(picked.name.length + 1).trim())
+        if (tail.amount == null) return null
+        val word = tail.foodPhrase.trim()
+        if (word.isNotEmpty() && (tail.unit != null || picked.servingNamed(word) == null)) return null
+        return picked to Reading(tail.copy(foodPhrase = picked.name), wholeName = false, servingWord = word.ifEmpty { null })
+    }
+
+    private fun isPinned(raw: String): Boolean = pins.containsKey(raw) || namePinWithAmount(raw) != null
 
     private fun resolutionOf(raw: String, reading: Reading, ranked: List<RankedFood>): SegmentResolution? {
         val top = ranked.firstOrNull() ?: return null
@@ -311,8 +330,9 @@ class LogPlanner(
     }
 
     /**
-     * The input after the user taps [food] for the part being typed. The chosen text replaces that part; when text
-     * comes before it, a comma keeps the chosen amount from joining the earlier food ("2 eggs, 100 g Buckwheat").
+     * The input after the user taps [food] for the part being typed: its typed amount and the food's name ("200 g Extra
+     * virgin olive oil"), or with no amount typed just the name and a space. When text comes before it, a comma keeps it
+     * from joining the earlier food ("2 eggs, 100 g Buckwheat").
      */
     fun withChoice(input: String, food: FoodRecord, typing: Boolean = true): String = choose(input, food, typing).input
 
@@ -324,8 +344,19 @@ class LogPlanner(
         if (!typing || endsOpen(input)) return ChosenDraft(input, null)
         val span = segments(input).lastOrNull() ?: return ChosenDraft(input, null)
         if (ShorthandLexicon.mealSlotOf(span.text) != null) return ChosenDraft(input, null)
-        val text = chosenText(span.text, food)
-        return ChosenDraft(joinBefore(input.substring(0, span.start), text), text)
+        val before = input.substring(0, span.start)
+        if (statesAmount(span.text, food)) chosenText(span.text, food).let { return ChosenDraft(joinBefore(before, it), it) }
+        // No amount was typed, so none is written for the user to go back and edit: the name, then room to type one.
+        // Add logs the food's default if they do not; the row shows it.
+        return ChosenDraft(joinBefore(if (before.endsWith(',')) "$before " else before, food.name) + " ", food.name)
+    }
+
+    /** Whether [raw] says how much of [food]: a number, or an "a" that means one ([quantityFor]). */
+    private fun statesAmount(raw: String, food: FoodRecord): Boolean {
+        val reading = readingFor(raw, food)
+        if (reading.wholeName) return false
+        val parsed = reading.parsed
+        return parsed.amount != null || (parsed.articleQuantity && (food.defaultUnit == MeasureUnit.PIECE || reading.servingWord != null))
     }
 
     private fun joinBefore(prefix: String, replacement: String): String {
@@ -340,6 +371,8 @@ class LogPlanner(
         if (amount % 1.0 == 0.0) amount.toLong().toString() else amount.toString()
 
     private val probe = object : FoodProbe {
+        override fun isPinned(text: String): Boolean = this@LogPlanner.pins.isNotEmpty() && this@LogPlanner.isPinned(text)
+
         override fun resolves(text: String): Boolean {
             val resolution = resolve(text)
             return resolution != null && !resolution.needsChoice
@@ -394,7 +427,7 @@ class LogPlanner(
     private fun heldPartOf(input: String, typing: Boolean, known: List<String>?): String? {
         if (countTyping || !typing || input.isBlank() || endsOpen(input)) return null
         val last = (known ?: parser.split(input, probe)).lastOrNull() ?: return null
-        return last.takeUnless { pins.containsKey(it) || ShorthandLexicon.mealSlotOf(it) != null }
+        return last.takeUnless { isPinned(it) || ShorthandLexicon.mealSlotOf(it) != null }
     }
 
     private fun planOf(parts: List<String>): LogPlan {
@@ -428,7 +461,7 @@ class LogPlanner(
             val resolution = resolve(activeText)
             // Add saves the part being typed by the same rule as every other part (see [plan]), unless it is held back
             // until it is finished or picked ("Count what I'm typing" off).
-            val counts = countTyping || pins.containsKey(activeText)
+            val counts = countTyping || isPinned(activeText)
             counted = resolution?.takeIf { counts && it.supported && !it.needsChoice }
             // Each outcome renders the part exactly once: a suggestion group, a choice group, an entry row, or a
             // Not-in-your-foods row.

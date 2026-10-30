@@ -74,8 +74,8 @@ class DecimalInputTest {
     @Test fun pickingAChoiceAfterADigitAndACommaKeepsTheAmountsApart() {
         val banana = FoodCatalog.fixtures.first { it.id == "banana" }
         val picked = planner.withChoice("eggs 2,ban", banana)
-        assertEquals("eggs 2, 1 piece Banana", picked)
-        assertEquals(listOf("eggs 2", "1 piece Banana"), planner.segments(picked).map { it.text })
+        assertEquals("eggs 2, Banana ", picked)
+        assertEquals(listOf("eggs 2", "Banana"), planner.segments(picked).map { it.text })
     }
 
     @Test fun aReplacedPartNeverJoinsTheNextAmountIntoADecimal() {

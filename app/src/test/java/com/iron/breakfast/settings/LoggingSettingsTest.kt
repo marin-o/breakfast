@@ -118,8 +118,11 @@ class LoggingSettingsTest {
         val picked = off(mapOf(part to banana))
         val draft = picked.draft(chosen.input, typing = true)
         assertEquals(listOf("egg", "banana"), draft.logged.map { it.food.id })
-        assertSame(draft.logged.last(), draft.counted)
         assertNull(picked.heldPart(chosen.input, typing = true))
+        // An amount typed after the name still counts: the part is picked, not being typed.
+        val withAmount = "${chosen.input}150 g"
+        assertEquals(listOf("egg", "banana"), picked.draft(withAmount, typing = true).logged.map { it.food.id })
+        assertNull(picked.heldPart(withAmount, typing = true))
     }
 
     @Test fun countOffShowsACleanMatchBeingTypedAsAChoiceNotARow() {

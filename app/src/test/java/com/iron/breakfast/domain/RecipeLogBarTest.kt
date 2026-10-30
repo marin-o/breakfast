@@ -94,8 +94,8 @@ class RecipeLogBarTest {
     @Test fun aChoiceOfARecipeReadsBackAsThatRecipe() {
         val planner = planner()
         val chosen = planner.choose("2 eggs, chi", chili.asFood())
-        assertEquals("2 eggs, 1 portion Chili", chosen.input)
-        assertEquals("1 portion Chili", chosen.part)
+        assertEquals("2 eggs, Chili ", chosen.input)
+        assertEquals("Chili", chosen.part)
         assertEquals(listOf("egg", "recipe-chili"), planner.plan(chosen.input).entries.map { it.food.id })
     }
 
