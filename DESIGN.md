@@ -83,7 +83,9 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 - A personal food's page and Edit food end with **Delete food** (DestructiveButton, outlined). It asks first in a dialog: "Past entries keep their numbers." with **Delete food** and **Cancel**. Deleting is for good (no Undo); past entries keep their own name and numbers. There is no Archived list and no Restore.
 - The Library header on the Library tab is the title (17sp/500, at Daily's height, as every header), its count line and **New food**; there is no menu. A meal's Library has the back arrow and "Wed 14 Oct", the one way a day is written.
 - Numbers: a macro nothing knows reads "—", never 0. Under a kcal figure the macros read "Protein 8 g, carbs 40 g, fat 4 g"; inside the scan review's line, "P 2, C 9, F 8". A field pre-fills the exact amount.
-- The nutrient fields are two by two, 12dp apart on New food and 16dp on Edit food; the scan review has them in one row, 8dp apart, while the longest label fits a quarter.
+- The nutrient fields are two by two, 12dp apart on New food and 16dp on Edit food; the scan review has them in one row, 8dp apart, while a label and a number with its padding fit a quarter.
+- A scan's review is for where it started: the Library tab saves to the Library; Daily, a meal or a meal's Library logs, with the amount and the meal (starting on the automatic meal); the Log page adds a part to its draft, with the amount and "Add", no meal. An unknown barcode goes through New food to the same step.
+- A tapped Log suggestion fills the name and a space when no amount was typed, so one can follow it ("Extra virgin olive oil 200 g"); a typed amount is kept. With none added, Add logs the food's default, as the row shows.
 
 ## Lists and totals
 
