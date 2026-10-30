@@ -118,9 +118,9 @@ internal fun RecipePageScreen(recipes: RecipeBook, recipe: Recipe, onEdit: ((Rec
         val macros = nutrition?.macros
         NutritionFacts(
             formatKcal(nutrition?.values?.calories ?: 0.0),
-            fat = macros?.let { macroFact(it.fat) },
-            carbs = macros?.let { macroFact(it.carbohydrates) },
-            protein = macros?.let { macroFact(it.protein) },
+            fat = macros?.let { macroFact(it.fat, noneIsUnknown = true) },
+            carbs = macros?.let { macroFact(it.carbohydrates, noneIsUnknown = true) },
+            protein = macros?.let { macroFact(it.protein, noneIsUnknown = true) },
         )
         DestructiveButton("Delete recipe", { recipes.askDelete(recipe) }, Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 8.dp), outlined = true)
     }

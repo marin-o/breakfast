@@ -147,7 +147,7 @@ class BreakfastEngine(
             // A "Not right?" pick may be a recipe: the Log matched it as a food.
             val food = matchable().firstOrNull { it.id == foodId }
                 ?: return@editEntry ReplacementResult.Failure("That catalogue record is no longer available.")
-            if (!old.enteredAmount.isFinite() || old.enteredAmount <= 0.0) return@editEntry ReplacementResult.Failure("Enter a positive amount.")
+            if (!isPositiveAmount(old.enteredAmount)) return@editEntry ReplacementResult.Failure(POSITIVE_AMOUNT_MESSAGE)
             val calculation = calculator.calculate(food, old.enteredAmount, old.enteredUnit, old.enteredUnitLabel)
             if (!calculation.supported) {
                 return@editEntry ReplacementResult.Failure(
@@ -242,7 +242,7 @@ class BreakfastEngine(
                 ?: return@editEntry ReplacementResult.Failure("That catalogue record is no longer available.")
             return@editEntry ReplacementResult.Success(old.withScaled(amount, scaled).copy(mealSlot = mealSlot, dayKey = dayKey))
         }
-        if (!amount.isFinite() || amount <= 0.0) return@editEntry ReplacementResult.Failure("Enter a positive amount.")
+        if (!isPositiveAmount(amount)) return@editEntry ReplacementResult.Failure(POSITIVE_AMOUNT_MESSAGE)
         val calculation = calculator.calculate(food, amount, unit, servingName)
         if (!calculation.supported) return@editEntry ReplacementResult.Failure("That amount/unit is not supported for ${food.name}.")
         ReplacementResult.Success(
@@ -409,7 +409,7 @@ class BreakfastEngine(
         return entry
     }
 
-    private fun requirePositive(amount: Double) = require(amount.isFinite() && amount > 0.0) { POSITIVE_AMOUNT_MESSAGE }
+    private fun requirePositive(amount: Double) = require(isPositiveAmount(amount)) { POSITIVE_AMOUNT_MESSAGE }
 
     /** One new entry: [amount] [unit] of [food] with its own snapshot of [calculation]. */
     private fun entryOf(

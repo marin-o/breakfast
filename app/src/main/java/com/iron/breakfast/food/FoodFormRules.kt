@@ -1,5 +1,6 @@
 package com.iron.breakfast.food
 
+import com.iron.breakfast.domain.canonicalBarcode
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.NutritionInput
 import com.iron.breakfast.domain.sameBarcode
@@ -71,7 +72,19 @@ internal fun createFoodState(input: NutritionInput, name: String, barcodeError: 
  * may keep the code it has in any spelling. The field shows this as it is typed, and Save refuses by it.
  */
 internal fun foodBarcodeError(barcode: String, foods: List<FoodRecord>, editingId: String?): String? {
-    val original = editingId?.let { id -> foods.firstOrNull { it.id == id }?.barcode?.trim() }
     val code = barcode.trim()
-    return if (code == original || sameBarcode(code, original)) null else validateBarcodeInput(code, foods, editingId)
+    return if (keptBarcode(code, foods, editingId) != null) null else validateBarcodeInput(code, foods, editingId)
 }
+
+/** What a saved food stores for [barcode]: the spelling it already has when unchanged, else the canonical form. */
+internal fun storedBarcodeFor(barcode: String, foods: List<FoodRecord>, editingId: String?): String =
+    keptBarcode(barcode, foods, editingId) ?: canonicalBarcode(barcode) ?: barcode
+
+/** The code the edited food already has, when [code] is it in any spelling; null when it is new or changed. */
+private fun keptBarcode(code: String, foods: List<FoodRecord>, editingId: String?): String? {
+    val original = editingId?.let { id -> foods.firstOrNull { it.id == id }?.barcode?.trim() } ?: return null
+    return original.takeIf { code == it || sameBarcode(code, it) }
+}
+
+/** New food marks a code from a scan, and has no Clear or rescan then; Edit food never does (M-Food-Edit). */
+internal fun barcodeMarkedFromScan(fromScan: Boolean, editingId: String?): Boolean = fromScan && editingId == null

@@ -26,8 +26,10 @@ class FoodMatcher(
     /** Only a food's name and aliases are matched; its category, preparation and source text are not. */
     private class IndexedFood(
         val food: FoodRecord,
-        /** Every name word, whatever its script: what a token with no letters (a number, "2.8") is matched against. */
+        /** Every name word, whatever its script: what an explicit modifier ("2.8") must be part of. */
         val all: NameWords,
+        /** The name words no script mix spoils: what a token with no letters is matched against ([sameScript]). */
+        val unmixed: NameWords,
         /** The name words by script. A token is matched only against the words in its own script. */
         val byScript: Map<TextScript, NameWords>,
         val normalizedNames: Set<String>,
@@ -35,7 +37,7 @@ class FoodMatcher(
     ) {
         /** The name words [sameScript] lets [query] match, kept by script so one call per food stays cheap. */
         fun inScriptOf(query: QueryToken): NameWords? = when (query.script) {
-            TextScript.NONE -> all
+            TextScript.NONE -> unmixed
             TextScript.MIXED -> null
             else -> byScript[query.script]
         }
@@ -46,6 +48,7 @@ class FoodMatcher(
         IndexedFood(
             food = food,
             all = NameWords(words),
+            unmixed = NameWords(words.filterTo(mutableSetOf()) { sameScript(TextScript.NONE, scriptOf(it)) }),
             byScript = words.groupBy(::scriptOf).mapValues { NameWords(it.value.toSet()) },
             normalizedNames = food.allNames().mapTo(mutableSetOf(), ::normalize),
             normalizedAliases = food.aliases.mapTo(mutableSetOf(), ::normalize)
@@ -215,10 +218,7 @@ class FoodMatcher(
         .split(WHITESPACE)
         .joinToString(" ") { abbreviations[it] ?: it }
 
-    private fun tokens(value: String): List<String> = matchText(value)
-        .replace(TOKEN_CHARACTER_PATTERN, " ")
-        .split(WHITESPACE_PATTERN)
-        .filter { it.isNotBlank() && it !in STOP_WORDS }
+    private fun tokens(value: String): List<String> = matchWords(value).filter { it !in STOP_WORDS }
 
     private fun normalize(value: String): String = tokens(expandAbbreviations(value)).joinToString(" ")
 
@@ -233,8 +233,6 @@ class FoodMatcher(
         private val PREFIX_HIT = TokenHit(EXACT_WEIGHT, false, prefix = true)
         private val STEM_HIT = TokenHit(STEM_WEIGHT, false)
         private val STOP_WORDS = ShorthandLexicon.stopWords
-        private val TOKEN_CHARACTER_PATTERN = Regex("[^\\p{L}\\p{N}.%]+")
-        private val WHITESPACE_PATTERN = Regex("\\s+")
         private val NUMERIC_TOKEN_PATTERN = Regex("\\d+(?:[.]\\d+)?")
         private val MODIFIERS = setOf(
             "oat", "oats", "small", "large", "smooth", "crunchy", "raw", "cooked", "roasted", "grilled",
@@ -305,19 +303,30 @@ internal fun foldDiacritics(text: String): String = text.lowercase(Locale.ROOT)
 /** [text] as every match reads it: hyphens as breaks, lowercase, an apostrophe joining its word ("Jerry's" is one), folded. */
 internal fun matchText(text: String): String = foldDiacritics(hyphensAsBreaks(text).replace("'", "").replace("’", ""))
 
-/** [text] as a substring search reads it: [matchText] with its spaces collapsed. */
-internal fun searchKey(text: String): String = matchText(text).replace(SEARCH_SPACES, " ").trim()
+/** The one tokeniser: the words of [text] as every match reads them ([matchText]; punctuation separates them). */
+internal fun matchWords(text: String): List<String> =
+    matchText(text).replace(TOKEN_CHARACTER_PATTERN, " ").split(' ').filter { it.isNotBlank() }
 
-private val SEARCH_SPACES = Regex("\\s+")
+private val TOKEN_CHARACTER_PATTERN = Regex("[^\\p{L}\\p{N}.%]+")
+
+/** [text] as a substring search reads it: its [matchWords], one space apart. */
+internal fun searchKey(text: String): String = matchWords(text).joinToString(" ")
 
 /**
- * True when [query] is part of [text], by the [searchKey] of both and within one script: a query word that mixes scripts
- * finds nothing, and neither a Latin nor a Cyrillic query finds a name word that mixes them.
+ * True when [query] is part of [text], by their [matchWords] and within one script: a query word that mixes scripts finds
+ * nothing, and a name word that mixes them matches nothing and joins nothing ("Foo Bаr Baz" is not "foo baz").
  */
 internal fun searchFinds(text: String, query: String): Boolean {
-    val key = searchKey(query)
-    if (key.split(' ').any { scriptOf(it) == TextScript.MIXED }) return false
-    return searchKey(text).split(' ').filter { scriptOf(it) != TextScript.MIXED }.joinToString(" ").contains(key)
+    val queryWords = matchWords(query)
+    if (queryWords.any { scriptOf(it) == TextScript.MIXED }) return false
+    val key = queryWords.joinToString(" ")
+    val runs = mutableListOf(StringBuilder())
+    for (word in matchWords(text)) {
+        if (scriptOf(word) == TextScript.MIXED) { runs += StringBuilder(); continue }
+        if (runs.last().isNotEmpty()) runs.last().append(' ')
+        runs.last().append(word)
+    }
+    return runs.any { it.contains(key) }
 }
 
 /**

@@ -1,5 +1,8 @@
 package com.iron.breakfast.ui.screens
 
+import java.math.RoundingMode
+import java.math.MathContext
+import java.math.BigDecimal
 import com.iron.breakfast.domain.KCAL_PER_GRAM_CARBS
 import com.iron.breakfast.domain.KCAL_PER_GRAM_FAT
 import com.iron.breakfast.domain.KCAL_PER_GRAM_PROTEIN
@@ -110,10 +113,16 @@ internal fun withRateUnit(line: String, rateUnit: String, approximate: Boolean):
     return if (withUnit.length <= MAX_RATE_UNIT_LINE) withUnit else line
 }
 
-/** A number for an editable field: whole values without ".0", others as the shortest plain decimal. */
+/**
+ * A number for an editable field: never in exponent form, whole values without ".0", at most three decimals, trimmed
+ * (1/3 of a cup is 0.333). A value too small for three keeps its first digit (0.0005), so it never becomes 0.
+ */
 internal fun editableNumber(value: Double?): String {
     if (value == null || !value.isFinite()) return ""
-    return java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
+    val exact = BigDecimal.valueOf(value)
+    val tiny = exact.signum() != 0 && exact.abs() < BigDecimal("0.001")
+    val shown = if (tiny) exact.round(MathContext(1, RoundingMode.HALF_UP)) else exact.setScale(3, RoundingMode.HALF_UP)
+    return shown.stripTrailingZeros().toPlainString()
 }
 
 /** Source label beside the O/B/P box on the entry detail. */
@@ -173,9 +182,6 @@ internal fun earliestMealTime(entries: List<MealEntry>, zoneId: ZoneId = ZoneId.
 /** "Per 100 g", "Per 250 ml": always the food's real nutrition basis. */
 internal fun basisLabel(amount: Double, unit: MeasureUnit): String = "Per ${amount.pretty()} ${unit.label}"
 
-/** "kcal per 100 ml": the column of a list of kcal figures on a food's basis. */
-internal fun kcalBasisLabel(amount: Double, unit: MeasureUnit): String = "kcal per ${amount.pretty()} ${unit.label}"
-
 /** The unresolved quote of the resolve queue: its kept quantity ("2 tbsp", when typed) and the food words. */
 internal data class UnknownDisplay(val quantity: String?, val name: String)
 
@@ -184,7 +190,7 @@ internal fun unknownDisplay(
     raw: String,
     typed: TypedPart = ShorthandParser().parse(raw).let { TypedPart(it.foodPhrase, it.amount, it.unit) },
 ): UnknownDisplay {
-    val quantity = typed.amount?.let { amount -> listOfNotNull(amount.pretty(), typed.unit?.displayLabel()?.takeIf { it.isNotBlank() }).joinToString(" ") }
+    val quantity = typed.amount?.let { amount -> listOfNotNull(amount.pretty(), typed.unit?.labelFor(amount)?.takeIf { it.isNotBlank() }).joinToString(" ") }
     return UnknownDisplay(quantity, typed.foodPhrase.trim().ifBlank { raw.trim() })
 }
 
@@ -217,9 +223,12 @@ internal fun productApproxLabel(calculation: Calculation?, enteredUnit: MeasureU
     calculation?.takeIf { it.supported && it.approximate && enteredUnit != null && enteredUnit != basisUnit }
         ?.let { "${it.resolvedBaseAmount.pretty()} ${basisUnit.label}" }
 
-/** A macro's value and unit as shown: "—" with none known, "12" and "g ?" with some unknown, else "12" and "g". */
-internal fun macroFact(total: MacroTotal): Pair<String, String> = when {
-    total.allUnknown -> "—" to "g"
+/**
+ * A macro's value and unit as shown: "—" with none known, "12" and "g ?" with some unknown, else "12" and "g". With
+ * nothing counted it is 0 on a day ([noneIsUnknown] false), and unknown on what has no ingredients to say.
+ */
+internal fun macroFact(total: MacroTotal, noneIsUnknown: Boolean = false): Pair<String, String> = when {
+    total.allUnknown || (noneIsUnknown && total.known == 0) -> "—" to "g"
     total.partial -> total.sum.pretty() to "g ?"
     else -> total.sum.pretty() to "g"
 }
@@ -231,7 +240,7 @@ internal fun macroFact(total: MacroTotal): Pair<String, String> = when {
 internal fun macroStats(kcal: Double, macros: MacroTotals): List<MacroStat> {
     fun stat(label: String, total: MacroTotal, kcalPerGram: Double): MacroStat {
         val (value, unit) = macroFact(total)
-        return MacroStat(label, value, unit, total.shareOf(kcal, kcalPerGram))
+        return MacroStat(label, value, unit, if (kcal > 0.0) (total.sum * kcalPerGram / kcal).toFloat() else 0f)
     }
     return listOf(
         stat("Protein", macros.protein, KCAL_PER_GRAM_PROTEIN),

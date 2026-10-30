@@ -31,6 +31,32 @@ class SearchKeyTest {
         assertTrue(searchFinds("Vitaminka-Витаминка", "vita"))
     }
 
+    @Test fun twoScriptsJoinedByPunctuationAreTwoWords() {
+        assertTrue(searchFinds("Milk/Млеко", "milk"))
+        assertTrue(searchFinds("Milk/Млеко", "млеко"))
+        assertTrue(searchFinds("Кока-Кола/Coca-Cola", "coca cola"))
+        assertTrue(searchFinds("Кока-Кола/Coca-Cola", "кока кола"))
+        assertTrue(searchFinds("Млеко(Milk)", "milk"))
+    }
+
+    @Test fun aMixedWordMatchesNothingAndJoinsNothing() {
+        assertFalse(searchFinds("Foo Bаr Baz", "foo baz"))
+        assertTrue(searchFinds("Foo Bаr Baz", "foo"))
+        assertTrue(searchFinds("Foo Bаr Baz", "baz"))
+    }
+
+    @Test fun aNumberNeverMatchesAMixedWord() {
+        val mixed = FoodRecord("m", "2bаr", emptyList(), "Test", FoodOrigin.CUSTOM, NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(1.0, null, null, null)))
+        assertTrue(FoodMatcher(listOf(mixed)).suggestions("2").isEmpty())
+    }
+
+    @Test fun aServingNameNeverCrossesScripts() {
+        assertTrue(servingNameMatches("slices", "slice"))
+        assertFalse(servingNameMatches("slice", "слајс"))
+        assertFalse(servingNameMatches("slіce", "slіce"))
+        assertFalse(servingNameMatches("2", "2"))
+    }
+
     @Test fun cyrillicLettersAreNotFolded() {
         assertTrue(searchFinds("Ќебапи", "ќеб"))
         assertFalse(searchFinds("Ќебапи", "кеб"))

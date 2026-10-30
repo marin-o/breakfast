@@ -1,7 +1,7 @@
 package com.iron.breakfast.library
 
+import com.iron.breakfast.domain.LatestSearch
 import com.iron.breakfast.domain.lastLoggedEntry
-import com.iron.breakfast.app.LatestSearch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue

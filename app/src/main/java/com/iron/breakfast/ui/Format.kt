@@ -33,7 +33,3 @@ internal fun macroText(grams: Double?): String = grams?.pretty() ?: "—"
 /** "Protein 8 g, carbs 40 g, fat 4 g", under a kcal figure (M-Library-AmountSheet, M-Entry-FullEdit). */
 internal fun macroLine(values: NutritionValues): String =
     "Protein ${macroText(values.protein)} g, carbs ${macroText(values.carbohydrates)} g, fat ${macroText(values.fat)} g"
-
-/** "P 2, C 9, F 8", the short form inside a line (M-Scan-Review). */
-internal fun shortMacroLine(values: NutritionValues): String =
-    "P ${macroText(values.protein)}, C ${macroText(values.carbohydrates)}, F ${macroText(values.fat)}"

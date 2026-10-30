@@ -19,8 +19,6 @@ import com.iron.breakfast.domain.canonicalBarcode
 import com.iron.breakfast.domain.editedCustomFoodRecord
 import com.iron.breakfast.domain.normalizeBarcode
 import com.iron.breakfast.domain.resolveNutrition
-import com.iron.breakfast.domain.sameBarcode
-import com.iron.breakfast.domain.validateBarcodeInput
 import com.iron.breakfast.resolve.ReviewLogPlan
 import com.iron.breakfast.resolve.ResolveQueueView
 import com.iron.breakfast.resolve.queueLogPlan
@@ -192,9 +190,7 @@ internal class FoodForm(
         if (draft.densityError()) { notices.show(POSITIVE_AMOUNT_MESSAGE); return }
         val density = draft.densityValue()
         // A new or changed code is stored in its canonical form; an unchanged one keeps the spelling it has.
-        val originalBarcode = editingId?.let { id -> foods.firstOrNull { it.id == id }?.barcode?.trim() }
-        val barcodeUnchanged = barcode == originalBarcode || sameBarcode(barcode, originalBarcode)
-        val storedBarcode = if (barcodeUnchanged && originalBarcode != null) originalBarcode else canonicalBarcode(barcode) ?: barcode
+        val storedBarcode = storedBarcodeFor(barcode, foods, editingId)
         val basisAmount = resolved.basisAmount
         val basisUnit = resolved.basisUnit
         val nutrition = NutritionValues(kcal, resolved.protein, resolved.carbohydrates, resolved.fat)

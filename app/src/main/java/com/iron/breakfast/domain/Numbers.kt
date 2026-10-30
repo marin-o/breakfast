@@ -30,8 +30,11 @@ internal val ItemComma = Regex("(?<!\\d),|,(?!\\d)")
 /** Aliases typed as one comma list, split by the [ItemComma] rule. */
 fun splitAliases(text: String): List<String> = text.split(ItemComma).map(String::trim).filter(String::isNotBlank)
 
+/** The one rule for an amount: a finite number above zero. */
+fun isPositiveAmount(amount: Double): Boolean = amount.isFinite() && amount > 0.0
+
 /** A typed amount the app can use ([parseDecimal]): null when blank, not a number, or not more than zero. */
-fun positiveAmountOf(text: String): Double? = parseDecimal(text)?.takeIf { it > 0.0 }
+fun positiveAmountOf(text: String): Double? = parseDecimal(text)?.takeIf(::isPositiveAmount)
 
 /** What a field or a refused save says about an amount that is not positive. */
 const val POSITIVE_AMOUNT_MESSAGE = "Enter a positive amount."

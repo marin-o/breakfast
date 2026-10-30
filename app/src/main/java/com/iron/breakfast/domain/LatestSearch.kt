@@ -1,4 +1,4 @@
-package com.iron.breakfast.app
+package com.iron.breakfast.domain
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope

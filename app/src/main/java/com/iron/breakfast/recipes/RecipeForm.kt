@@ -1,6 +1,6 @@
 package com.iron.breakfast.recipes
 
-import com.iron.breakfast.app.LatestSearch
+import com.iron.breakfast.domain.LatestSearch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf

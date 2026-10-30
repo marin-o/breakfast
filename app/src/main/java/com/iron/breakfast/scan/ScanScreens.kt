@@ -1,10 +1,10 @@
 package com.iron.breakfast.scan
 
+import com.iron.breakfast.ui.macroText
 import com.iron.breakfast.ui.components.MealField
 import com.iron.breakfast.ui.components.NutrientFields
 import com.iron.breakfast.ui.components.NutrientField
 import com.iron.breakfast.ui.components.SubScreen
-import com.iron.breakfast.ui.shortMacroLine
 import com.iron.breakfast.ui.screens.kcalLabel
 import com.iron.breakfast.ui.screens.editableNumber
 import com.iron.breakfast.domain.sourceLetter
@@ -399,7 +399,7 @@ private fun amountFieldText(review: ProductReview): String =
         parseDecimal(review.carbs),
         parseDecimal(review.fat),
     )
-    val per100 = "${basisLabel(basis.amount, basis.unit)}: ${kcalLabel(values.calories)}, ${shortMacroLine(values)}"
+    val per100 = "${basisLabel(basis.amount, basis.unit)}: ${kcalLabel(values.calories)}, P ${macroText(values.protein)}, C ${macroText(values.carbohydrates)}, F ${macroText(values.fat)}"
     Sheet(onDismissRequest = review::close, skipPartiallyExpanded = true) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState())) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

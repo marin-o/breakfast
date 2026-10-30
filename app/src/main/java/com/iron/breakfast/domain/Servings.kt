@@ -44,7 +44,7 @@ fun servingNameMatches(typed: String, name: String): Boolean {
     val b = name.trim().lowercase(Locale.ROOT)
     if (a.isEmpty() || b.isEmpty()) return false
     val script = scriptOf(a)
-    if (script == TextScript.MIXED || script == TextScript.NONE || script != scriptOf(b)) return false
+    if (script == TextScript.NONE || !sameScript(script, scriptOf(b))) return false
     return singularForms(a).any { it in singularForms(b) }
 }
 

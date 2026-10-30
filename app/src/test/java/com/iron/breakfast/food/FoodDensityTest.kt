@@ -21,7 +21,7 @@ class FoodDensityTest {
 
     @Test fun theFormLoadsAndChecksTheDensity() {
         val draft = FoodDraft().apply { load(iceCream) }
-        assertEquals("55.0", draft.density)
+        assertEquals("55", draft.density)
         assertEquals(55.0, draft.densityValue()!!, 0.0)
         assertFalse(draft.densityError())
         draft.density = ""

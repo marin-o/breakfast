@@ -1,5 +1,6 @@
 package com.iron.breakfast.scan
 
+import com.iron.breakfast.ui.screens.editableNumber
 import com.iron.breakfast.domain.parseDecimal
 import com.iron.breakfast.domain.positiveAmountOf
 import androidx.compose.runtime.getValue
@@ -116,13 +117,13 @@ internal class ProductReview(
         this.fromScan = fromScan
         this.origin = origin ?: productReviewOrigin(openMeal(), queueActive = resolveQueue != null)
         val prefill = resolveQueue?.let { productPrefill(food, it.current) } ?: ProductPrefill(100.0, food.nutrition.unit)
-        amount = prefill.amount.toString()
+        amount = editableNumber(prefill.amount)
         unit = prefill.unit.displayLabel()
         name = food.name
-        calories = food.nutrition.values.calories.toString()
-        protein = food.nutrition.values.protein?.toString().orEmpty()
-        carbs = food.nutrition.values.carbohydrates?.toString().orEmpty()
-        fat = food.nutrition.values.fat?.toString().orEmpty()
+        calories = editableNumber(food.nutrition.values.calories)
+        protein = editableNumber(food.nutrition.values.protein)
+        carbs = editableNumber(food.nutrition.values.carbohydrates)
+        fat = editableNumber(food.nutrition.values.fat)
         leaveFetch()
         // A scanned product is already the full one; a search result is fetched by its barcode for its servings.
         food.barcode?.takeIf { !fromScan }?.let { startFetch(food, it) }

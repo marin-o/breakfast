@@ -508,7 +508,7 @@ internal class NutrientField(
 
 /**
  * The four nutrient fields of a food: two by two, [gap] apart as each mock draws them; with [oneRowWhenItFits], one row
- * while the longest label fits in a quarter (the scan review).
+ * while a label and a number with the field's padding fit a quarter (the scan review).
  */
 @Composable
 internal fun NutrientFields(fields: List<NutrientField>, gap: Dp, oneRowWhenItFits: Boolean = false) {
@@ -516,7 +516,10 @@ internal fun NutrientFields(fields: List<NutrientField>, gap: Dp, oneRowWhenItFi
         DecimalField(field.label, field.value, field.onValueChange, modifier, error = field.error, errorMessage = field.errorMessage, required = field.required, fieldModifier = field.fieldModifier)
     }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        if (oneRowWhenItFits && fitsAQuarter(fields.map { it.label }, BreakfastType.Meta, 0.dp, maxWidth, gap)) {
+        // The label sits above the box; the number inside it, within its 16dp padding.
+        val fits = oneRowWhenItFits && fitsAQuarter(fields.map { it.label }, BreakfastType.Meta, 0.dp, maxWidth, gap) &&
+            fitsAQuarter(listOf(NUTRIENT_SAMPLE), BreakfastType.Body, 32.dp, maxWidth, gap)
+        if (fits) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                 fields.forEach { cell(it, Modifier.weight(1f)) }
             }
@@ -532,13 +535,19 @@ internal fun NutrientFields(fields: List<NutrientField>, gap: Dp, oneRowWhenItFi
     }
 }
 
+/** A number as wide as a nutrient field must hold. */
+private const val NUTRIENT_SAMPLE = "000.0"
+
+/** Whether [content] fits a quarter of [width] with [gap] between the four. */
+internal fun fitsQuarter(content: Dp, width: Dp, gap: Dp): Boolean = content <= (width - gap * 3) / 4
+
 /** Whether the widest of [labels] in [style], with [padding], fits a quarter of [width] with [gap] between the four. */
 @Composable
 private fun fitsAQuarter(labels: List<String>, style: TextStyle, padding: Dp, width: Dp, gap: Dp): Boolean {
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val widest = labels.maxOf { measurer.measure(it, style).size.width }
-    return with(density) { widest + padding.roundToPx() <= ((width - gap * 3) / 4).roundToPx() }
+    return fitsQuarter(with(density) { widest.toDp() } + padding, width, gap)
 }
 
 /** The g and ml of a basis or a serving, in the row they sit in; each takes [itemModifier]. */
@@ -617,7 +626,7 @@ internal fun ValueField(label: String, value: String, onClick: () -> Unit, icon:
     val colors = LocalBreakfastColors.current
     Column(modifier.fillMaxWidth()) {
         Text(label, color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(bottom = 4.dp))
-        FieldFrame(error = false, modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick)) { _ ->
+        FieldFrame(error = false, modifier = Modifier.fillMaxWidth(), onClick = onClick) { _ ->
             Text(value, Modifier.weight(1f), color = colors.ink, style = BreakfastType.Body)
             Icon(icon, iconDescription, tint = colors.ink)
         }
@@ -629,6 +638,8 @@ internal fun ValueField(label: String, value: String, onClick: () -> Unit, icon:
 private fun FieldFrame(
     error: Boolean,
     modifier: Modifier = Modifier,
+    /** A frame that is itself the control: tapped, and focused as a whole. */
+    onClick: (() -> Unit)? = null,
     content: @Composable RowScope.(onFocus: (FocusState) -> Unit) -> Unit,
 ) {
     val colors = LocalBreakfastColors.current
@@ -640,6 +651,7 @@ private fun FieldFrame(
     }
     Row(
         modifier
+            .then(if (onClick != null) Modifier.onFocusChanged { focused = it.isFocused }.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .heightIn(min = FieldMinHeight)
             .border(if (error || focused) 1.5.dp else 1.dp, ring, FieldShape)
             .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -1142,12 +1154,11 @@ fun TopBar(
     onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
-    backEnabled: Boolean = true,
     trailing: @Composable () -> Unit = {},
 ) {
     val colors = LocalBreakfastColors.current
     Row(modifier.fillMaxWidth().heightIn(min = HeaderHeight), verticalAlignment = Alignment.CenterVertically) {
-        if (onBack != null) IconButton(onClick = onBack, enabled = backEnabled, modifier = Modifier.size(IconTarget)) {
+        if (onBack != null) IconButton(onClick = onBack, modifier = Modifier.size(IconTarget)) {
             Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", tint = colors.ink, modifier = Modifier.size(22.dp))
         }
         Column(Modifier.weight(1f).padding(horizontal = if (onBack != null) 4.dp else 0.dp)) {

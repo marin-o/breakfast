@@ -66,9 +66,6 @@ data class MacroTotal(val sum: Double, val known: Int, val unknown: Int) {
 
     /** No entry has the macro: there is no sum to show. An empty day is not unknown; it is zero. */
     val allUnknown: Boolean get() = known == 0 && unknown > 0
-
-    /** What the known sum is of [kcal], at [kcalPerGram]; 0 with no kcal. */
-    fun shareOf(kcal: Double, kcalPerGram: Double): Float = if (kcal > 0.0) (sum * kcalPerGram / kcal).toFloat() else 0f
 }
 
 const val KCAL_PER_GRAM_PROTEIN = 4.0

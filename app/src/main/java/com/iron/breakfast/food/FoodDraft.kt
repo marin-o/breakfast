@@ -1,5 +1,6 @@
 package com.iron.breakfast.food
 
+import com.iron.breakfast.ui.screens.editableNumber
 import com.iron.breakfast.domain.positiveAmountOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,17 +55,17 @@ class FoodDraft {
 
     fun load(food: FoodRecord?) {
         name = food?.name.orEmpty(); brand = food?.brand.orEmpty(); barcode = food?.barcode.orEmpty(); shorthand = ""
-        calories = food?.nutrition?.values?.calories?.fieldText().orEmpty()
-        protein = food?.nutrition?.values?.protein?.fieldText().orEmpty()
-        carbs = food?.nutrition?.values?.carbohydrates?.fieldText().orEmpty()
-        fat = food?.nutrition?.values?.fat?.fieldText().orEmpty()
-        basisAmount = food?.nutrition?.amount?.fieldText() ?: "100"
+        calories = food?.nutrition?.values?.calories.let(::editableNumber)
+        protein = food?.nutrition?.values?.protein.let(::editableNumber)
+        carbs = food?.nutrition?.values?.carbohydrates.let(::editableNumber)
+        fat = food?.nutrition?.values?.fat.let(::editableNumber)
+        basisAmount = food?.nutrition?.amount?.let(::editableNumber) ?: "100"
         basisUnit = food?.nutrition?.unit?.label ?: "g"
         fromOff = false; barcodeFromScan = false
         caloriesEdited = false; proteinEdited = false; carbsEdited = false; fatEdited = false; basisEdited = false
         aliases = food?.aliases.orEmpty(); aliasInput = ""; aliasFieldOpen = false
         servings = food?.householdServings().orEmpty()
-        density = food?.density?.fieldText().orEmpty()
+        density = food?.density.let(::editableNumber)
         servingFormOpen = false; servingUnit = MeasureUnit.PIECE; servingAmount = ""; servingLabel = ""; servingOpenedWith = null
     }
 
@@ -197,6 +198,3 @@ data class FoodDraftState(
     val servingFormOpen: Boolean = false,
     val servingOpenedWith: PendingServing? = null,
 )
-
-/** A stored number as the form shows it: as written, never in exponent form ("5.0E-4" would edit into 5.04). */
-private fun Double.fieldText(): String = toString().let { if ('E' in it) java.math.BigDecimal.valueOf(this).stripTrailingZeros().toPlainString() else it }

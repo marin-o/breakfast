@@ -1,4 +1,4 @@
-package com.iron.breakfast.app
+package com.iron.breakfast.domain
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope

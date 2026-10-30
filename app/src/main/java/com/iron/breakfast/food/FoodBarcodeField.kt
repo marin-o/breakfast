@@ -18,21 +18,25 @@ import com.iron.breakfast.ui.components.ScanBarcodeIcon
 import com.iron.breakfast.ui.theme.IconTarget
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 
-/** The barcode of New food and Edit food: digits only, its [error] as it is typed, Clear and rescan until it came from a scan. */
+/**
+ * The barcode of New food and Edit food: digits only, its [error] as it is typed. New food marks a code from a scan and
+ * then has no Clear or rescan; Edit food always has both and no mark, as drawn.
+ */
 @Composable
 internal fun FoodBarcodeField(form: FoodForm, error: String?, fieldModifier: Modifier = Modifier) {
     val draft = form.draft
     val colors = LocalBreakfastColors.current
+    val markedFromScan = barcodeMarkedFromScan(draft.barcodeFromScan, form.editingFoodId)
     Field(
         label = "Barcode",
         value = draft.barcode,
         onValueChange = { draft.barcode = it.asciiDigits(); draft.barcodeFromScan = false },
         error = error != null,
         errorMessage = error,
-        hint = if (draft.barcodeFromScan) "from scan" else null,
+        hint = if (markedFromScan) "from scan" else null,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         fieldModifier = fieldModifier,
-        trailing = if (draft.barcodeFromScan) null else ({
+        trailing = if (markedFromScan) null else ({
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (draft.barcode.isNotBlank()) IconButton(onClick = { draft.barcode = "" }, modifier = Modifier.size(IconTarget)) { Icon(Icons.Outlined.Close, "Clear barcode", tint = colors.soft) }
                 IconButton(onClick = form::beginBarcodeRescan, modifier = Modifier.size(IconTarget)) { Icon(ScanBarcodeIcon, "Scan barcode", tint = colors.ink) }

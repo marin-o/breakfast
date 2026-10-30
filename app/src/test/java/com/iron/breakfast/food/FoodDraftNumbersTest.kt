@@ -19,7 +19,7 @@ class FoodDraftNumbersTest {
         val draft = FoodDraft().apply { load(food) }
         assertEquals("0.0005", draft.protein)
         assertEquals("12.5", draft.fat)
-        assertEquals("100.0", draft.basisAmount)
+        assertEquals("100", draft.basisAmount)
     }
 
     @Test fun aTypedAliasKeepsItsDecimalComma() {

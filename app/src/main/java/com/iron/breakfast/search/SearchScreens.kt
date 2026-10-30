@@ -1,8 +1,8 @@
 package com.iron.breakfast.search
 
+import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.components.StatusBlock
 import com.iron.breakfast.ui.components.SubScreen
-import com.iron.breakfast.ui.screens.kcalBasisLabel
 import com.iron.breakfast.ui.countLabel
 import com.iron.breakfast.ui.theme.*
 import androidx.compose.foundation.layout.Arrangement
@@ -74,7 +74,7 @@ import com.iron.breakfast.ui.screens.formatKcal
                 search.results.isNotEmpty() -> {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("${countLabel(search.results.size, "result", "results")} from Open Food Facts", color = colors.soft, style = BreakfastType.Secondary)
-                        Text(search.results.first().nutrition.let { kcalBasisLabel(it.amount, it.unit) }, color = colors.soft, style = BreakfastType.Secondary)
+                        Text(search.results.first().nutrition.let { "kcal per ${it.amount.pretty()} ${it.unit.label}" }, color = colors.soft, style = BreakfastType.Secondary)
                     }
                     Hairline(Modifier.padding(top = 10.dp))
                     search.results.forEach { food ->

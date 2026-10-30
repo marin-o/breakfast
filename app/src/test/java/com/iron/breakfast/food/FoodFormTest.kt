@@ -321,6 +321,17 @@ class FoodBarcodeErrorTest {
         assertEquals(null, foodBarcodeError("0036000291452", foods, "b"))
     }
 
+    @Test fun aFoodStoresItsOwnSpellingWhenUnchangedAndTheCanonicalOneWhenNew() {
+        assertEquals("036000291452", storedBarcodeFor("0036000291452", foods, "b"))
+        assertEquals("0036000291452", storedBarcodeFor("036000291452", foods, null))
+    }
+
+    @Test fun onlyNewFoodMarksACodeFromAScan() {
+        assertEquals(true, barcodeMarkedFromScan(true, null))
+        assertEquals(false, barcodeMarkedFromScan(true, "b"))
+        assertEquals(false, barcodeMarkedFromScan(false, null))
+    }
+
     @Test fun aPartCodeIsRefused() {
         assertEquals("Enter an 8, 12, 13 or 14 digit barcode or clear the field.", foodBarcodeError("123", foods, "b"))
     }
