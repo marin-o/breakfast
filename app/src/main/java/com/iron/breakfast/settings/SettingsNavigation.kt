@@ -19,3 +19,10 @@ internal fun versionLabel(versionName: String, versionCode: Int): String = "$ver
 
 /** About, Licences: the bundled font licence, shown as plain text. */
 internal const val LICENCES_ASSET = "OFL.txt"
+
+/** How deep [page] lies, for the way a page change moves: the list, a group's page, Licences (opened from About). */
+internal fun pageDepth(page: SettingsPage?): Int = when (page) {
+    null -> 0
+    SettingsPage.LICENCES -> 2
+    else -> 1
+}

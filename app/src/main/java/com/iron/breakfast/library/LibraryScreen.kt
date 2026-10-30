@@ -105,6 +105,7 @@ import com.iron.breakfast.ui.components.BottomNav
 import com.iron.breakfast.ui.components.NavTab
 import com.iron.breakfast.ui.components.ConfirmationSnackbar
 import com.iron.breakfast.ui.components.rememberMotion
+import com.iron.breakfast.ui.components.LocalScreenBody
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import com.iron.breakfast.ui.screens.entryDateLabel
 import com.iron.breakfast.ui.screens.formatKcal
@@ -123,15 +124,17 @@ internal fun LibraryScreen(
     confirmations: Confirmations,
     automaticMeal: () -> MealSlot?,
     modifier: Modifier,
+    /** The meal it adds to: the Library's own, or, while it glides out, the one it added to as it showed. */
+    target: MealSlot? = library.target,
 ) {
     val colors = LocalBreakfastColors.current
     val motion = rememberMotion()
-    val root = library.target == null
+    val root = target == null
     // A part being resolved is searched for, not added to a meal the user did not choose here.
-    val title = if (resolve.resolvingPart) "Search" else if (root) "Library" else "Add to ${library.target!!.label()}"
+    val title = if (resolve.resolvingPart) "Search" else if (root) "Library" else "Add to ${target!!.label()}"
     val subtitle = if (root) "${library.foods.size} foods, by last logged" else entryDateLabel(day.selectedDayKey)
     Box(modifier.fillMaxSize().background(colors.bg)) {
-        LazyColumn(Modifier.fillMaxSize().padding(horizontal = Gutter)) {
+        LazyColumn(Modifier.fillMaxSize().then(LocalScreenBody.current).padding(horizontal = Gutter)) {
             item {
                 Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (!root) IconButton(onClick = surfaces::exitLibrary, modifier = Modifier.size(44.dp)) {
@@ -203,9 +206,9 @@ internal fun defaultServingCalories(food: FoodRecord): String = formatKcal(com.i
  * It filters the list through [LibraryState.submitInput] and does not open the Log page.
  */
 @Composable
-internal fun LibraryComposer(library: LibraryState, resolve: ResolveFlow, scan: ScanSession, surfaces: Surfaces) {
+internal fun LibraryComposer(library: LibraryState, resolve: ResolveFlow, scan: ScanSession, surfaces: Surfaces, target: MealSlot? = library.target) {
     val colors = LocalBreakfastColors.current
-    val inMeal = library.target != null
+    val inMeal = target != null
     // While resolving, a cleared search lands here: the bar takes the keyboard so typing goes on.
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -246,6 +249,7 @@ internal fun LibraryComposer(library: LibraryState, resolve: ResolveFlow, scan: 
             onLibrary = {},
             onRecipes = surfaces::openRecipes,
             onSettings = surfaces::openSettings,
+            settingsOpen = surfaces.settingsOpen,
         )
     }
 }

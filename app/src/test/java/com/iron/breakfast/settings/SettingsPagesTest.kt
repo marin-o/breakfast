@@ -25,6 +25,12 @@ class SettingsPagesTest {
         assertTrue(licence.readText().contains("SIL OPEN FONT LICENSE"))
     }
 
+    @Test fun aPageLiesDeeperThanTheListAndLicencesDeeperThanAbout() {
+        assertEquals(0, pageDepth(null))
+        SETTINGS_GROUPS.forEach { assertEquals(1, pageDepth(it)) }
+        assertEquals(2, pageDepth(SettingsPage.LICENCES))
+    }
+
     @Test fun backFromLicencesReturnsToAbout() {
         assertEquals(SettingsPage.ABOUT, settingsPageBack(SettingsPage.LICENCES))
         assertEquals("Licences", SettingsPage.LICENCES.title)

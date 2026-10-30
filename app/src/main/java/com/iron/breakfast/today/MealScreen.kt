@@ -74,6 +74,7 @@ import com.iron.breakfast.ui.components.rememberTick
 import com.iron.breakfast.ui.components.Motion
 import com.iron.breakfast.ui.components.Reveal
 import com.iron.breakfast.ui.components.rememberMotion
+import com.iron.breakfast.ui.components.LocalScreenBody
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.theme.BreakfastType
 import com.iron.breakfast.ui.theme.Gutter
@@ -100,8 +101,10 @@ internal fun MealScreen(
     confirmations: Confirmations,
     scan: ScanSession,
     modifier: Modifier,
+    /** The meal shown: the Meal screen's own, or, while it glides out, the one it showed. */
+    meal: MealSlot? = surfaces.meal,
 ) {
-    val target = surfaces.meal ?: return
+    val target = meal ?: return
     val entries = session.entries.filter { it.dayKey == day.selectedDayKey && it.mealSlot == target }
     val foods = session.foods.associateBy { it.id }
     val total = nutritionTotalOf(entries)
@@ -110,7 +113,7 @@ internal fun MealScreen(
     val motion = rememberMotion()
     Box(modifier.fillMaxSize().background(colors.bg)) {
         LazyColumn(
-            Modifier.fillMaxSize(),
+            Modifier.fillMaxSize().then(LocalScreenBody.current),
             // Room for the composer over the fade at the bottom.
             contentPadding = PaddingValues(start = Gutter, end = Gutter, bottom = 260.dp),
         ) {

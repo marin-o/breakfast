@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.platform.LocalGraphicsContext
 import com.iron.breakfast.ui.components.Motion
+import com.iron.breakfast.ui.components.BaseMove
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.first
 
@@ -36,9 +37,39 @@ internal val Surface.slot: Surface get() = if (base) Surface.DAILY else this
  */
 internal val Surface.glides: Boolean get() = when (this) {
     Surface.LOG, Surface.ENTRY_FULL_EDIT, Surface.LIBRARY_FOOD, Surface.RECIPE, Surface.RECIPE_FORM, Surface.RECIPE_SEARCH, Surface.FOOD_FORM, Surface.SETTINGS, Surface.OFF_SEARCH,
-    Surface.RESOLVER, Surface.CONTRIBUTION_REVIEW, Surface.CONTRIBUTION_SIGN_IN, Surface.CONTRIBUTION_FAILURE,
+    Surface.RESOLVER, Surface.LIBRARY_NO_MATCH, Surface.CONTRIBUTION_REVIEW, Surface.CONTRIBUTION_SIGN_IN, Surface.CONTRIBUTION_FAILURE,
     Surface.ENTRY_DETAIL -> true
     else -> false
+}
+
+/**
+ * The base screen on show, as its motion reads it: its tab in the bottom bar's order ([tab], the gear last) and how deep
+ * it lies under that tab ([depth]: a meal is opened from Meals, a meal's Library from the meal).
+ */
+internal enum class BaseScreen(val tab: Int, val depth: Int) {
+    DAILY(0, 0), MEAL(0, 1), MEAL_LIBRARY(0, 2), LIBRARY(1, 0), RECIPES(2, 0);
+
+    companion object {
+        /** The base [surface] on show; the Library is a meal's while it adds to one ([libraryForMeal]). */
+        fun of(surface: Surface, libraryForMeal: Boolean): BaseScreen = when (surface) {
+            Surface.MEAL -> MEAL
+            Surface.LIBRARY -> if (libraryForMeal) MEAL_LIBRARY else LIBRARY
+            Surface.RECIPES -> RECIPES
+            else -> DAILY
+        }
+    }
+}
+
+/**
+ * How the body moves from [from] to [to]: to another tab, toward the side the new tab lies on (from a meal too); under
+ * one tab, a rise into a deeper screen and a fall back out of it.
+ */
+internal fun baseMove(from: BaseScreen, to: BaseScreen): BaseMove = when {
+    to.tab > from.tab -> BaseMove.FORWARD
+    to.tab < from.tab -> BaseMove.BACK
+    to.depth > from.depth -> BaseMove.RISE
+    to.depth < from.depth -> BaseMove.FALL
+    else -> BaseMove.NONE
 }
 
 /** Whether the root records [slot]'s drawing, so it can still be drawn after it closed: the gliding screens and the base. */

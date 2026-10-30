@@ -1,5 +1,6 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.ui.components.BaseMove
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -40,6 +41,30 @@ class SurfaceTransitionsTest {
         val none = SurfaceChange(emptySet(), emptySet(), emptySet())
         assertEquals(none, change(listOf(Surface.DAILY, Surface.LOG), listOf(Surface.SCANNER)))
         assertEquals(none, change(listOf(Surface.SCANNER), listOf(Surface.DAILY, Surface.LOG)))
+    }
+
+    @Test fun aTabChangeMovesTowardTheNewTabAndAMealRisesAndFalls() {
+        assertEquals(BaseMove.FORWARD, baseMove(BaseScreen.DAILY, BaseScreen.LIBRARY))
+        assertEquals(BaseMove.FORWARD, baseMove(BaseScreen.LIBRARY, BaseScreen.RECIPES))
+        assertEquals(BaseMove.BACK, baseMove(BaseScreen.RECIPES, BaseScreen.DAILY))
+        assertEquals(BaseMove.RISE, baseMove(BaseScreen.DAILY, BaseScreen.MEAL))
+        assertEquals(BaseMove.RISE, baseMove(BaseScreen.MEAL, BaseScreen.MEAL_LIBRARY))
+        assertEquals(BaseMove.FALL, baseMove(BaseScreen.MEAL_LIBRARY, BaseScreen.MEAL))
+        assertEquals(BaseMove.FALL, baseMove(BaseScreen.MEAL, BaseScreen.DAILY))
+        // Meals from a meal or a meal's Library is a way back out, not a tab change.
+        assertEquals(BaseMove.FALL, baseMove(BaseScreen.MEAL_LIBRARY, BaseScreen.DAILY))
+        assertEquals(BaseMove.FORWARD, baseMove(BaseScreen.MEAL, BaseScreen.RECIPES))
+        assertEquals(BaseMove.BACK, baseMove(BaseScreen.LIBRARY, BaseScreen.MEAL))
+        assertEquals(BaseMove.NONE, baseMove(BaseScreen.DAILY, BaseScreen.DAILY))
+    }
+
+    @Test fun theLibraryIsAMealsWhileItAddsToOne() {
+        assertEquals(BaseScreen.MEAL_LIBRARY, BaseScreen.of(Surface.LIBRARY, libraryForMeal = true))
+        assertEquals(BaseScreen.LIBRARY, BaseScreen.of(Surface.LIBRARY, libraryForMeal = false))
+        assertEquals(BaseScreen.MEAL, BaseScreen.of(Surface.MEAL, libraryForMeal = false))
+        assertEquals(BaseScreen.RECIPES, BaseScreen.of(Surface.RECIPES, libraryForMeal = false))
+        assertEquals(BaseScreen.DAILY, BaseScreen.of(Surface.DAILY, libraryForMeal = false))
+        assertTrue(Surface.LIBRARY_NO_MATCH.glides)
     }
 
     @Test fun onlyScreensInTheAppsWindowAreRecorded() {

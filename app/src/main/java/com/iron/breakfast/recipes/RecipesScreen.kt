@@ -48,6 +48,7 @@ import com.iron.breakfast.ui.components.TertiaryButton
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.components.foodText
 import com.iron.breakfast.ui.components.rememberMotion
+import com.iron.breakfast.ui.components.LocalScreenBody
 import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.screens.basisLabel
 import com.iron.breakfast.ui.screens.countedQuantity
@@ -67,7 +68,7 @@ internal fun RecipesScreen(recipes: RecipeBook, confirmations: Confirmations, on
     val motion = rememberMotion()
     val list = recipes.ordered()
     Box(modifier.fillMaxSize().background(colors.bg)) {
-        LazyColumn(Modifier.fillMaxSize().padding(horizontal = Gutter)) {
+        LazyColumn(Modifier.fillMaxSize().then(LocalScreenBody.current).padding(horizontal = Gutter)) {
             item {
                 Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -115,6 +116,7 @@ internal fun RecipesBottomBar(surfaces: Surfaces) {
             onLibrary = surfaces::openLibrary,
             onRecipes = {},
             onSettings = surfaces::openSettings,
+            settingsOpen = surfaces.settingsOpen,
         )
     }
 }

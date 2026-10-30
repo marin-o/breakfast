@@ -53,6 +53,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -770,8 +780,26 @@ fun InkBar(modifier: Modifier = Modifier, endPadding: Dp = 4.dp, content: @Compo
 enum class NavTab(val label: String) { MEALS("Meals"), LIBRARY("Library"), RECIPES("Recipes") }
 
 /**
- * The text tabs ([NavTab], in order), centred with a 40dp gap, and the Settings icon at the right end. The active tab is
- * ink, the others soft; the icon is soft, as an inactive tab.
+ * Where the bottom bar's highlight was last: each base screen draws its own bar, so a bar that comes in with another
+ * screen starts its line where the last one left it, and the line moves on from there.
+ */
+internal class NavMemory {
+    /** The item the line was under ([NavTab.ordinal], or [GEAR]), and where: its start and width in px. */
+    var item: Int = -1
+    var start: Float = 0f
+    var width: Float = 0f
+}
+
+/** The one [NavMemory] of the app, kept by the root so it outlives the screens; a fresh one elsewhere. */
+internal val LocalNavMemory = staticCompositionLocalOf { NavMemory() }
+
+/** The Settings gear as an item of the bar: after the tabs. */
+private const val GEAR = 3
+
+/**
+ * The text tabs ([NavTab], in order), centred with a 40dp gap, and the Settings icon at the right end. The active item
+ * (the gear while [settingsOpen]) is ink, the others soft, and a 2dp ink line sits under it; when it changes, the line
+ * slides to the new item and the emphasis crosses over ([Motion.nav]; at once with reduced motion).
  */
 @Composable
 fun BottomNav(
@@ -781,15 +809,53 @@ fun BottomNav(
     onRecipes: () -> Unit,
     onSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    settingsOpen: Boolean = false,
 ) {
     val colors = LocalBreakfastColors.current
-    Row(modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+    val motion = rememberMotion()
+    val memory = LocalNavMemory.current
+    val active = if (settingsOpen) GEAR else selected.ordinal
+    // Where each item sits in the bar, in px: the line goes under the one that is active.
+    val spans = remember { mutableStateMapOf<Int, Pair<Float, Float>>() }
+    var barLeft by remember { mutableFloatStateOf(0f) }
+    val start = remember { Animatable(0f) }
+    val width = remember { Animatable(0f) }
+    var placed by remember { mutableStateOf(false) }
+    val target = spans[active]
+    LaunchedEffect(active, target) {
+        val (toStart, toWidth) = target ?: return@LaunchedEffect
+        if (!placed) {
+            // The first frame: from where the last bar left the line, or right under the item.
+            val from = memory.item.takeIf { it >= 0 && it != active }
+            start.snapTo(if (from != null) memory.start else toStart)
+            width.snapTo(if (from != null) memory.width else toWidth)
+            placed = true
+        }
+        memory.item = active; memory.start = toStart; memory.width = toWidth
+        launch { start.animateTo(toStart, motion.nav()) }
+        width.animateTo(toWidth, motion.nav())
+    }
+    val lineColor = colors.ink
+    Row(
+        modifier
+            .fillMaxWidth()
+            .onGloballyPositioned { barLeft = it.positionInRoot().x }
+            .drawBehind {
+                if (placed && width.value > 0f) {
+                    val y = size.height - 8.dp.toPx()
+                    drawLine(lineColor, Offset(start.value, y), Offset(start.value + width.value, y), strokeWidth = 2.dp.toPx())
+                }
+            }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        fun Modifier.span(item: Int) = onGloballyPositioned { spans[item] = (it.positionInRoot().x - barLeft) to it.size.width.toFloat() }
         // Equal sides keep the tabs centred; each side is at least the icon's width.
         Spacer(Modifier.weight(1f).widthIn(min = IconTarget))
         Row(Modifier.selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
             NavTab.entries.forEachIndexed { index, tab ->
                 if (index > 0) Spacer(Modifier.width(40.dp))
-                NavTabButton(tab.label, selected = tab == selected, onClick = when (tab) {
+                NavTabButton(tab.label, selected = index == active, motion = motion, labelModifier = Modifier.span(index), onClick = when (tab) {
                     NavTab.MEALS -> onMeals
                     NavTab.LIBRARY -> onLibrary
                     NavTab.RECIPES -> onRecipes
@@ -797,16 +863,18 @@ fun BottomNav(
             }
         }
         Box(Modifier.weight(1f).widthIn(min = IconTarget), contentAlignment = Alignment.CenterEnd) {
+            val tint by animateColorAsState(if (active == GEAR) colors.ink else colors.soft, motion.nav(), label = "gear")
             IconButton(onClick = onSettings, modifier = Modifier.size(IconTarget)) {
-                Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = colors.soft, modifier = Modifier.size(22.dp))
+                Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = tint, modifier = Modifier.size(22.dp).span(GEAR))
             }
         }
     }
 }
 
 @Composable
-private fun NavTabButton(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun NavTabButton(label: String, selected: Boolean, motion: Motion, labelModifier: Modifier, onClick: () -> Unit) {
     val colors = LocalBreakfastColors.current
+    val color by animateColorAsState(if (selected) colors.ink else colors.soft, motion.nav(), label = "tab")
     Box(
         Modifier
             .heightIn(min = TertiaryHeight)
@@ -814,7 +882,7 @@ private fun NavTabButton(label: String, selected: Boolean, onClick: () -> Unit) 
             .padding(horizontal = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = if (selected) colors.ink else colors.soft, style = BreakfastType.SecondaryMedium)
+        Text(label, color = color, style = BreakfastType.SecondaryMedium, modifier = labelModifier)
     }
 }
 

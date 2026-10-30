@@ -24,6 +24,15 @@ class MotionTest {
         assertEquals(ExitTransition.None, reduced.feedbackOut(resize = true))
         assertEquals(EnterTransition.None, reduced.rowIn())
         assertEquals(ExitTransition.None, reduced.rowOut())
+        assertTrue(reduced.nav<Float>() is SnapSpec)
+        for (change in listOf(reduced.baseChange(), reduced.pageChange(deeper = true), reduced.pageChange(deeper = false))) {
+            assertEquals(EnterTransition.None, change.targetContentEnter)
+            assertEquals(ExitTransition.None, change.initialContentExit)
+        }
+        for (move in BaseMove.entries) {
+            assertEquals(EnterTransition.None, reduced.baseBodyIn(move))
+            assertEquals(ExitTransition.None, reduced.baseBodyOut(move))
+        }
     }
 
     @Test fun quietMotionIsShortTweens() {
@@ -34,6 +43,19 @@ class MotionTest {
         assertEquals(LIST_MS, (quiet.listItem<Float>() as TweenSpec).durationMillis)
         assertTrue(quiet.feedbackIn() != EnterTransition.None)
         assertTrue(quiet.rowOut() != ExitTransition.None)
+        assertEquals(NAV_MS, (quiet.nav<Float>() as TweenSpec).durationMillis)
+        assertTrue(quiet.baseChange().targetContentEnter != EnterTransition.None)
+        assertTrue(quiet.pageChange(deeper = true).initialContentExit != ExitTransition.None)
+    }
+
+    @Test fun theBaseBodyMovesOnlyTheWayItsChangeGoes() {
+        // A tab change slides both ways, a rise only brings the new screen in, a fall only takes the old one out.
+        assertTrue(quiet.baseBodyIn(BaseMove.FORWARD) != EnterTransition.None && quiet.baseBodyOut(BaseMove.FORWARD) != ExitTransition.None)
+        assertTrue(quiet.baseBodyIn(BaseMove.BACK) != EnterTransition.None && quiet.baseBodyOut(BaseMove.BACK) != ExitTransition.None)
+        assertTrue(quiet.baseBodyIn(BaseMove.RISE) != EnterTransition.None && quiet.baseBodyOut(BaseMove.RISE) == ExitTransition.None)
+        assertTrue(quiet.baseBodyIn(BaseMove.FALL) == EnterTransition.None && quiet.baseBodyOut(BaseMove.FALL) != ExitTransition.None)
+        assertEquals(EnterTransition.None, quiet.baseBodyIn(BaseMove.NONE))
+        assertEquals(ExitTransition.None, quiet.baseBodyOut(BaseMove.NONE))
     }
 
     private fun rows(vararg keys: String) = keys.map { ShownRow(it, it, present = true, entering = false) }

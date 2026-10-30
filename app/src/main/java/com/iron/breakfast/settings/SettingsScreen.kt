@@ -1,5 +1,9 @@
 package com.iron.breakfast.settings
 
+import com.iron.breakfast.ui.components.inert
+import com.iron.breakfast.ui.components.rememberMotion
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,7 +27,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -57,11 +60,17 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
 @Composable
 internal fun SettingsScreen(settings: SettingsState, surfaces: Surfaces, transfer: DiaryTransfer<*>, session: DiarySession, licenceText: suspend () -> String) {
     val colors = LocalBreakfastColors.current
-    val page = settings.page
-    // Each page starts at its top.
-    key(page) {
+    val motion = rememberMotion()
+    // A page opened slides in from the end, Back slides the one before in from the start (pageDepth); the page on its
+    // way out takes no tap and is not read. Each page starts at its top.
+    AnimatedContent(
+        targetState = settings.page,
+        transitionSpec = { motion.pageChange(deeper = pageDepth(targetState) > pageDepth(initialState)) },
+        label = "settings page",
+    ) { page ->
+        val leaving = transition.targetState == EnterExitState.PostExit
         val scroll = rememberScrollState()
-        Column(Modifier.fillMaxSize().background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(scroll).padding(horizontal = Gutter, vertical = 4.dp)) {
+        Column(Modifier.fillMaxSize().then(if (leaving) Modifier.inert() else Modifier).background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(scroll).padding(horizontal = Gutter, vertical = 4.dp)) {
             TopBar(page?.title ?: "Settings", surfaces::settingsBack, Modifier.padding(top = 8.dp))
             Hairline(Modifier.padding(top = 8.dp))
             when (page) {

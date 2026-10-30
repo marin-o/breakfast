@@ -68,6 +68,7 @@ import com.iron.breakfast.domain.macroTotalsOf
 import com.iron.breakfast.ui.label
 import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.components.BottomNav
+import com.iron.breakfast.ui.components.LocalScreenBody
 import com.iron.breakfast.ui.components.NavTab
 import com.iron.breakfast.ui.components.ChoiceOption
 import com.iron.breakfast.ui.components.Composer
@@ -126,7 +127,7 @@ internal fun DailyScreen(
 
     Box(modifier.fillMaxSize().background(colors.bg)) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize().graphicsLayer {
+            modifier = Modifier.fillMaxSize().then(LocalScreenBody.current).graphicsLayer {
                 // Another day comes in from the side it lies on: a later day from the right.
                 translationX = daySlide.offset * motion.screenSlidePx
                 alpha = 1f - abs(daySlide.offset)
@@ -344,6 +345,7 @@ internal fun DailyComposer(
             onLibrary = { surfaces.closeMeal(); surfaces.openLibrary() },
             onRecipes = { surfaces.closeMeal(); surfaces.openRecipes() },
             onSettings = surfaces::openSettings,
+            settingsOpen = surfaces.settingsOpen,
         )
     }
 }

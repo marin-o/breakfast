@@ -1,6 +1,10 @@
 package com.iron.breakfast.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -43,6 +47,13 @@ internal const val LIST_MS = 200
 internal const val DAY_MS = 220
 /** A swiped row settling open or shut. */
 internal const val SWIPE_MS = 180
+/** The base screens changing (a tab, a meal, a meal's Library): the new one in, the old one out in [BASE_OUT_MS]. */
+internal const val BASE_IN_MS = 240
+internal const val BASE_OUT_MS = 200
+/** The bottom bar's highlight moving to another item. */
+internal const val NAV_MS = 220
+/** A Settings page changing within Settings. */
+internal const val PAGE_MS = 220
 
 /** How far a screen and the day's content slide as they come and go. */
 internal val ScreenSlide = 24.dp
@@ -60,6 +71,64 @@ internal class Motion(val reduced: Boolean, private val density: Density) {
     fun <T> screenOut(): FiniteAnimationSpec<T> = spec(SCREEN_OUT_MS)
     fun <T> day(): FiniteAnimationSpec<T> = spec(DAY_MS)
     fun <T> swipe(): FiniteAnimationSpec<T> = spec(SWIPE_MS)
+    fun <T> nav(): FiniteAnimationSpec<T> = spec(NAV_MS)
+
+    /**
+     * One change of the base screen, as a whole: the new one fades in, the old one fades out, both in place, so the
+     * bottom bars they share cross where they stand. Its body moves by [baseBodyIn] and [baseBodyOut].
+     */
+    fun baseChange(): ContentTransform =
+        if (reduced) instant()
+        else ContentTransform(
+            fadeIn(tween(BASE_IN_MS, easing = FastOutSlowInEasing)),
+            fadeOut(tween(BASE_OUT_MS, easing = FastOutSlowInEasing)),
+            sizeTransform = null,
+        )
+
+    /** A change that takes no time: the reduced form of [baseChange] and [pageChange]. */
+    private fun instant() = ContentTransform(EnterTransition.None, ExitTransition.None, sizeTransform = null)
+
+    /** The new base screen's body: from the side its tab lies on, or a rise into a deeper screen ([BaseMove]). */
+    fun baseBodyIn(move: BaseMove): EnterTransition {
+        if (reduced) return EnterTransition.None
+        val slide = with(density) { ScreenSlide.roundToPx() }
+        val spec = tween<androidx.compose.ui.unit.IntOffset>(BASE_IN_MS, easing = FastOutSlowInEasing)
+        return when (move) {
+            BaseMove.FORWARD -> slideInHorizontally(spec) { slide }
+            BaseMove.BACK -> slideInHorizontally(spec) { -slide }
+            BaseMove.RISE -> slideInVertically(spec) { slide }
+            BaseMove.FALL, BaseMove.NONE -> EnterTransition.None
+        }
+    }
+
+    /** The old base screen's body: the reverse of the new one's, so a screen left the way it came goes back that way. */
+    fun baseBodyOut(move: BaseMove): ExitTransition {
+        if (reduced) return ExitTransition.None
+        val slide = with(density) { ScreenSlide.roundToPx() }
+        val spec = tween<androidx.compose.ui.unit.IntOffset>(BASE_OUT_MS, easing = FastOutSlowInEasing)
+        return when (move) {
+            BaseMove.FORWARD -> slideOutHorizontally(spec) { -slide }
+            BaseMove.BACK -> slideOutHorizontally(spec) { slide }
+            BaseMove.FALL -> slideOutVertically(spec) { slide }
+            BaseMove.RISE, BaseMove.NONE -> ExitTransition.None
+        }
+    }
+
+    /** A Settings page: a deeper page in from the end, a shallower one (Back) from the start, each with a fade. */
+    fun pageChange(deeper: Boolean): ContentTransform {
+        if (reduced) return instant()
+        val slide = with(density) { ScreenSlide.roundToPx() }
+        val sign = if (deeper) 1 else -1
+        val inSpec = tween<Float>(PAGE_MS, easing = FastOutSlowInEasing)
+        val outSpec = tween<Float>(SCREEN_OUT_MS, easing = FastOutSlowInEasing)
+        val move = tween<androidx.compose.ui.unit.IntOffset>(PAGE_MS, easing = FastOutSlowInEasing)
+        return ContentTransform(
+            fadeIn(inSpec) + slideInHorizontally(move) { sign * slide },
+            fadeOut(outSpec) + slideOutHorizontally(move) { -sign * slide },
+            sizeTransform = null,
+        )
+    }
+
     /** For `Modifier.animateItem` in lazy lists: null (no animation) when reduced. */
     fun <T> listItem(): FiniteAnimationSpec<T>? = if (reduced) null else tween(LIST_MS, easing = FastOutSlowInEasing)
 
@@ -87,6 +156,18 @@ internal class Motion(val reduced: Boolean, private val density: Density) {
 
     private fun <T> spec(millis: Int): FiniteAnimationSpec<T> = if (reduced) snap() else tween(millis, easing = FastOutSlowInEasing)
 }
+
+/**
+ * How the base screen's body moves when it changes ([Motion.baseBodyIn]): [FORWARD] to a tab further right, [BACK] to
+ * one further left, [RISE] into a screen opened from one (a meal, a meal's Library), [FALL] back out of it.
+ */
+internal enum class BaseMove { FORWARD, BACK, RISE, FALL, NONE }
+
+/**
+ * The modifier a base screen puts on its body (its list), so it moves as [Motion.baseBodyIn] says while the screen
+ * around it, the bottom bar included, only fades. None outside a base screen change.
+ */
+internal val LocalScreenBody = compositionLocalOf<Modifier> { Modifier }
 
 /** The [Motion] for this composition: reduced by [rememberMotionReduced]. */
 @Composable
