@@ -24,6 +24,16 @@ internal data class LogDraftView(
     val logged: List<SegmentResolution>,
     /** The kcal each of [choices] would log, in the same order. */
     val choiceCalculations: List<Calculation> = emptyList(),
+    /** Add would log something. */
+    val addLogs: Boolean = false,
+    /** A part has no food, or local matches to choose from. */
+    val needsMatch: Boolean = false,
+    /** A part names its food in a unit that food has no value for. */
+    val hasNoValue: Boolean = false,
+    /** The first of [choices] is what the finished draft logs for the part being typed: it goes green. */
+    val firstIsAddPick: Boolean = false,
+    /** The parts that need a match, except one being typed that still has something to show. */
+    val needsMatchParts: List<String> = emptyList(),
 )
 
 /**
@@ -41,6 +51,11 @@ internal fun logDraftViewOf(planner: LogPlanner, text: String, committed: Boolea
         activePhrase = view.activePhrase,
         // The sum is the draft's own count: what Add would save.
         logged = view.logged,
+        addLogs = view.addLogs,
+        needsMatch = view.needsMatch,
+        hasNoValue = view.hasNoValue,
+        firstIsAddPick = view.addPick != null && view.choices.firstOrNull()?.food?.id == view.addPick.food.id,
+        needsMatchParts = view.needsMatchParts,
         choiceCalculations = view.choices.map { planner.calculationFor(view.activeText, it.food) },
     )
 }

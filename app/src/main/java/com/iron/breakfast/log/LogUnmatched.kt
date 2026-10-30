@@ -100,7 +100,7 @@ private fun UnmatchedRow(row: DraftRow.Unresolved, parts: UnmatchedParts, open: 
                 },
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (choices.isEmpty()) NotInYourFoodsRow(row.text, Modifier.weight(1f))
+            if (choices.isEmpty()) NotInYourFoodsRow(row.text, Modifier.weight(1f), noValue = row.noValue)
             else FoodRow(name = row.text, quantityLine = "which one?", calories = "", modifier = Modifier.weight(1f))
             Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = null, tint = colors.soft, modifier = Modifier.size(22.dp).graphicsLayer { rotationZ = turn })
         }

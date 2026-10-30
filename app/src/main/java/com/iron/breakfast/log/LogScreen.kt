@@ -1,5 +1,9 @@
 package com.iron.breakfast.log
 
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.draw.alpha
+import com.iron.breakfast.ui.screens.noValueLine
+import com.iron.breakfast.domain.SegmentResolution
 import com.iron.breakfast.today.UndoSnackbars
 import com.iron.breakfast.today.UndoController
 import com.iron.breakfast.ui.theme.SnackbarGutter
@@ -104,8 +108,10 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
     // The bar counts what Add will save, including the active segment's preselected match.
     val logged = draft.logged
     val kcal = logged.sumOf { it.calculation.nutrition.calories }
-    // Any draft can be added: unresolved segments open the resolve-unknown flow, as before.
-    val canAdd = log.draft.isNotBlank() && !session.busy
+    // Add needs text and a free write gate, and the bar's rule (a disabled Add also stops the keyboard's Done).
+    val queueActive = unmatched.resolve.queueActive
+    val bar = logBarOf(draft.addLogs, draft.needsMatch, draft.hasNoValue, queueActive, unqueuedNeedsMatch = draft.needsMatchParts.any { it !in unmatched.resolve.parts })
+    val canAdd = log.draft.isNotBlank() && !session.busy && bar != LogBar.ADD_DISABLED && bar != LogBar.HIDDEN
     val placeholder = if (day.selectedDayKey == day.todayKey) "2 eggs, 1 banana" else "Add to ${shortDateLabel(day.selectedDayKey)}"
     val requester = remember { FocusRequester() }
     // The keyboard stays down while unmatched foods show their results, so it never covers them; a tap on the text brings it back.
@@ -171,7 +177,7 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
         }
         // While its unmatched foods are worked through, the batch that just logged and each part say so here.
         Column(Modifier.fillMaxWidth().padding(horizontal = SnackbarGutter)) {
-            UndoSnackbars(undo, shown = unmatched.resolve.queueActive)
+            UndoSnackbars(undo, shown = queueActive)
             ConfirmationSnackbar(confirmations.message)
         }
         // The add bar sits above whichever is taller: the keyboard or the navigation bar.
@@ -184,19 +190,31 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
         }
         val addButton: @Composable (Boolean) -> Unit = { fill ->
             PrimaryButton(
-                text = if (target != null) "Add to ${target.label()}" else "Add",
+                text = when {
+                    bar == LogBar.FIND_MATCHES -> "Find matches"
+                    target != null -> "Add to ${target.label()}"
+                    else -> "Add"
+                },
                 onClick = { tick(); log.submit() },
                 enabled = canAdd,
                 fillWidth = fill,
             )
         }
-        val barModifier = Modifier
-            .fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
-            .padding(horizontal = Gutter, vertical = 12.dp)
-        if (isLargeFont(LocalDensity.current.fontScale)) {
+        val barInsets = Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
+        val barModifier = barInsets.padding(horizontal = Gutter, vertical = 12.dp)
+        val showsSum = bar == LogBar.ADD
+        // A hidden sum keeps its place, so the bar's height never changes between its states.
+        val hiddenSum = Modifier.alpha(0f).clearAndSetSemantics { }
+        if (bar == LogBar.HIDDEN) {
+            Box(barInsets)
+        } else if (isLargeFont(LocalDensity.current.fontScale)) {
             Column(barModifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                sum(Modifier.fillMaxWidth())
+                sum(if (showsSum) Modifier.fillMaxWidth() else hiddenSum.fillMaxWidth())
+                addButton(true)
+            }
+        } else if (!showsSum) {
+            Box(barModifier, contentAlignment = Alignment.Center) {
+                sum(hiddenSum.fillMaxWidth())
                 addButton(true)
             }
         } else {
@@ -233,7 +251,7 @@ internal fun DraftParts(
                 calories = formatKcal(row.resolution.calculation.nutrition.calories),
                 modifier = Modifier.padding(top = 4.dp),
             )
-            is DraftRow.Unresolved -> if (row.text in queued) queuedRow(row) else NotInYourFoodsRow(row.text, Modifier.padding(top = 4.dp), onClick = { onResolve(row) })
+            is DraftRow.Unresolved -> if (row.text in queued) queuedRow(row) else NotInYourFoodsRow(row.text, Modifier.padding(top = 4.dp), onClick = { onResolve(row) }, noValue = row.noValue)
         }
     }
     val suggestions = draft.choices
@@ -250,6 +268,7 @@ internal fun DraftParts(
                 ChoiceOption(
                     label = ranked.food.name,
                     selected = index == 0 && draft.preselected,
+                    autoPick = index == 0 && draft.firstIsAddPick,
                     onClick = { onChoose(ranked.food) },
                     modifier = Modifier.widthIn(min = 168.dp),
                     detail = draft.choiceCalculations.getOrNull(index)?.let(::choiceKcalDetail),
@@ -293,10 +312,16 @@ private fun LogMealPicker(label: String, log: LogComposer) {
     }
 }
 
-/** A typed part no food was logged for. */
+/** A typed part no food was logged for: no food behind it, or, with [noValue], its food in a unit that has no value. */
 @Composable
-internal fun NotInYourFoodsRow(text: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
-    FoodRow(name = text, quantityLine = "Not in your foods", calories = "", modifier = modifier, onClick = onClick)
+internal fun NotInYourFoodsRow(text: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, noValue: SegmentResolution? = null) {
+    FoodRow(
+        name = noValue?.food?.name ?: text,
+        quantityLine = noValue?.let(::noValueLine) ?: "Not in your foods",
+        calories = "",
+        modifier = modifier,
+        onClick = onClick,
+    )
 }
 
 /**

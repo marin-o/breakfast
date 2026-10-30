@@ -201,7 +201,7 @@ class FixPassTest {
         val input = (0 until 10).joinToString(", ") { i -> "${i + 1} ${words[i]} ${words[(i + 3) % 10]} food${i * 37 % 500}" }
         val planner = LogPlanner(FoodMatcher(catalogue))
         LogPlanner(FoodMatcher(catalogue)).plan(input)
-        val best = (1..3).minOf { _ ->
+        val best = (1..10).minOf { _ ->
             val fresh = LogPlanner(FoodMatcher(catalogue))
             val start = System.nanoTime()
             fresh.plan(input)
@@ -209,6 +209,14 @@ class FixPassTest {
         }
         println("plan-500-food-ms=$best")
         assertTrue("plan took $best ms", best < 50)
+        val bestDraft = (1..10).minOf { _ ->
+            val fresh = LogPlanner(FoodMatcher(catalogue))
+            val start = System.nanoTime()
+            fresh.draft(input)
+            (System.nanoTime() - start) / 1_000_000
+        }
+        println("draft-500-food-ms=$bestDraft")
+        assertTrue("draft took $bestDraft ms", bestDraft < 50)
         assertFalse(planner.plan(input).entries.isEmpty())
     }
 }

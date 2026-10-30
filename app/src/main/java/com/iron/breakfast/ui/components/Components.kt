@@ -278,12 +278,15 @@ fun ChoiceOption(
     compact: Boolean = false,
     /** False for an action chip (Search, an alternative): a plain button to TalkBack, not a radio button. */
     selectable: Boolean = true,
+    /** The one the app picks by itself: its border is `ok`, its label stays ink, so it is seen before Add logs it. */
+    autoPick: Boolean = false,
 ) {
     val colors = LocalBreakfastColors.current
+    val marked = selected || autoPick
     Column(
         modifier
             .heightIn(min = ChoiceMinHeight)
-            .border(if (selected) 1.5.dp else 1.dp, if (selected) colors.ink else colors.line, ChoiceShape)
+            .border(if (marked) 1.5.dp else 1.dp, if (autoPick) colors.ok else if (selected) colors.ink else colors.line, ChoiceShape)
             .then(
                 if (selectable) Modifier.selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
                 else Modifier.clickable(role = Role.Button, onClick = onClick)
@@ -293,11 +296,11 @@ fun ChoiceOption(
     ) {
         Text(
             foodText(label),
-            color = if (selected) colors.ink else colors.soft,
+            color = if (marked) colors.ink else colors.soft,
             style = when {
-                compact && selected -> BreakfastType.SecondaryMedium
+                compact && marked -> BreakfastType.SecondaryMedium
                 compact -> BreakfastType.Secondary
-                selected -> BreakfastType.BodyMedium
+                marked -> BreakfastType.BodyMedium
                 else -> BreakfastType.Body
             },
             maxLines = if (compact) 1 else 2,

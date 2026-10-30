@@ -17,6 +17,9 @@ data class SegmentResolution(
     val label: String? = null,
 ) {
     val supported: Boolean get() = calculation.supported
+
+    /** Its food is known and the amount is real; only the unit has no number for that food. */
+    val noValue: Boolean get() = !supported && !needsChoice && isPositiveAmount(amount)
 }
 
 /** What Add logs for one input: the segments that save, in order, and the raw segments that do not. */
@@ -34,7 +37,13 @@ sealed interface DraftRow {
     data class Entry(val resolution: SegmentResolution) : DraftRow
 
     /** A typed part that does not log: shown as "Not in your foods". [start] and [end] are its span in the input. */
-    data class Unresolved(val text: String, val start: Int = -1, val end: Int = -1) : DraftRow
+    data class Unresolved(
+        val text: String,
+        val start: Int = -1,
+        val end: Int = -1,
+        /** The food this part names when it is only the unit that has no value for it: the amount never changes the food. */
+        val noValue: SegmentResolution? = null,
+    ) : DraftRow
 }
 
 /**
@@ -54,6 +63,16 @@ data class DraftView(
     val suggestions: List<RankedFood> = emptyList(),
     /** The part being typed as Add saves it (the last of [logged]); null when Add does not save it. */
     val counted: SegmentResolution? = null,
+    /** What the finished draft logs for the part being typed, whatever the add bar counts: the chip that goes green. */
+    val addPick: SegmentResolution? = null,
+    /** The parts that need a match, except one being typed that still has something to show. */
+    val needsMatchParts: List<String> = emptyList(),
+    /** Add would log something: the finished draft's plan, whatever the add bar counts while typing. */
+    val addLogs: Boolean = false,
+    /** A part has no food behind it, or local matches to choose from. */
+    val needsMatch: Boolean = false,
+    /** A part names its food but cannot log: a unit it has no value for, or an amount that is no amount. */
+    val hasNoValue: Boolean = false,
 ) {
     val previews: List<SegmentResolution> get() = rows.filterIsInstance<DraftRow.Entry>().map { it.resolution }
     val unresolved: List<String> get() = rows.filterIsInstance<DraftRow.Unresolved>().map { it.text }
@@ -128,19 +147,31 @@ class LogPlanner(
         if (parser.hasWordSeparator(raw) && !matcher.covers(reading.phrase)) return null
         val plain = resolutionOf(raw, reading, matcher.suggestions(reading.phrase, preferences, SUGGESTION_LIMIT))
         if (plain != null && plain.supported && !plain.needsChoice) return plain
-        // Only when the part does not resolve as it reads: a word where a unit goes may be a serving's name, of the
-        // foods that have one by that name ("2 cans coke", "coke 2 cans"). A food's name always wins.
+        // Only when the part does not resolve as it reads: a word where a unit goes may be a serving's name of the food
+        // it names ("2 cans coke", "coke 2 cans"). A food's name always wins.
         for (serving in servingReadings(reading)) {
             val word = serving.servingWord!!
-            val foods = matcher.suggestions(serving.phrase, preferences, SUGGESTION_LIMIT).filter { it.food.servingNamed(word) != null }
-            resolutionOf(raw, serving, foods)?.takeIf { it.supported && !it.needsChoice }?.let { return it }
+            onTopFood(raw, serving, flagged = matcher.hasServingNamed(word)) { it.servingNamed(word) != null }?.let { return it }
         }
-        // Then "2 portions chili" may be portions of a recipe. A food's phrase is never read this way, so "2 portions
-        // rice" logs exactly as it did before recipes.
+        // Then "2 portions chili" may be portions of a recipe; a food the plain reading resolves is never read this way.
         val portions = portionReading(reading) ?: return plain
-        val recipes = matcher.suggestions(portions.phrase, preferences, SUGGESTION_LIMIT).filter { takesPortions(it.food) }
-        val recipe = resolutionOf(raw, portions, recipes)
-        return if (recipe != null && recipe.supported && !recipe.needsChoice) recipe else plain
+        return onTopFood(raw, portions, flagged = true, ::takesPortions) ?: plain
+    }
+
+    /**
+     * [reading], a measure word on the rest of the part, for the food ranked first: the word never chooses the food. A
+     * food with that measure ([has]) logs by it. With [flagged] one without it is that food, unsupported: it does not log
+     * and the word is not dropped ("No value for cans"). Null: this is no such reading.
+     */
+    private fun onTopFood(raw: String, reading: Reading, flagged: Boolean, has: (FoodRecord) -> Boolean): SegmentResolution? {
+        val ranked = matcher.suggestions(reading.phrase, preferences, SUGGESTION_LIMIT)
+        val top = ranked.firstOrNull()?.food ?: return null
+        val resolution = resolutionOf(raw, reading, ranked)?.takeIf { !it.needsChoice } ?: return null
+        return when {
+            has(top) -> resolution.takeIf { it.supported }
+            flagged -> resolution.takeIf { it.noValue }
+            else -> null
+        }
     }
 
     private fun pickedResolution(raw: String, picked: FoodRecord): SegmentResolution {
@@ -503,12 +534,14 @@ class LogPlanner(
         var active: SegmentResolution? = null
         var suggestions: List<RankedFood> = emptyList()
         var counted: SegmentResolution? = null
+        var addPick: SegmentResolution? = null
         if (activeText.isNotBlank() && ShorthandLexicon.mealSlotOf(activeText) == null) {
             val resolution = resolvePart(activeText, activeOccurrence)
             // Add saves the part being typed by the same rule as every other part (see [plan]), unless it is held back
             // until it is finished or picked ("Count what I'm typing" off).
             val counts = countTyping || pinOf(activeText, activeOccurrence) != null
-            counted = resolution?.takeIf { counts && it.supported && !it.needsChoice }
+            addPick = resolution?.takeIf { it.supported && !it.needsChoice }
+            counted = addPick.takeIf { counts }
             // Each outcome renders the part exactly once: a suggestion group, a choice group, an entry row, or a
             // Not-in-your-foods row.
             when {
@@ -516,14 +549,18 @@ class LogPlanner(
                 // several foods: suggest the foods it starts. When Add saves the word, the food it saves leads.
                 resolution == null || (isBareWord(activeText) && (!resolution.ranked.first().wholeMatch || resolution.ranked.size > 1)) -> {
                     val starting = matcher.startingWith(activeText, preferences, SUGGESTION_LIMIT)
-                    suggestions = counted?.let { saved ->
+                    suggestions = addPick?.let { saved ->
                         (listOf(saved.ranked.first()) + starting.filterNot { it.food.id == saved.food.id }).take(SUGGESTION_LIMIT)
                     } ?: starting
                 }
                 // A partial or weak match is a choice group only; the group is the part's rendering, not a second row.
                 resolution.needsChoice -> active = resolution
-                // A part with no usable conversion is a Not-in-your-foods row.
-                !resolution.supported -> parts.last().let { rows += DraftRow.Unresolved(activeText, it.start, it.end) }
+                // A part with no usable conversion is its food's row, flagged: it does not log.
+                !resolution.supported -> parts.last().let { span ->
+                    rows += DraftRow.Unresolved(activeText, span.start, span.end, noValue = resolution.takeIf { it.noValue })
+                    // The other foods the words name that do have the unit: one tap picks one.
+                    if (resolution.noValue) suggestions = resolution.ranked.drop(1).filter { calculationFor(activeText, it.food).supported }
+                }
                 // Not counted yet: the clean single candidate is offered to pick, shown unselected, never as a row.
                 !counts && resolution.ranked.size == 1 -> suggestions = resolution.ranked
                 // A clean single candidate is an entry row, never a choice.
@@ -534,6 +571,10 @@ class LogPlanner(
                 else -> active = resolution
             }
         }
+        val attention = counted0.filter { ShorthandLexicon.mealSlotOf(it.first.text) == null }.map { (span, occurrence) -> span.text to resolvePart(span.text, occurrence) }
+        // The part being typed asks for nothing while it still has something to show.
+        val activeShows = suggestions.isNotEmpty() || active != null
+        val needing = attention.filter { (text, resolution) -> (resolution == null || resolution.needsChoice) && !(activeShows && text == activeText) }.map { it.first }
         return DraftView(
             rows = rows,
             activeText = activeText,
@@ -542,13 +583,18 @@ class LogPlanner(
             activePhrase = if (activeText.isBlank()) "" else stripArticle(phraseOf(activeText)),
             suggestions = suggestions,
             counted = counted,
+            addLogs = plan(input).entries.isNotEmpty(),
+            addPick = addPick,
+            needsMatchParts = needing,
+            needsMatch = needing.isNotEmpty(),
+            hasNoValue = attention.any { (_, resolution) -> resolution != null && !resolution.needsChoice && !resolution.supported },
         )
     }
 
     private fun rowFor(span: SegmentSpan, occurrence: Int): DraftRow {
         val resolution = resolvePart(span.text, occurrence)
         return if (resolution != null && resolution.supported && !resolution.needsChoice) DraftRow.Entry(resolution)
-        else DraftRow.Unresolved(span.text, span.start, span.end)
+        else DraftRow.Unresolved(span.text, span.start, span.end, noValue = resolution?.takeIf { it.noValue })
     }
 
     /** One bare word with no quantity: the form a name is typed in, before it is finished. */

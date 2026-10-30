@@ -251,13 +251,14 @@ internal class LogComposer(
                     pins.edited(draft, unmatched.joinToString(", "))
                     draft = unmatched.joinToString(", ")
                 }
-                error = if (unmatched.isNotEmpty()) NEEDS_A_MATCH else null
+                val attention = unmatched.filter(planner::needsAttention)
+                error = if (attention.isNotEmpty()) NEEDS_A_MATCH else null
                 // Back during the write: what is left stays as text, and no queue runs behind a closed Log.
                 if (!open) return@write
                 if (unmatched.isEmpty()) close() else chosen = target
                 // What needs the user stays on the Log, under its rows, for the same meal. A unit its food lacks stays a
                 // plain row.
-                afterSave(unmatched.filter(planner::needsAttention), target, this@LogComposer, captured)
+                afterSave(attention, target, this@LogComposer, captured)
             },
             onFailure = { error = it.message ?: "Could not save this meal." },
         ) { store.save(captured, target, selectedDay(), capturedPins) }

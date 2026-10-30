@@ -47,3 +47,27 @@ internal fun logSubmitPlan(
  */
 internal fun rowStillInDraft(draft: String, row: DraftRow.Unresolved): Boolean =
     row.start >= 0 && row.start < row.end && row.end <= draft.length && draft.substring(row.start, row.end) == row.text
+
+/** What the Log's bar offers. */
+internal enum class LogBar {
+    /** "Add to <meal>" with the sum. */
+    ADD,
+    /** The same, disabled: all that is left has no value to log. */
+    ADD_DISABLED,
+    /** "Find matches" across the bar, no sum: nothing would log, and a tap looks for what needs a match. */
+    FIND_MATCHES,
+    /** No bar: the foods left are already being matched under their rows. */
+    HIDDEN,
+}
+
+/**
+ * The Log's bar. Something that would log always gets the normal bar. Otherwise a part that needs a match and is not
+ * queued gets "Find matches", a running queue needs no bar, and what cannot log leaves Add with nothing to do.
+ */
+internal fun logBarOf(addLogs: Boolean, needsMatch: Boolean, hasNoValue: Boolean, queueActive: Boolean, unqueuedNeedsMatch: Boolean = false): LogBar = when {
+    addLogs -> LogBar.ADD
+    queueActive && !unqueuedNeedsMatch -> LogBar.HIDDEN
+    needsMatch -> LogBar.FIND_MATCHES
+    hasNoValue -> LogBar.ADD_DISABLED
+    else -> LogBar.ADD
+}

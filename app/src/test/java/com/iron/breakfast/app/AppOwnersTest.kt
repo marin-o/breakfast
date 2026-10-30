@@ -334,6 +334,49 @@ class AppOwnersTest {
         assertTrue(app.log.localChoices("bananna").all { it.food.id != "c" })
     }
 
+    @Test fun aPartTypedDuringAQueueIsAddedToItOnTheNextSubmit() {
+        val app = AppKit()
+        app.unmatched = listOf("xyzq")
+        app.log.open(MealSlot.LUNCH)
+        app.log.onDraft("xyzq")
+        app.log.submit()
+        assertEquals(listOf("xyzq"), app.offSearched)
+        app.log.onDraft("xyzq, abcq")
+        assertEquals("the new part is not queued yet", listOf("abcq"), app.log.draftView().needsMatchParts - app.resolve.parts.toSet())
+        app.unmatched = listOf("xyzq", "abcq")
+        app.log.submit()
+        assertEquals(listOf("xyzq", "abcq"), app.resolve.parts)
+        assertEquals("the queued one is not asked again", listOf("xyzq", "abcq"), app.offSearched)
+        assertTrue(app.resolve.queueActive)
+        assertEquals("xyzq, abcq", app.log.draft)
+    }
+
+    @Test fun onlyPartsWithNoValueLeaveNoNeedForAMatch() {
+        val app = AppKit()
+        app.plannerFoods = listOf(food("kefir", "Kefir"))
+        app.unmatched = listOf("2 tbsp Kefir")
+        app.log.open(MealSlot.LUNCH)
+        app.log.onDraft("2 tbsp Kefir")
+        app.log.submit()
+        assertEquals(null, app.log.error)
+        assertTrue(app.log.open)
+        assertFalse(app.resolve.queueActive)
+    }
+
+    @Test fun aMixedBatchKeepsAPartWithNoValueOutOfTheResolver() {
+        val app = AppKit()
+        app.plannerFoods = listOf(food("kefir", "Kefir"))
+        app.libraryFoods = listOf(food("egg"))
+        app.unmatched = listOf("2 tbsp Kefir", "xyzq")
+        app.openFocusedLibrary(MealSlot.LUNCH)
+        app.library.onInput("1 Kefir, 2 tbsp Kefir, xyzq")
+        app.library.submitInput()
+        assertEquals(listOf("xyzq"), app.resolve.parts)
+        assertEquals("xyzq, 2 tbsp Kefir", app.library.input)
+        app.resolve.skip()
+        assertEquals("2 tbsp Kefir", app.library.input)
+    }
+
     @Test fun notRightWaitsWhileTheLogCoversItWithFoodsLeft() {
         val app = AppKit()
         assertFalse(app.owners.feedbackHeld())

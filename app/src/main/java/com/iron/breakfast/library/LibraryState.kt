@@ -95,6 +95,8 @@ internal class LibraryState(
     private var pendingBatch: List<LibraryLogDraft> = emptyList()
     private val refreshing = LatestSearch<List<FoodRecord>>(scope, io, main)
     private val parser = ShorthandParser()
+    /** The batch's parts that stay in the bar beside what the queue leaves. */
+    private var keptParts: List<String> = emptyList()
 
     /** Opens the list for [target], filtered by [query], with [bar] in the bar (the query unless told otherwise). */
     fun show(target: MealSlot?, query: String, bar: String = query) {
@@ -274,7 +276,13 @@ internal class LibraryState(
         val day = selectedDay()
         session.write(
             change = { saved -> DiaryChange.BatchLogged(LOGGED, saved.entries) },
-            onSuccess = { saved -> afterSave(saved.unresolvedSegments, target, this@LibraryState, capturedInput) },
+            onSuccess = { saved ->
+                // A part only its unit keeps from logging is no unknown food: it stays in the bar, out of the resolver.
+                val planner = store.planner()
+                val (unknown, flagged) = saved.unresolvedSegments.partition(planner::needsAttention)
+                keptParts = flagged
+                afterSave(unknown, target, this@LibraryState, capturedInput)
+            },
             onFailure = { notices.show(it.message ?: "Could not save this batch.") },
         ) { store.save(cleaned, target, day) }
     }
@@ -309,5 +317,5 @@ internal class LibraryState(
 
     /** The bar as the resolve queue's source: what is left of a mixed batch's parts is written back here. */
     override val text: String get() = input
-    override fun putBack(left: String) { input = left }
+    override fun putBack(left: String) { input = (listOf(left).filter { it.isNotBlank() } + keptParts).joinToString(", ") }
 }
