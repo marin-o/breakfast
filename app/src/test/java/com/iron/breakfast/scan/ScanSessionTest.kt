@@ -41,6 +41,7 @@ class ScanSessionTest {
     private var day = "2026-10-28"
     private var meal: MealSlot? = null
     private var onLibraryTab = true
+    private var logOpen = false
     private var queueActive = false
     private val events = mutableListOf<String>()
     private val scan = ScanSession(
@@ -49,6 +50,7 @@ class ScanSessionTest {
         selectedDay = { day },
         targetMeal = { meal },
         libraryTab = { onLibraryTab && meal == null },
+        logOpen = { logOpen },
         queueActive = { queueActive },
         onProduct = { food, origin -> events += "review ${food.name} $origin" },
         onManualForm = { name, brand, barcode, fromOff, logging -> events += "form '$name' '$brand' $barcode fromOff=$fromOff" + if (logging) " logging" else "" },
@@ -67,6 +69,15 @@ class ScanSessionTest {
         scan.begin()
         scan.onBarcode("5901234123457")
         assertEquals("form '' '' 5901234123457 fromOff=false logging", events.single())
+    }
+
+    @Test fun aScanFromTheLogIsForTheDraftEvenIfTheLogHasClosedBeneathIt() {
+        logOpen = true
+        lookup.library["4006381333931"] = nutella
+        scan.begin()
+        logOpen = false
+        scan.onBarcode("4006381333931")
+        assertEquals("review Nutella LOG_PART", events.single())
     }
 
     @Test fun aScanFromTheLibraryTabSavesAndItsUnknownFoodIsNotLogged() {

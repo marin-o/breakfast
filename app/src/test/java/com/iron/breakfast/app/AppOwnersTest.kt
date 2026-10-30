@@ -1,5 +1,6 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.scan.ProductReviewOrigin
 import androidx.compose.runtime.snapshots.Snapshot
 import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.FoodOrigin
@@ -30,6 +31,59 @@ class AppOwnersTest {
         assertEquals("2 eggs", after.log.draft)
         assertEquals("2026-10-20", after.day.selectedDayKey)
         assertEquals(MealSlot.DINNER, after.meal)
+    }
+
+    @Test fun aKnownBarcodeFromTheLogComesBackAsAPartOfTheDraft() {
+        val coke = food("coke", "Coke Zero")
+        val app = AppKit(foods = listOf(coke))
+        app.barcodes["4006381333931"] = coke
+        app.log.open(null)
+        app.log.onDraft("100 g oil,")
+        app.scan.begin()
+        app.scan.onBarcode("4006381333931")
+        assertEquals(ProductReviewOrigin.LOG_PART, app.review.origin)
+        app.review.onAmount("330")
+        app.review.onUnit("g")
+        app.review.addToLog()
+        assertEquals("100 g oil, 330 g Coke Zero", app.log.draft)
+        assertTrue(app.log.open)
+        assertEquals(coke.id, app.log.pinsSnapshot()["330 g Coke Zero"]?.id)
+        assertEquals("nothing is logged until the Log's Add", ProductReviewOrigin.LIBRARY, app.review.origin)
+    }
+
+    @Test fun backingOutOfTheScannerOrTheSheetLeavesTheDraftAlone() {
+        val coke = food("coke", "Coke Zero")
+        val app = AppKit(foods = listOf(coke))
+        app.barcodes["4006381333931"] = coke
+        app.log.open(null)
+        app.log.onDraft("100 g oil")
+        app.scan.begin()
+        app.scan.end()
+        assertEquals("100 g oil", app.log.draft)
+        assertTrue(app.log.open)
+        app.scan.begin()
+        app.scan.onBarcode("4006381333931")
+        app.review.close()
+        assertEquals("100 g oil", app.log.draft)
+        assertTrue(app.log.open)
+    }
+
+    @Test fun anUnknownBarcodeFromTheLogGoesThroughNewFoodToTheSameReview() {
+        val app = AppKit()
+        app.settings.lookUpBarcodesSetting.set(false)
+        app.log.open(null)
+        app.log.onDraft("100 g oil")
+        app.scan.begin()
+        app.scan.onBarcode("4006381333931")
+        assertTrue(app.foodForm.open)
+        app.foodForm.draft.name = "Ajvar"
+        app.foodForm.draft.calories = "100"
+        app.foodForm.save()
+        assertFalse(app.foodForm.open)
+        assertEquals(ProductReviewOrigin.LOG_PART, app.review.origin)
+        assertEquals("Ajvar", app.review.product?.name)
+        assertEquals("100 g oil", app.log.draft)
+        assertTrue(app.log.open)
     }
 
     @Test fun aRestoredEditFoodClosesWhenStorageOpensWithoutItsFood() {

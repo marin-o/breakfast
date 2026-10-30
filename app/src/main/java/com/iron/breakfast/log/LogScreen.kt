@@ -1,5 +1,7 @@
 package com.iron.breakfast.log
 
+import com.iron.breakfast.ui.components.ScanBarcodeIcon
+import com.iron.breakfast.scan.ScanSession
 import com.iron.breakfast.ui.shortDateLabel
 import com.iron.breakfast.ui.countLabel
 import com.iron.breakfast.ui.screens.previewQuantityLine
@@ -81,7 +83,7 @@ import com.iron.breakfast.ui.screens.choiceKcalDetail
  * It edits the Log draft ([LogComposer.draft]), which stays until it is added or cleared; leaving the page keeps it.
  */
 @Composable
-internal fun LogScreen(log: LogComposer, session: DiarySession, settings: SettingsState, day: DayState) {
+internal fun LogScreen(log: LogComposer, session: DiarySession, settings: SettingsState, day: DayState, scan: ScanSession) {
     val colors = LocalBreakfastColors.current
     // One resolution pass per draft: rows, choices and the add-bar sum all come from the same planner run.
     // It runs off the main thread so typing never waits on matching; the last draft shows until the next is ready.
@@ -122,6 +124,7 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
             // The field keeps its own caret. A change made from outside (a tapped choice) moves the caret to the end.
             var field by remember { mutableStateOf(inputFieldFor(log.draft)) }
             LaunchedEffect(log.draft) { field = syncedInputField(field, log.draft) }
+            Row(verticalAlignment = Alignment.Top) {
             BasicTextField(
                 value = field,
                 // One logical line: Done submits, so a newline is never typed.
@@ -138,7 +141,7 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
                 }),
                 textStyle = BreakfastType.LargeInput.copy(color = colors.ink),
                 cursorBrush = SolidColor(colors.ink),
-                modifier = Modifier.fillMaxWidth().padding(top = 18.dp).focusRequester(requester),
+                modifier = Modifier.weight(1f).padding(top = 18.dp).focusRequester(requester),
                 decorationBox = { inner ->
                     Box {
                         if (log.draft.isEmpty()) Text(placeholder, color = colors.soft, style = BreakfastType.LargeInput)
@@ -146,6 +149,11 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
                     }
                 },
             )
+            // The whole draft stays: what is scanned comes back as one more part of it.
+            IconButton(onClick = scan::begin, modifier = Modifier.padding(top = 8.dp).size(IconTarget)) {
+                Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.ink)
+            }
+            }
             Hairline(Modifier.padding(top = 22.dp))
             log.error?.let { Text(it, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(top = 8.dp)) }
             DraftParts(draft, onChoose = log::chooseSuggestion, onResolve = log::resolveNotInFoods)

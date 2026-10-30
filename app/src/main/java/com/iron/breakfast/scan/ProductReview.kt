@@ -76,6 +76,8 @@ internal class ProductReview(
     private val openMeal: () -> MealSlot?,
     /** The Library tab is on screen: a review opened there saves to the Library; anywhere else it logs. */
     private val libraryTab: () -> Boolean,
+    /** The Log page is open beneath: a review opened there becomes a part of its draft. */
+    private val logOpen: () -> Boolean,
     /** The Meal setting's meal now, null for Ask: where the choice starts with no meal open. */
     private val automaticMeal: () -> MealSlot?,
     private val queue: () -> ResolveQueueView?,
@@ -83,6 +85,8 @@ internal class ProductReview(
     private val resolvingPart: () -> Boolean,
     private val offerContribution: (OffContributionDraft?) -> Unit,
     private val onPartResolved: (FoodRecord) -> Unit,
+    /** [addToLog] stored the food: the Log takes it as a part of its draft. */
+    private val onLogPart: (food: FoodRecord, amount: Double, unit: MeasureUnit) -> Unit,
     private val onLogged: (advancesQueue: Boolean) -> Unit,
     private val onClosed: () -> Unit,
     private val openSearch: (fromResolver: Boolean) -> Unit,
@@ -120,7 +124,7 @@ internal class ProductReview(
         val resolveQueue = queue()
         product = food
         this.fromScan = fromScan
-        this.origin = origin ?: productReviewOrigin(libraryTab(), queueActive = resolveQueue != null)
+        this.origin = origin ?: productReviewOrigin(libraryTab(), queueActive = resolveQueue != null, logOpen = logOpen())
         val prefill = resolveQueue?.let { productPrefill(food, it.current) } ?: ProductPrefill(100.0, food.nutrition.unit)
         amount = editableNumber(prefill.amount)
         unit = prefill.unit.displayLabel()
@@ -273,6 +277,29 @@ internal class ProductReview(
         ) { store.updateFood(draft.food) }
     }
 
+    /** Add from the Log page: the food is stored, then goes back as a part of the draft. The meal is the Log's, at its Add. */
+    fun addToLog() {
+        val food = product ?: return
+        if (!session.canWrite) return
+        val draft = draft(food) ?: run {
+            notices.show("Enter a positive amount, a supported unit, and valid calories.")
+            return
+        }
+        val scanned = fromScan
+        session.write(
+            change = DiaryChange.FoodsChanged,
+            onSuccess = { stored ->
+                fetchSaved(storedFood(stored.id))
+                product = null
+                offerContribution(contributionDraftAfterLocalSave(draft.food, scanned))
+                fromScan = false
+                origin = ProductReviewOrigin.LIBRARY
+                onLogPart(stored, draft.amount, draft.unit)
+            },
+            onFailure = { notices.show(it.message ?: "Could not save this food.") },
+        ) { store.cacheFood(draft.food) }
+    }
+
     /** A product picked while a Log part is being resolved: stored as the food it is, then picked for the part. */
     private fun resolvePart() {
         val food = product ?: return
@@ -315,7 +342,7 @@ internal class ProductReview(
     }
 }
 
-enum class ProductReviewOrigin { MEAL, LIBRARY, QUEUE }
+enum class ProductReviewOrigin { MEAL, LIBRARY, QUEUE, LOG_PART }
 
 /**
  * The servings a fetched [full] product adds to [food]: its named servings in [food]'s basis unit that [food] has no

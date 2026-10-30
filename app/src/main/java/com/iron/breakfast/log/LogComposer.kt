@@ -1,5 +1,6 @@
 package com.iron.breakfast.log
 
+import com.iron.breakfast.domain.MeasureUnit
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -151,6 +152,17 @@ internal class LogComposer(
         val picked = store.planner(pins.toMap()).choose(draft, food, typing = !committed)
         picked.part?.let { pins[it] = food }
         onDraft(picked.input)
+    }
+
+    /**
+     * A food scanned from the Log page and stored: [amount] [unit] of it after the parts there are, pinned so it reads
+     * as exactly that food. The Log's meal and the rest of the draft stay.
+     */
+    fun addScannedPart(food: FoodRecord, amount: Double, unit: MeasureUnit) {
+        val planner = store.planner(pins.toMap())
+        val part = planner.partText(food, amount, unit)
+        pins[part] = food
+        onDraft(planner.withPartAdded(draft, part))
     }
 
     /** Add on the Log page. */

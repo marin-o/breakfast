@@ -123,7 +123,7 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         Surface.DAILY, Surface.MEAL, Surface.LIBRARY, Surface.RECIPES -> BaseScreens(vm, surface)
         Surface.SCAN_REVIEW_BACKDROP -> ScanReviewBackdrop(vm.review::close)
         // Drawn over the screen beneath, which keeps its scroll position. Dialogs and sheets after it render above it.
-        Surface.LOG -> LogScreen(vm.log, vm.session, vm.settings, vm.day)
+        Surface.LOG -> LogScreen(vm.log, vm.session, vm.settings, vm.day, vm.scan)
         Surface.ENTRY_QUICK_EDIT -> vm.entryEdit.editingEntry()?.let { EntryQuickEditSheet(vm.entryEdit, vm.session, it) }
         Surface.ENTRY_FULL_EDIT -> vm.entryEdit.editingEntry()?.let { EntryFullEditScreen(vm.entryEdit, vm.session, vm.day, it) }
         Surface.ENTRY_FOOD_PICKER -> EntryFoodPicker(vm.entryEdit, vm.session)

@@ -60,6 +60,7 @@ class ProductReviewTest {
     private var confirmed = 0
     private var meal: MealSlot? = null
     private var onDaily = false
+    private var logOpen = false
     private var automatic: MealSlot? = null
     private var queue: ResolveQueueView? = null
     private var resolvingPart = false
@@ -70,11 +71,13 @@ class ProductReviewTest {
         selectedDay = { "2026-10-28" },
         openMeal = { meal },
         libraryTab = { meal == null && !onDaily },
+        logOpen = { logOpen },
         automaticMeal = { automatic },
         queue = { queue },
         resolvingPart = { resolvingPart },
         offerContribution = { offers += it },
         onPartResolved = { events += "resolved ${it.id}" },
+        onLogPart = { food, amount, unit -> events += "part ${food.id} $amount ${unit.label}" },
         onLogged = { events += "logged advances=$it" },
         onClosed = { events += "closed" },
         openSearch = { events += "search fromResolver=$it" },
@@ -200,6 +203,25 @@ class ProductReviewTest {
         assertEquals(listOf("package"), servingsToAdd(has, nutellaFull).map { it.name })
         assertNull(withServingsAdded(null, nutella, nutellaFull.conversions))
         assertNull("nothing to add", withServingsAdded(nutellaFull, nutellaFull, nutellaFull.conversions))
+    }
+
+    @Test fun aReviewFromTheLogStoresTheFoodAndHandsItBackWithItsAmount() {
+        logOpen = true
+        review.choose(nutella, fromScan = true)
+        assertEquals(ProductReviewOrigin.LOG_PART, review.origin)
+        review.onAmount("30")
+        review.addToLog()
+        assertEquals("cache Nutella", store.calls.single())
+        assertEquals("part stored-off-1 30.0 g", events.last())
+        assertNull(review.product)
+        assertEquals("no Logged!: nothing is in the diary yet", 0, confirmed)
+    }
+
+    @Test fun closingAReviewFromTheLogWritesNothing() {
+        logOpen = true
+        review.choose(nutella, fromScan = true)
+        review.close()
+        assertTrue(store.calls.isEmpty())
     }
 
     @Test fun aReviewFromDailyLogsStartingOnTheAutomaticMeal() {

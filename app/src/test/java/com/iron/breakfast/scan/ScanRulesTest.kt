@@ -14,6 +14,11 @@ class ScanRulesTest {
         assertEquals(ProductReviewOrigin.QUEUE, productReviewOrigin(libraryTab = false, queueActive = true))
     }
 
+    @Test fun aReviewFromTheLogIsForItsDraftUnlessAQueueHasIt() {
+        assertEquals(ProductReviewOrigin.LOG_PART, productReviewOrigin(libraryTab = false, queueActive = false, logOpen = true))
+        assertEquals(ProductReviewOrigin.QUEUE, productReviewOrigin(libraryTab = false, queueActive = true, logOpen = true))
+    }
+
     @Test fun onlyALibraryReviewSavesToTheLibrary() {
         assertTrue(canSaveProductToLibrary(ProductReviewOrigin.LIBRARY, queueActive = false))
         assertFalse(canSaveProductToLibrary(ProductReviewOrigin.LIBRARY, queueActive = true))

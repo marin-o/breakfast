@@ -386,6 +386,7 @@ private fun amountFieldText(review: ProductReview): String =
     // While a resolve queue is active the meal is the queue's own: shown as a plain line, not a choice.
     val queueMeal = review.queueMeal()
     val fromLibrary = review.origin == ProductReviewOrigin.LIBRARY
+    val forLog = review.origin == ProductReviewOrigin.LOG_PART
     var meal by rememberSaveable(food.id) { mutableStateOf(review.initialMeal()) }
     var editing by rememberSaveable(food.id) { mutableStateOf(false) }
     val parsed = parseProductAmount(amountText, basis.unit)
@@ -445,7 +446,7 @@ private fun amountFieldText(review: ProductReview): String =
                     Text("Meal", color = colors.soft, style = BreakfastType.Meta)
                     Text(queueMeal.label(), color = colors.ink, style = BreakfastType.BodyMedium)
                 }
-                else MealField(meal, { meal = it }, Modifier.padding(top = 16.dp), compact = true)
+                else if (!forLog) MealField(meal, { meal = it }, Modifier.padding(top = 16.dp), compact = true)
                 Row(Modifier.fillMaxWidth().padding(top = 18.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                     Text("Result", color = colors.soft, style = BreakfastType.Meta)
                     Row(verticalAlignment = Alignment.Bottom) {
@@ -453,7 +454,8 @@ private fun amountFieldText(review: ProductReview): String =
                         Text(" kcal", color = colors.soft, style = BreakfastType.Secondary)
                     }
                 }
-                PrimaryButton("Add to ${(queueMeal ?: meal).label()}", { review.add(queueMeal ?: meal) }, Modifier.padding(top = 14.dp), enabled = canAdd)
+                if (forLog) PrimaryButton("Add", review::addToLog, Modifier.padding(top = 14.dp), enabled = canAdd)
+                else PrimaryButton("Add to ${(queueMeal ?: meal).label()}", { review.add(queueMeal ?: meal) }, Modifier.padding(top = 14.dp), enabled = canAdd)
                 if (queueMeal != null) review.resolveQueue()?.next?.let { next ->
                     Text("Next: $next", color = colors.soft, style = BreakfastType.Secondary, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
                 }
