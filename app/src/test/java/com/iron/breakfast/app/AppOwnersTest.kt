@@ -39,7 +39,7 @@ class AppOwnersTest {
         app.barcodes["4006381333931"] = coke
         app.log.open(null)
         app.log.onDraft("100 g oil,")
-        app.scan.begin()
+        app.scan.begin(forLog = true)
         app.scan.onBarcode("4006381333931")
         assertEquals(ProductReviewOrigin.LOG_PART, app.review.origin)
         app.review.onAmount("330")
@@ -57,11 +57,11 @@ class AppOwnersTest {
         app.barcodes["4006381333931"] = coke
         app.log.open(null)
         app.log.onDraft("100 g oil")
-        app.scan.begin()
+        app.scan.begin(forLog = true)
         app.scan.end()
         assertEquals("100 g oil", app.log.draft)
         assertTrue(app.log.open)
-        app.scan.begin()
+        app.scan.begin(forLog = true)
         app.scan.onBarcode("4006381333931")
         app.review.close()
         assertEquals("100 g oil", app.log.draft)
@@ -73,7 +73,7 @@ class AppOwnersTest {
         app.settings.lookUpBarcodesSetting.set(false)
         app.log.open(null)
         app.log.onDraft("100 g oil")
-        app.scan.begin()
+        app.scan.begin(forLog = true)
         app.scan.onBarcode("4006381333931")
         assertTrue(app.foodForm.open)
         app.foodForm.draft.name = "Ajvar"
@@ -93,7 +93,7 @@ class AppOwnersTest {
         app.barcodes["4006381333931"] = coke
         app.log.open(null)
         app.log.onDraft("100 g oil")
-        app.scan.begin()
+        app.scan.begin(forLog = true)
         app.scan.onBarcode("4006381333931")
         app.review.findBetterMatch()
         assertEquals(ProductReviewOrigin.LOG_PART, app.owners.search.reviewOrigin)
@@ -160,17 +160,128 @@ class AppOwnersTest {
         assertFalse(app.log.open)
     }
 
-    @Test fun editingTheDraftEndsTheQueueAndBackLeavesTheTextAsItWas() {
+    @Test fun anEditKeepsTheOtherUnmatchedPartAndStartsNoSearch() {
         val app = AppKit()
         unmatched(app)
+        val asked = app.offSearched.toList()
         app.log.onDraft("polenta, argeta, x")
-        assertFalse(app.resolve.queueActive)
+        assertEquals(listOf("polenta", "argeta"), app.resolve.parts)
+        app.log.onDraft("polent, argeta")
+        assertEquals("the retyped part leaves the queue", listOf("argeta"), app.resolve.parts)
+        assertTrue(app.resolve.queueActive)
+        assertEquals(asked, app.offSearched)
         assertEquals(MealSlot.LUNCH, app.log.targetMeal())
+        app.log.onDraft("x")
+        assertFalse(app.resolve.queueActive)
+    }
+
+    @Test fun backEndsTheQueueAndLeavesTheText() {
         val other = AppKit()
         unmatched(other)
         other.log.close()
         assertFalse(other.resolve.queueActive)
         assertEquals("polenta, argeta", other.log.draft)
+    }
+
+    @Test fun aScanFromTheLogDuringAQueueAppendsAndLeavesTheQueue() {
+        val coke = food("coke", "Coke Zero")
+        val app = AppKit(foods = listOf(coke))
+        app.barcodes["4006381333931"] = coke
+        unmatched(app)
+        app.scan.begin(forLog = true)
+        app.scan.onBarcode("4006381333931")
+        assertEquals(ProductReviewOrigin.LOG_PART, app.review.origin)
+        assertEquals("100", app.review.amount)
+        app.review.onUnit("g")
+        app.review.addToLog()
+        assertEquals("polenta, argeta, 100 g Coke Zero", app.log.draft)
+        assertEquals(listOf("polenta", "argeta"), app.resolve.parts)
+        assertTrue(app.resolve.queueActive)
+        assertTrue(app.calls.none { it.startsWith("review log") })
+        // Resolving a queued part afterwards takes only that part out of the draft.
+        app.review.choose(food("off-argeta", "Argeta"), origin = ProductReviewOrigin.QUEUE)
+        app.review.add(MealSlot.LUNCH)
+        assertEquals("argeta, 100 g Coke Zero", app.log.draft)
+        // The last queued part leaves the scanned one for the Log's Add.
+        app.review.choose(food("off-argeta", "Argeta"), origin = ProductReviewOrigin.QUEUE)
+        app.review.add(MealSlot.LUNCH)
+        assertEquals("100 g Coke Zero", app.log.draft)
+        assertTrue(app.log.open)
+    }
+
+    @Test fun anUnknownBarcodeFromTheLogDuringAQueueComesBackWithTheRowsIntact() {
+        val app = AppKit()
+        unmatched(app)
+        app.settings.lookUpBarcodesSetting.set(false)
+        app.scan.begin(forLog = true)
+        app.scan.onBarcode("4006381333931")
+        assertTrue(app.foodForm.open)
+        app.foodForm.draft.name = "Ajvar"
+        app.foodForm.draft.calories = "100"
+        app.foodForm.save()
+        assertEquals(ProductReviewOrigin.LOG_PART, app.review.origin)
+        assertTrue("not logged", app.calls.none { it.startsWith("save and log") })
+        app.review.addToLog()
+        assertTrue(app.log.draft, app.log.draft.startsWith("polenta, argeta, "))
+        assertEquals(listOf("polenta", "argeta"), app.resolve.parts)
+        assertTrue(app.resolve.queueActive)
+    }
+
+    @Test fun aPickInTheLibraryReplacesItsPartAndTheQueueGoesOn() {
+        val yogurt = food("yogurt", "Yogurt")
+        val app = AppKit()
+        unmatched(app)
+        app.log.resolveNotInFoods(com.iron.breakfast.domain.DraftRow.Unresolved("polenta", 0, 7))
+        assertFalse(app.log.open)
+        app.resolve.finishPart(yogurt)
+        assertTrue(app.log.open)
+        assertEquals("Yogurt, argeta", app.log.draft)
+        assertEquals(listOf("argeta"), app.resolve.parts)
+        assertTrue(app.resolve.queueActive)
+        app.review.choose(food("off-argeta", "Argeta"), origin = ProductReviewOrigin.QUEUE)
+        app.review.add(MealSlot.LUNCH)
+        assertEquals("the pick stays, the deleted text does not return", "Yogurt", app.log.draft)
+        assertTrue(app.log.open)
+    }
+
+    @Test fun leavingTheLibraryWithoutAPickKeepsTheQueue() {
+        val app = AppKit()
+        unmatched(app)
+        app.log.resolveNotInFoods(com.iron.breakfast.domain.DraftRow.Unresolved("polenta", 0, 7))
+        assertTrue(app.resolve.cancelPart())
+        assertEquals("polenta, argeta", app.log.draft)
+        assertEquals(listOf("polenta", "argeta"), app.resolve.parts)
+        assertTrue(app.resolve.queueActive)
+    }
+
+    @Test fun theLogsMealButtonChangesTheQueuesMeal() {
+        val app = AppKit()
+        unmatched(app)
+        app.log.chooseMeal(MealSlot.DINNER)
+        assertEquals(MealSlot.DINNER, app.resolve.queueMeal)
+        app.review.choose(food("off-argeta", "Argeta"), origin = ProductReviewOrigin.QUEUE)
+        assertEquals(MealSlot.DINNER, app.review.queueMeal())
+    }
+
+    @Test fun onlyPartsWithNoLocalMatchAreSearchedAndQueued() {
+        val app = AppKit()
+        // "egg" names a food in the kit's catalogue, so it is a local matter; "polenta" is not.
+        app.unmatched = listOf("egg", "polenta")
+        app.log.open(MealSlot.LUNCH)
+        app.log.onDraft("egg, polenta")
+        app.log.submit()
+        assertEquals(listOf("polenta"), app.offSearched)
+        assertEquals(listOf("polenta"), app.resolve.parts)
+        assertEquals("egg, polenta", app.log.draft)
+    }
+
+    @Test fun notRightWaitsWhileTheLogCoversItWithFoodsLeft() {
+        val app = AppKit()
+        assertFalse(app.owners.feedbackHeld())
+        unmatched(app)
+        assertTrue(app.owners.feedbackHeld())
+        app.log.close()
+        assertFalse(app.owners.feedbackHeld())
     }
 
     @Test fun closingAReviewOfAPartComesBackToTheLogNotTheResolver() {

@@ -340,6 +340,23 @@ class LogPlanner(
         }
     }
 
+    /** [input] without its first part [raw]; the other parts keep their text and the separators between them. */
+    fun withoutPart(input: String, raw: String): String {
+        val spans = segments(input)
+        val at = spans.indexOfFirst { it.text == raw }
+        if (at < 0) return input
+        val kept = spans.filterIndexed { index, _ -> index != at }
+        return buildString {
+            kept.forEachIndexed { n, span ->
+                append(span.text)
+                if (n < kept.lastIndex) append(input.substring(span.end, kept[n + 1].start).ifBlank { ", " })
+            }
+        }
+    }
+
+    /** Whether [raw] has no food at all behind it: not a local choice, not a unit the food lacks. */
+    fun hasNoLocalMatch(raw: String): Boolean = resolve(raw) == null
+
     /** The query the library opens with for [raw]: the food text, without its amount ("kiselo mleko 200g" is "kiselo mleko"). */
     fun libraryQueryFor(raw: String): String = typed(raw).foodPhrase
 

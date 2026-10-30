@@ -3,11 +3,8 @@ package com.iron.breakfast.search
 import androidx.compose.runtime.mutableStateMapOf
 import com.iron.breakfast.data.OffSearchResult
 import com.iron.breakfast.domain.FoodRecord
-import com.iron.breakfast.domain.TextScript
-import com.iron.breakfast.domain.matchWords
-import com.iron.breakfast.domain.sameScript
-import com.iron.breakfast.domain.scriptOf
 import com.iron.breakfast.suspendRunCatching
+import com.iron.breakfast.ui.countLabel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -24,18 +21,6 @@ internal sealed interface OffPartState {
 }
 
 /**
- * The results of [foods] a search for [name] may show, by the script rule: a word that mixes scripts finds nothing, and
- * a product is shown only with a name word in a script [name] was typed in. A name with no letters shows them all.
- */
-internal fun offResultsInScript(name: String, foods: List<FoodRecord>): List<FoodRecord> {
-    val scripts = matchWords(name).map(::scriptOf)
-    if (TextScript.MIXED in scripts) return emptyList()
-    return foods.filter { food ->
-        matchWords(food.name).any { word -> scripts.any { sameScript(it, scriptOf(word)) } }
-    }
-}
-
-/**
  * The Open Food Facts search behind the Log's unmatched foods, one food at a time, in order. It runs only when asked
  * ([start], from Add), never while typing. An answer is kept for the draft, so a name is fetched once ([clear] forgets);
  * a failure is not, so the next Add tries it again, and nothing retries on its own.
@@ -44,8 +29,12 @@ internal class OffPartSearch(
     private val off: OffSearchService,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
+    /** Says for TalkBack how a part's search ended, once it has. */
+    private val announce: (String) -> Unit = {},
 ) {
     private val states = mutableStateMapOf<String, OffPartState>()
+    private val waiting = ArrayDeque<String>()
+    private var running: String? = null
     private var job: Job? = null
 
     fun stateOf(name: String): OffPartState? = states[name]
@@ -54,19 +43,35 @@ internal class OffPartSearch(
     fun start(names: List<String>) {
         cancel()
         val todo = names.distinct().filter { states[it] !is OffPartState.Found && states[it] != OffPartState.NoResults }
-        if (todo.isEmpty()) return
         todo.forEach { states[it] = OffPartState.Searching }
+        waiting.addAll(todo)
+        run()
+    }
+
+    private fun run() {
+        if (waiting.isEmpty()) return
         job = scope.launch {
-            for (name in todo) {
-                // A word that mixes scripts can show nothing, so it is not sent.
-                val answer = if (TextScript.MIXED in matchWords(name).map(::scriptOf)) OffPartState.NoResults else
+            while (waiting.isNotEmpty()) {
+                val name = waiting.first()
+                running = name
+                val answer = if (!offQuerySendable(name)) OffPartState.NoResults else
                     withContext(io) { suspendRunCatching { off.search(name) } }.fold(
                         onSuccess = { result -> stateOf(name, result) },
                         onFailure = { OffPartState.Failed },
                     )
                 states[name] = answer
+                waiting.removeFirstOrNull()
+                announce("$name: ${spoken(answer)}")
             }
+            running = null
         }
+    }
+
+    private fun spoken(state: OffPartState): String = when (state) {
+        is OffPartState.Found -> "${countLabel(state.foods.size, "result", "results")} from Open Food Facts"
+        OffPartState.NoResults -> offStatusText(OffSearchStatus.NoResults).first
+        OffPartState.Offline -> offStatusText(OffSearchStatus.Offline).first
+        else -> offStatusText(OffSearchStatus.Failed).first
     }
 
     private fun stateOf(name: String, result: OffSearchResult): OffPartState = when (result) {
@@ -75,10 +80,24 @@ internal class OffPartSearch(
         is OffSearchResult.Error -> OffPartState.Failed
     }
 
-    /** The draft changed or was left: the search running stops; the answers it got stay. */
+    /**
+     * The draft changed and only [names] are left: a search for one gone stops, the others go on as Add asked, and no new
+     * one starts. Answers stay.
+     */
+    fun retain(names: List<String>) {
+        val runningGone = running?.let { it !in names } == true
+        if (runningGone) { job?.cancel(); running = null }
+        waiting.removeAll { it !in names }
+        states.entries.removeAll { it.value == OffPartState.Searching && it.key !in names }
+        if (runningGone) run()
+    }
+
+    /** The Log closed or a new Add began: the searches running stop; the answers they got stay. */
     fun cancel() {
         job?.cancel()
         job = null
+        running = null
+        waiting.clear()
         states.entries.removeAll { it.value == OffPartState.Searching }
     }
 

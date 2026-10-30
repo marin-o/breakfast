@@ -60,8 +60,14 @@ internal class LogComposer(
     private val resolvePart: (request: LogResolveRequest, meal: MealSlot, query: String) -> Unit,
     /** Where the Log page's draft is planned ([computeDraftView]): off the main thread in the app. */
     private val compute: CoroutineDispatcher,
-    /** The draft changed under its queue ([closing] false), or the Log closed: its queue and searches end. */
-    private val onQueueLeft: (source: ResolveSource, closing: Boolean) -> Unit = { _, _ -> },
+    /** The Log closed: its queue and searches end. */
+    private val onQueueLeft: (source: ResolveSource) -> Unit = {},
+    /** The draft changed and now holds these parts: those still queued stay. */
+    private val onDraftEdited: (source: ResolveSource, parts: List<String>) -> Unit = { _, _ -> },
+    /** The meal menu chose this: what is queued logs there. */
+    private val onMealChosen: (source: ResolveSource, meal: MealSlot) -> Unit = { _, _ -> },
+    /** The parts the queue holds now. */
+    private val queuedParts: () -> List<String> = { emptyList() },
     initial: SavedLogDraft = SavedLogDraft("", false),
 ) : ResolveSource {
     var draft by mutableStateOf(initial.text); private set
@@ -104,7 +110,7 @@ internal class LogComposer(
 
     /** Closes the Log page. The draft stays. */
     fun close() {
-        onQueueLeft(this, true)
+        onQueueLeft(this)
         open = false
         mealMenuOpen = false
         submitPending = false
@@ -116,6 +122,7 @@ internal class LogComposer(
     /** Choosing a meal from the menu wins over everything else; it logs at once only if Add asked for it. */
     fun chooseMeal(target: MealSlot) {
         chosen = target
+        onMealChosen(this, target)
         mealMenuOpen = false
         if (submitPending) {
             submitPending = false
@@ -128,11 +135,19 @@ internal class LogComposer(
 
     /** The Log page's typing. Clearing the draft also drops the foods picked for it. */
     fun onDraft(value: String) {
-        if (value != draft) onQueueLeft(this, false)
+        // Add's write is taking this text: what it logs must not stay here to be logged again.
+        if (session.busy) return
+        applyDraft(value)
+    }
+
+    private fun applyDraft(value: String) {
         pins.edited(draft, value)
         draft = value
-        committed = false
         if (value.isBlank()) pins.clear()
+        val parts = queuedParts().takeIf { it.isNotEmpty() }?.let { store.planner(pinsSnapshot()).segments(value).map { span -> span.text } }
+        if (parts != null) onDraftEdited(this, parts)
+        // A queued part left last is finished, not being typed: it keeps its row.
+        committed = committed && parts?.lastOrNull()?.let { it in queuedParts() } == true
     }
 
     /** The meal the Log page writes to, by [logTargetMealOf] precedence. Also drives the picker label. */
@@ -156,7 +171,7 @@ internal class LogComposer(
     fun chooseSuggestion(food: FoodRecord) {
         val picked = store.planner(pinsSnapshot()).choose(draft, food, typing = !committed)
         val before = draft
-        onDraft(picked.input)
+        applyDraft(picked.input)
         // The tapped part is the last one: from where the text before it ends.
         picked.part?.let { pins.add(picked.input, it, food, picked.input.commonPrefixWith(before).length.coerceAtMost(picked.input.lastIndexOf(it))) }
     }
@@ -169,7 +184,7 @@ internal class LogComposer(
         val planner = store.planner(pinsSnapshot())
         val part = planner.partText(food, amount, unit)
         val next = planner.withPartAdded(draft, part)
-        onDraft(next)
+        applyDraft(next)
         pins.add(next, part, food, next.length - part.length)
     }
 
@@ -210,10 +225,18 @@ internal class LogComposer(
                 // Only the pins this save used: one added while it planned off the main thread belongs to the new text.
                 pins.forget(usedPins)
                 val unmatched = saved.unresolvedSegments
-                // What could not be matched stays on the Log, under its rows, for the same meal.
-                if (unmatched.isEmpty()) close() else chosen = target
-                afterSave(unmatched, target, this@LogComposer, captured)
+                val planner = store.planner(pinsSnapshot())
+                if (draft == captured) {
+                    pins.edited(draft, unmatched.joinToString(", "))
+                    draft = unmatched.joinToString(", ")
+                }
                 error = if (unmatched.isNotEmpty()) NEEDS_A_MATCH else null
+                // Back during the write: what is left stays as text, and no queue runs behind a closed Log.
+                if (!open) return@write
+                if (unmatched.isEmpty()) close() else chosen = target
+                // What no food matches stays on the Log, under its rows, for the same meal. A part with a local choice
+                // or a unit its food lacks is not Open Food Facts' to answer: it stays a plain row.
+                afterSave(unmatched.filter(planner::hasNoLocalMatch), target, this@LogComposer, captured)
             },
             onFailure = { error = it.message ?: "Could not save this meal." },
         ) { store.save(captured, target, selectedDay(), capturedPins) }
@@ -240,17 +263,16 @@ internal class LogComposer(
      */
     fun resume(request: LogResolveRequest, pick: FoodRecord?) {
         if (pick == null) {
-            pins.edited(draft, request.draftText)
-            draft = request.draftText
+            applyDraft(request.draftText)
         } else {
             val text = store.planner(pinsSnapshot()).pickedText(request.part, pick)
             val next = replaceDraftPart(request.draftText, request.start, request.end, text)
-            pins.edited(draft, next)
-            draft = next
+            applyDraft(next)
             pins.add(next, text, pick, request.start)
         }
-        committed = false
-        error = null
+        // Back with its rows in place, as Add left them, when a queue is still waiting.
+        committed = queuedParts().isNotEmpty()
+        error = if (queuedParts().isNotEmpty()) error else null
         preset = request.preset
         chosen = request.chosen
         open = true
@@ -262,7 +284,13 @@ internal class LogComposer(
     /** Every part Add left was matched in the resolver: "Some foods need a match." no longer applies. A skipped part keeps it. */
     override fun allMatched() { if (error == NEEDS_A_MATCH) error = null }
     override val showsItsParts: Boolean get() = true
-    override fun queueEnded() { close() }
+    override fun removePart(raw: String) {
+        val next = store.planner(pinsSnapshot()).withoutPart(draft, raw)
+        pins.edited(draft, next)
+        draft = next
+    }
+    // Whatever else is in the draft (a scanned part, a local choice) is still the Log's to add.
+    override fun queueEnded() { if (draft.isBlank()) close() }
 }
 
 /** The Log's error while parts of the draft are not matched. */

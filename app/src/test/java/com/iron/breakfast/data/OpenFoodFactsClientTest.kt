@@ -469,7 +469,7 @@ class OpenFoodFactsClientTest {
     }
 
     @Test fun barcodeServerErrorsAreErrorsAndOnlyNoConnectionIsUnavailable() {
-        fun lookup(connection: (URL) -> HttpURLConnection?) = runBlocking { OpenFoodFactsClient(connection).barcode("3017620422003") }
+        fun lookup(connection: (URL) -> HttpURLConnection?) = runBlocking { OpenFoodFactsClient(connectionFactory = connection).barcode("3017620422003") }
         listOf(503, 429, 500).forEach { status ->
             assertEquals(OffResult.Error(OFF_NOT_RESPONDING), lookup { url -> FakeConnection(url, status, "", null) })
         }
@@ -488,7 +488,7 @@ class OpenFoodFactsClientTest {
     }
 
     @Test fun searchServerErrorsAreErrorsAndOnlyNoConnectionIsUnavailable() {
-        fun search(connection: (URL) -> HttpURLConnection?) = runBlocking { OpenFoodFactsClient(connection).search("yogurt") }
+        fun search(connection: (URL) -> HttpURLConnection?) = runBlocking { OpenFoodFactsClient(connectionFactory = connection).search("yogurt") }
         listOf(503, 429).forEach { status ->
             assertTrue(search { url -> FakeConnection(url, status, "", null) } is OffSearchResult.Error)
         }

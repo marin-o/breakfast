@@ -149,7 +149,7 @@ import com.iron.breakfast.ui.screens.sourceLabel
             if (event == Lifecycle.Event.ON_RESUME) {
                 val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
                 hasPermission = granted
-                if (granted && scan.unavailableReason == ScannerUnavailableReason.PERMISSION_DENIED) scan.begin()
+                if (granted && scan.unavailableReason == ScannerUnavailableReason.PERMISSION_DENIED) scan.begin(scan.forLog)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)

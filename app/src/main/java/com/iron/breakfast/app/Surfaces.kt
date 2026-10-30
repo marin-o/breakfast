@@ -251,7 +251,8 @@ internal class Surfaces(
     fun openLibrary() = showLibrary(null, "")
     /** The Library adding to [target] (a meal's "Add food", a part being resolved), searching [query]. */
     fun openFocusedLibrary(target: MealSlot, query: String = "") {
-        resolve.abandon()
+        // A part sent from the Log keeps the rest of its queue; a meal's Add food ends any.
+        if (!resolve.resolvingPart) resolve.abandon()
         showLibrary(target, query)
     }
     /** An entry's "Open in Library": the Library tab with that food's page open; a recipe's entry opens its recipe. */

@@ -28,9 +28,11 @@ class LogComposerTest {
         val saves = mutableListOf<String>()
         var result = SavedMeal(listOf(entry("e1")), NutritionValues.ZERO)
         var failure: Throwable? = null
+        var held: kotlinx.coroutines.CompletableDeferred<Unit>? = null
         override fun planner(pins: Map<String, FoodRecord>) = LogPlanner(FoodMatcher(FoodCatalog.fixtures), pins = pins)
         override suspend fun save(text: String, meal: MealSlot, dayKey: String, pins: Map<String, FoodRecord>): SavedMeal {
             failure?.let { throw it }
+            held?.await()
             saves += "save \"$text\" $meal $dayKey pins=${pins.keys}"
             return result
         }
@@ -107,6 +109,29 @@ class LogComposerTest {
         assertEquals("Some foods need a match.", log.error)
         assertEquals(emptyList<DiaryChange>(), diary.published)
         assertEquals(listOf("ayran"), afterSaves.single().unresolved)
+    }
+
+    @Test fun theDraftTakesNoEditDuringAddsWrite() {
+        val held = kotlinx.coroutines.CompletableDeferred<Unit>()
+        diary.session.write(change = { _: Unit -> null }, onSuccess = {}, onFailure = {}) { held.await() }
+        log.onDraft("2 eggs")
+        assertEquals("", log.draft)
+        held.complete(Unit)
+        log.onDraft("2 eggs")
+        assertEquals("2 eggs", log.draft)
+    }
+
+    @Test fun backDuringTheWriteStartsNoQueueAndLeavesOnlyWhatDidNotLog() {
+        log.open(MealSlot.LUNCH)
+        log.onDraft("2 eggs, ayran")
+        store.result = SavedMeal(listOf(entry("e1")), NutritionValues.ZERO, unresolvedSegments = listOf("ayran"))
+        store.held = kotlinx.coroutines.CompletableDeferred()
+        log.submit()
+        log.close()
+        store.held!!.complete(Unit)
+        assertEquals(emptyList<AfterSave>(), afterSaves)
+        assertEquals("ayran", log.draft)
+        assertFalse(log.open)
     }
 
     @Test fun aCleanSaveClosesTheLogAndEditingOrLeavingTellsTheQueue() {

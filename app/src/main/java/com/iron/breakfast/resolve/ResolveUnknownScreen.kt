@@ -1,5 +1,7 @@
 package com.iron.breakfast.resolve
 
+import com.iron.breakfast.search.SkipButton
+import com.iron.breakfast.search.SearchYourFoodsButton
 import com.iron.breakfast.ui.theme.SnackbarGutter
 import com.iron.breakfast.search.SearchOrCreateButtons
 import com.iron.breakfast.ui.components.SubScreen
@@ -33,7 +35,6 @@ import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.ConfirmationSnackbar
 import com.iron.breakfast.ui.components.SearchField
 import com.iron.breakfast.ui.components.SectionHeading
-import com.iron.breakfast.ui.components.TertiaryButton
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import com.iron.breakfast.ui.screens.unknownDisplay
 import com.iron.breakfast.ui.screens.matchDisplay
@@ -67,7 +68,7 @@ import com.iron.breakfast.ui.screens.matchDisplay
                     Text("Search your foods", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(bottom = 6.dp))
                     SearchField(resolve.query, resolve::onQuery, onClear = { resolve.onQuery("") }, label = "Search your foods")
                 } else {
-                    TertiaryButton("Search your foods", resolve::beginSearch, Modifier.padding(bottom = 8.dp))
+                    SearchYourFoodsButton(resolve::beginSearch, Modifier.padding(bottom = 8.dp))
                 }
                 if (resolve.results.isNotEmpty()) {
                     SectionHeading("Local matches", Modifier.padding(top = 30.dp, bottom = 4.dp))
@@ -83,7 +84,7 @@ import com.iron.breakfast.ui.screens.matchDisplay
                 }
                 Column(Modifier.padding(top = 30.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     SearchOrCreateButtons({ search.open(resolve.currentName(), fromResolver = true) }, { foodForm.open(resolve.currentName(), fromResolver = true) })
-                    TertiaryButton("Skip", resolve::skip, Modifier.fillMaxWidth(), soft = true)
+                    SkipButton(resolve::skip)
                 }
             }
         }

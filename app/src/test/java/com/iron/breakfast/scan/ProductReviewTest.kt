@@ -212,6 +212,13 @@ class ProductReviewTest {
         assertEquals("no Logged!: nothing is in the diary yet", 0, confirmed)
     }
 
+    @Test fun aNewPartOverAQueueDoesNotTakeTheQueuedAmount() {
+        queue = queueOf(MealSlot.BREAKFAST, listOf("nutella200g"), 1)
+        review.choose(nutella, fromScan = true, origin = ProductReviewOrigin.LOG_PART)
+        assertEquals("100", review.amount)
+        assertNull(review.queueMeal())
+    }
+
     @Test fun closingAReviewFromTheLogWritesNothing() {
         review.choose(nutella, fromScan = true, origin = ProductReviewOrigin.LOG_PART)
         review.close()

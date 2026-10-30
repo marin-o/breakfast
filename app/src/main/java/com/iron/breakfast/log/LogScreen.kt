@@ -1,5 +1,7 @@
 package com.iron.breakfast.log
 
+import com.iron.breakfast.today.UndoSnackbars
+import com.iron.breakfast.today.UndoController
 import com.iron.breakfast.ui.theme.SnackbarGutter
 import com.iron.breakfast.ui.components.ConfirmationSnackbar
 import com.iron.breakfast.app.Confirmations
@@ -86,7 +88,7 @@ import com.iron.breakfast.ui.screens.choiceKcalDetail
  * It edits the Log draft ([LogComposer.draft]), which stays until it is added or cleared; leaving the page keeps it.
  */
 @Composable
-internal fun LogScreen(log: LogComposer, session: DiarySession, settings: SettingsState, day: DayState, scan: ScanSession, confirmations: Confirmations, unmatched: UnmatchedParts) {
+internal fun LogScreen(log: LogComposer, session: DiarySession, settings: SettingsState, day: DayState, scan: ScanSession, confirmations: Confirmations, undo: UndoController, unmatched: UnmatchedParts) {
     val colors = LocalBreakfastColors.current
     // One resolution pass per draft: rows, choices and the add-bar sum all come from the same planner run.
     // It runs off the main thread so typing never waits on matching; the last draft shows until the next is ready.
@@ -130,6 +132,8 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
             Row(verticalAlignment = Alignment.Top) {
             BasicTextField(
                 value = field,
+                // Add's write takes this text: nothing typed meanwhile could be kept apart from it.
+                readOnly = session.busy,
                 // One logical line: Done submits, so a newline is never typed.
                 onValueChange = { next ->
                     val text = next.text.replace("\n", " ")
@@ -153,7 +157,7 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
                 },
             )
             // The whole draft stays: what is scanned comes back as one more part of it.
-            IconButton(onClick = scan::begin, modifier = Modifier.padding(top = 8.dp).size(IconTarget)) {
+            IconButton(onClick = { scan.begin(forLog = true) }, modifier = Modifier.padding(top = 8.dp).size(IconTarget)) {
                 Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.ink)
             }
             }
@@ -161,8 +165,11 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
             log.error?.let { Text(it, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(top = 8.dp)) }
             DraftParts(draft, onChoose = log::chooseSuggestion, onResolve = log::resolveNotInFoods, queued = unmatched.resolve.parts.takeIf { unmatched.resolve.queueActive }.orEmpty(), queuedRow = rememberUnmatchedRows(unmatched))
         }
-        // A part logged from here says "Logged!" here, while the queue goes on.
-        ConfirmationSnackbar(confirmations.message, Modifier.padding(horizontal = SnackbarGutter))
+        // While its unmatched foods are worked through, the batch that just logged and each part say so here.
+        Column(Modifier.fillMaxWidth().padding(horizontal = SnackbarGutter)) {
+            UndoSnackbars(undo, shown = unmatched.resolve.queueActive)
+            ConfirmationSnackbar(confirmations.message)
+        }
         // The add bar sits above whichever is taller: the keyboard or the navigation bar.
         // At large font the button takes its own full-width row so the sum keeps its width.
         val sum: @Composable (Modifier) -> Unit = { modifier ->
@@ -222,13 +229,7 @@ internal fun DraftParts(
                 calories = formatKcal(row.resolution.calculation.nutrition.calories),
                 modifier = Modifier.padding(top = 4.dp),
             )
-            is DraftRow.Unresolved -> if (row.text in queued) queuedRow(row) else FoodRow(
-                name = row.text,
-                quantityLine = "Not in your foods",
-                calories = "",
-                modifier = Modifier.padding(top = 4.dp),
-                onClick = { onResolve(row) },
-            )
+            is DraftRow.Unresolved -> if (row.text in queued) queuedRow(row) else NotInYourFoodsRow(row.text, Modifier.padding(top = 4.dp), onClick = { onResolve(row) })
         }
     }
     val suggestions = draft.choices
@@ -286,6 +287,12 @@ private fun LogMealPicker(label: String, log: LogComposer) {
             }
         }
     }
+}
+
+/** A typed part no food was logged for. */
+@Composable
+internal fun NotInYourFoodsRow(text: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+    FoodRow(name = text, quantityLine = "Not in your foods", calories = "", modifier = modifier, onClick = onClick)
 }
 
 /**

@@ -75,6 +75,42 @@ class OffPartSearchTest {
         assertEquals(emptyList<Any>(), offResultsInScript("pоlenta", foods))
     }
 
+    @Test fun aNumberInTheQueryDoesNotOpenTheScriptFilter() {
+        val milk = testFood("m", "Milk")
+        val mleko = testFood("k", "Кисело млеко")
+        assertEquals(listOf(mleko), offResultsInScript("кисело млеко 2%", listOf(milk, mleko)))
+        assertEquals("no letters: all", listOf(milk, mleko), offResultsInScript("2%", listOf(milk, mleko)))
+    }
+
+    @Test fun onlyPunctuationIsNotSent() {
+        search.start(listOf("&"))
+        assertEquals(emptyList<String>(), asked)
+        assertEquals(OffPartState.NoResults, search.stateOf("&"))
+    }
+
+    @Test fun aSearchEndingIsSaidInExistingWords() {
+        val said = mutableListOf<String>()
+        val speaking = OffPartSearch(service, CoroutineScope(Dispatchers.Unconfined), Dispatchers.Unconfined, said::add)
+        answers["polenta"] = OffSearchResult.Success(listOf(polenta))
+        answers["argeta"] = OffSearchResult.Unavailable
+        speaking.start(listOf("polenta", "argeta"))
+        assertEquals(listOf("polenta: 1 result from Open Food Facts", "argeta: No connection"), said)
+    }
+
+    @Test fun retainingStopsOnlyWhatIsGoneAndStartsNothingNew() {
+        held = CompletableDeferred()
+        search.start(listOf("polenta", "argeta", "kefir"))
+        search.retain(listOf("argeta", "kefir"))
+        assertEquals("the one gone stopped, the next went on", listOf("polenta", "argeta"), asked)
+        assertNull(search.stateOf("polenta"))
+        held!!.complete(Unit)
+        assertEquals(listOf("polenta", "argeta", "kefir"), asked)
+        assertEquals(OffPartState.NoResults, search.stateOf("kefir"))
+        search.retain(listOf("kefir"))
+        assertEquals("an answer stays for the next Add", OffPartState.NoResults, search.stateOf("argeta"))
+        assertEquals(3, asked.size)
+    }
+
     @Test fun aMixedWordIsNotSent() {
         search.start(listOf("pоlenta"))
         assertEquals(emptyList<String>(), asked)

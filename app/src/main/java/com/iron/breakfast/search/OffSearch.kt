@@ -95,16 +95,22 @@ internal class OffSearch(
         val captured = query
         val mine = ++generation
         job?.cancel()
-        busy = true
         message = null
         unavailable = false
+        // What the script rule can show nothing for is not sent.
+        if (!offQuerySendable(captured)) {
+            results = emptyList()
+            message = "No usable result for \"$captured\"."
+            return
+        }
+        busy = true
         job = scope.launch {
             val result = withContext(io) { off.search(captured) }
             if (shouldApplyOffSearchResult(mine, generation, captured, query, open)) {
                 when (result) {
                     is OffSearchResult.Success -> {
-                        results = result.foods
-                        message = if (result.foods.isEmpty()) "No usable result for \"$captured\"." else null
+                        results = offResultsInScript(captured, result.foods)
+                        message = if (results.isEmpty()) "No usable result for \"$captured\"." else null
                     }
                     OffSearchResult.Unavailable -> {
                         unavailable = true

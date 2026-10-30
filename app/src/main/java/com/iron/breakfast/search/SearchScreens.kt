@@ -49,6 +49,16 @@ import com.iron.breakfast.ui.screens.formatKcal
     }
 }
 
+/** "Search your foods": the foods stored here, for a part being resolved. */
+@Composable internal fun SearchYourFoodsButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    TertiaryButton("Search your foods", onClick, modifier)
+}
+
+/** Skip: the part is left unlogged. */
+@Composable internal fun SkipButton(onClick: () -> Unit) {
+    TertiaryButton("Skip", onClick, Modifier.fillMaxWidth(), soft = true)
+}
+
 /** The ways on for a food not found here: Open Food Facts, or a personal food. */
 @Composable internal fun SearchOrCreateButtons(onSearch: () -> Unit, onCreate: () -> Unit) {
     PrimaryButton("Search Open Food Facts", onSearch, kind = ButtonKind.Neutral)

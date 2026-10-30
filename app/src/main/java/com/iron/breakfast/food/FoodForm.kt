@@ -203,11 +203,11 @@ internal class FoodForm(
         val basisUnit = resolved.basisUnit
         val nutrition = NutritionValues(kcal, resolved.protein, resolved.carbohydrates, resolved.fat)
         val resolveQueue = queue()
-        val thenReview = reviewAfterSave.takeIf { editingId == null && !resolvingPart() && resolveQueue == null }
+        val thenReview = reviewAfterSave.takeIf { editingId == null && !resolvingPart() && (resolveQueue == null || it == ProductReviewOrigin.LOG_PART) }
         val plan = if (thenReview != null) null else foodSaveTarget(resolvingPart(), resolveQueue, openMeal())
         val saveTarget = plan?.meal
         val resolvesQueue = plan?.advancesQueue == true
-        if (resolveQueue != null && saveTarget == null) {
+        if (resolveQueue != null && saveTarget == null && thenReview == null) {
             notices.show("Choose a meal before saving this food.")
             return
         }

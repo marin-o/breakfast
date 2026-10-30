@@ -88,7 +88,8 @@ internal class ProductReview(
     private val onClosed: () -> Unit,
     /** The search for "Find better match"; [origin] goes on to what it picks, when this review was logging. */
     private val openSearch: (fromResolver: Boolean, origin: ProductReviewOrigin?) -> Unit,
-    private val startScan: () -> Unit,
+    /** The scanner again; [forLog] when this review was for a new part of the Log's draft. */
+    private val startScan: (forLog: Boolean) -> Unit,
     /** Add logged the product to the meal the user chose: "Logged!" (see `Confirmations`). */
     private val confirmLogged: () -> Unit,
     private val scope: CoroutineScope,
@@ -130,7 +131,8 @@ internal class ProductReview(
         product = food
         this.fromScan = fromScan
         this.origin = origin ?: productReviewOrigin(libraryTab = openMeal() == null, queueActive = resolveQueue != null)
-        val prefill = resolveQueue?.let { productPrefill(food, it.current) } ?: ProductPrefill(100.0, food.nutrition.unit)
+        // Only a queued part has a typed amount: a new part of the Log's draft starts plain, whatever is queued.
+        val prefill = resolveQueue?.takeIf { this.origin == ProductReviewOrigin.QUEUE }?.let { productPrefill(food, it.current) } ?: ProductPrefill(100.0, food.nutrition.unit)
         filledAmount = prefill.amount
         amount = editableNumber(prefill.amount)
         unit = prefill.unit.displayLabel()
@@ -213,7 +215,11 @@ internal class ProductReview(
     }
 
     /** "Rescan": the scanner again. */
-    fun rescan() { close(); startScan() }
+    fun rescan() {
+        val forLog = origin == ProductReviewOrigin.LOG_PART
+        close()
+        startScan(forLog)
+    }
 
     fun onAmount(value: String) { amount = value }
     fun onUnit(value: String) { unit = value }

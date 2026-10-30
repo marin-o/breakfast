@@ -48,8 +48,6 @@ internal class ScanSession(
     private val targetMeal: () -> MealSlot?,
     /** The Library tab is on screen: a scan begun there saves to the Library; anywhere else it logs. */
     private val libraryTab: () -> Boolean,
-    /** The Log page is open: a scan begun there becomes a part of its draft. */
-    private val logOpen: () -> Boolean,
     /** A resolve queue is being resolved: a found product reviews as its part. */
     private val queueActive: () -> Boolean,
     private val onProduct: (food: FoodRecord, origin: ProductReviewOrigin) -> Unit,
@@ -71,15 +69,16 @@ internal class ScanSession(
     private var originDay = ""
     private var originMeal: MealSlot? = null
     private var originLibraryTab = false
-    private var originLog = false
+    /** This scan came from the Log's icon: what it finds is a new part of the draft, never a queued part. */
+    var forLog by mutableStateOf(false); private set
 
-    /** Opens the scanner for the day and meal on screen now. */
-    fun begin() {
+    /** Opens the scanner for the day and meal on screen now; [forLog] from the Log's own icon. */
+    fun begin(forLog: Boolean = false) {
+        this.forLog = forLog
         token++
         originDay = selectedDay()
         originMeal = targetMeal()
         originLibraryTab = libraryTab()
-        originLog = logOpen()
         unavailable = false
         unavailableReason = null
         lookupBusy = false
@@ -144,7 +143,7 @@ internal class ScanSession(
         val mine = token
         val day = originDay
         val meal = originMeal
-        val reviewOrigin = productReviewOrigin(originLibraryTab, queueActive(), originLog)
+        val reviewOrigin = productReviewOrigin(originLibraryTab, queueActive(), forLog)
         val logging = reviewOrigin.takeIf { it.logs }
         val step = unknownBarcodeStep(lookUpBarcodes())
         lookupCode = barcode

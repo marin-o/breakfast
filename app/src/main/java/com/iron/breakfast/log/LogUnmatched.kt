@@ -1,5 +1,9 @@
 package com.iron.breakfast.log
 
+import com.iron.breakfast.search.SkipButton
+import com.iron.breakfast.search.SearchYourFoodsButton
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
@@ -20,7 +24,6 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.semantics.collapse
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.expand
@@ -40,7 +43,6 @@ import com.iron.breakfast.search.SearchOrCreateButtons
 import com.iron.breakfast.search.offStatusText
 import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.LinearProgress
-import com.iron.breakfast.ui.components.TertiaryButton
 import com.iron.breakfast.ui.components.rememberMotion
 import com.iron.breakfast.ui.screens.basisLabel
 import com.iron.breakfast.ui.screens.formatKcal
@@ -85,20 +87,20 @@ private fun UnmatchedRow(row: DraftRow.Unresolved, parts: UnmatchedParts, open: 
     val colors = LocalBreakfastColors.current
     val motion = rememberMotion()
     val turn by animateFloatAsState(if (open) 180f else 0f, motion.nav(), label = "unmatched")
-    val name = parts.resolve.nameOf(row.text)
+    val name = remember(row.text) { parts.resolve.nameOf(row.text) }
     Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onToggle)
+                .clickable(role = Role.Button, onClick = onToggle)
                 // TalkBack says whether it is open by the action it offers.
                 .semantics {
                     if (open) collapse { onToggle(); true } else expand { onToggle(); true }
                 },
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            FoodRow(name = row.text, quantityLine = "Not in your foods", calories = "", modifier = Modifier.weight(1f))
-            Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = null, tint = colors.soft, modifier = Modifier.size(22.dp).rotate(turn))
+            NotInYourFoodsRow(row.text, Modifier.weight(1f))
+            Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = null, tint = colors.soft, modifier = Modifier.size(22.dp).graphicsLayer { rotationZ = turn })
         }
         AnimatedVisibility(open, enter = motion.rowIn(), exit = motion.rowOut()) {
             Column(Modifier.fillMaxWidth().padding(start = PartInset, top = 4.dp).semantics { isTraversalGroup = true }) {
@@ -127,8 +129,8 @@ private fun UnmatchedRow(row: DraftRow.Unresolved, parts: UnmatchedParts, open: 
                         onSearch = { onFocus(); parts.search.open(name, fromResolver = true); parts.search.submit() },
                         onCreate = { onFocus(); parts.foodForm.open(name, fromResolver = true) },
                     )
-                    TertiaryButton("Search your foods", { parts.log.resolveNotInFoods(row) }, Modifier.fillMaxWidth())
-                    TertiaryButton("Skip", { onFocus(); parts.resolve.skip() }, Modifier.fillMaxWidth(), soft = true)
+                    SearchYourFoodsButton({ parts.log.resolveNotInFoods(row) }, Modifier.fillMaxWidth())
+                    SkipButton { onFocus(); parts.resolve.skip() }
                 }
             }
         }

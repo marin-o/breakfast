@@ -1,5 +1,6 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.today.UndoSnackbars
 import androidx.compose.runtime.getValue
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -26,19 +27,15 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.library.LibrarySearchField
-import com.iron.breakfast.today.UNDO
-import com.iron.breakfast.today.deletedText
 import com.iron.breakfast.ui.components.BottomNav
 import com.iron.breakfast.ui.components.Composer
 import com.iron.breakfast.ui.components.ComposerFade
 import com.iron.breakfast.ui.components.ComposerText
 import com.iron.breakfast.ui.components.ConfirmationSnackbar
 import com.iron.breakfast.ui.components.NavTab
-import com.iron.breakfast.ui.components.Reveal
 import com.iron.breakfast.ui.components.Snackbar
 import com.iron.breakfast.ui.components.inert
 import com.iron.breakfast.ui.components.rememberMotion
-import com.iron.breakfast.ui.components.rememberTick
 import com.iron.breakfast.ui.label
 
 /** What the one ink bar does on a base screen: opens the Log page (for [Log.meal]; none on Daily), or searches the Library. */
@@ -81,7 +78,6 @@ private class Kept<T>(var value: T)
 @Composable
 internal fun BaseBottomArea(vm: BreakfastViewModel, screen: BaseScreen, meal: MealSlot?, modifier: Modifier = Modifier) {
     val motion = rememberMotion()
-    val tick = rememberTick()
     val undo = vm.undo
     val surfaces = vm.surfaces
     val mode = screen.barMode(meal)
@@ -94,8 +90,7 @@ internal fun BaseBottomArea(vm: BreakfastViewModel, screen: BaseScreen, meal: Me
     // The area rides above the keyboard (also while it closes after the search), clear of a side display cutout.
     ComposerFade(modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).imePadding()) {
         val logScreen = screen == BaseScreen.DAILY || screen == BaseScreen.MEAL
-        Reveal(undo.loggedMessage.takeIf { logScreen }) { Snackbar(it, UNDO, { tick(); undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
-        Reveal(undo.deletedEntry.takeIf { logScreen }) { Snackbar(deletedText(it), UNDO, { tick(); undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
+        UndoSnackbars(undo, shown = logScreen)
         if (mode != null) ConfirmationSnackbar(vm.confirmations.message)
         if (screen == BaseScreen.DAILY && vm.reminders.shownOnDaily(covered = surfaces.baseCovered())) {
             LaunchedEffect(Unit) { vm.reminders.onScreenNow() }

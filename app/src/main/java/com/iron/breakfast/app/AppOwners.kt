@@ -1,5 +1,6 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.scan.ProductReviewOrigin
 import com.iron.breakfast.search.OffPartSearch
 import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.SavedStateHandle
@@ -146,7 +147,8 @@ internal class AppOwners<D>(
         session = session,
         store = stores.match,
         notices = notices,
-        resolverOpen = { resolve.resolverOpen },
+        // Held while the Log covers it with foods left to match, as while the resolver does.
+        resolverOpen = ::feedbackHeld,
         clock = clock,
         scope = threads.scope,
         sleep = threads.sleep,
@@ -164,7 +166,7 @@ internal class AppOwners<D>(
         onChoose = { food, origin -> review.choose(food, origin = origin) },
     )
     /** The Open Food Facts results under the Log's unmatched foods (see [OffPartSearch]). */
-    val offParts = OffPartSearch(stores.offSearch, threads.scope, threads.io)
+    val offParts = OffPartSearch(stores.offSearch, threads.scope, threads.io, announce = announcements::say)
     /** Export, import, Delete all and the safety copy (see [DiaryTransfer]); the root launches its pickers. */
     val transfer = DiaryTransfer(
         session = session,
@@ -204,10 +206,16 @@ internal class AppOwners<D>(
             // Add is the only thing that searches: one food at a time, under its row.
             offParts.start(unmatched.map(resolve::nameOf))
         },
-        onQueueLeft = { source, closing ->
+        onQueueLeft = { source ->
             resolve.leftBy(source)
-            if (closing) offParts.clear() else offParts.cancel()
+            offParts.clear()
         },
+        onDraftEdited = { source, parts ->
+            resolve.sourceEdited(source, parts)
+            offParts.retain(resolve.parts.map(resolve::nameOf))
+        },
+        onMealChosen = resolve::changeMeal,
+        queuedParts = { resolve.parts },
         resolvePart = resolve::beginPart,
         // Typed work comes back after the process was killed: the log draft (and an open food form, in [init]).
         compute = threads.compute,
@@ -273,10 +281,13 @@ internal class AppOwners<D>(
         selectedDay = { day.selectedDayKey },
         targetMeal = ::mealOnScreen,
         libraryTab = ::libraryTabOnScreen,
-        logOpen = { log.open },
         queueActive = { resolve.queueActive },
         onProduct = { food, origin -> surfaces.productScanned(food, origin) },
-        onManualForm = { name, brand, barcode, fromOff, reviewAfterSave -> foodForm.open(name, brand, barcode, fromOff = fromOff, reviewAfterSave = reviewAfterSave) },
+        onManualForm = { name, brand, barcode, fromOff, reviewAfterSave ->
+            // A new part of the Log's draft leaves the queue under it waiting.
+            val overQueue = reviewAfterSave == ProductReviewOrigin.LOG_PART && resolve.queueActive
+            foodForm.open(name, brand, barcode, fromResolver = overQueue, fromOff = fromOff, reviewAfterSave = reviewAfterSave)
+        },
     )
     /** Product review after a scan or a search pick (see [ProductReview]); its queue and resolve hand-offs go to [resolve]. */
     val review: ProductReview = ProductReview(
@@ -294,7 +305,7 @@ internal class AppOwners<D>(
         onLogged = resolve::childLogged,
         onClosed = resolve::childClosed,
         openSearch = { fromResolver, origin -> search.open(fromResolver = fromResolver, reviewOrigin = origin) },
-        startScan = { scan.begin() },
+        startScan = { forLog -> scan.begin(forLog) },
         confirmLogged = confirmations::logged,
         scope = threads.scope,
         io = threads.io,
@@ -381,6 +392,9 @@ internal class AppOwners<D>(
 
     /** About, Licences: the bundled licence, read on [AppThreads.io]; empty when it cannot be read. */
     suspend fun licenceText(): String = withContext(threads.io) { runCatching { stores.licence() }.getOrDefault("") }
+
+    /** "Not right?" waits while what shows it is covered by foods left to match: the resolver, or the Log with its rows. */
+    internal fun feedbackHeld(): Boolean = resolve.resolverOpen || (log.open && resolve.queueActive)
 
     /** The Library tab itself is on show, not a meal's Library. */
     private fun libraryTabOnScreen(): Boolean = library.open && library.target == null

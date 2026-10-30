@@ -44,6 +44,8 @@ internal interface ResolveSource {
     fun allMatched() {}
     /** It draws the queue's parts itself, so the resolver does not open: the Log page. */
     val showsItsParts: Boolean get() = false
+    /** A part it shows itself is done: only that part leaves, and everything else in its text stays. */
+    fun removePart(raw: String) {}
     /** The last part of its queue was resolved or skipped. */
     fun queueEnded() {}
 }
@@ -103,6 +105,8 @@ internal class ResolveFlow(
     /** Sends a "Not in your foods" part to the Library, opened on [meal] and searching [query]. */
     fun beginPart(request: LogResolveRequest, meal: MealSlot, query: String) {
         part = request
+        // A queue the Log shows waits while the Library is open: nothing there is its part.
+        continuation = false
         openLibrary(meal, query)
     }
 
@@ -110,6 +114,7 @@ internal class ResolveFlow(
     fun finishPart(food: FoodRecord) {
         val request = part ?: return
         part = null
+        resumeShownQueue()
         returnToLog(request, food)
     }
 
@@ -117,9 +122,12 @@ internal class ResolveFlow(
     fun cancelPart(): Boolean {
         val request = part ?: return false
         part = null
+        resumeShownQueue()
         returnToLog(request, null)
         return true
     }
+
+    private fun resumeShownQueue() { if (source?.showsItsParts == true && parts.isNotEmpty()) continuation = true }
 
     val queueActive: Boolean get() = continuation && parts.isNotEmpty()
 
@@ -133,7 +141,7 @@ internal class ResolveFlow(
      * ([typedAtSave]), and become the queue for [meal], which the resolver opens on. Nothing left ends any queue.
      */
     fun afterSave(unresolved: List<String>, meal: MealSlot, source: ResolveSource, typedAtSave: String) {
-        if (source.text == typedAtSave) source.putBack(unresolved.joinToString(", "))
+        if (!source.showsItsParts && source.text == typedAtSave) source.putBack(unresolved.joinToString(", "))
         val left = unresolved.isNotEmpty()
         parts = unresolved
         queueTotal = unresolved.size
@@ -155,8 +163,18 @@ internal class ResolveFlow(
         skipped = false
     }
 
-    /** [from], where the queue's parts were typed, was edited or left: its queue ends. Another's goes on. */
+    /** [from], where the queue's parts were typed, was left: its queue ends. Another's goes on. */
     fun leftBy(from: ResolveSource) { if (source === from) abandon() }
+
+    /** [from]'s text changed and now holds [partsNow]: a part still there stays queued, one gone leaves the queue. */
+    fun sourceEdited(from: ResolveSource, partsNow: List<String>) {
+        if (source !== from) return
+        val left = parts.filter { it in partsNow }
+        if (left.isEmpty()) abandon() else parts = left
+    }
+
+    /** The meal was changed where the parts were typed: what is left logs there. */
+    fun changeMeal(from: ResolveSource, meal: MealSlot) { if (source === from && parts.isNotEmpty()) queueMeal = meal }
 
     /** [raw] is the part acted on next, whichever was first: its result was tapped, or its way on. */
     fun focus(raw: String) {
@@ -174,7 +192,7 @@ internal class ResolveFlow(
      * opened from elsewhere ([fromResolver] false) it abandons a queue.
      */
     fun childOpened(fromResolver: Boolean) {
-        if (!fromResolver && parts.isNotEmpty()) abandon()
+        if (!fromResolver && parts.isNotEmpty() && !resolvingPart) abandon()
         continuation = fromResolver
         resolverOpen = false
     }
@@ -183,7 +201,9 @@ internal class ResolveFlow(
     fun childClosed() { if (queueActive) resolverOpen = source?.showsItsParts != true else continuation = false }
 
     /** A screen opened from the resolver logged its food; [advancesQueue] when that resolved the queue's part. */
-    fun childLogged(advancesQueue: Boolean) { if (advancesQueue) advance() else continuation = false }
+    fun childLogged(advancesQueue: Boolean) {
+        if (advancesQueue) advance() else if (source?.showsItsParts != true) continuation = false
+    }
 
     /** The food form saved: a queued part it resolved moves the queue on; a new food made for a Log part is its pick. */
     fun foodSaved(food: FoodRecord, newFood: Boolean, advancesQueue: Boolean) {
@@ -249,8 +269,9 @@ internal class ResolveFlow(
     private fun advance() {
         // A search still running was ranked before this food was added; it must not fill the next part's list.
         searchJob?.cancel()
+        val done = parts.firstOrNull()
         parts = parts.drop(1)
-        source?.putBack(parts.joinToString(", "))
+        source?.let { if (it.showsItsParts) done?.let(it::removePart) else it.putBack(parts.joinToString(", ")) }
         query = ""
         results = emptyList()
         searchOpen = false

@@ -42,6 +42,20 @@ class OffSearchTest {
 
     private fun product(name: String) = FoodRecord(name, name, emptyList(), "off", FoodOrigin.GENERIC, NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(50.0, null, null, null)))
 
+    @Test fun theSearchScreenKeepsToTheScriptTyped() {
+        search.open("млеко")
+        search.submit()
+        off.answer("млеко", OffSearchResult.Success(listOf(product("Milk"), product("Млеко"))))
+        assertEquals(listOf("Млеко"), search.results.map { it.name })
+    }
+
+    @Test fun theSearchScreenSendsNoMixedWord() {
+        search.open("mлeko")
+        search.submit()
+        assertEquals(false, search.busy)
+        assertEquals("No usable result for \"mлeko\".", search.message)
+    }
+
     @Test fun openingTellsTheCoordinatorAndStartsFromThePrefill() {
         search.open("kefir", fromResolver = true)
         assertTrue(search.open)

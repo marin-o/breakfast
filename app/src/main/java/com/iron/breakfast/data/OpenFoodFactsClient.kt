@@ -38,6 +38,9 @@ sealed interface OffResult {
     data class Error(val message: String) : OffResult
 }
 
+/** How many searches Open Food Facts gets from this app in a rolling minute, by its rate limit. */
+const val OFF_SEARCHES_PER_MINUTE = 10
+
 sealed interface OffSearchResult {
     data class Success(val foods: List<FoodRecord>) : OffSearchResult
     data object Unavailable : OffSearchResult
@@ -192,21 +195,25 @@ private val USER_AGENT = "Breakfast/${BuildConfig.VERSION_NAME} (daily food logg
 internal const val OFF_NOT_RESPONDING = "Open Food Facts is not responding. Add the product manually."
 
 /**
- * Explicit-submit adapter. It is deliberately independent of matching and Room.
+ * Adapter for what the user asked: a search they submitted, the typed names of unmatched foods when Add is tapped, a
+ * scanned barcode; nothing is sent while typing. It is deliberately independent of matching and Room.
  *
- * [search] and [barcode] are reads the user can abandon (a new query, leaving the scanner): they suspend, and a cancel
+ * Searches are limited to [OFF_SEARCHES_PER_MINUTE]; more wait. [search] and [barcode] are reads the user can abandon (a new query, leaving the scanner): they suspend, and a cancel
  * disconnects the request in flight ([disconnectOnCancel]) and skips the fallback search. [preflight] and [contribute]
  * stay blocking and run to the end: the contribution is a user-confirmed write, and cutting it off would not prove that
  * Open Food Facts did nothing (its answer is classified instead, see [OffContributionResult.Uncertain]).
  */
 class OpenFoodFactsClient(
+    /** Every search, the Log's own and the search screen's: one slot, its fallback to the other service included. */
+    private val searchLimit: RollingLimit = RollingLimit(OFF_SEARCHES_PER_MINUTE, 60_000L),
     private val connectionFactory: (URL) -> HttpURLConnection? = { url ->
         (url.openConnection() as? HttpURLConnection)
-    }
+    },
 ) : OffSearchService, OffContributions {
     private val json = Json { ignoreUnknownKeys = true }
 
     override suspend fun search(query: String): OffSearchResult {
+        searchLimit.take()
         val legacyUrl = URL("https://world.openfoodfacts.org/cgi/search.pl?search_terms=" + URLEncoder.encode(query, "UTF-8") + "&search_simple=1&action=process&json=1&page_size=20&fields=code,product_name,brands,nutriments,nutrition_data_per,product_quantity,product_quantity_unit,quantity,serving_size,serving_quantity_unit")
         val legacy = requestSearch(legacyUrl, ::parseSearchResponse)
         if (legacy is OffSearchResult.Success) return legacy

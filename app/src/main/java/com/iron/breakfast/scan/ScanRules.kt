@@ -15,13 +15,13 @@ internal fun parseProductAmount(text: String, basisUnit: MeasureUnit): ParsedAmo
 }
 
 /**
- * What a product review is for, by where it started: the resolve queue's part while one is being resolved ([queueActive]),
- * a part of the draft from the Log page ([logOpen]),
+ * What a product review is for, by where it started: a new part of the draft from the Log's scan icon ([fromLogIcon],
+ * even with a queue under it), the resolve queue's part while one is being resolved ([queueActive]),
  * Save to Library from the Library tab ([libraryTab]), and a log from anywhere else: Daily, a meal, a meal's Library.
  */
-internal fun productReviewOrigin(libraryTab: Boolean, queueActive: Boolean, logOpen: Boolean = false): ProductReviewOrigin = when {
+internal fun productReviewOrigin(libraryTab: Boolean, queueActive: Boolean, fromLogIcon: Boolean = false): ProductReviewOrigin = when {
+    fromLogIcon -> ProductReviewOrigin.LOG_PART
     queueActive -> ProductReviewOrigin.QUEUE
-    logOpen -> ProductReviewOrigin.LOG_PART
     libraryTab -> ProductReviewOrigin.LIBRARY
     else -> ProductReviewOrigin.MEAL
 }
