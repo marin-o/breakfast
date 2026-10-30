@@ -105,8 +105,9 @@ internal fun MeasureUnit.labelFor(amount: Double): String = when (this) {
 internal fun previewQuantityLine(amount: Double, unit: MeasureUnit, approximate: Boolean = false, label: String? = null): String =
     countedQuantity(amount, unit, label) ?: "${if (approximate) "≈" else ""}${amount.pretty()} ${unit.labelFor(amount)}"
 
-/** "No value for tbsp": the food a part names has no number for the unit or serving typed. */
-internal fun noValueLine(part: SegmentResolution): String = "No value for ${part.label ?: part.unit.labelFor(part.amount)}"
+/** Why a part that names a food cannot log: "No value for tbsp", when the food has no number for the unit or serving typed; else its amount. */
+internal fun noValueLine(part: SegmentResolution): String =
+    if (part.noValue) "No value for ${part.label ?: part.unit.labelFor(part.amount)}" else "Amount must be above 0"
 
 private const val MAX_RATE_UNIT_LINE = 28
 

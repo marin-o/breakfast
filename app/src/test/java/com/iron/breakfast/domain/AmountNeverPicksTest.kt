@@ -35,9 +35,12 @@ class AmountNeverPicksTest {
         assertEquals("kefir", row.noValue?.food?.id)
     }
 
-    @Test fun anAmountOfZeroIsNotAMissingValue() {
+    @Test fun anAmountOfZeroNamesItsFoodAndIsNotAMissingValue() {
         val draft = planner.draft("0 Banana", typing = false)
-        assertNull((draft.rows.single() as DraftRow.Unresolved).noValue)
+        val part = (draft.rows.single() as DraftRow.Unresolved).noValue!!
+        assertEquals("Banana", part.food.name)
+        assertFalse(part.noValue)
+        assertEquals("Amount must be above 0", com.iron.breakfast.ui.screens.noValueLine(part))
     }
 
     @Test fun aPartWithNoFoodHasNoFlag() {

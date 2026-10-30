@@ -20,6 +20,9 @@ data class SegmentResolution(
 
     /** Its food is known and the amount is real; only the unit has no number for that food. */
     val noValue: Boolean get() = !supported && !needsChoice && isPositiveAmount(amount)
+
+    /** Its food is known but it cannot log: the unit has no number for that food ([noValue]), or the amount is not above 0. */
+    val namedButCannotLog: Boolean get() = !supported && !needsChoice
 }
 
 /** What Add logs for one input: the segments that save, in order, and the raw segments that do not. */
@@ -41,7 +44,7 @@ sealed interface DraftRow {
         val text: String,
         val start: Int = -1,
         val end: Int = -1,
-        /** The food this part names when it is only the unit that has no value for it: the amount never changes the food. */
+        /** The food this part names when only its unit or amount stops it logging: neither ever changes the food. */
         val noValue: SegmentResolution? = null,
     ) : DraftRow
 }
@@ -557,7 +560,7 @@ class LogPlanner(
                 resolution.needsChoice -> active = resolution
                 // A part with no usable conversion is its food's row, flagged: it does not log.
                 !resolution.supported -> parts.last().let { span ->
-                    rows += DraftRow.Unresolved(activeText, span.start, span.end, noValue = resolution.takeIf { it.noValue })
+                    rows += DraftRow.Unresolved(activeText, span.start, span.end, noValue = resolution.takeIf { it.namedButCannotLog })
                     // The other foods the words name that do have the unit: one tap picks one.
                     if (resolution.noValue) suggestions = resolution.ranked.drop(1).filter { calculationFor(activeText, it.food).supported }
                 }
@@ -594,7 +597,7 @@ class LogPlanner(
     private fun rowFor(span: SegmentSpan, occurrence: Int): DraftRow {
         val resolution = resolvePart(span.text, occurrence)
         return if (resolution != null && resolution.supported && !resolution.needsChoice) DraftRow.Entry(resolution)
-        else DraftRow.Unresolved(span.text, span.start, span.end, noValue = resolution?.takeIf { it.noValue })
+        else DraftRow.Unresolved(span.text, span.start, span.end, noValue = resolution?.takeIf { it.namedButCannotLog })
     }
 
     /** One bare word with no quantity: the form a name is typed in, before it is finished. */
