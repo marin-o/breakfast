@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.CompositionLocalProvider
+import com.iron.breakfast.R
 import com.iron.breakfast.settings.ThemeChoice
 import com.iron.breakfast.settings.TextSizeChoice
 import com.iron.breakfast.settings.AppSettings
@@ -52,16 +53,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // API 31+: the system's per-app night mode, which also colours the launch window on the next cold start. The
-        // same value again changes nothing; a different one (the setting reset elsewhere) recreates the activity once.
+        // same value again changes nothing; a different one (the setting reset elsewhere) changes the mode in place.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             getSystemService(UiModeManager::class.java)?.setApplicationNightMode(applicationNightModeOf(appliedTheme))
         }
         super.onCreate(savedInstanceState)
-        // Keep system bars aligned with the light/dark background token.
-        enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.auto(LightBreakfastColors.bg.toArgb(), DarkBreakfastColors.bg.toArgb()),
-            navigationBarStyle = SystemBarStyle.auto(LightBreakfastColors.bg.toArgb(), DarkBreakfastColors.bg.toArgb()),
-        )
+        applySystemBars()
         // The system's contrast scrim is a white veil in light mode, which showed as a white nav bar under `bg`.
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) window.isNavigationBarContrastEnforced = false
         setContent {
@@ -74,6 +71,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * The mode changed (the Theme setting, or the phone's at System). The manifest keeps the activity through it, since
+     * recreating it blanks the screen: Compose follows by itself, the bars and the window background do not.
+     */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applySystemBars()
+        window.setBackgroundDrawableResource(R.color.window_bg)
+    }
+
+    /** Keep system bars aligned with the light/dark background token. */
+    private fun applySystemBars() {
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(LightBreakfastColors.bg.toArgb(), DarkBreakfastColors.bg.toArgb()),
+            navigationBarStyle = SystemBarStyle.auto(LightBreakfastColors.bg.toArgb(), DarkBreakfastColors.bg.toArgb()),
+        )
+    }
+
     /** A new Text size: the activity is recreated, so [attachBaseContext] gives every window the new font scale. */
     private fun applyTextSize(textSize: TextSizeChoice) {
         if (textSize == appliedTextSize) return
@@ -82,8 +97,8 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * A new Theme setting: API 31+ sets the per-app night mode (the system recreates the activity with it and uses it
-     * for the launch window); below that the activity is recreated so [attachBaseContext] applies it.
+     * A new Theme setting: API 31+ sets the per-app night mode (the system applies it to the running activity and uses
+     * it for the launch window); below that the activity is recreated so [attachBaseContext] applies it.
      */
     private fun applyTheme(theme: ThemeChoice) {
         if (theme == appliedTheme) return
