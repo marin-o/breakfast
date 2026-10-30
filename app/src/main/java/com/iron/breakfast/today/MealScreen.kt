@@ -1,5 +1,6 @@
 package com.iron.breakfast.today
 
+import com.iron.breakfast.ui.components.ComposerFade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -218,7 +219,7 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, undo: UndoController, 
             Modifier.align(Alignment.CenterEnd).width(with(density) { (-revealOffset.roundToInt()).toDp() }).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).padding(start = 8.dp, top = 6.dp, bottom = 6.dp).clip(PrimaryShape).background(colors.bad).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { undo.delete(entry) },
         ) {
             Row(
-                Modifier.wrapContentWidth(Alignment.Start, unbounded = true).widthIn(min = with(density) { deleteWidth.toDp() }).fillMaxHeight(),
+                Modifier.wrapContentWidth(Alignment.Start, unbounded = true).widthIn(min = with(density) { deleteWidth.toDp() } - 8.dp).fillMaxHeight(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
             ) {

@@ -1,5 +1,6 @@
 package com.iron.breakfast.today
 
+import com.iron.breakfast.ui.components.ComposerFade
 import com.iron.breakfast.ui.theme.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -352,23 +353,6 @@ internal fun DailyComposer(
             settingsOpen = surfaces.settingsOpen,
         )
     }
-}
-
-/**
- * A `bg` fade with 16dp gutters, above the system navigation bar; shared by the Daily and Meal bottom areas.
- * The list behind it keeps enough bottom padding that its last row clears the composer and nav.
- */
-@Composable
-internal fun ComposerFade(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    val colors = LocalBreakfastColors.current
-    Column(
-        modifier
-            .fillMaxWidth()
-            .background(Brush.verticalGradient(0f to colors.bg.copy(alpha = 0f), 0.22f to colors.bg))
-            .navigationBarsPadding()
-            .padding(start = 16.dp, end = 16.dp, top = 12.dp),
-        content = content,
-    )
 }
 
 /** A day's correction after a doubtful match: "<food> matched. Not right?" with the alternatives and Search. */

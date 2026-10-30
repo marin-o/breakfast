@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -700,6 +702,24 @@ internal fun MacroTrack(share: Float) {
     Box(Modifier.fillMaxWidth().height(2.dp).background(colors.line)) {
         Box(Modifier.fillMaxWidth(share.coerceIn(0f, 1f)).height(2.dp).background(colors.ink))
     }
+}
+
+/**
+ * A `bg` fade with 16dp gutters, above the system navigation bar; shared by every bottom area (Daily, Meal, Library,
+ * Recipes), so the bar and the tabs sit in the same place on each.
+ * The list behind it keeps enough bottom padding that its last row clears the composer and nav.
+ */
+@Composable
+fun ComposerFade(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    val colors = LocalBreakfastColors.current
+    Column(
+        modifier
+            .fillMaxWidth()
+            .background(Brush.verticalGradient(0f to colors.bg.copy(alpha = 0f), 0.22f to colors.bg))
+            .navigationBarsPadding()
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp),
+        content = content,
+    )
 }
 
 /** The ink bar that opens the Log page. The text input lives there, not here. */

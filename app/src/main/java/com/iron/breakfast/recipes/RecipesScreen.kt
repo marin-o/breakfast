@@ -1,5 +1,6 @@
 package com.iron.breakfast.recipes
 
+import com.iron.breakfast.ui.components.ComposerFade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -108,8 +109,7 @@ private fun RecipeRow(recipes: RecipeBook, recipe: Recipe, modifier: Modifier) {
 /** The Recipes tab's bottom bar: the tabs and Settings, as on the Library tab. */
 @Composable
 internal fun RecipesBottomBar(surfaces: Surfaces) {
-    val colors = LocalBreakfastColors.current
-    Column(Modifier.fillMaxWidth().background(colors.bg).navigationBarsPadding().padding(horizontal = Gutter, vertical = 8.dp)) {
+    ComposerFade {
         BottomNav(
             selected = NavTab.RECIPES,
             onMeals = surfaces::closeRecipes,

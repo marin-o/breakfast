@@ -1,5 +1,6 @@
 package com.iron.breakfast.library
 
+import com.iron.breakfast.ui.components.ComposerFade
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import com.iron.breakfast.ui.theme.*
@@ -216,8 +217,9 @@ internal fun LibraryComposer(library: LibraryState, resolve: ResolveFlow, scan: 
     // A Library on its way out leaves the keyboard to the screen coming in.
     val resolveCleared = resolve.resolvingPart && library.query.isEmpty() && !LocalScreenLeaving.current
     LaunchedEffect(resolveCleared) { if (resolveCleared) { runCatching { focus.requestFocus() }; keyboard?.show() } }
-    Column(Modifier.fillMaxWidth().background(colors.bg).then(if (inMeal) Modifier else Modifier.navigationBarsPadding()).padding(horizontal = Gutter, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        InkBar(if (inMeal) Modifier.navigationBarsPadding() else Modifier) {
+    // The same bottom area as Daily and Meal, so the bar and the tabs do not move between tabs.
+    ComposerFade {
+        InkBar {
             BasicTextField(
                 value = library.input,
                 onValueChange = library::onInput,
