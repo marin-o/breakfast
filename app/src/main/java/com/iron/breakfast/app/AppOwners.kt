@@ -192,6 +192,7 @@ internal class AppOwners<D>(
         selectedDay = { day.selectedDayKey },
         openLibrary = { meal, query -> surfaces.openFocusedLibrary(meal, query) },
         returnToLog = { request, pick -> surfaces.returnToLog(request, pick) },
+        confirmLogged = confirmations::logged,
     )
     /** The Log draft and the Log page (see [LogComposer]). */
     val log: LogComposer = LogComposer(
@@ -203,8 +204,8 @@ internal class AppOwners<D>(
         editing = { entryEdit.editing },
         afterSave = { unmatched, meal, source, typed ->
             resolve.afterSave(unmatched, meal, source, typed)
-            // Add is the only thing that searches: one food at a time, under its row.
-            offParts.start(unmatched.map(resolve::nameOf))
+            // Add is the only thing that searches, one food at a time, under its row; a part with local choices has them.
+            offParts.start(unmatched.filter { log.localChoices(it).isEmpty() }.map(resolve::nameOf))
         },
         onQueueLeft = { source ->
             resolve.leftBy(source)

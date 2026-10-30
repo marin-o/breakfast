@@ -75,7 +75,7 @@ internal class OffPartSearch(
     }
 
     private fun stateOf(name: String, result: OffSearchResult): OffPartState = when (result) {
-        is OffSearchResult.Success -> offResultsInScript(name, result.foods).let { if (it.isEmpty()) OffPartState.NoResults else OffPartState.Found(it) }
+        is OffSearchResult.Success -> foodsInScript(name, result.foods).let { if (it.isEmpty()) OffPartState.NoResults else OffPartState.Found(it) }
         OffSearchResult.Unavailable -> OffPartState.Offline
         is OffSearchResult.Error -> OffPartState.Failed
     }

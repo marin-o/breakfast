@@ -88,6 +88,7 @@ private fun UnmatchedRow(row: DraftRow.Unresolved, parts: UnmatchedParts, open: 
     val motion = rememberMotion()
     val turn by animateFloatAsState(if (open) 180f else 0f, motion.nav(), label = "unmatched")
     val name = remember(row.text) { parts.resolve.nameOf(row.text) }
+    val choices = remember(row.text) { parts.log.localChoices(row.text) }
     Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
         Row(
             Modifier
@@ -99,25 +100,24 @@ private fun UnmatchedRow(row: DraftRow.Unresolved, parts: UnmatchedParts, open: 
                 },
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            NotInYourFoodsRow(row.text, Modifier.weight(1f))
+            if (choices.isEmpty()) NotInYourFoodsRow(row.text, Modifier.weight(1f))
+            else FoodRow(name = row.text, quantityLine = "which one?", calories = "", modifier = Modifier.weight(1f))
             Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = null, tint = colors.soft, modifier = Modifier.size(22.dp).graphicsLayer { rotationZ = turn })
         }
         AnimatedVisibility(open, enter = motion.rowIn(), exit = motion.rowOut()) {
             Column(Modifier.fillMaxWidth().padding(start = PartInset, top = 4.dp).semantics { isTraversalGroup = true }) {
+                choices.forEach { choice ->
+                    // One tap: this part, with its amount, logs to the queue's meal and leaves the draft.
+                    PartFoodRow(name, choice.food.name, choice.quantityLine, choice.kcal) { onFocus(); parts.resolve.resolve(choice.food) }
+                }
                 when (val state = parts.results.stateOf(name)) {
                     OffPartState.Searching -> LinearProgress("Searching Open Food Facts", Modifier.padding(vertical = 8.dp))
                     is OffPartState.Found -> state.foods.forEach { food ->
                         val basis = basisLabel(food.nutrition.amount, food.nutrition.unit)
                         val line = listOfNotNull(food.brand?.takeIf { it.isNotBlank() }, basis).joinToString(", ")
-                        val kcal = formatKcal(food.nutrition.values.calories)
-                        FoodRow(
-                            name = food.name,
-                            quantityLine = line,
-                            calories = kcal,
-                            // Read as this food's result: which food, then the product.
-                            modifier = Modifier.semantics { contentDescription = "$name: ${food.name}, $line, $kcal kcal" },
-                            onClick = { onFocus(); parts.review.choose(food, origin = ProductReviewOrigin.QUEUE) },
-                        )
+                        PartFoodRow(name, food.name, line, formatKcal(food.nutrition.values.calories)) {
+                            onFocus(); parts.review.choose(food, origin = ProductReviewOrigin.QUEUE)
+                        }
                     }
                     OffPartState.NoResults -> StatusLine(OffSearchStatus.NoResults)
                     OffPartState.Offline -> StatusLine(OffSearchStatus.Offline)
@@ -135,6 +135,18 @@ private fun UnmatchedRow(row: DraftRow.Unresolved, parts: UnmatchedParts, open: 
             }
         }
     }
+}
+
+/** One food offered for part [part], inset under its row, by Open Food Facts or the user's own foods; read as that part's. */
+@Composable
+private fun PartFoodRow(part: String, name: String, line: String, kcal: String, onClick: () -> Unit) {
+    FoodRow(
+        name = name,
+        quantityLine = line,
+        calories = kcal,
+        modifier = Modifier.semantics { contentDescription = listOf("$part: $name", line, "$kcal kcal".takeIf { kcal.isNotEmpty() }).filterNotNull().joinToString(", ") },
+        onClick = onClick,
+    )
 }
 
 /** Why there are no results: the search screen's own words, on one soft block. */

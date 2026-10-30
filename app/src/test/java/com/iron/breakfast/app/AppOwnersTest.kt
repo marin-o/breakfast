@@ -263,16 +263,75 @@ class AppOwnersTest {
         assertEquals(MealSlot.DINNER, app.review.queueMeal())
     }
 
-    @Test fun onlyPartsWithNoLocalMatchAreSearchedAndQueued() {
-        val app = AppKit()
-        // "egg" names a food in the kit's catalogue, so it is a local matter; "polenta" is not.
-        app.unmatched = listOf("egg", "polenta")
+    /** "bananna" is a typo of several foods, so Add leaves it as a choice; "xyzq" matches nothing. */
+    private fun choiceKit(vararg parts: String) = AppKit().also { app ->
+        app.plannerFoods = listOf(
+            food("banana", "Banana").copy(defaultAmount = 100.0, defaultUnit = com.iron.breakfast.domain.MeasureUnit.GRAM),
+            food("bread", "Banana bread").copy(defaultAmount = 100.0, defaultUnit = com.iron.breakfast.domain.MeasureUnit.GRAM),
+        )
+        app.unmatched = parts.toList()
         app.log.open(MealSlot.LUNCH)
-        app.log.onDraft("egg, polenta")
+        app.log.onDraft(parts.joinToString(", "))
         app.log.submit()
-        assertEquals(listOf("polenta"), app.offSearched)
-        assertEquals(listOf("polenta"), app.resolve.parts)
-        assertEquals("egg, polenta", app.log.draft)
+    }
+
+    @Test fun aLocalChoiceListsItsFoodsAndIsNotSearched() {
+        val app = choiceKit("bananna", "xyzq")
+        assertEquals(listOf("xyzq"), app.offSearched)
+        assertEquals("queued in typed order", listOf("bananna", "xyzq"), app.resolve.parts)
+        assertEquals(setOf("banana", "bread"), app.log.localChoices("bananna").map { it.food.id }.toSet())
+        assertTrue(app.log.localChoices("xyzq").isEmpty())
+    }
+
+    @Test fun pickingALocalChoiceKeepsTheOtherPartAndItsResults() {
+        val app = choiceKit("bananna", "xyzq")
+        val before = app.owners.offParts.stateOf("xyzq")
+        app.resolve.focus("bananna")
+        app.resolve.resolve(app.log.localChoices("bananna").first().food)
+        assertEquals("logged once", 1, app.queueLogged.size)
+        assertEquals("xyzq", app.log.draft)
+        assertEquals(listOf("xyzq"), app.resolve.parts)
+        assertEquals(before, app.owners.offParts.stateOf("xyzq"))
+        assertEquals("no new search", listOf("xyzq"), app.offSearched)
+        assertEquals("Logged!", app.owners.confirmations.message)
+        assertTrue(app.log.open)
+    }
+
+    @Test fun theOrderOfThePartsDoesNotMatter() {
+        val app = choiceKit("xyzq", "bananna")
+        app.resolve.focus("bananna")
+        app.resolve.resolve(app.log.localChoices("bananna").first().food)
+        assertEquals("xyzq", app.log.draft)
+        assertEquals(listOf("xyzq"), app.resolve.parts)
+        assertEquals(1, app.queueLogged.size)
+    }
+
+    @Test fun aPickKeepsTheAmountTypedForThePart() {
+        val app = choiceKit("200 g bananna")
+        val choice = app.log.localChoices("200 g bananna").first()
+        assertEquals("200 g", choice.quantityLine)
+        app.resolve.focus("200 g bananna")
+        app.resolve.resolve(choice.food)
+        assertEquals(listOf("200.0 g ${choice.food.id}"), app.queueLogged)
+        assertFalse("the last part closes the Log", app.log.open)
+    }
+
+    @Test fun aUnitItsFoodLacksIsNeitherQueuedNorSearched() {
+        val app = AppKit()
+        app.plannerFoods = listOf(food("kefir", "Kefir"))
+        app.unmatched = listOf("2 tbsp Kefir", "xyzq")
+        app.log.open(MealSlot.LUNCH)
+        app.log.onDraft("2 tbsp Kefir, xyzq")
+        app.log.submit()
+        assertEquals(listOf("xyzq"), app.offSearched)
+        assertEquals(listOf("xyzq"), app.resolve.parts)
+        assertEquals("2 tbsp Kefir, xyzq", app.log.draft)
+    }
+
+    @Test fun localChoicesKeepToTheScriptTyped() {
+        val app = AppKit()
+        app.plannerFoods = listOf(food("c", "Банана"), food("l", "Banana"), food("l2", "Banana bread"))
+        assertTrue(app.log.localChoices("bananna").all { it.food.id != "c" })
     }
 
     @Test fun notRightWaitsWhileTheLogCoversItWithFoodsLeft() {

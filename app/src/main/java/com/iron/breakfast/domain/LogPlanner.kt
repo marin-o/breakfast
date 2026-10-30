@@ -354,8 +354,8 @@ class LogPlanner(
         }
     }
 
-    /** Whether [raw] has no food at all behind it: not a local choice, not a unit the food lacks. */
-    fun hasNoLocalMatch(raw: String): Boolean = resolve(raw) == null
+    /** Whether Add left [raw] for the user to settle: no food behind it, or local matches to choose from. Not a unit its food lacks. */
+    fun needsAttention(raw: String): Boolean = resolve(raw).let { it == null || it.needsChoice }
 
     /** The query the library opens with for [raw]: the food text, without its amount ("kiselo mleko 200g" is "kiselo mleko"). */
     fun libraryQueryFor(raw: String): String = typed(raw).foodPhrase

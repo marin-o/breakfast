@@ -80,6 +80,8 @@ internal class ResolveFlow(
     private val openLibrary: (meal: MealSlot, query: String) -> Unit,
     /** The resolve frame ended: the Log comes back where it was, with [pick] in place of the part (null: as it was). */
     private val returnToLog: (request: LogResolveRequest, pick: FoodRecord?) -> Unit,
+    /** A local food logged for a part on the Log page: "Logged!", as a reviewed one says. */
+    private val confirmLogged: () -> Unit = {},
 ) {
     /** The Log part being resolved in the Library, if any. */
     var part by mutableStateOf<LogResolveRequest?>(null); private set
@@ -246,7 +248,10 @@ internal class ResolveFlow(
         val day = selectedDay()
         session.write(
             change = DiaryChange.QueuedPartLogged,
-            onSuccess = { advance() },
+            onSuccess = {
+                if (source?.showsItsParts == true) confirmLogged()
+                advance()
+            },
             onFailure = { notices.show(it.message ?: "Could not resolve this food.") },
         ) { store.cacheFoodAndLog(food, amount, measure.unit, meal, day, measure.name.takeIf { measure.unit == MeasureUnit.SERVING }) }
     }

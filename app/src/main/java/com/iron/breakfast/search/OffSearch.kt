@@ -109,7 +109,7 @@ internal class OffSearch(
             if (shouldApplyOffSearchResult(mine, generation, captured, query, open)) {
                 when (result) {
                     is OffSearchResult.Success -> {
-                        results = offResultsInScript(captured, result.foods)
+                        results = foodsInScript(captured, result.foods)
                         message = if (results.isEmpty()) "No usable result for \"$captured\"." else null
                     }
                     OffSearchResult.Unavailable -> {

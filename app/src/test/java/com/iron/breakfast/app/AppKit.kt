@@ -68,13 +68,17 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
     val calls = mutableListOf<String>()
     /** What Open Food Facts was asked, in order. */
     val offSearched = mutableListOf<String>()
+    /** What the queue logged: amount, unit and food. */
+    val queueLogged = mutableListOf<String>()
     /** What the Log's Add and the Library's mixed batch leave unmatched. */
     var unmatched: List<String> = emptyList()
     /** Barcodes the Library has. */
     val barcodes = mutableMapOf<String, FoodRecord>()
     /** Foods the Library's list finds for any query; empty gives "No local match". */
     var libraryFoods: List<FoodRecord> = emptyList()
-    private val plannerFor = { pins: Map<String, FoodRecord> -> LogPlanner(FoodMatcher(FoodCatalog.fixtures), pins = pins) }
+    /** The foods the Log's planner matches. */
+    var plannerFoods: List<FoodRecord> = FoodCatalog.fixtures
+    private val plannerFor = { pins: Map<String, FoodRecord> -> LogPlanner(FoodMatcher(plannerFoods), pins = pins) }
     private val transferEvents = mutableListOf<String>()
     /** Picked documents for an import, by name. */
     val documents = FakeFiles(transferEvents)
@@ -102,6 +106,7 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
                 override fun search(query: String) = emptyList<RankedFood>()
                 override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String, servingName: String?) {
                     calls += "queue log ${food.id} $meal"
+                    queueLogged += "$amount ${unit.label} ${food.id}"
                 }
             },
             log = object : LogStore {

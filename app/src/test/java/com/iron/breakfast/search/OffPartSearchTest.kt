@@ -70,16 +70,16 @@ class OffPartSearchTest {
         val both = testFood("b", "Polenta Полента")
         val mixed = testFood("m", "Pоlenta")
         val foods = listOf(polenta, cyrillic, both, mixed)
-        assertEquals(listOf(polenta, both), offResultsInScript("polenta", foods))
-        assertEquals(listOf(cyrillic, both), offResultsInScript("полента", foods))
-        assertEquals(emptyList<Any>(), offResultsInScript("pоlenta", foods))
+        assertEquals(listOf(polenta, both), foodsInScript("polenta", foods))
+        assertEquals(listOf(cyrillic, both), foodsInScript("полента", foods))
+        assertEquals(emptyList<Any>(), foodsInScript("pоlenta", foods))
     }
 
     @Test fun aNumberInTheQueryDoesNotOpenTheScriptFilter() {
         val milk = testFood("m", "Milk")
         val mleko = testFood("k", "Кисело млеко")
-        assertEquals(listOf(mleko), offResultsInScript("кисело млеко 2%", listOf(milk, mleko)))
-        assertEquals("no letters: all", listOf(milk, mleko), offResultsInScript("2%", listOf(milk, mleko)))
+        assertEquals(listOf(mleko), foodsInScript("кисело млеко 2%", listOf(milk, mleko)))
+        assertEquals("no letters: all", listOf(milk, mleko), foodsInScript("2%", listOf(milk, mleko)))
     }
 
     @Test fun onlyPunctuationIsNotSent() {

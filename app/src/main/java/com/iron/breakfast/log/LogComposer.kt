@@ -1,5 +1,8 @@
 package com.iron.breakfast.log
 
+import com.iron.breakfast.ui.screens.formatKcal
+import com.iron.breakfast.ui.screens.previewQuantityLine
+import com.iron.breakfast.search.foodsInScript
 import com.iron.breakfast.domain.DraftPins
 import com.iron.breakfast.domain.MeasureUnit
 import androidx.compose.runtime.getValue
@@ -188,6 +191,24 @@ internal class LogComposer(
         pins.add(next, part, food, next.length - part.length)
     }
 
+    /**
+     * The local foods part [raw] could mean, once Add left it for a choice, each with the amount it would log; empty for
+     * a part with none. Open Food Facts is searched only for those.
+     */
+    fun localChoices(raw: String): List<LocalChoice> {
+        val planner = store.planner(pinsSnapshot())
+        val ranked = planner.resolve(raw)?.takeIf { it.needsChoice }?.ranked ?: return emptyList()
+        return foodsInScript(planner.phraseOf(raw), ranked.map { it.food }).map { food ->
+            val (amount, measure) = planner.quantityOf(raw, food)
+            val calculation = planner.calculationFor(raw, food)
+            LocalChoice(
+                food,
+                previewQuantityLine(amount, measure.unit, calculation.approximate, measure.name),
+                calculation.takeIf { it.supported }?.let { formatKcal(it.nutrition.calories) }.orEmpty(),
+            )
+        }
+    }
+
     /** Add on the Log page. */
     fun submit() {
         // Add finishes the draft in both "Count what I'm typing" modes: it saves what the finished draft counts.
@@ -234,9 +255,9 @@ internal class LogComposer(
                 // Back during the write: what is left stays as text, and no queue runs behind a closed Log.
                 if (!open) return@write
                 if (unmatched.isEmpty()) close() else chosen = target
-                // What no food matches stays on the Log, under its rows, for the same meal. A part with a local choice
-                // or a unit its food lacks is not Open Food Facts' to answer: it stays a plain row.
-                afterSave(unmatched.filter(planner::hasNoLocalMatch), target, this@LogComposer, captured)
+                // What needs the user stays on the Log, under its rows, for the same meal. A unit its food lacks stays a
+                // plain row.
+                afterSave(unmatched.filter(planner::needsAttention), target, this@LogComposer, captured)
             },
             onFailure = { error = it.message ?: "Could not save this meal." },
         ) { store.save(captured, target, selectedDay(), capturedPins) }
@@ -292,6 +313,9 @@ internal class LogComposer(
     // Whatever else is in the draft (a scanned part, a local choice) is still the Log's to add.
     override fun queueEnded() { if (draft.isBlank()) close() }
 }
+
+/** One local food offered for a part: the amount the part would log of it, and its kcal. */
+internal data class LocalChoice(val food: FoodRecord, val quantityLine: String, val kcal: String)
 
 /** The Log's error while parts of the draft are not matched. */
 private const val NEEDS_A_MATCH = "Some foods need a match."

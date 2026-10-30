@@ -21,11 +21,11 @@ internal fun offQuerySendable(name: String): Boolean =
     name.any(Char::isLetterOrDigit) && matchWords(name).none { scriptOf(it) == TextScript.MIXED }
 
 /**
- * The results of [foods] a search for [name] may show, by the script rule: a product is shown only with a name word in a
+ * The [foods] a search or a local choice for [name] may show, by the script rule: a product is shown only with a name word in a
  * script [name] has letters in ("кисело млеко 2%" is Cyrillic), and a name with no letters shows them all. The one filter
- * of every Open Food Facts search.
+ * of every list of foods offered for a typed name.
  */
-internal fun offResultsInScript(name: String, foods: List<FoodRecord>): List<FoodRecord> {
+internal fun foodsInScript(name: String, foods: List<FoodRecord>): List<FoodRecord> {
     val scripts = matchWords(name).map(::scriptOf).filter { it != TextScript.NONE }
     if (TextScript.MIXED in scripts) return emptyList()
     if (scripts.isEmpty()) return foods
