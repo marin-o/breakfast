@@ -59,6 +59,8 @@ class ProductReviewTest {
     /** How often "Logged!" was asked for. */
     private var confirmed = 0
     private var meal: MealSlot? = null
+    private var onDaily = false
+    private var automatic: MealSlot? = null
     private var queue: ResolveQueueView? = null
     private var resolvingPart = false
     private val offers = mutableListOf<OffContributionDraft?>()
@@ -67,6 +69,8 @@ class ProductReviewTest {
         diary.session, store, notices,
         selectedDay = { "2026-10-28" },
         openMeal = { meal },
+        libraryTab = { meal == null && !onDaily },
+        automaticMeal = { automatic },
         queue = { queue },
         resolvingPart = { resolvingPart },
         offerContribution = { offers += it },
@@ -198,6 +202,32 @@ class ProductReviewTest {
         assertNull("nothing to add", withServingsAdded(nutellaFull, nutellaFull, nutellaFull.conversions))
     }
 
+    @Test fun aReviewFromDailyLogsStartingOnTheAutomaticMeal() {
+        onDaily = true
+        automatic = MealSlot.DINNER
+        review.choose(nutella)
+        assertEquals(ProductReviewOrigin.MEAL, review.origin)
+        assertEquals(MealSlot.DINNER, review.initialMeal())
+        automatic = null
+        assertEquals("Ask has no meal of its own", MealSlot.LUNCH, review.initialMeal())
+        review.add(MealSlot.DINNER)
+        assertEquals("log Nutella 100.0 g DINNER 2026-10-28", store.calls.single())
+    }
+
+    @Test fun aReviewFromDailyCannotJustSaveToTheLibrary() {
+        onDaily = true
+        review.choose(nutella)
+        review.saveToLibrary()
+        assertTrue(store.calls.isEmpty())
+    }
+
+    @Test fun aTinyOpenFoodFactsValueSurvivesTheReview() {
+        val salty = nutella.copy(nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(0.5, 5.0E-4, 0.0, null)))
+        review.choose(salty)
+        assertEquals("0.0005", review.protein)
+        assertEquals(5.0E-4, review.calculation(salty)!!.nutrition.protein!! * 100.0 / 100.0, 1e-9)
+    }
+
     @Test fun aReviewStartsFromTheProductAndWhereItOpened() {
         review.choose(nutella)
         assertEquals(nutella, review.product)
@@ -269,6 +299,7 @@ class ProductReviewTest {
         review.saveToLibrary()
         assertTrue("not from a meal", store.calls.isEmpty())
         meal = null
+        review.choose(nutella)
         queue = queueOf(MealSlot.BREAKFAST, listOf("nutella"), 1)
         review.saveToLibrary()
         assertTrue("not for a queued part", store.calls.isEmpty())

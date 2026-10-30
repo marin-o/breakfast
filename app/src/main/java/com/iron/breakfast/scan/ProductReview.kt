@@ -1,5 +1,6 @@
 package com.iron.breakfast.scan
 
+import com.iron.breakfast.library.libraryPresetMeal
 import com.iron.breakfast.ui.screens.editableNumber
 import com.iron.breakfast.domain.parseDecimal
 import com.iron.breakfast.domain.positiveAmountOf
@@ -73,6 +74,10 @@ internal class ProductReview(
     private val notices: Notices,
     private val selectedDay: () -> String,
     private val openMeal: () -> MealSlot?,
+    /** The Library tab is on screen: a review opened there saves to the Library; anywhere else it logs. */
+    private val libraryTab: () -> Boolean,
+    /** The Meal setting's meal now, null for Ask: where the choice starts with no meal open. */
+    private val automaticMeal: () -> MealSlot?,
     private val queue: () -> ResolveQueueView?,
     /** A Log part is being resolved in the Library. */
     private val resolvingPart: () -> Boolean,
@@ -115,7 +120,7 @@ internal class ProductReview(
         val resolveQueue = queue()
         product = food
         this.fromScan = fromScan
-        this.origin = origin ?: productReviewOrigin(openMeal(), queueActive = resolveQueue != null)
+        this.origin = origin ?: productReviewOrigin(libraryTab(), queueActive = resolveQueue != null)
         val prefill = resolveQueue?.let { productPrefill(food, it.current) } ?: ProductPrefill(100.0, food.nutrition.unit)
         amount = editableNumber(prefill.amount)
         unit = prefill.unit.displayLabel()
@@ -211,7 +216,7 @@ internal class ProductReview(
     fun resolveQueue(): ResolveQueueView? = queue()
 
     /** The meal the sheet's choice starts on. */
-    fun initialMeal(): MealSlot = queueMeal() ?: openMeal() ?: MealSlot.LUNCH
+    fun initialMeal(): MealSlot = queueMeal() ?: libraryPresetMeal(openMeal(), automaticMeal())
 
     fun calculation(food: FoodRecord): Calculation? = draft(food)?.calculation
 
@@ -252,7 +257,7 @@ internal class ProductReview(
         val food = product ?: return
         if (resolvingPart()) { resolvePart(); return }
         val resolveQueue = queue()
-        if (!canSaveProductToLibrary(openMeal(), queueActive = resolveQueue != null)) return
+        if (!canSaveProductToLibrary(origin, queueActive = resolveQueue != null)) return
         if (!session.canWrite) return
         val draft = draft(food) ?: run { notices.show("Enter a positive amount, a supported unit, and valid calories."); return }
         session.write(

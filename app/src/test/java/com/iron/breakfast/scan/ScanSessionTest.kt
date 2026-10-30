@@ -40,6 +40,7 @@ class ScanSessionTest {
     private var lookUp = true
     private var day = "2026-10-28"
     private var meal: MealSlot? = null
+    private var onLibraryTab = true
     private var queueActive = false
     private val events = mutableListOf<String>()
     private val scan = ScanSession(
@@ -47,12 +48,38 @@ class ScanSessionTest {
         lookUpBarcodes = { lookUp },
         selectedDay = { day },
         targetMeal = { meal },
+        libraryTab = { onLibraryTab && meal == null },
         queueActive = { queueActive },
         onProduct = { food, origin -> events += "review ${food.name} $origin" },
-        onManualForm = { name, brand, barcode, fromOff -> events += "form '$name' '$brand' $barcode fromOff=$fromOff" },
+        onManualForm = { name, brand, barcode, fromOff, logging -> events += "form '$name' '$brand' $barcode fromOff=$fromOff" + if (logging) " logging" else "" },
     )
 
     private val nutella = FoodRecord("off-1", "Nutella", emptyList(), "Spreads", FoodOrigin.GENERIC, NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(539.0, 6.3, 57.5, 30.9)))
+
+    @Test fun aScanFromDailyLogsWhetherTheFoodIsKnownOrNot() {
+        onLibraryTab = false
+        lookup.library["4006381333931"] = nutella
+        scan.begin()
+        scan.onBarcode("4006381333931")
+        assertEquals("review Nutella MEAL", events.single())
+        events.clear()
+        lookUp = false
+        scan.begin()
+        scan.onBarcode("5901234123457")
+        assertEquals("form '' '' 5901234123457 fromOff=false logging", events.single())
+    }
+
+    @Test fun aScanFromTheLibraryTabSavesAndItsUnknownFoodIsNotLogged() {
+        lookup.library["4006381333931"] = nutella
+        scan.begin()
+        scan.onBarcode("4006381333931")
+        assertEquals("review Nutella LIBRARY", events.single())
+        events.clear()
+        lookUp = false
+        scan.begin()
+        scan.onBarcode("5901234123457")
+        assertEquals("form '' '' 5901234123457 fromOff=false", events.single())
+    }
 
     @Test fun aLibraryBarcodeReviewsAtOnceForTheMealItWasScannedFor() {
         lookup.library["4006381333931"] = nutella

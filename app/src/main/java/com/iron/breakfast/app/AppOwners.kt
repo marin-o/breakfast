@@ -250,6 +250,7 @@ internal class AppOwners<D>(
         onClose = resolve::childClosed,
         onSaved = resolve::foodSaved,
         confirmLogged = confirmations::logged,
+        onSavedToLog = { food -> review.choose(food) },
     )
     /** The scanner and its barcode lookup (see [ScanSession]); a found product goes to [review], an unknown one to [foodForm]. */
     val scan: ScanSession = ScanSession(
@@ -260,9 +261,10 @@ internal class AppOwners<D>(
         lookUpBarcodes = { settings.lookUpBarcodes },
         selectedDay = { day.selectedDayKey },
         targetMeal = ::mealOnScreen,
+        libraryTab = ::libraryTabOnScreen,
         queueActive = { resolve.queueActive },
         onProduct = { food, origin -> surfaces.productScanned(food, origin) },
-        onManualForm = { name, brand, barcode, fromOff -> foodForm.open(name, brand, barcode, fromOff = fromOff) },
+        onManualForm = { name, brand, barcode, fromOff, logging -> foodForm.open(name, brand, barcode, fromOff = fromOff, logAfterSave = logging) },
     )
     /** Product review after a scan or a search pick (see [ProductReview]); its queue and resolve hand-offs go to [resolve]. */
     val review: ProductReview = ProductReview(
@@ -271,6 +273,8 @@ internal class AppOwners<D>(
         notices = notices,
         selectedDay = { day.selectedDayKey },
         openMeal = ::mealOnScreen,
+        libraryTab = ::libraryTabOnScreen,
+        automaticMeal = ::automaticMealNow,
         queue = resolve::queueView,
         resolvingPart = { resolve.resolvingPart },
         offerContribution = contribution::offerAfterLocalSave,
@@ -365,6 +369,9 @@ internal class AppOwners<D>(
 
     /** About, Licences: the bundled licence, read on [AppThreads.io]; empty when it cannot be read. */
     suspend fun licenceText(): String = withContext(threads.io) { runCatching { stores.licence() }.getOrDefault("") }
+
+    /** The Library tab itself is on show, not a meal's Library. */
+    private fun libraryTabOnScreen(): Boolean = library.open && library.target == null
 
     /** The meal of the screen on show ([Surfaces.mealOnScreen]), for the owners that log to it. */
     private fun mealOnScreen(): MealSlot? = surfaces.mealOnScreen()

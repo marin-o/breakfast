@@ -54,6 +54,7 @@ internal data class SavedFoodForm(
     val editingFoodId: String?,
     val draft: FoodDraftState,
     val baseline: FoodDraftFields,
+    val logAfterSave: Boolean = false,
 )
 
 private val formJson = Json { ignoreUnknownKeys = true }

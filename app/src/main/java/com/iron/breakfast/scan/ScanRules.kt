@@ -4,7 +4,6 @@ import com.iron.breakfast.domain.parseStrictAmountUnit
 import com.iron.breakfast.domain.parseDecimal
 import com.iron.breakfast.domain.ParsedAmountUnit
 import com.iron.breakfast.domain.MeasureUnit
-import com.iron.breakfast.domain.MealSlot
 
 // Product review's and the scanner's pure decisions, unit-tested.
 
@@ -15,14 +14,18 @@ internal fun parseProductAmount(text: String, basisUnit: MeasureUnit): ParsedAmo
     return parseStrictAmountUnit(text)
 }
 
-/** Where a product review opens from: the resolve queue while one is being resolved ([queueActive]), else a meal or the Library. */
-internal fun productReviewOrigin(slot: MealSlot?, queueActive: Boolean): ProductReviewOrigin = when {
+/**
+ * What a product review is for, by where it started: the resolve queue's part while one is being resolved ([queueActive]),
+ * Save to Library from the Library tab ([libraryTab]), and a log from anywhere else: Daily, a meal, a meal's Library.
+ */
+internal fun productReviewOrigin(libraryTab: Boolean, queueActive: Boolean): ProductReviewOrigin = when {
     queueActive -> ProductReviewOrigin.QUEUE
-    slot != null -> ProductReviewOrigin.MEAL
-    else -> ProductReviewOrigin.LIBRARY
+    libraryTab -> ProductReviewOrigin.LIBRARY
+    else -> ProductReviewOrigin.MEAL
 }
 
-internal fun canSaveProductToLibrary(slot: MealSlot?, queueActive: Boolean): Boolean = slot == null && !queueActive
+internal fun canSaveProductToLibrary(origin: ProductReviewOrigin, queueActive: Boolean): Boolean =
+    origin == ProductReviewOrigin.LIBRARY && !queueActive
 
 internal data class ScannerFailureTransition(
     val scannerOpen: Boolean,

@@ -60,6 +60,7 @@ class FoodFormTest {
         onClose = { events += "close" },
         onSaved = { food, newFood, advances -> events += "saved ${food.name} new=$newFood advances=$advances" },
         confirmLogged = { confirmed++ },
+        onSavedToLog = { events += "review ${it.name}" },
     )
 
     private val kefir = record("kefir", "Kefir", "4006381333931")
@@ -72,6 +73,17 @@ class FoodFormTest {
     private fun typeFood(name: String = "Ayran", kcal: String = "40") {
         form.draft.name = name
         form.draft.calories = kcal
+    }
+
+    @Test fun aNewFoodFromALoggingScanIsStoredAloneThenGoesToTheReview() {
+        meal = MealSlot.DINNER
+        form.open("Ajvar", barcode = "5901234123457", logAfterSave = true)
+        form.draft.calories = "100"
+        events.clear()
+        form.save()
+        assertEquals("not logged by the form", 0, confirmed)
+        assertNull("no saved-alone notice", notices.message)
+        assertEquals(listOf("saved Ajvar new=true advances=false", "review Ajvar"), events)
     }
 
     @Test fun newFoodOpensPrefilledAndTellsTheCoordinator() {

@@ -46,10 +46,13 @@ internal class ScanSession(
     private val selectedDay: () -> String,
     /** The meal a scanned product would go to (the meal open beneath), null on Daily or the Library tab. */
     private val targetMeal: () -> MealSlot?,
+    /** The Library tab is on screen: a scan begun there saves to the Library; anywhere else it logs. */
+    private val libraryTab: () -> Boolean,
     /** A resolve queue is being resolved: a found product reviews as its part. */
     private val queueActive: () -> Boolean,
     private val onProduct: (food: FoodRecord, origin: ProductReviewOrigin) -> Unit,
-    private val onManualForm: (name: String, brand: String, barcode: String, fromOff: Boolean) -> Unit,
+    /** An unknown barcode: New food; with [logging], the food saved goes on to the same review. */
+    private val onManualForm: (name: String, brand: String, barcode: String, fromOff: Boolean, logging: Boolean) -> Unit,
 ) {
     var open by mutableStateOf(false); private set
     /** The scanner is still open but its camera preview cannot be used. */
@@ -65,12 +68,14 @@ internal class ScanSession(
     // What the scan was opened for, set by [begin]: the scanner is open only after it.
     private var originDay = ""
     private var originMeal: MealSlot? = null
+    private var originLibraryTab = false
 
     /** Opens the scanner for the day and meal on screen now. */
     fun begin() {
         token++
         originDay = selectedDay()
         originMeal = targetMeal()
+        originLibraryTab = libraryTab()
         unavailable = false
         unavailableReason = null
         lookupBusy = false
@@ -135,7 +140,8 @@ internal class ScanSession(
         val mine = token
         val day = originDay
         val meal = originMeal
-        val reviewOrigin = productReviewOrigin(meal, queueActive())
+        val reviewOrigin = productReviewOrigin(originLibraryTab, queueActive())
+        val logging = reviewOrigin != ProductReviewOrigin.LIBRARY && reviewOrigin != ProductReviewOrigin.QUEUE
         val step = unknownBarcodeStep(lookUpBarcodes())
         lookupCode = barcode
         lookupBusy = true
@@ -151,16 +157,16 @@ internal class ScanSession(
             val local = withContext(io) { lookup.localFood(barcode) }
             if (local != null) { finish { onProduct(local, reviewOrigin) }; return@launch }
             // "Look up unknown barcodes" Off: straight to the manual product form, no network request.
-            if (step == UnknownBarcodeStep.MANUAL_FORM) { finish { onManualForm("", "", barcode, false) }; return@launch }
+            if (step == UnknownBarcodeStep.MANUAL_FORM) { finish { onManualForm("", "", barcode, false, logging) }; return@launch }
             when (val result = withContext(io) { lookup.openFoodFacts(barcode) }) {
                 is OffResult.Found -> finish { onProduct(result.food, reviewOrigin) }
                 is OffResult.Ineligible -> finish {
                     notices.show("Nutrition is incomplete. Review it as a personal food.")
-                    onManualForm(result.name.orEmpty(), result.brand.orEmpty(), result.barcode, true)
+                    onManualForm(result.name.orEmpty(), result.brand.orEmpty(), result.barcode, true, logging)
                 }
-                OffResult.Missing -> finish { notices.show("Product not found. Add it manually with barcode $barcode"); onManualForm("", "", barcode, false) }
-                OffResult.Unavailable -> finish { notices.show("No connection. Add the product manually."); onManualForm("", "", barcode, false) }
-                is OffResult.Error -> finish { notices.show(result.message); onManualForm("", "", barcode, false) }
+                OffResult.Missing -> finish { notices.show("Product not found. Add it manually with barcode $barcode"); onManualForm("", "", barcode, false, logging) }
+                OffResult.Unavailable -> finish { notices.show("No connection. Add the product manually."); onManualForm("", "", barcode, false, logging) }
+                is OffResult.Error -> finish { notices.show(result.message); onManualForm("", "", barcode, false, logging) }
             }
         }
     }
