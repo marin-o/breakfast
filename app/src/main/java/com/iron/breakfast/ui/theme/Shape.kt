@@ -12,9 +12,10 @@ val SnackbarShape = RoundedCornerShape(14.dp)
 val PrimaryShape = RoundedCornerShape(16.dp)
 val ComposerShape = RoundedCornerShape(16.dp)
 val SheetShape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+val DialogShape = RoundedCornerShape(20.dp)
 val AddCircleShape = CircleShape
 
 val BreakfastShapes = Shapes(
     extraSmall = FieldShape, small = FieldShape, medium = SecondaryShape,
-    large = PrimaryShape, extraLarge = SheetShape,
+    large = PrimaryShape, extraLarge = DialogShape,
 )
