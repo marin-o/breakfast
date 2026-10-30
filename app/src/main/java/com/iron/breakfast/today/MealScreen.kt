@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -76,6 +77,7 @@ import com.iron.breakfast.ui.components.rememberMotion
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.theme.BreakfastType
 import com.iron.breakfast.ui.theme.Gutter
+import com.iron.breakfast.ui.theme.PrimaryShape
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import com.iron.breakfast.ui.theme.swipeLabelOnBad
 import kotlin.math.roundToInt
@@ -192,6 +194,8 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, undo: UndoController, 
     // The row follows the finger; on release it settles open or shut ([Motion.swipe]), and a new touch stops that.
     val scope = rememberCoroutineScope()
     var settle by remember(entry.id) { mutableStateOf<Job?>(null) }
+    // The row was open when the touch began: a tap then shuts it instead of opening the details.
+    var openAtDown by remember(entry.id) { mutableStateOf(false) }
     val currentMotion by rememberUpdatedState(motion)
     var rowHeight by remember(entry.id) { androidx.compose.runtime.mutableIntStateOf(0) }
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
@@ -202,8 +206,9 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, undo: UndoController, 
     Box(Modifier.fillMaxWidth().background(colors.bg).onSizeChanged { rowHeight = it.height }) {
         // Swipe reveals the delete panel; the panel is the only place `bad` fills a surface. It shows as wide as the
         // row has moved, so it grows with the finger; the full panel under it keeps its width, and "Delete" its line.
+        // It is a rounded button inset from the row, shaped like the primary buttons.
         if (revealOffset < 0f) Box(
-            Modifier.align(Alignment.CenterEnd).width(with(density) { (-revealOffset.roundToInt()).toDp() }).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).clipToBounds().background(colors.bad).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { undo.delete(entry) },
+            Modifier.align(Alignment.CenterEnd).width(with(density) { (-revealOffset.roundToInt()).toDp() }).height(if (rowHeight == 0) 56.dp else with(density) { rowHeight.toDp() }).padding(start = 8.dp, top = 6.dp, bottom = 6.dp).clip(PrimaryShape).background(colors.bad).clickable(onClickLabel = "Delete ${entry.foodName}", role = Role.Button) { undo.delete(entry) },
         ) {
             Row(
                 Modifier.wrapContentWidth(Alignment.Start, unbounded = true).widthIn(min = with(density) { deleteWidth.toDp() }).fillMaxHeight(),
@@ -224,10 +229,11 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, undo: UndoController, 
                     CustomAccessibilityAction("Edit food and amount") { entryEdit.beginFull(entry); true },
                     CustomAccessibilityAction("Delete ${entry.foodName}") { undo.delete(entry); true },
                 )
-            }.combinedClickable(onClick = { entryEdit.openDetail(entry) }, onDoubleClick = { entryEdit.beginQuick(entry) }, onLongClick = { entryEdit.beginFull(entry) }).pointerInput(entry.id) {
+            }.combinedClickable(onClick = { if (!openAtDown) entryEdit.openDetail(entry) }, onDoubleClick = { entryEdit.beginQuick(entry) }, onLongClick = { entryEdit.beginFull(entry) }).pointerInput(entry.id) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     settle?.cancel()
+                    openAtDown = revealOffset < 0f
                     var dx = 0f
                     var dy = 0f
                     var horizontal = false
@@ -239,11 +245,14 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, undo: UndoController, 
                         dx += deltaX
                         dy += deltaY
                         if (!horizontal && !vertical && kotlin.math.hypot(dx.toDouble(), dy.toDouble()) > touchSlop) { horizontal = kotlin.math.abs(dx) > kotlin.math.abs(dy); vertical = !horizontal }
-                        if (horizontal && dx < 0f) { revealOffset = (revealOffset + deltaX).coerceIn(-deleteWidth, 0f); change.consume() }
+                        // Left opens; right shuts a row that is open (a shut row ignores a drag to the right).
+                        if (horizontal && (dx < 0f || revealOffset < 0f)) { revealOffset = (revealOffset + deltaX).coerceIn(-deleteWidth, 0f); change.consume() }
                         if (!change.pressed) break
                     }
-                    // Every release ends open or shut, also a tap or a scroll that stopped a settle half way.
-                    val target = if (revealOffset <= -deleteWidth * .65f) -deleteWidth else 0f
+                    // Every release ends open or shut, also a tap or a scroll that stopped a settle half way; a tap on
+                    // an open row shuts it.
+                    val tap = !horizontal && !vertical
+                    val target = if ((tap && openAtDown) || revealOffset > -deleteWidth * .65f) 0f else -deleteWidth
                     if (revealOffset != target) settle = scope.launch { animate(revealOffset, target, animationSpec = currentMotion.swipe()) { value, _ -> revealOffset = value } }
                 }
             },
