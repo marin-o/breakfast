@@ -394,10 +394,10 @@ private fun amountFieldText(review: ProductReview): String =
     val canAdd = parsed != null && calculation?.supported == true
     // The numbers on screen follow any corrections made under "Edit details".
     val values = NutritionValues(
-        review.calories.toDoubleOrNull() ?: basis.values.calories,
-        review.protein.toDoubleOrNull(),
-        review.carbs.toDoubleOrNull(),
-        review.fat.toDoubleOrNull(),
+        parseDecimal(review.calories) ?: basis.values.calories,
+        parseDecimal(review.protein),
+        parseDecimal(review.carbs),
+        parseDecimal(review.fat),
     )
     val per100 = "${basisLabel(basis.amount, basis.unit)}: ${kcalLabel(values.calories)}, ${shortMacroLine(values)}"
     Sheet(onDismissRequest = review::close, skipPartiallyExpanded = true) {

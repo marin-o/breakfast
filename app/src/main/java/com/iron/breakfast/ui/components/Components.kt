@@ -1292,8 +1292,10 @@ fun MealChoices(selected: MealSlot?, onSelect: (MealSlot) -> Unit, modifier: Mod
         // One row only when the longest meal name fits on one line in a quarter; otherwise two by two, never a broken word.
         BoxWithConstraints(modifier.fillMaxWidth()) {
             val style = if (compact) BreakfastType.SecondaryMedium else BreakfastType.BodyMedium
-            if (fitsAQuarter(MealSlot.entries.map { it.label() }, style, (if (compact) 16.dp else 24.dp) + 2.dp, maxWidth, 8.dp)) {
-                Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // 6dp apart in a sheet's row, 8dp in the scan review's compact one, as the mocks draw them.
+            val gap = if (compact) 8.dp else 6.dp
+            if (fitsAQuarter(MealSlot.entries.map { it.label() }, style, (if (compact) 16.dp else 24.dp) + 2.dp, maxWidth, gap)) {
+                Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                     MealSlot.entries.forEach { meal -> ChoiceOption(meal.label(), selected == meal, { onSelect(meal) }, Modifier.weight(1f), compact = compact) }
                 }
             } else MealChoices(selected, onSelect, Modifier.fillMaxWidth(), singleRow = false, compact = compact)

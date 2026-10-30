@@ -1,5 +1,6 @@
 package com.iron.breakfast.scan
 
+import com.iron.breakfast.domain.parseDecimal
 import com.iron.breakfast.domain.positiveAmountOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -291,7 +292,7 @@ internal class ProductReview(
     private fun draft(food: FoodRecord): ProductDraft? {
         val amount = positiveAmountOf(amount)
         val unit = parseProductUnit(unit)
-        val kcal = calories.toDoubleOrNull()
+        val kcal = parseDecimal(calories)
         if (amount == null || unit == null ||
             kcal == null || !kcal.isFinite() || kcal < 0.0
         ) return null
@@ -300,7 +301,7 @@ internal class ProductReview(
             nutrition = NutritionBasis(
                 food.nutrition.amount,
                 food.nutrition.unit,
-                NutritionValues(kcal, protein.toDoubleOrNull(), carbs.toDoubleOrNull(), fat.toDoubleOrNull()),
+                NutritionValues(kcal, parseDecimal(protein), parseDecimal(carbs), parseDecimal(fat)),
             ),
         )
         val calculation = calculator.calculate(draftFood, amount, unit)
