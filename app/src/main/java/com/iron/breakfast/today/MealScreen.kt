@@ -55,7 +55,6 @@ import com.iron.breakfast.scan.ScanSession
 import com.iron.breakfast.search.OffSearch
 import com.iron.breakfast.settings.SettingsState
 import com.iron.breakfast.contribution.ContributionAction
-import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.nutritionTotalOf
@@ -69,6 +68,7 @@ import com.iron.breakfast.ui.components.Reveal
 import com.iron.breakfast.ui.components.rememberMotion
 import com.iron.breakfast.ui.components.LocalScreenBody
 import com.iron.breakfast.ui.components.TopBar
+import com.iron.breakfast.ui.theme.AddCircleInset
 import com.iron.breakfast.ui.theme.BreakfastType
 import com.iron.breakfast.ui.theme.Gutter
 import com.iron.breakfast.ui.theme.PrimaryShape
@@ -76,8 +76,7 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import com.iron.breakfast.ui.theme.swipeLabelOnBad
 import kotlin.math.roundToInt
 import com.iron.breakfast.ui.screens.formatKcal
-import com.iron.breakfast.ui.screens.quantityRateDisplay
-import com.iron.breakfast.ui.screens.plainLine
+import com.iron.breakfast.ui.screens.entryQuantityLine
 
 @Composable
 internal fun MealScreen(
@@ -98,7 +97,6 @@ internal fun MealScreen(
 ) {
     val target = meal ?: return
     val entries = session.entries.filter { it.dayKey == day.selectedDayKey && it.mealSlot == target }
-    val foods = session.foods.associateBy { it.id }
     val total = nutritionTotalOf(entries)
     val colors = LocalBreakfastColors.current
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
@@ -127,7 +125,7 @@ internal fun MealScreen(
             // A new or restored row fades in; a deleted one fades as the rows below close the gap.
             items(entries, key = { it.id }) { entry ->
                 Column(Modifier.fillMaxWidth().animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem())) {
-                    EntryRow(entry, foods[entry.foodId], undo, entryEdit, motion)
+                    EntryRow(entry, undo, entryEdit, motion)
                     // Same correction block as Daily, for a doubtful match from the Log page.
                     Reveal(entry.takeIf { feedback.isOpen(it) }, resize = true) { CorrectionStrip(feedback, search, it) }
                 }
@@ -153,7 +151,7 @@ internal fun MealScreen(
 }
 
 @Composable
-private fun EntryRow(entry: MealEntry, food: FoodRecord?, undo: UndoController, entryEdit: EntryEdit, motion: Motion) {
+private fun EntryRow(entry: MealEntry, undo: UndoController, entryEdit: EntryEdit, motion: Motion) {
     val colors = LocalBreakfastColors.current
     var revealOffset by remember(entry.id) { mutableFloatStateOf(0f) }
     // The row follows the finger; on release it settles open or shut ([Motion.swipe]), and a new touch stops that.
@@ -167,7 +165,6 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, undo: UndoController, 
     val deleteWidth = with(LocalDensity.current) { (96.dp * fontScale).toPx() }
     val touchSlop = LocalViewConfiguration.current.touchSlop
     val density = LocalDensity.current
-    val quantity = quantityRateDisplay(entry, food, includeRateUnit = false, asciiMultiply = true)
     Box(Modifier.fillMaxWidth().background(colors.bg).onSizeChanged { rowHeight = it.height }) {
         // Swipe reveals the delete panel; the panel is the only place `bad` fills a surface. It shows as wide as the
         // row has moved, so it grows with the finger; the full panel under it keeps its width, and "Delete" its line.
@@ -185,8 +182,9 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, undo: UndoController, 
         }
         FoodRow(
             name = entry.foodName,
-            quantityLine = quantity.plainLine(),
+            quantityLine = entryQuantityLine(entry),
             calories = formatKcal(entry.nutritionSnapshot.calories),
+            caloriesEnd = AddCircleInset,
             modifier = Modifier.offset { IntOffset(revealOffset.roundToInt(), 0) }.entryActions(entry, entryEdit, undo) { if (!openAtDown) entryEdit.openDetail(entry) }.pointerInput(entry.id) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)

@@ -23,7 +23,7 @@ class PieceQuantityLabelTest {
         val display = quantityRateDisplay(egg(1.0), null)
         assertEquals("1 piece", display.line)
         assertNull(display.approximateLabel)
-        assertEquals("1 piece", quantityRateDisplay(egg(1.0), null, includeRateUnit = false, asciiMultiply = true).line)
+        assertEquals("1 piece", entryQuantityLine(egg(1.0)))
     }
 
     @Test fun twoEggsReadTwoPieces() {

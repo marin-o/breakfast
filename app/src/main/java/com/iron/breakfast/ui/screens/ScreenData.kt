@@ -34,7 +34,7 @@ internal data class QuantityDisplay(
     val approximateLabel: String? = null,
 )
 
-/** The quantity written plainly for a row: `≈1 tbsp, 16 g` when approximate. */
+/** The quantity written plainly: `≈1 tbsp, 16 g` when approximate. */
 internal fun QuantityDisplay.plainLine(): String = approximateLabel?.let { "≈$it, $line" } ?: line
 
 /** Whole kcal, used the same way in every row, total and sheet. */
@@ -50,8 +50,6 @@ internal fun choiceKcalDetail(calculation: Calculation): String? =
 internal fun quantityRateDisplay(
     entry: MealEntry,
     food: FoodRecord?,
-    includeRateUnit: Boolean = true,
-    asciiMultiply: Boolean = false,
 ): QuantityDisplay {
     // A counted piece or portion is the amount the user chose ("1 piece", "2 portions"). Its gram conversion and
     // kcal-per-gram rate are not a quantity to read, so they are not shown; the kcal sits in the row's own column.
@@ -67,7 +65,7 @@ internal fun quantityRateDisplay(
     val printed = choosePrintedQuantity(rawAmount, rate, entry.nutritionSnapshot.calories)
     val base = "(${printed.amountText} ${basisUnit.displayLabel()})"
     val rateUnit = basisUnit.displayLabel()
-    val multiply = if (asciiMultiply) "x" else "×"
+    val multiply = "×"
     val line = when {
         converted && !approximate -> "$entered $base $multiply ${printed.rateText}"
         converted -> "$base $multiply ${printed.rateText}"
@@ -75,7 +73,7 @@ internal fun quantityRateDisplay(
     }
     val mark = DisplayDecimal.mark
     return QuantityDisplay(
-        line = markDecimals(if (includeRateUnit) withRateUnit(line, rateUnit, approximate) else line, mark),
+        line = markDecimals(withRateUnit(line, rateUnit, approximate), mark),
         approximateLabel = entered.takeIf { approximate },
     )
 }
@@ -104,6 +102,12 @@ internal fun MeasureUnit.labelFor(amount: Double): String = when (this) {
  */
 internal fun previewQuantityLine(amount: Double, unit: MeasureUnit, approximate: Boolean = false, label: String? = null): String =
     countedQuantity(amount, unit, label) ?: "${if (approximate) "≈" else ""}${amount.pretty()} ${unit.labelFor(amount)}"
+
+/** A logged entry's amount in a meal's rows: as it was typed ("8 g", "2 pieces", "≈1 tbsp"), the kcal in the row's own column. */
+internal fun entryQuantityLine(entry: MealEntry): String = markDecimals(
+    previewQuantityLine(entry.enteredAmount, entry.enteredUnit, entry.approximateConversion, entry.enteredUnitLabel),
+    DisplayDecimal.mark,
+)
 
 /** Why a part that names a food cannot log: "No value for tbsp", when the food has no number for the unit or serving typed; else its amount. */
 internal fun noValueLine(part: SegmentResolution): String =

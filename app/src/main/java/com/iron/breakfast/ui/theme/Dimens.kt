@@ -20,4 +20,6 @@ val SecondaryHeight = 48.dp
 val TertiaryHeight = 44.dp
 val ChoiceMinHeight = 44.dp
 val AddCircleSize = 32.dp
+/** How far the drawn add circle sits in from the end of its touch target. */
+val AddCircleInset = (IconTarget - AddCircleSize) / 2
 val ComposerHeight = 52.dp

@@ -204,8 +204,11 @@ class ScreenDataTest {
     }
 
     @Test
-    fun dailyAndMealQuantityLinesUseAsciiXWithoutRateUnit() {
-        assertEquals("(5.3 g) x 5.88", quantityRateDisplay(entry, generic, includeRateUnit = false, asciiMultiply = true).line)
+    fun aMealsRowsShowTheAmountWithoutTheRate() {
+        val grams = entry.copy(enteredAmount = 8.0, enteredUnit = MeasureUnit.GRAM, enteredUnitLabel = null, approximateConversion = false)
+        assertEquals("8 g", entryQuantityLine(grams))
+        val spoon = entry.copy(enteredAmount = 1.0, enteredUnit = MeasureUnit.TABLESPOON, enteredUnitLabel = null, approximateConversion = true)
+        assertEquals("≈1 tbsp", entryQuantityLine(spoon))
     }
 
     @Test

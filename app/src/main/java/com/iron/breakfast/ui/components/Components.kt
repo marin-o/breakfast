@@ -674,6 +674,8 @@ fun FoodRow(
     modifier: Modifier = Modifier,
     total: Boolean = false,
     onClick: (() -> Unit)? = null,
+    /** Room after the kcal: a meal's rows end where its add circle does ([AddCircleInset]). */
+    caloriesEnd: Dp = 0.dp,
 ) {
     val colors = LocalBreakfastColors.current
     Row(
@@ -693,6 +695,7 @@ fun FoodRow(
             color = if (total) colors.ink else colors.soft,
             style = if (total) BreakfastType.BodyMedium else BreakfastType.Body,
             textAlign = TextAlign.End,
+            modifier = Modifier.padding(end = caloriesEnd),
         )
     }
 }

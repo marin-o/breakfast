@@ -47,7 +47,6 @@ import com.iron.breakfast.log.LogComposer
 import com.iron.breakfast.search.OffSearch
 import com.iron.breakfast.settings.SettingsState
 import com.iron.breakfast.contribution.ContributionAction
-import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.nutritionTotalOf
@@ -67,8 +66,7 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import kotlin.math.abs
 import com.iron.breakfast.ui.screens.formatKcal
 import com.iron.breakfast.ui.screens.earliestMealTime
-import com.iron.breakfast.ui.screens.quantityRateDisplay
-import com.iron.breakfast.ui.screens.plainLine
+import com.iron.breakfast.ui.screens.entryQuantityLine
 
 
 @Composable
@@ -86,7 +84,6 @@ internal fun DailyScreen(
     modifier: Modifier,
 ) {
     val selected = session.entries.filter { it.dayKey == day.selectedDayKey }
-    val foods = session.foods.associateBy { it.id }
     val total = nutritionTotalOf(selected)
     val isToday = day.selectedDayKey == day.todayKey
     val colors = LocalBreakfastColors.current
@@ -133,7 +130,7 @@ internal fun DailyScreen(
             }
             log.error?.let { message -> item { Text(message, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(vertical = 6.dp)) } }
             items(MealSlot.entries) { slot ->
-                DailyMealSection(slot, selected.filter { it.mealSlot == slot }, foods, log, surfaces, entryEdit, undo, feedback, search, rows = day.selectedDayKey to session.ready)
+                DailyMealSection(slot, selected.filter { it.mealSlot == slot }, log, surfaces, entryEdit, undo, feedback, search, rows = day.selectedDayKey to session.ready)
             }
             item {
                 if (contribution.actionShown) ContributionAction(contribution)
@@ -173,7 +170,6 @@ private fun rememberDaySlide(day: String, motion: Motion): DaySlide {
 private fun DailyMealSection(
     slot: MealSlot,
     entries: List<MealEntry>,
-    foods: Map<String, FoodRecord>,
     log: LogComposer,
     surfaces: Surfaces,
     entryEdit: EntryEdit,
@@ -194,11 +190,11 @@ private fun DailyMealSection(
     )
     // Rows fade in and collapse out; another day (or the first load) shows its rows at once.
     AnimatedRows(entries, { it.id }, reset = rows) { entry -> Column(Modifier.fillMaxWidth()) {
-        val quantity = quantityRateDisplay(entry, foods[entry.foodId], includeRateUnit = false, asciiMultiply = true)
         FoodRow(
             name = entry.foodName,
-            quantityLine = quantity.plainLine(),
+            quantityLine = entryQuantityLine(entry),
             calories = formatKcal(entry.nutritionSnapshot.calories),
+            caloriesEnd = AddCircleInset,
             modifier = Modifier.entryActions(entry, entryEdit, undo) { entryEdit.openDetail(entry) },
         )
         Reveal(entry.takeIf { feedback.isOpen(it) }, resize = true) { CorrectionStrip(feedback, search, it) }
