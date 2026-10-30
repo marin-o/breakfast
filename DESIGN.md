@@ -73,7 +73,7 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 - **AddCircle**: 32dp circle, 1.5dp ink outline and a `+` (or another icon), in a 44dp box with a 48dp touch area.
 - **Field**: label 13sp soft above; 1dp `line` box, radius 12, min 52dp, 16sp text. Focus 1.5dp `ink`. Error 1.5dp `bad` and 13sp `bad` text below. Optional soft trailing hint.
 - **SearchField**: a Field with a leading magnifier and a trailing clear.
-- **Composer**: `ink` bar, radius 16, 52dp, placeholder in `bg` at 60%, scan icon on the right. Fixed at the bottom over a `bg` fade.
+- **Composer**: `ink` bar, radius 16, 52dp, placeholder in `bg` at 60%, scan icon on the right. Fixed at the bottom over a `bg` fade; one for all the base screens, its text the Log opener or the Library's search.
 - **BottomNav**: centred text tabs "Meals" (Daily) and "Library", 40dp apart, 14sp/500. Active ink, inactive soft. At the right end a 22dp soft Settings icon in a 44dp target opens Settings over the screen; Back returns to it.
 - **Sheet**: `bg`, top radius 20, 36x5 `line` grabber, 24dp padding, `scrim` behind.
 - **Snackbar**: `ink` fill, radius 14, `bg` text, the action in `bg` 500 on the right, 16dp from the edges.
@@ -81,7 +81,9 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 ## Foods
 
 - A personal food's page and Edit food end with **Delete food** (DestructiveButton, outlined). It asks first in a dialog: "Past entries keep their numbers." with **Delete food** and **Cancel**. Deleting is for good (no Undo); past entries keep their own name and numbers. There is no Archived list and no Restore.
-- The Library header on the Library tab is the title, its count line and **New food**; there is no menu.
+- The Library header on the Library tab is the title (17sp/500, at Daily's height, as every header), its count line and **New food**; there is no menu. A meal's Library has the back arrow and "Wed 14 Oct", the one way a day is written.
+- Numbers: a macro nothing knows reads "—", never 0. Under a kcal figure the macros read "Protein 8 g, carbs 40 g, fat 4 g"; inside the scan review's line, "P 2, C 9, F 8". A field pre-fills the exact amount.
+- The nutrient fields are two by two, 12dp apart on New food and 16dp on Edit food; the scan review has them in one row, 8dp apart, while the longest label fits a quarter.
 
 ## Lists and totals
 
