@@ -32,7 +32,7 @@ The diary, search and food-detail patterns follow MyFitnessPal so the app feels 
 - **Library** holds reusable food records: bundled, cached from Open Food Facts (OFF), and personal foods, all in one list. Recently logged foods come first, with a quick repeat into any meal. A meal-focused variant opens from a meal's Add food. Scan sits on the composer (the diary and meal detail) and in the Library.
 - A logged entry and a library food are different objects. Editing a library food affects future logs only. Past entries keep their nutrition snapshot and conversion provenance.
 - Foods that don't resolve go into a queue: local match first, then explicit OFF search or barcode scan, then personal-food creation. The typed quantity and context are preserved throughout.
-- OFF search is explicit; there is no network search-as-you-type. Contributing to OFF is a separate, optional action from food detail. It never submits logging estimates as public nutrition facts and never persists the OFF password.
+- There is no network search-as-you-type: OFF is searched when the user submits a search, and the typed names of unmatched foods are sent when Add is tapped, at most 10 searches a minute. "Look up unknown barcodes" is about barcodes only. Contributing to OFF is a separate, optional action from food detail. It never submits logging estimates as public nutrition facts and never persists the OFF password.
 - Core logging works offline. OFF search, barcode lookup and contribution need a connection.
 
 ## Capabilities and Constraints
