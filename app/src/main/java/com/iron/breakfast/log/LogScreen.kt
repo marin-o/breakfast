@@ -60,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -107,7 +108,10 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
     val canAdd = log.draft.isNotBlank() && !session.busy
     val placeholder = if (day.selectedDayKey == day.todayKey) "2 eggs, 1 banana" else "Add to ${shortDateLabel(day.selectedDayKey)}"
     val requester = remember { FocusRequester() }
-    LaunchedEffect(Unit) { requester.requestFocus() }
+    // The keyboard stays down while unmatched foods show their results, so it never covers them; a tap on the text brings it back.
+    val keyboard = LocalSoftwareKeyboardController.current
+    val matching = unmatched.resolve.queueActive
+    LaunchedEffect(matching) { if (matching) keyboard?.hide() else requester.requestFocus() }
     val tick = rememberTick()
 
     Column(
