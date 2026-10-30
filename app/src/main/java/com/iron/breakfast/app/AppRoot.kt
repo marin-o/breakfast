@@ -1,5 +1,6 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.log.UnmatchedParts
 import com.iron.breakfast.ui.components.ConfirmDialog
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.fillMaxSize
@@ -123,7 +124,7 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         Surface.DAILY, Surface.MEAL, Surface.LIBRARY, Surface.RECIPES -> BaseScreens(vm, surface)
         Surface.SCAN_REVIEW_BACKDROP -> ScanReviewBackdrop(vm.review::close)
         // Drawn over the screen beneath, which keeps its scroll position. Dialogs and sheets after it render above it.
-        Surface.LOG -> LogScreen(vm.log, vm.session, vm.settings, vm.day, vm.scan)
+        Surface.LOG -> LogScreen(vm.log, vm.session, vm.settings, vm.day, vm.scan, vm.confirmations, UnmatchedParts(vm.resolve, vm.offParts, vm.search, vm.foodForm, vm.review, vm.log))
         Surface.ENTRY_QUICK_EDIT -> vm.entryEdit.editingEntry()?.let { EntryQuickEditSheet(vm.entryEdit, vm.session, it) }
         Surface.ENTRY_FULL_EDIT -> vm.entryEdit.editingEntry()?.let { EntryFullEditScreen(vm.entryEdit, vm.session, vm.day, it) }
         Surface.ENTRY_FOOD_PICKER -> EntryFoodPicker(vm.entryEdit, vm.session)

@@ -78,7 +78,7 @@ class LogComposerTest {
         log.submit()
         assertEquals(listOf("save \"2 eggs, ayran\" LUNCH 2026-10-28 pins=[]"), store.saves)
         assertEquals(listOf<DiaryChange>(DiaryChange.BatchLogged("Logged!", store.result.entries)), diary.published)
-        assertFalse("the Log closes", log.open)
+        assertTrue("the Log stays with what is left", log.open)
         val handed = afterSaves.single()
         assertEquals(listOf("ayran"), handed.unresolved)
         assertEquals(MealSlot.LUNCH, handed.meal)
@@ -106,7 +106,14 @@ class LogComposerTest {
         assertEquals("ayran", log.draft)
         assertEquals("Some foods need a match.", log.error)
         assertEquals(emptyList<DiaryChange>(), diary.published)
-        assertEquals(emptyList<AfterSave>(), afterSaves)
+        assertEquals(listOf("ayran"), afterSaves.single().unresolved)
+    }
+
+    @Test fun aCleanSaveClosesTheLogAndEditingOrLeavingTellsTheQueue() {
+        log.open(MealSlot.LUNCH)
+        log.onDraft("2 eggs")
+        log.submit()
+        assertFalse(log.open)
     }
 
     @Test fun withNoMealKnownAddAsksAndTheChosenMealSaves() {

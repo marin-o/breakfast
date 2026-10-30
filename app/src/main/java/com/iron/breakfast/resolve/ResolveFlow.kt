@@ -42,6 +42,10 @@ internal interface ResolveSource {
     fun putBack(left: String)
     /** The queue ended with every one of its parts matched: none was skipped or is left. */
     fun allMatched() {}
+    /** It draws the queue's parts itself, so the resolver does not open: the Log page. */
+    val showsItsParts: Boolean get() = false
+    /** The last part of its queue was resolved or skipped. */
+    fun queueEnded() {}
 }
 
 /**
@@ -52,7 +56,8 @@ internal interface ResolveSource {
  *   ([finishPart]); leaving the Library without one goes back to the Log as it was ([cancelPart]). Both end through
  *   [returnToLog], the one way back.
  * - **The unknown queue:** the parts a save could not match ([afterSave], the post-save handling of every save that
- *   logs typed text), resolved one at a time in the resolver ([resolverOpen]) for the queue's [queueMeal]. A screen
+ *   logs typed text), resolved one at a time for the queue's [queueMeal]: on the Log page under their rows, or, for
+ *   another source (the Library's mixed batch), in the resolver ([resolverOpen]). A screen
  *   opened from the resolver (the Open Food Facts search, the food form, product review) sees the queue as a
  *   [ResolveQueueView] ([queueView]), reports how it ended ([childLogged], [childClosed]) and comes back to the
  *   resolver while parts are left. What is left goes back where the parts were typed ([ResolveSource]).
@@ -134,7 +139,7 @@ internal class ResolveFlow(
         queueTotal = unresolved.size
         queueMeal = meal.takeIf { left }
         continuation = left
-        resolverOpen = left
+        resolverOpen = left && !source.showsItsParts
         this.source = source.takeIf { left }
         skipped = false
     }
@@ -150,6 +155,17 @@ internal class ResolveFlow(
         skipped = false
     }
 
+    /** [from], where the queue's parts were typed, was edited or left: its queue ends. Another's goes on. */
+    fun leftBy(from: ResolveSource) { if (source === from) abandon() }
+
+    /** [raw] is the part acted on next, whichever was first: its result was tapped, or its way on. */
+    fun focus(raw: String) {
+        if (raw in parts) parts = listOf(raw) + (parts - raw)
+    }
+
+    /** The food text of part [raw], which a search looks for. */
+    fun nameOf(raw: String): String = typed(raw).foodPhrase.trim().ifBlank { raw.trim() }
+
     /** Back or the arrow on the resolver. */
     fun close() { searchJob?.cancel(); abandon(); searchOpen = false }
 
@@ -164,7 +180,7 @@ internal class ResolveFlow(
     }
 
     /** Return to resolver: a screen opened from it closed without resolving; the resolver comes back while parts are left. */
-    fun childClosed() { if (queueActive) resolverOpen = true else continuation = false }
+    fun childClosed() { if (queueActive) resolverOpen = source?.showsItsParts != true else continuation = false }
 
     /** A screen opened from the resolver logged its food; [advancesQueue] when that resolved the queue's part. */
     fun childLogged(advancesQueue: Boolean) { if (advancesQueue) advance() else continuation = false }
@@ -183,7 +199,7 @@ internal class ResolveFlow(
     }
 
     /** The current part's food text, for the searches opened from the resolver. */
-    fun currentName(): String = parts.firstOrNull()?.let { typed(it).foodPhrase.trim().ifBlank { it.trim() } }.orEmpty()
+    fun currentName(): String = parts.firstOrNull()?.let(::nameOf).orEmpty()
 
     /** A part as the Log read it: its food text, typed amount and unit. */
     fun typed(raw: String): TypedPart = store.typed(raw)
@@ -238,11 +254,12 @@ internal class ResolveFlow(
         query = ""
         results = emptyList()
         searchOpen = false
-        resolverOpen = parts.isNotEmpty()
+        resolverOpen = parts.isNotEmpty() && source?.showsItsParts != true
         if (parts.isEmpty()) {
             queueMeal = null
             continuation = false
             if (!skipped) source?.allMatched()
+            source?.queueEnded()
             source = null
             skipped = false
         }

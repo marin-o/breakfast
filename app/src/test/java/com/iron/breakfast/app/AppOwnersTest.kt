@@ -115,6 +115,84 @@ class AppOwnersTest {
         assertEquals(ProductReviewOrigin.LIBRARY, app.review.origin)
     }
 
+    /** "polenta, argeta" with nothing in the diary's foods: Add leaves both on the Log. */
+    private fun unmatched(app: AppKit) {
+        app.unmatched = listOf("polenta", "argeta")
+        app.log.open(MealSlot.LUNCH)
+        app.log.onDraft("polenta, argeta")
+        app.log.submit()
+    }
+
+    @Test fun typingSearchesNothingAndAddSearchesEachUnmatchedFood() {
+        val app = AppKit()
+        app.unmatched = listOf("polenta", "argeta")
+        app.log.open(MealSlot.LUNCH)
+        app.log.onDraft("polenta, argeta")
+        assertEquals(emptyList<String>(), app.offSearched)
+        app.log.submit()
+        assertEquals(listOf("polenta", "argeta"), app.offSearched)
+        assertTrue("the Log stays, not the resolver", app.log.open)
+        assertFalse(app.resolve.resolverOpen)
+        assertEquals(listOf("polenta", "argeta"), app.resolve.parts)
+        assertEquals(MealSlot.LUNCH, app.resolve.queueMeal)
+    }
+
+    @Test fun aTappedResultIsForItsOwnPartAndTheNextFollows() {
+        val app = AppKit()
+        val argeta = food("off-argeta", "Argeta")
+        unmatched(app)
+        // The second food's result, while the first is still open.
+        app.resolve.focus("argeta")
+        app.review.choose(argeta, origin = com.iron.breakfast.scan.ProductReviewOrigin.QUEUE)
+        app.review.onAmount("100")
+        app.review.add(MealSlot.LUNCH)
+        assertTrue(app.calls.toString(), app.calls.any { it.contains("review log off-argeta LUNCH") })
+        assertEquals(listOf("polenta"), app.resolve.parts)
+        assertEquals("polenta", app.log.draft)
+        assertTrue(app.log.open)
+        assertFalse(app.resolve.resolverOpen)
+        // The last one: the Log closes.
+        val polenta = food("off-polenta", "Polenta")
+        app.review.choose(polenta, origin = com.iron.breakfast.scan.ProductReviewOrigin.QUEUE)
+        app.review.onAmount("100")
+        app.review.add(MealSlot.LUNCH)
+        assertTrue(app.calls.toString(), app.calls.any { it.contains("review log off-polenta LUNCH") })
+        assertFalse(app.log.open)
+    }
+
+    @Test fun editingTheDraftEndsTheQueueAndBackLeavesTheTextAsItWas() {
+        val app = AppKit()
+        unmatched(app)
+        app.log.onDraft("polenta, argeta, x")
+        assertFalse(app.resolve.queueActive)
+        assertEquals(MealSlot.LUNCH, app.log.targetMeal())
+        val other = AppKit()
+        unmatched(other)
+        other.log.close()
+        assertFalse(other.resolve.queueActive)
+        assertEquals("polenta, argeta", other.log.draft)
+    }
+
+    @Test fun closingAReviewOfAPartComesBackToTheLogNotTheResolver() {
+        val app = AppKit()
+        unmatched(app)
+        app.review.choose(food("off-argeta", "Argeta"), origin = com.iron.breakfast.scan.ProductReviewOrigin.QUEUE)
+        app.review.close()
+        assertFalse(app.resolve.resolverOpen)
+        assertTrue(app.resolve.queueActive)
+        assertTrue(app.log.open)
+    }
+
+    @Test fun skippingTheLastPartClosesTheLog() {
+        val app = AppKit()
+        app.unmatched = listOf("polenta")
+        app.log.open(MealSlot.LUNCH)
+        app.log.onDraft("polenta")
+        app.log.submit()
+        app.resolve.skip()
+        assertFalse(app.log.open)
+    }
+
     @Test fun aRestoredEditFoodClosesWhenStorageOpensWithoutItsFood() {
         val jam = food("jam", "Jam")
         val before = AppKit(foods = listOf(jam))

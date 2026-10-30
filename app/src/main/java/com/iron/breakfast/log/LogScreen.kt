@@ -1,5 +1,8 @@
 package com.iron.breakfast.log
 
+import com.iron.breakfast.ui.theme.SnackbarGutter
+import com.iron.breakfast.ui.components.ConfirmationSnackbar
+import com.iron.breakfast.app.Confirmations
 import com.iron.breakfast.ui.components.ScanBarcodeIcon
 import com.iron.breakfast.scan.ScanSession
 import com.iron.breakfast.ui.shortDateLabel
@@ -83,7 +86,7 @@ import com.iron.breakfast.ui.screens.choiceKcalDetail
  * It edits the Log draft ([LogComposer.draft]), which stays until it is added or cleared; leaving the page keeps it.
  */
 @Composable
-internal fun LogScreen(log: LogComposer, session: DiarySession, settings: SettingsState, day: DayState, scan: ScanSession) {
+internal fun LogScreen(log: LogComposer, session: DiarySession, settings: SettingsState, day: DayState, scan: ScanSession, confirmations: Confirmations, unmatched: UnmatchedParts) {
     val colors = LocalBreakfastColors.current
     // One resolution pass per draft: rows, choices and the add-bar sum all come from the same planner run.
     // It runs off the main thread so typing never waits on matching; the last draft shows until the next is ready.
@@ -156,8 +159,10 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
             }
             Hairline(Modifier.padding(top = 22.dp))
             log.error?.let { Text(it, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(top = 8.dp)) }
-            DraftParts(draft, onChoose = log::chooseSuggestion, onResolve = log::resolveNotInFoods)
+            DraftParts(draft, onChoose = log::chooseSuggestion, onResolve = log::resolveNotInFoods, queued = unmatched.resolve.parts.takeIf { unmatched.resolve.queueActive }.orEmpty(), queuedRow = rememberUnmatchedRows(unmatched))
         }
+        // A part logged from here says "Logged!" here, while the queue goes on.
+        ConfirmationSnackbar(confirmations.message, Modifier.padding(horizontal = SnackbarGutter))
         // The add bar sits above whichever is taller: the keyboard or the navigation bar.
         // At large font the button takes its own full-width row so the sum keeps its width.
         val sum: @Composable (Modifier) -> Unit = { modifier ->
@@ -198,7 +203,14 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
  * whose tap is [onChoose]. The Log page and a recipe's ingredients both draw it.
  */
 @Composable
-internal fun DraftParts(draft: LogDraftView, onChoose: (FoodRecord) -> Unit, onResolve: (DraftRow.Unresolved) -> Unit) {
+internal fun DraftParts(
+    draft: LogDraftView,
+    onChoose: (FoodRecord) -> Unit,
+    onResolve: (DraftRow.Unresolved) -> Unit,
+    /** The rows Add could not match, drawn by [queuedRow] instead. */
+    queued: List<String> = emptyList(),
+    queuedRow: @Composable (DraftRow.Unresolved) -> Unit = {},
+) {
     val colors = LocalBreakfastColors.current
     // Rows in typed order. Typed text that matches no food stays visible, so it is never lost when Add is pressed.
     // Not animated: a row has no identity that lasts while its text is typed (DESIGN.md, Motion).
@@ -210,7 +222,7 @@ internal fun DraftParts(draft: LogDraftView, onChoose: (FoodRecord) -> Unit, onR
                 calories = formatKcal(row.resolution.calculation.nutrition.calories),
                 modifier = Modifier.padding(top = 4.dp),
             )
-            is DraftRow.Unresolved -> FoodRow(
+            is DraftRow.Unresolved -> if (row.text in queued) queuedRow(row) else FoodRow(
                 name = row.text,
                 quantityLine = "Not in your foods",
                 calories = "",

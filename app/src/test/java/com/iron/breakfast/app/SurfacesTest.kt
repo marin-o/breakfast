@@ -112,9 +112,9 @@ class SurfacesTest {
         app.log.submit()
     }
 
-    @Test fun theLogsAddOpensTheResolverOverDaily() {
+    @Test fun theLogsAddKeepsItsUnmatchedFoodsOnTheLog() {
         addLeavesParts("ayran")
-        shows("DAILY", "RESOLVER")
+        shows("DAILY", "LOG")
         assertFalse(app.reminderShown())
         app.back()
         shows("DAILY")
@@ -138,32 +138,32 @@ class SurfacesTest {
     @Test fun theSearchFromTheResolverGoesBackToTheResolver() {
         addLeavesParts("ayran")
         app.search.open(app.resolve.currentName(), fromResolver = true)
-        shows("DAILY", "OFF_SEARCH")
+        shows("DAILY", "LOG", "OFF_SEARCH")
         app.back()
-        shows("DAILY", "RESOLVER")
+        shows("DAILY", "LOG")
     }
 
     @Test fun aFoodFormFromTheResolverGoesBackToTheResolverAndAChangedOneAsksFirst() {
         addLeavesParts("ayran")
         app.foodForm.open(app.resolve.currentName(), fromResolver = true)
-        shows("DAILY", "FOOD_FORM")
+        shows("DAILY", "LOG", "FOOD_FORM")
         app.back()
-        shows("DAILY", "RESOLVER")
+        shows("DAILY", "LOG")
         app.foodForm.open(app.resolve.currentName(), fromResolver = true)
         app.foodForm.draft.calories = "40"
         app.back()
-        shows("DAILY", "FOOD_FORM", "DISCARD_FOOD")
+        shows("DAILY", "LOG", "FOOD_FORM", "DISCARD_FOOD")
         app.foodForm.discard()
-        shows("DAILY", "RESOLVER")
+        shows("DAILY", "LOG")
     }
 
     @Test fun aReviewPickedFromTheResolversSearchGoesBackToTheResolver() {
         addLeavesParts("ayran")
         app.search.open(app.resolve.currentName(), fromResolver = true)
         app.search.choose(food("off-ayran", "Ayran"))
-        shows("DAILY", "PRODUCT_REVIEW")
+        shows("DAILY", "LOG", "PRODUCT_REVIEW")
         app.review.close()
-        shows("DAILY", "RESOLVER")
+        shows("DAILY", "LOG")
     }
 
     @Test fun theResolverWaitsUnderTheScanBackdropOfARescannedQueuedPart() {
@@ -174,10 +174,10 @@ class SurfacesTest {
         app.review.rescan()
         shows("SCANNER")
         app.scan.onBarcode(barcode)
-        assertTrue(app.resolve.resolverOpen)
+        assertTrue(app.resolve.queueActive)
         shows("SCAN_REVIEW_BACKDROP", "PRODUCT_REVIEW")
         app.review.close()
-        shows("DAILY", "RESOLVER")
+        shows("DAILY", "LOG")
     }
 
     @Test fun aSavedNewFoodMovesTheQueueOnAndTheLastOneEndsIt() {
@@ -186,7 +186,7 @@ class SurfacesTest {
         app.foodForm.draft.calories = "40"
         app.foodForm.save()
         // "Logged!" is no dialog: the resolver, back over Daily for the next part, shows it, and it goes by itself.
-        shows("DAILY", "RESOLVER")
+        shows("DAILY", "LOG")
         assertEquals("Logged!", app.confirmations.message)
         app.foodForm.open(app.resolve.currentName(), fromResolver = true)
         app.foodForm.draft.calories = "60"
@@ -541,7 +541,7 @@ class SurfacesTest {
     @Test fun replaceDiaryEndsTheResolverAndItsQueue() {
         addLeavesParts("ayran")
         replaceDiary()
-        shows("DAILY")
+        shows("DAILY", "LOG")
         assertFalse(app.resolve.queueActive)
         assertEquals("what was left stays in the draft", "ayran", app.log.draft)
     }
@@ -607,9 +607,9 @@ class SurfacesTest {
         addLeavesParts("ayran")
         app.search.open(app.resolve.currentName(), fromResolver = true)
         app.foodForm.open(app.resolve.currentName(), fromResolver = true)
-        shows("DAILY", "FOOD_FORM")
+        shows("DAILY", "LOG", "FOOD_FORM")
         app.search.open(app.resolve.currentName(), fromResolver = true)
-        shows("DAILY", "OFF_SEARCH")
+        shows("DAILY", "LOG", "OFF_SEARCH")
         assertFalse(app.foodForm.open)
         assertFalse(app.resolve.resolverOpen)
     }

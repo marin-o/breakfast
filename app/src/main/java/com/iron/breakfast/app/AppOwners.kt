@@ -1,5 +1,6 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.search.OffPartSearch
 import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.SavedStateHandle
 import com.iron.breakfast.contribution.ContributionFlow
@@ -162,6 +163,8 @@ internal class AppOwners<D>(
         onClose = { resolve.childClosed() },
         onChoose = { food, origin -> review.choose(food, origin = origin) },
     )
+    /** The Open Food Facts results under the Log's unmatched foods (see [OffPartSearch]). */
+    val offParts = OffPartSearch(stores.offSearch, threads.scope, threads.io)
     /** Export, import, Delete all and the safety copy (see [DiaryTransfer]); the root launches its pickers. */
     val transfer = DiaryTransfer(
         session = session,
@@ -196,7 +199,15 @@ internal class AppOwners<D>(
         automaticMeal = ::automaticMealNow,
         openMeal = ::mealOnScreen,
         editing = { entryEdit.editing },
-        afterSave = resolve::afterSave,
+        afterSave = { unmatched, meal, source, typed ->
+            resolve.afterSave(unmatched, meal, source, typed)
+            // Add is the only thing that searches: one food at a time, under its row.
+            offParts.start(unmatched.map(resolve::nameOf))
+        },
+        onQueueLeft = { source, closing ->
+            resolve.leftBy(source)
+            if (closing) offParts.clear() else offParts.cancel()
+        },
         resolvePart = resolve::beginPart,
         // Typed work comes back after the process was killed: the log draft (and an open food form, in [init]).
         compute = threads.compute,

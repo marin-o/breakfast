@@ -84,24 +84,19 @@ import com.iron.breakfast.ui.screens.formatKcal
             }
             search.message?.let { message ->
                 val createPersonal = { foodForm.open(search.query.trim(), fromResolver = resolve.continuation, reviewAfterSave = search.reviewOrigin) }
-                when (offSearchStatus(search.unavailable, message)) {
-                    OffSearchStatus.Offline -> SearchStatus(
-                        title = "No connection",
-                        body = "Open Food Facts needs internet. Local foods still work.",
-                        retry = search::submit,
-                        createPersonal = createPersonal,
-                    )
-                    OffSearchStatus.NoResults -> SearchStatus(title = "No results", body = null, retry = null, createPersonal = createPersonal)
-                    OffSearchStatus.Failed -> SearchStatus(
-                        title = "Search failed",
-                        body = "Open Food Facts returned an error.",
-                        retry = search::submit,
-                        createPersonal = createPersonal,
-                    )
-                }
+                val status = offSearchStatus(search.unavailable, message)
+                val (title, body) = offStatusText(status)
+                SearchStatus(title, body, retry = search::submit.takeIf { status != OffSearchStatus.NoResults }, createPersonal = createPersonal)
             }
         }
     }
+}
+
+/** A search status in words: its title and its soft line, if any. The search screen and the Log's rows say the same. */
+internal fun offStatusText(status: OffSearchStatus): Pair<String, String?> = when (status) {
+    OffSearchStatus.Offline -> "No connection" to "Open Food Facts needs internet. Local foods still work."
+    OffSearchStatus.NoResults -> "No results" to null
+    OffSearchStatus.Failed -> "Search failed" to "Open Food Facts returned an error."
 }
 
 /** Which status block the Open Food Facts search shows after a query. */

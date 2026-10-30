@@ -37,12 +37,14 @@ class SessionResetTest {
         app.log.onDraft("2 eggs, ayran")
         app.log.submit()
         assertEquals("Some foods need a match.", app.log.error)
-        assertTrue(app.resolve.queueActive)
-        assertTrue(app.resolve.resolverOpen)
-        // A suggestion picked in the draft that is left: a pin.
+        // A suggestion picked in the draft that is left: a pin. The edit ends the Log's queue.
         app.log.onDraft("ayran, 2 eggs")
         app.log.chooseSuggestion(FoodCatalog.fixtures.first { it.id == "egg" })
         assertTrue(app.log.pinsSnapshot().isNotEmpty())
+        // The resolver's queue, as the Library's mixed batch leaves it.
+        app.resolve.afterSave(listOf("ayran"), MealSlot.LUNCH, app.library, app.library.text)
+        assertTrue(app.resolve.queueActive)
+        assertTrue(app.resolve.resolverOpen)
         // A contribution candidate.
         app.contribution.offerAfterLocalSave(OffContributionDraft("4006381333931", "Kefir", null, 100.0, MeasureUnit.GRAM, NutritionValues(60.0, 3.0, 4.0, 3.0)))
         assertNotNull(app.contribution.pending)

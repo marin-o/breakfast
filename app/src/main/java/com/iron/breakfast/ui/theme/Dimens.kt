@@ -5,6 +5,8 @@ import androidx.compose.ui.unit.dp
 /** Monochrome measurements; design px map directly to dp. */
 val Gutter = 24.dp
 val HeaderHeight = 52.dp
+/** How far what belongs to a row sits in from it: an unmatched food's results. */
+val PartInset = 16.dp
 /** A snackbar and the bottom area from the screen edge. */
 val SnackbarGutter = 16.dp
 /**

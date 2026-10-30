@@ -66,6 +66,8 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
     val diary = KitDiary().also { it.foods = foods; it.damaged = damagedDiary }
     /** Writes the fakes received, in order. */
     val calls = mutableListOf<String>()
+    /** What Open Food Facts was asked, in order. */
+    val offSearched = mutableListOf<String>()
     /** What the Log's Add and the Library's mixed batch leave unmatched. */
     var unmatched: List<String> = emptyList()
     /** Barcodes the Library has. */
@@ -154,7 +156,7 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
                 override fun preflight(draft: OffContributionDraft) = OffPreflightResult.Existing
                 override fun contribute(draft: OffContributionDraft, username: String, password: String) = OffContributionResult.Success
             },
-            offSearch = object : OffSearchService { override suspend fun search(query: String) = OffSearchResult.Success(emptyList()) },
+            offSearch = object : OffSearchService { override suspend fun search(query: String): OffSearchResult { offSearched += query; return OffSearchResult.Success(emptyList()) } },
             licence = { "SIL Open Font License" },
             recipes = object : RecipeStore {
                 override fun ingredientPlanner(pins: Map<String, FoodRecord>) = plannerFor(pins)

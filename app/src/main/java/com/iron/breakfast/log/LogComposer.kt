@@ -60,6 +60,8 @@ internal class LogComposer(
     private val resolvePart: (request: LogResolveRequest, meal: MealSlot, query: String) -> Unit,
     /** Where the Log page's draft is planned ([computeDraftView]): off the main thread in the app. */
     private val compute: CoroutineDispatcher,
+    /** The draft changed under its queue ([closing] false), or the Log closed: its queue and searches end. */
+    private val onQueueLeft: (source: ResolveSource, closing: Boolean) -> Unit = { _, _ -> },
     initial: SavedLogDraft = SavedLogDraft("", false),
 ) : ResolveSource {
     var draft by mutableStateOf(initial.text); private set
@@ -102,6 +104,7 @@ internal class LogComposer(
 
     /** Closes the Log page. The draft stays. */
     fun close() {
+        onQueueLeft(this, true)
         open = false
         mealMenuOpen = false
         submitPending = false
@@ -125,6 +128,7 @@ internal class LogComposer(
 
     /** The Log page's typing. Clearing the draft also drops the foods picked for it. */
     fun onDraft(value: String) {
+        if (value != draft) onQueueLeft(this, false)
         pins.edited(draft, value)
         draft = value
         committed = false
@@ -203,15 +207,13 @@ internal class LogComposer(
                 else DiaryChange.BatchLogged(LOGGED, saved.entries)
             },
             onSuccess = { saved ->
-                if (nothingSaved(saved)) {
-                    error = NEEDS_A_MATCH
-                    return@write
-                }
                 // Only the pins this save used: one added while it planned off the main thread belongs to the new text.
                 pins.forget(usedPins)
-                close()
-                afterSave(saved.unresolvedSegments, target, this@LogComposer, captured)
-                error = if (saved.unresolvedSegments.isNotEmpty()) NEEDS_A_MATCH else null
+                val unmatched = saved.unresolvedSegments
+                // What could not be matched stays on the Log, under its rows, for the same meal.
+                if (unmatched.isEmpty()) close() else chosen = target
+                afterSave(unmatched, target, this@LogComposer, captured)
+                error = if (unmatched.isNotEmpty()) NEEDS_A_MATCH else null
             },
             onFailure = { error = it.message ?: "Could not save this meal." },
         ) { store.save(captured, target, selectedDay(), capturedPins) }
@@ -259,6 +261,8 @@ internal class LogComposer(
     override fun putBack(left: String) { pins.edited(draft, left); draft = left }
     /** Every part Add left was matched in the resolver: "Some foods need a match." no longer applies. A skipped part keeps it. */
     override fun allMatched() { if (error == NEEDS_A_MATCH) error = null }
+    override val showsItsParts: Boolean get() = true
+    override fun queueEnded() { close() }
 }
 
 /** The Log's error while parts of the draft are not matched. */
