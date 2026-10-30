@@ -1,5 +1,8 @@
 package com.iron.breakfast.recipes
 
+import com.iron.breakfast.ui.components.FoodAmountSheet
+import com.iron.breakfast.ui.components.NutritionFacts
+import com.iron.breakfast.ui.components.ItemPage
 import com.iron.breakfast.ui.screens.yieldLine
 import com.iron.breakfast.ui.screens.macroFact
 import com.iron.breakfast.ui.screens.previewQuantityLine
@@ -8,33 +11,24 @@ import androidx.compose.foundation.layout.PaddingValues
 import com.iron.breakfast.ui.components.BottomAreaClearance
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.app.Surfaces
-import com.iron.breakfast.domain.MacroTotal
 import com.iron.breakfast.domain.Measure
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.Recipe
 import com.iron.breakfast.domain.asFood
 import com.iron.breakfast.domain.nutritionFor
 import com.iron.breakfast.domain.shownServing
-import com.iron.breakfast.library.FoodAmountSheet
-import com.iron.breakfast.library.LibraryFactRow
 import com.iron.breakfast.library.libraryPresetMeal
 import com.iron.breakfast.ui.components.AddCircle
 import com.iron.breakfast.ui.components.DestructiveButton
@@ -43,7 +37,6 @@ import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.SectionHeading
 import com.iron.breakfast.ui.components.TertiaryButton
 import com.iron.breakfast.ui.components.TopBar
-import com.iron.breakfast.ui.components.foodText
 import com.iron.breakfast.ui.components.rememberMotion
 import com.iron.breakfast.ui.components.LocalScreenBody
 import com.iron.breakfast.ui.screens.basisLabel
@@ -69,13 +62,10 @@ internal fun RecipesScreen(recipes: RecipeBook, onNew: (() -> Unit)?, modifier: 
             contentPadding = PaddingValues(bottom = BottomAreaClearance),
         ) {
             item {
-                Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Recipes", color = colors.ink, style = BreakfastType.Section)
-                        Text(countLabel(list.size, "recipe", "recipes"), color = colors.soft, style = BreakfastType.Meta)
-                    }
-                    if (onNew != null) TertiaryButton("New recipe", onNew)
-                }
+                TopBar(
+                    "Recipes", null, Modifier.padding(top = 8.dp, bottom = 6.dp), subtitle = countLabel(list.size, "recipe", "recipes"),
+                    trailing = { if (onNew != null) TertiaryButton("New recipe", onNew) },
+                )
                 Hairline()
             }
             // Rows fade in and out as the list changes, and move to their new place (a logged recipe goes to the top).
@@ -112,15 +102,7 @@ internal fun RecipePageScreen(recipes: RecipeBook, recipe: Recipe, onEdit: ((Rec
     val colors = LocalBreakfastColors.current
     val (amount, unit) = recipe.shownServing()
     val nutrition = recipe.nutritionFor(amount, unit)
-    Column(Modifier.fillMaxSize().background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter, vertical = 4.dp)) {
-        TopBar(
-            title = "Recipe",
-            onBack = recipes::closeRecipe,
-            modifier = Modifier.padding(top = 8.dp),
-            trailing = { if (onEdit != null) TertiaryButton("Edit", { recipes.closeRecipe(); onEdit(recipe) }) },
-        )
-        Hairline(Modifier.padding(top = 8.dp))
-        Text(foodText(recipe.name), color = colors.ink, style = BreakfastType.Section, modifier = Modifier.padding(top = 8.dp))
+    ItemPage("Recipe", recipes::closeRecipe, recipe.name, onEdit?.let { edit -> { recipes.closeRecipe(); edit(recipe) } }) {
         Text(yieldLine(recipe), color = colors.soft, style = BreakfastType.Secondary)
         Hairline(Modifier.padding(top = 16.dp))
         SectionHeading("Ingredients", Modifier.padding(top = 16.dp))
@@ -133,21 +115,15 @@ internal fun RecipePageScreen(recipes: RecipeBook, recipe: Recipe, onEdit: ((Rec
         }
         Hairline(Modifier.padding(top = 16.dp))
         SectionHeading(basisLabel(amount, unit), Modifier.padding(top = 16.dp))
-        LibraryFactRow("Energy", formatKcal(nutrition?.values?.calories ?: 0.0), "kcal")
-        nutrition?.macros?.let { macros ->
-            MacroFact("Fat", macros.fat)
-            MacroFact("Carbohydrate", macros.carbohydrates)
-            MacroFact("Protein", macros.protein)
-        }
+        val macros = nutrition?.macros
+        NutritionFacts(
+            formatKcal(nutrition?.values?.calories ?: 0.0),
+            fat = macros?.let { macroFact(it.fat) },
+            carbs = macros?.let { macroFact(it.carbohydrates) },
+            protein = macros?.let { macroFact(it.protein) },
+        )
         DestructiveButton("Delete recipe", { recipes.askDelete(recipe) }, Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 8.dp), outlined = true)
     }
-}
-
-/** A macro as the day total shows one: "—" when no ingredient has it, "12 g ?" when only some do. */
-@Composable
-private fun MacroFact(label: String, total: MacroTotal) {
-    val (number, unit) = macroFact(total)
-    LibraryFactRow(label, number, unit)
 }
 
 /** A row's "+": the amount sheet with the recipe's units, then its meal, as the Library logs a food. */

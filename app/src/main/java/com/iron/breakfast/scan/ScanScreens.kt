@@ -1,5 +1,9 @@
 package com.iron.breakfast.scan
 
+import com.iron.breakfast.ui.components.MealField
+import com.iron.breakfast.ui.components.NutrientFields
+import com.iron.breakfast.ui.components.NutrientField
+import com.iron.breakfast.ui.components.SubScreen
 import com.iron.breakfast.ui.shortMacroLine
 import com.iron.breakfast.ui.screens.kcalLabel
 import com.iron.breakfast.ui.screens.editableNumber
@@ -100,7 +104,6 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.asciiDigits
-import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.domain.normalizeBarcode
 import com.iron.breakfast.domain.scannedProductBarcode
@@ -111,14 +114,11 @@ import com.iron.breakfast.ui.components.Field
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.LinearProgress
 import com.iron.breakfast.ui.components.rememberMotionReduced
-import com.iron.breakfast.ui.components.MealChoices
-import com.iron.breakfast.ui.components.mealRowFits
 import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.components.SecondaryButton
 import com.iron.breakfast.ui.components.SectionHeading
 import com.iron.breakfast.ui.components.Sheet
 import com.iron.breakfast.ui.components.TertiaryButton
-import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.domain.NutritionValues
 import java.util.concurrent.atomic.AtomicBoolean
 import com.iron.breakfast.ui.screens.productApproxLabel
@@ -210,9 +210,9 @@ import com.iron.breakfast.ui.screens.sourceLabel
         } }, Modifier.fillMaxSize().onGloballyPositioned { session.previewBounds = it.boundsInRoot() })
         ScannerFrame(
             top = {
-                IconButton(onClick = scan::end, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.cameraMark) }
+                IconButton(onClick = scan::end, Modifier.size(IconTarget)) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.cameraMark) }
                 Box(Modifier.weight(1f))
-                if (torchAvailable) IconToggleButton(checked = torchOn, onCheckedChange = { torchOn = it }, Modifier.size(44.dp).semantics { role = Role.Switch; stateDescription = if (torchOn) "On" else "Off" }) {
+                if (torchAvailable) IconToggleButton(checked = torchOn, onCheckedChange = { torchOn = it }, Modifier.size(IconTarget).semantics { role = Role.Switch; stateDescription = if (torchOn) "On" else "Off" }) {
                     Icon(if (torchOn) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff, contentDescription = "Torch", tint = colors.cameraMark)
                 }
             },
@@ -228,19 +228,21 @@ import com.iron.breakfast.ui.screens.sourceLabel
 @Composable
 private fun ScannerUnavailableScreen(noCamera: Boolean, onBack: () -> Unit, onManual: () -> Unit, onSettings: () -> Unit) {
     val colors = LocalBreakfastColors.current
-    Column(Modifier.fillMaxSize().background(colors.bg).statusBarsPadding().padding(horizontal = Gutter)) {
-        TopBar("Scan", onBack, Modifier.padding(top = 8.dp))
+    SubScreen(
+        "Scan", onBack, scroll = false,
+        bottom = {
+            Column(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (noCamera) PrimaryButton("Manual barcode", onManual, kind = ButtonKind.Neutral)
+                else {
+                    PrimaryButton("Open settings", onSettings, kind = ButtonKind.Neutral)
+                    SecondaryButton("Manual barcode", onManual)
+                }
+            }
+        },
+    ) {
         Column(Modifier.fillMaxWidth().padding(top = 56.dp)) {
             SectionHeading(if (noCamera) "No camera" else "No camera access")
             Text(if (noCamera) "This phone has no usable camera." else "Allow the camera in Android settings.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 6.dp))
-        }
-        Box(Modifier.weight(1f))
-        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (noCamera) PrimaryButton("Manual barcode", onManual, kind = ButtonKind.Neutral)
-            else {
-                PrimaryButton("Open settings", onSettings, kind = ButtonKind.Neutral)
-                SecondaryButton("Manual barcode", onManual)
-            }
         }
     }
 }
@@ -326,9 +328,9 @@ private fun LookupProgress(code: String, onCancel: () -> Unit, modifier: Modifie
     Box(Modifier.fillMaxSize().background(colors.cameraGround)) {
         ScannerFrame(
             top = {
-                IconButton(onClick = onBack, Modifier.size(44.dp)) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.cameraMark) }
+                IconButton(onClick = onBack, Modifier.size(IconTarget)) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.cameraMark) }
                 Box(Modifier.weight(1f))
-                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(IconTarget), contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.FlashlightOff, contentDescription = null, tint = colors.cameraMark)
                 }
             },
@@ -364,36 +366,6 @@ private fun LookupProgress(code: String, onCancel: () -> Unit, modifier: Modifie
             )
             if (barcode != null) PrimaryButton("Look up", { barcode.let(onLookup) }, kind = ButtonKind.Neutral)
             else SecondaryButton("Look up", {}, enabled = false)
-        }
-    }
-}
-
-/** One nutrient field in the review sheet's editing grid. */
-private data class NutrientInput(val label: String, val value: String, val onValueChange: (String) -> Unit)
-
-/**
- * Whether four nutrient fields fit one row of [availableDp]: each needs about 76dp (scaled with the font) for its
- * label and number; otherwise they stack as a 2x2 grid.
- */
-internal fun nutrientFieldsFitRow(availableDp: Float, fontScale: Float): Boolean =
-    (availableDp - 3 * 8f) / 4f >= 76f * fontScale.coerceAtLeast(1f)
-
-/** The four decimal nutrient fields: one row when they fit, otherwise a 2x2 grid. */
-@Composable private fun NutrientInputs(inputs: List<NutrientInput>) {
-    val decimal = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        if (nutrientFieldsFitRow(maxWidth.value, LocalDensity.current.fontScale)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                inputs.forEach { Field(it.label, it.value, it.onValueChange, Modifier.weight(1f), keyboardOptions = decimal) }
-            }
-        } else {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                inputs.chunked(2).forEach { pair ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        pair.forEach { Field(it.label, it.value, it.onValueChange, Modifier.weight(1f), keyboardOptions = decimal) }
-                    }
-                }
-            }
         }
     }
 }
@@ -442,13 +414,15 @@ private fun amountFieldText(review: ProductReview): String =
                 Field("Name", review.name, review::onName)
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(basisLabel(basis.amount, basis.unit), color = colors.soft, style = BreakfastType.Meta)
-                    NutrientInputs(
+                    NutrientFields(
                         listOf(
-                            NutrientInput("kcal", review.calories) { review.onCalories(it.decimalInput()) },
-                            NutrientInput("Protein, g", review.protein) { review.onProtein(it.decimalInput()) },
-                            NutrientInput("Carbs, g", review.carbs) { review.onCarbs(it.decimalInput()) },
-                            NutrientInput("Fat, g", review.fat) { review.onFat(it.decimalInput()) },
+                            NutrientField("kcal", review.calories, review::onCalories),
+                            NutrientField("Protein, g", review.protein, review::onProtein),
+                            NutrientField("Carbs, g", review.carbs, review::onCarbs),
+                            NutrientField("Fat, g", review.fat, review::onFat),
                         ),
+                        gap = 8.dp,
+                        oneRowWhenItFits = true,
                     )
                 }
             }
@@ -471,12 +445,7 @@ private fun amountFieldText(review: ProductReview): String =
                     Text("Meal", color = colors.soft, style = BreakfastType.Meta)
                     Text(queueMeal.label(), color = colors.ink, style = BreakfastType.BodyMedium)
                 }
-                else {
-                    Text("Meal", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 16.dp))
-                    BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp)) {
-                        MealChoices(meal, { meal = it }, singleRow = mealRowFits(maxWidth.value, LocalDensity.current.fontScale), compact = true)
-                    }
-                }
+                else MealField(meal, { meal = it }, Modifier.padding(top = 16.dp), compact = true)
                 Row(Modifier.fillMaxWidth().padding(top = 18.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                     Text("Result", color = colors.soft, style = BreakfastType.Meta)
                     Row(verticalAlignment = Alignment.Bottom) {

@@ -180,9 +180,7 @@ internal class FoodForm(
         val resolved = resolveNutrition(input)
         val editingId = editingFoodId
         val foods = session.foods
-        val originalBarcode = editingId?.let { id -> foods.firstOrNull { it.id == id }?.barcode?.trim() }
-        val barcodeUnchanged = barcode == originalBarcode || sameBarcode(barcode, originalBarcode)
-        val barcodeError = if (barcodeUnchanged) null else validateBarcodeInput(barcode, foods, editingId)
+        val barcodeError = foodBarcodeError(barcode, foods, editingId)
         // A refused save names the problem and moves focus to the field to fix (New food reads the request).
         foodSaveRefusal(name, input, resolved, barcodeError)?.let { refusal ->
             notices.show(refusal.message)
@@ -194,6 +192,8 @@ internal class FoodForm(
         if (draft.densityError()) { notices.show(POSITIVE_AMOUNT_MESSAGE); return }
         val density = draft.densityValue()
         // A new or changed code is stored in its canonical form; an unchanged one keeps the spelling it has.
+        val originalBarcode = editingId?.let { id -> foods.firstOrNull { it.id == id }?.barcode?.trim() }
+        val barcodeUnchanged = barcode == originalBarcode || sameBarcode(barcode, originalBarcode)
         val storedBarcode = if (barcodeUnchanged && originalBarcode != null) originalBarcode else canonicalBarcode(barcode) ?: barcode
         val basisAmount = resolved.basisAmount
         val basisUnit = resolved.basisUnit

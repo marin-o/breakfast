@@ -1,32 +1,26 @@
 package com.iron.breakfast.recipes
 
+import com.iron.breakfast.ui.components.FoodAmountSheet
+import com.iron.breakfast.ui.components.GramMlChoices
+import com.iron.breakfast.ui.components.DecimalField
+import com.iron.breakfast.ui.components.SubScreen
 import com.iron.breakfast.domain.POSITIVE_AMOUNT_MESSAGE
 import com.iron.breakfast.ui.screens.previewQuantityLine
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.Alignment
-import com.iron.breakfast.domain.MeasureUnit
-import com.iron.breakfast.ui.components.ChoiceOption
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,13 +31,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.Measure
-import com.iron.breakfast.domain.decimalInput
-import com.iron.breakfast.library.FoodAmountSheet
 import com.iron.breakfast.library.defaultServingCalories
 import com.iron.breakfast.log.DraftParts
 import com.iron.breakfast.log.inputFieldFor
@@ -56,9 +47,7 @@ import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.components.SearchField
-import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.components.rememberMotion
-import com.iron.breakfast.ui.theme.Gutter
 import com.iron.breakfast.ui.theme.IconTarget
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 
@@ -79,26 +68,21 @@ internal fun RecipeFormScreen(form: RecipeForm, recipes: RecipeBook, session: Di
     }
     val editing = form.editingRecipeId?.let { id -> session.recipes.firstOrNull { it.id == id } }
     val canSave = recipeCanSave(fields, view.complete) && !session.busy
-    Surface(Modifier.fillMaxSize(), color = colors.bg) {
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).imePadding().padding(bottom = 12.dp)) {
-                TopBar(if (form.editingRecipeId != null) "Edit recipe" else "New recipe", form::leave, Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
-                Column(Modifier.padding(horizontal = Gutter).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Field("Name", fields.name, form::onName, required = true)
-                    YieldField("Portions", fields.portions, form::onPortions, hint = null, Modifier.fillMaxWidth())
-                    TotalField(form)
-                    Column {
-                        IngredientsField(form)
-                        // The Log's rows and choices: a tapped choice pins its food; "Not in your foods" opens the search.
-                        DraftParts(view.draft, onChoose = form::chooseSuggestion, onResolve = form::resolveNotInFoods)
-                    }
-                    Field("Alias", fields.aliases, form::onAliases)
-                    if (editing != null) DestructiveButton("Delete recipe", { recipes.askDelete(editing) }, Modifier.fillMaxWidth(), outlined = true)
-                }
+    SubScreen(
+        if (form.editingRecipeId != null) "Edit recipe" else "New recipe", form::leave,
+        bottom = { PrimaryButton("Save", form::save, Modifier.padding(top = 16.dp, bottom = 8.dp), enabled = canSave, kind = ButtonKind.Constructive) },
+    ) {
+        Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Field("Name", fields.name, form::onName, required = true)
+            YieldField("Portions", fields.portions, form::onPortions, Modifier.fillMaxWidth())
+            TotalField(form)
+            Column {
+                IngredientsField(form)
+                // The Log's rows and choices: a tapped choice pins its food; "Not in your foods" opens the search.
+                DraftParts(view.draft, onChoose = form::chooseSuggestion, onResolve = form::resolveNotInFoods)
             }
-            Column(Modifier.fillMaxWidth().imePadding().padding(horizontal = Gutter, vertical = 8.dp)) {
-                PrimaryButton("Save", form::save, Modifier.padding(top = 8.dp), enabled = canSave, kind = ButtonKind.Constructive)
-            }
+            Field("Alias", fields.aliases, form::onAliases)
+            if (editing != null) DestructiveButton("Delete recipe", { recipes.askDelete(editing) }, Modifier.fillMaxWidth(), outlined = true)
         }
     }
 }
@@ -118,23 +102,15 @@ private fun TotalField(form: RecipeForm) {
             error = error,
             errorMessage = if (error) POSITIVE_AMOUNT_MESSAGE else null,
         )
-        listOf(MeasureUnit.GRAM, MeasureUnit.MILLILITER).forEach { candidate ->
-            ChoiceOption(candidate.label, unit == candidate, { form.onTotalUnit(candidate) }, Modifier.weight(1f))
-        }
+        GramMlChoices(unit, form::onTotalUnit, Modifier.weight(1f))
     }
 }
 
 /** Portions: a decimal field whose typed value that is not a positive number shows as an error. */
 @Composable
-private fun YieldField(label: String, value: String, onValue: (String) -> Unit, hint: String?, modifier: Modifier) {
+private fun YieldField(label: String, value: String, onValue: (String) -> Unit, modifier: Modifier) {
     val error = yieldError(value)
-    Field(
-        label, value, { onValue(it.decimalInput()) }, modifier,
-        error = error,
-        errorMessage = if (error) POSITIVE_AMOUNT_MESSAGE else null,
-        hint = hint,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-    )
+    DecimalField(label, value, onValue, modifier, error = error, errorMessage = if (error) POSITIVE_AMOUNT_MESSAGE else null)
 }
 
 /**
@@ -178,24 +154,21 @@ internal fun RecipeIngredientSearch(form: RecipeForm) {
     val motion = rememberMotion()
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
-    Surface(Modifier.fillMaxSize(), color = colors.bg) {
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter)) {
-            TopBar("Search", form::closeSearch, Modifier.padding(top = 8.dp))
-            SearchField(
-                form.query, form::onQuery, onClear = { form.onQuery("") }, label = "Search foods",
-                modifier = Modifier.padding(top = 6.dp), fieldModifier = Modifier.focusRequester(focus),
-            )
-            Hairline(Modifier.padding(top = 12.dp))
-            LazyColumn(Modifier.weight(1f).imePadding()) {
-                items(form.results, key = { it.id }) { food ->
-                    FoodRow(
-                        name = food.name,
-                        quantityLine = previewQuantityLine(food.defaultAmount, food.defaultUnit),
-                        calories = defaultServingCalories(food),
-                        modifier = Modifier.animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem()),
-                        onClick = { form.pick(food) },
-                    )
-                }
+    SubScreen("Search", form::closeSearch, scroll = false) {
+        SearchField(
+            form.query, form::onQuery, onClear = { form.onQuery("") }, label = "Search foods",
+            modifier = Modifier.padding(top = 6.dp), fieldModifier = Modifier.focusRequester(focus),
+        )
+        Hairline(Modifier.padding(top = 12.dp))
+        LazyColumn(Modifier.weight(1f)) {
+            items(form.results, key = { it.id }) { food ->
+                FoodRow(
+                    name = food.name,
+                    quantityLine = previewQuantityLine(food.defaultAmount, food.defaultUnit),
+                    calories = defaultServingCalories(food),
+                    modifier = Modifier.animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem()),
+                    onClick = { form.pick(food) },
+                )
             }
         }
     }

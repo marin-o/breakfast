@@ -1,6 +1,9 @@
 package com.iron.breakfast.food
 
+import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.NutritionInput
+import com.iron.breakfast.domain.sameBarcode
+import com.iron.breakfast.domain.validateBarcodeInput
 import com.iron.breakfast.domain.ResolvedNutrition
 import com.iron.breakfast.domain.parseDecimal
 import com.iron.breakfast.domain.resolveNutrition
@@ -63,4 +66,12 @@ internal fun createFoodState(input: NutritionInput, name: String, barcodeError: 
     return CreateFoodState(nutrition, missing, showRequired = missing && touched, canSave = !missing && name.isNotBlank() && barcodeError == null)
 }
 
-
+/**
+ * What is wrong with the [barcode] in a food form, or null: blank is no barcode, and a food being edited ([editingId])
+ * may keep the code it has in any spelling. The field shows this as it is typed, and Save refuses by it.
+ */
+internal fun foodBarcodeError(barcode: String, foods: List<FoodRecord>, editingId: String?): String? {
+    val original = editingId?.let { id -> foods.firstOrNull { it.id == id }?.barcode?.trim() }
+    val code = barcode.trim()
+    return if (code == original || sameBarcode(code, original)) null else validateBarcodeInput(code, foods, editingId)
+}

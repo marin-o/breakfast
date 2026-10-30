@@ -1,12 +1,12 @@
 package com.iron.breakfast.library
 
+import com.iron.breakfast.ui.components.FoodAmountSheet
+import com.iron.breakfast.ui.components.barPlaceholder
+import com.iron.breakfast.ui.components.SearchText
+import com.iron.breakfast.ui.components.NutritionFacts
+import com.iron.breakfast.ui.components.ItemPage
 import com.iron.breakfast.ui.screens.previewQuantityLine
 import com.iron.breakfast.contribution.contributionAvailable
-import com.iron.breakfast.domain.positiveAmountOf
-import com.iron.breakfast.domain.POSITIVE_AMOUNT_MESSAGE
-import com.iron.breakfast.ui.screens.kcalLabel
-import com.iron.breakfast.ui.screens.editableNumber
-import com.iron.breakfast.ui.macroLine
 import com.iron.breakfast.ui.macroText
 import com.iron.breakfast.ui.shortDateLabel
 import com.iron.breakfast.ui.countLabel
@@ -20,31 +20,19 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
@@ -58,19 +46,12 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import com.iron.breakfast.app.Surfaces
 import com.iron.breakfast.contribution.ContributionFlow
 import com.iron.breakfast.food.FoodForm
@@ -81,28 +62,20 @@ import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
-import com.iron.breakfast.domain.NutritionCalculator
 import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.Measure
-import com.iron.breakfast.domain.measures
-import androidx.compose.foundation.layout.FlowRow
-import com.iron.breakfast.domain.decimalInput
 import com.iron.breakfast.domain.displayLabel
 import com.iron.breakfast.ui.label
 import com.iron.breakfast.contribution.contributionShown
 import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.components.isLargeFont
-import com.iron.breakfast.ui.components.foodText
 import com.iron.breakfast.ui.components.AddCircle
-import com.iron.breakfast.ui.components.ChoiceOption
 import com.iron.breakfast.ui.components.DestructiveButton
-import com.iron.breakfast.ui.components.Field
 import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.MealChoices
 import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.components.SecondaryButton
-import com.iron.breakfast.ui.components.Sheet
 import com.iron.breakfast.ui.components.TertiaryButton
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.components.SectionHeading
@@ -139,16 +112,10 @@ internal fun LibraryScreen(
             contentPadding = PaddingValues(bottom = BottomAreaClearance),
         ) {
             item {
-                Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (!root) IconButton(onClick = surfaces::exitLibrary, modifier = Modifier.size(44.dp)) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = colors.ink)
-                    }
-                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
-                        Text(title, color = colors.ink, style = BreakfastType.Section)
-                        Text(subtitle, color = colors.soft, style = BreakfastType.Meta)
-                    }
-                    if (root) TertiaryButton("New food", { foodForm.open() }) else Spacer(Modifier.size(44.dp))
-                }
+                TopBar(
+                    title, if (root) null else surfaces::exitLibrary, Modifier.padding(top = 8.dp, bottom = 6.dp), subtitle = subtitle,
+                    trailing = { if (root) TertiaryButton("New food", { foodForm.open() }) },
+                )
                 Hairline()
             }
             // Rows fade in and out as the list changes, and move to their new place (logged foods go to the top).
@@ -215,29 +182,13 @@ internal fun LibrarySearchField(library: LibraryState, resolve: ResolveFlow, mod
     val resolveCleared = resolve.resolvingPart && library.query.isEmpty()
     LaunchedEffect(resolveCleared) { if (resolveCleared) { runCatching { focus.requestFocus() }; keyboard?.show() } }
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        BasicTextField(
-            value = library.input,
-            onValueChange = library::onInput,
-            singleLine = true,
-            textStyle = BreakfastType.Body.copy(color = colors.bg),
-            cursorBrush = SolidColor(colors.bg),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { library.submitInput() }, onDone = { library.submitInput() }),
-            modifier = Modifier
-                .weight(1f)
+        SearchText(
+            library.input, library::onInput, { library.onInput("") }, "Search foods", library::submitInput,
+            textColor = colors.bg, placeholderColor = colors.bg.barPlaceholder, clearTint = colors.bg,
+            fieldModifier = Modifier
                 .focusRequester(focus)
-                .onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { library.submitInput(); true } else false }
-                .semantics { contentDescription = "Search foods" },
-            decorationBox = { inner ->
-                Box(Modifier.heightIn(min = 22.dp), contentAlignment = Alignment.CenterStart) {
-                    if (library.input.isEmpty()) Text("Search foods", color = colors.bg.copy(alpha = 0.6f), style = BreakfastType.Body)
-                    inner()
-                }
-            },
+                .onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { library.submitInput(); true } else false },
         )
-        if (library.input.isNotEmpty()) IconButton(onClick = { library.onInput("") }, modifier = Modifier.size(IconTarget)) {
-            Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = colors.bg, modifier = Modifier.size(20.dp))
-        }
     }
 }
 
@@ -271,24 +222,18 @@ internal fun LibraryFoodDetailDialog(
     // Starts on the meal it was opened from, else the Meal setting's meal (By time, Last used), else Lunch.
     var targetMeal by rememberSaveable(food.id) { mutableStateOf(libraryPresetMeal(surfaces.mealOnScreen(), automaticMeal())) }
     val servings = food.householdServings()
-    Column(Modifier.fillMaxSize().background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = Gutter, vertical = 4.dp)) {
-        TopBar(
-            title = "Food",
-            onBack = library::closeFood,
-            modifier = Modifier.padding(top = 8.dp),
-            trailing = { TertiaryButton("Edit", { library.closeFood(); foodForm.openEdit(food) }) },
-        )
-        Hairline(Modifier.padding(top = 8.dp))
-        Text(foodText(food.name), color = colors.ink, style = BreakfastType.Section, modifier = Modifier.padding(top = 8.dp))
+    ItemPage("Food", library::closeFood, food.name, { library.closeFood(); foodForm.openEdit(food) }) {
         food.brand?.takeIf { it.isNotBlank() }?.let { Text(it, color = colors.soft, style = BreakfastType.Secondary) }
         Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Secondary)
         food.barcode?.let { Text("Barcode $it", color = colors.soft, style = BreakfastType.Secondary) }
         Hairline(Modifier.padding(top = 16.dp))
         SectionHeading(basisLabel(food.nutrition.amount, food.nutrition.unit), Modifier.padding(top = 16.dp))
-        LibraryFactRow("Energy", formatKcal(food.nutrition.values.calories), "kcal")
-        LibraryFactRow("Fat", macroText(food.nutrition.values.fat), "g")
-        LibraryFactRow("Carbohydrate", macroText(food.nutrition.values.carbohydrates), "g")
-        LibraryFactRow("Protein", macroText(food.nutrition.values.protein), "g")
+        NutritionFacts(
+            formatKcal(food.nutrition.values.calories),
+            fat = macroText(food.nutrition.values.fat) to "g",
+            carbs = macroText(food.nutrition.values.carbohydrates) to "g",
+            protein = macroText(food.nutrition.values.protein) to "g",
+        )
         if (servings.isNotEmpty()) {
             Hairline(Modifier.padding(top = 16.dp))
             SectionHeading("Servings", Modifier.padding(top = 16.dp))
@@ -330,30 +275,6 @@ internal fun LibraryFoodDetailDialog(
     if (amountSheetOpen) LibraryAmountSheet(library, food, targetMeal) { amountSheetOpen = false }
 }
 
-/** One nutrition line of a food or recipe page: the label, then the value in ink and its unit in soft. */
-@Composable
-internal fun LibraryFactRow(label: String, number: String, unit: String) {
-    val colors = LocalBreakfastColors.current
-    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
-    if (isLargeFont(fontScale)) {
-        Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            Text(label, color = colors.ink, style = BreakfastType.Body)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.Bottom) {
-                Text(number, color = colors.ink, style = BreakfastType.BodyMedium)
-                Text(" $unit", color = colors.soft, style = BreakfastType.Meta, maxLines = 1)
-            }
-        }
-    } else {
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-            Text(label, color = colors.ink, style = BreakfastType.Body)
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(number, color = colors.ink, style = BreakfastType.BodyMedium)
-                Text(" $unit", color = colors.soft, style = BreakfastType.Meta, maxLines = 1)
-            }
-        }
-    }
-}
-
 @Composable
 internal fun FocusedFoodAddDialog(library: LibraryState, surfaces: Surfaces, food: FoodRecord) {
     val target = surfaces.mealOnScreen() ?: return
@@ -372,60 +293,4 @@ private fun LibraryAmountSheet(library: LibraryState, food: FoodRecord, target: 
         onInvalid = library::invalidAmount,
         onDismiss = onDismiss,
     )
-}
-
-/**
- * The amount sheet: the food's name and source, the amount and what it counts (the food's [measures]: its default and
- * basis, the other of g and ml with a density, its named servings; the row wraps), the meal ([startMeal]; none for a recipe's ingredient, which has no meal), the kcal and macros it comes
- * to, and Add. The Library logs through it, a recipe is logged through it, and a recipe's ingredient is added through
- * it. Its values are saveable, so a configuration change keeps the open sheet as it was.
- */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-internal fun FoodAmountSheet(
-    food: FoodRecord,
-    startAmount: Double,
-    startMeasure: Measure,
-    startMeal: MealSlot?,
-    onAdd: (amount: Double, measure: Measure, meal: MealSlot?) -> Unit,
-    onInvalid: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val colors = LocalBreakfastColors.current
-    var amountText by rememberSaveable(food.id, startMeal) { mutableStateOf(editableNumber(startAmount)) }
-    val measures = food.measures()
-    // The unit and a serving's name, saved apart (a Measure is not a Bundle value).
-    var unit by rememberSaveable(food.id, startMeal) { mutableStateOf(startMeasure.unit) }
-    var servingName by rememberSaveable(food.id, startMeal) { mutableStateOf(startMeasure.name.takeIf { startMeasure.unit == MeasureUnit.SERVING }) }
-    val measure = Measure(unit, servingName)
-    var chosenMeal by rememberSaveable(food.id, startMeal) { mutableStateOf(startMeal) }
-    val calc = positiveAmountOf(amountText)?.let { NutritionCalculator().calculate(food, it, unit, servingName) }
-    Sheet(onDismissRequest = onDismiss, skipPartiallyExpanded = true) {
-        Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(foodText(food.name), color = colors.ink, style = BreakfastType.Section)
-            Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Secondary)
-            // The field fills its row, so the units take their own line under it, as on the entry's quick edit.
-            Field("Amount", amountText, { amountText = it.decimalInput() }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                measures.forEach { candidate ->
-                    ChoiceOption(candidate.label, measure == candidate, { unit = candidate.unit; servingName = candidate.name })
-                }
-            }
-            chosenMeal?.let { meal ->
-                Text("Meal", color = colors.soft, style = BreakfastType.Meta)
-                MealChoices(selected = meal, onSelect = { chosenMeal = it }, singleRow = true)
-            }
-            Hairline()
-            Text(calc?.let { kcalLabel(it.nutrition.calories) } ?: POSITIVE_AMOUNT_MESSAGE, color = colors.ink, style = BreakfastType.Section)
-            Text(calc?.let { macroLine(it.nutrition) } ?: "", color = colors.soft, style = BreakfastType.Secondary)
-            PrimaryButton(
-                chosenMeal?.let { "Add to ${it.label()}" } ?: "Add",
-                onClick = {
-                    val amount = positiveAmountOf(amountText)
-                    if (amount != null && calc?.supported == true) onAdd(amount, measure, chosenMeal) else onInvalid()
-                },
-                enabled = calc?.supported == true,
-            )
-        }
-    }
 }

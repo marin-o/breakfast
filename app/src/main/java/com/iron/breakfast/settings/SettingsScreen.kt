@@ -1,9 +1,9 @@
 package com.iron.breakfast.settings
 
+import com.iron.breakfast.ui.components.SubScreen
 import com.iron.breakfast.ui.components.inert
 import com.iron.breakfast.ui.components.rememberMotion
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -11,17 +11,11 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material3.Text
@@ -47,9 +41,7 @@ import com.iron.breakfast.ui.components.AddCircle
 import com.iron.breakfast.ui.components.ChoiceOption
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.LongDraft
-import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.theme.BreakfastType
-import com.iron.breakfast.ui.theme.Gutter
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 
 /**
@@ -69,9 +61,7 @@ internal fun SettingsScreen(settings: SettingsState, surfaces: Surfaces, transfe
     ) { page ->
         // Leaving from the frame the change starts, so a quick second tap cannot reach it.
         val leaving = page != settings.page
-        val scroll = rememberScrollState()
-        Column(Modifier.fillMaxSize().then(if (leaving) Modifier.inert() else Modifier).background(colors.bg).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(scroll).padding(horizontal = Gutter, vertical = 4.dp)) {
-            TopBar(page?.title ?: "Settings", surfaces::settingsBack, Modifier.padding(top = 8.dp))
+        SubScreen(page?.title ?: "Settings", surfaces::settingsBack, if (leaving) Modifier.inert() else Modifier) {
             Hairline(Modifier.padding(top = 8.dp))
             when (page) {
                 null -> SETTINGS_GROUPS.forEach { group -> SettingsAction(group.title) { settings.openPage(group) }; Hairline() }

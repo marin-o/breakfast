@@ -116,10 +116,6 @@ internal fun editableNumber(value: Double?): String {
     return java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
 }
 
-/** The last moment a date picker may offer: the end of [todayKey] in [zone], so no day after today can be picked. */
-internal fun datePickerMaxMs(todayKey: String, zone: ZoneId): Long =
-    java.time.LocalDate.parse(todayKey).plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
-
 /** Source label beside the O/B/P box on the entry detail. */
 internal fun entrySourceLabel(food: FoodRecord?): String = sourceLabel(sourceLetter(food))
 

@@ -1,5 +1,8 @@
 package com.iron.breakfast.today
 
+import com.iron.breakfast.entry.entryActions
+import com.iron.breakfast.ui.components.followDrag
+import com.iron.breakfast.ui.components.DayPickerDialog
 import com.iron.breakfast.ui.screens.dailyMacroNote
 import com.iron.breakfast.ui.screens.macroStats
 import com.iron.breakfast.ui.shortDateLabel
@@ -8,7 +11,6 @@ import androidx.compose.runtime.getValue
 import com.iron.breakfast.ui.components.BottomAreaClearance
 import com.iron.breakfast.ui.theme.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -24,13 +26,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
@@ -41,10 +37,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.core.animate
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.semantics.CustomAccessibilityAction
-import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.app.DiarySession
@@ -72,9 +64,6 @@ import com.iron.breakfast.ui.components.Motion
 import com.iron.breakfast.ui.components.Reveal
 import com.iron.breakfast.ui.components.rememberMotion
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneOffset
 import kotlin.math.abs
 import com.iron.breakfast.ui.screens.formatKcal
 import com.iron.breakfast.ui.screens.earliestMealTime
@@ -116,22 +105,8 @@ internal fun DailyScreen(
             }.pointerInput(day.selectedDayKey) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    var dx = 0f
-                    var dy = 0f
-                    var horizontal = false
-                    var vertical = false
-                    while (true) {
-                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
-                        dx += change.position.x - change.previousPosition.x
-                        dy += change.position.y - change.previousPosition.y
-                        if (!horizontal && !vertical && kotlin.math.hypot(dx.toDouble(), dy.toDouble()) > touchSlop) {
-                            horizontal = abs(dx) > abs(dy)
-                            vertical = !horizontal
-                        }
-                        if (horizontal) change.consume()
-                        if (!change.pressed) break
-                    }
-                    if (horizontal && abs(dx) >= swipeThreshold) day.shift(if (dx < 0f) 1 else -1)
+                    val end = followDrag(down.id, touchSlop) { change, _, _, horizontal -> if (horizontal) change.consume() }
+                    if (end.horizontal && abs(end.dx) >= swipeThreshold) day.shift(if (end.dx < 0f) 1 else -1)
                 }
             },
             // Room for the bottom area that floats over the end of the list.
@@ -193,29 +168,6 @@ private fun rememberDaySlide(day: String, motion: Motion): DaySlide {
     return slide
 }
 
-/** Date picker opened from the day title. Future days are not selectable, as with Next. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DayPickerDialog(dayKey: String, todayKey: String, onDismiss: () -> Unit, onPick: (String) -> Unit) {
-    val todayMillis = LocalDate.parse(todayKey).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-    val state = rememberDatePickerState(
-        initialSelectedDateMillis = LocalDate.parse(dayKey).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
-        selectableDates = object : SelectableDates {
-            override fun isSelectableDate(utcTimeMillis: Long): Boolean = utcTimeMillis <= todayMillis
-        },
-    )
-    DatePickerDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = {
-                val millis = state.selectedDateMillis
-                if (millis == null) onDismiss() else onPick(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString())
-            }) { Text("OK") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    ) { DatePicker(state = state) }
-}
-
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun DailyMealSection(
@@ -247,14 +199,7 @@ private fun DailyMealSection(
             name = entry.foodName,
             quantityLine = quantity.plainLine(),
             calories = formatKcal(entry.nutritionSnapshot.calories),
-            modifier = Modifier.semantics {
-                onClick(label = "Open details for ${entry.foodName}") { entryEdit.openDetail(entry); true }
-                customActions = listOf(
-                    CustomAccessibilityAction("Quick edit amount") { entryEdit.beginQuick(entry); true },
-                    CustomAccessibilityAction("Edit food and amount") { entryEdit.beginFull(entry); true },
-                    CustomAccessibilityAction("Delete ${entry.foodName}") { undo.delete(entry); true },
-                )
-            }.combinedClickable(onClick = { entryEdit.openDetail(entry) }, onDoubleClick = { entryEdit.beginQuick(entry) }, onLongClick = { entryEdit.beginFull(entry) }),
+            modifier = Modifier.entryActions(entry, entryEdit, undo) { entryEdit.openDetail(entry) },
         )
         Reveal(entry.takeIf { feedback.isOpen(it) }, resize = true) { CorrectionStrip(feedback, search, it) }
     } }

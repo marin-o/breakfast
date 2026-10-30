@@ -307,3 +307,24 @@ private fun record(id: String, name: String, barcode: String?) = FoodRecord(
     id, name, emptyList(), "Personal food", FoodOrigin.CUSTOM,
     NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(60.0, 3.0, 4.0, 3.0)), barcode = barcode,
 )
+
+/** The barcode rule the field shows as it is typed is the one Save refuses by, on New food and on Edit food. */
+class FoodBarcodeErrorTest {
+    private val foods = listOf(record("a", "Oats", "4006381333931"), record("b", "Milk", "036000291452"))
+
+    @Test fun blankIsNoBarcode() = assertEquals(null, foodBarcodeError("", foods, null))
+
+    @Test fun aCodeAnotherFoodHoldsIsRefusedNamingIt() {
+        assertEquals("That barcode already belongs to Oats.", foodBarcodeError("4006381333931", foods, null))
+        assertEquals("That barcode already belongs to Oats.", foodBarcodeError("4006381333931", foods, "b"))
+    }
+
+    @Test fun aFoodKeepsItsOwnCodeInAnySpelling() {
+        assertEquals(null, foodBarcodeError("036000291452", foods, "b"))
+        assertEquals(null, foodBarcodeError("0036000291452", foods, "b"))
+    }
+
+    @Test fun aPartCodeIsRefused() {
+        assertEquals("Enter an 8, 12, 13 or 14 digit barcode or clear the field.", foodBarcodeError("123", foods, "b"))
+    }
+}

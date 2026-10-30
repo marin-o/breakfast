@@ -1,5 +1,6 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.ui.components.ConfirmDialog
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.fillMaxSize
 import android.util.Log
@@ -133,34 +134,16 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         Surface.RECIPE_FORM -> RecipeFormScreen(vm.recipeForm, vm.recipes, vm.session, vm.settings)
         Surface.RECIPE_SEARCH -> RecipeIngredientSearch(vm.recipeForm)
         Surface.RECIPE_INGREDIENT_ADD -> vm.recipeForm.adding?.let { IngredientAmountSheet(vm.recipeForm, it) }
-        Surface.DISCARD_RECIPE -> AlertDialog(
-            onDismissRequest = vm.recipeForm::keepEditing,
-            confirmButton = { TextButton(vm.recipeForm::discard) { Text("Discard") } },
-            dismissButton = { TextButton(vm.recipeForm::keepEditing) { Text("Keep editing") } },
-        )
+        Surface.DISCARD_RECIPE -> ConfirmDialog("Discard", vm.recipeForm::discard, vm.recipeForm::keepEditing, dismiss = "Keep editing")
         // As Delete food: for good, and past entries keep their own name and numbers.
-        Surface.DELETE_RECIPE -> AlertDialog(
-            onDismissRequest = vm.recipes::cancelDelete,
-            confirmButton = { TextButton(vm.recipes::confirmDelete) { Text("Delete recipe") } },
-            dismissButton = { TextButton(vm.recipes::cancelDelete) { Text("Cancel") } },
-            text = { Text("Past entries keep their numbers.") },
-        )
+        Surface.DELETE_RECIPE -> ConfirmDialog("Delete recipe", vm.recipes::confirmDelete, vm.recipes::cancelDelete, text = "Past entries keep their numbers.")
         Surface.MIXED_MEAL_PICKER -> MixedMealPickerDialog(vm.library)
         Surface.BATCH_MEAL_PICKER -> LibraryBatchMealPickerDialog(vm.library)
         Surface.FOOD_FORM -> if (vm.foodForm.editingFoodId != null) EditFoodScreen(vm.foodForm, vm.session, vm.library) else CreateFoodScreen(vm.foodForm, vm.session)
         Surface.SETTINGS -> SettingsScreen(vm.settings, vm.surfaces, vm.transfer, vm.session, vm::licenceText)
         // Deleting is for good: past entries keep their own name and numbers.
-        Surface.DELETE_FOOD -> AlertDialog(
-            onDismissRequest = vm.library::cancelDelete,
-            confirmButton = { TextButton(vm.library::confirmDelete) { Text("Delete food") } },
-            dismissButton = { TextButton(vm.library::cancelDelete) { Text("Cancel") } },
-            text = { Text("Past entries keep their numbers.") },
-        )
-        Surface.DISCARD_FOOD -> AlertDialog(
-            onDismissRequest = vm.foodForm::keepEditing,
-            confirmButton = { TextButton(vm.foodForm::discard) { Text("Discard") } },
-            dismissButton = { TextButton(vm.foodForm::keepEditing) { Text("Keep editing") } },
-        )
+        Surface.DELETE_FOOD -> ConfirmDialog("Delete food", vm.library::confirmDelete, vm.library::cancelDelete, text = "Past entries keep their numbers.")
+        Surface.DISCARD_FOOD -> ConfirmDialog("Discard", vm.foodForm::discard, vm.foodForm::keepEditing, dismiss = "Keep editing")
         Surface.LIBRARY_NO_MATCH -> LibraryNoMatchScreen(vm.library, vm.surfaces, vm.search, vm.foodForm)
         Surface.OFF_SEARCH -> OffSearchScreen(vm.search, vm.foodForm, vm.resolve)
         Surface.RESOLVER -> ResolveUnknownScreen(vm.resolve, vm.undo, vm.search, vm.foodForm, vm.confirmations)
@@ -169,12 +152,7 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         Surface.CONTRIBUTION_SIGN_IN -> ContributionSignInScreen(vm.contribution)
         Surface.CONTRIBUTION_FAILURE -> vm.contribution.failure?.let { ContributionFailureScreen(vm.contribution, it) }
         Surface.NOTICE -> vm.notices.message?.let { message -> AlertDialog(onDismissRequest = vm.notices::dismiss, confirmButton = { TextButton(vm.notices::dismiss) { Text("OK") } }, text = { Text(message) }) }
-        Surface.REPLACE_DIARY -> AlertDialog(
-            onDismissRequest = vm.transfer::cancelImport,
-            confirmButton = { TextButton(vm.transfer::confirmImport) { Text("Replace diary") } },
-            dismissButton = { TextButton(vm.transfer::cancelImport) { Text("Cancel") } },
-            text = { Text("This replaces entries and foods, not settings.") },
-        )
+        Surface.REPLACE_DIARY -> ConfirmDialog("Replace diary", vm.transfer::confirmImport, vm.transfer::cancelImport, text = "This replaces entries and foods, not settings.")
         Surface.DELETE_ALL -> AlertDialog(
             onDismissRequest = vm.transfer::cancelDeleteAll,
             confirmButton = { TextButton(vm.transfer::confirmDeleteAll) { Text("Delete all") } },

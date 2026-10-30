@@ -1,12 +1,13 @@
 package com.iron.breakfast.today
 
+import com.iron.breakfast.entry.entryActions
+import com.iron.breakfast.ui.components.followDrag
 import com.iron.breakfast.ui.shortDateLabel
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import com.iron.breakfast.ui.components.BottomAreaClearance
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -42,11 +43,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
-import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.app.DiarySession
@@ -155,7 +152,6 @@ internal fun MealScreen(
     }
 }
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun EntryRow(entry: MealEntry, food: FoodRecord?, undo: UndoController, entryEdit: EntryEdit, motion: Motion) {
     val colors = LocalBreakfastColors.current
@@ -191,36 +187,18 @@ private fun EntryRow(entry: MealEntry, food: FoodRecord?, undo: UndoController, 
             name = entry.foodName,
             quantityLine = quantity.plainLine(),
             calories = formatKcal(entry.nutritionSnapshot.calories),
-            modifier = Modifier.offset { IntOffset(revealOffset.roundToInt(), 0) }.semantics {
-                onClick(label = "Open details for ${entry.foodName}") { entryEdit.openDetail(entry); true }
-                customActions = listOf(
-                    CustomAccessibilityAction("Quick edit amount") { entryEdit.beginQuick(entry); true },
-                    CustomAccessibilityAction("Edit food and amount") { entryEdit.beginFull(entry); true },
-                    CustomAccessibilityAction("Delete ${entry.foodName}") { undo.delete(entry); true },
-                )
-            }.combinedClickable(onClick = { if (!openAtDown) entryEdit.openDetail(entry) }, onDoubleClick = { entryEdit.beginQuick(entry) }, onLongClick = { entryEdit.beginFull(entry) }).pointerInput(entry.id) {
+            modifier = Modifier.offset { IntOffset(revealOffset.roundToInt(), 0) }.entryActions(entry, entryEdit, undo) { if (!openAtDown) entryEdit.openDetail(entry) }.pointerInput(entry.id) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     settle?.cancel()
                     openAtDown = revealOffset < 0f
-                    var dx = 0f
-                    var dy = 0f
-                    var horizontal = false
-                    var vertical = false
-                    while (true) {
-                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
-                        val deltaX = change.position.x - change.previousPosition.x
-                        val deltaY = change.position.y - change.previousPosition.y
-                        dx += deltaX
-                        dy += deltaY
-                        if (!horizontal && !vertical && kotlin.math.hypot(dx.toDouble(), dy.toDouble()) > touchSlop) { horizontal = kotlin.math.abs(dx) > kotlin.math.abs(dy); vertical = !horizontal }
+                    val end = followDrag(down.id, touchSlop) { change, stepX, dx, horizontal ->
                         // Left opens; right shuts a row that is open (a shut row ignores a drag to the right).
-                        if (horizontal && (dx < 0f || revealOffset < 0f)) { revealOffset = (revealOffset + deltaX).coerceIn(-deleteWidth, 0f); change.consume() }
-                        if (!change.pressed) break
+                        if (horizontal && (dx < 0f || revealOffset < 0f)) { revealOffset = (revealOffset + stepX).coerceIn(-deleteWidth, 0f); change.consume() }
                     }
                     // Every release ends open or shut, also a tap or a scroll that stopped a settle half way; a tap on
                     // an open row shuts it.
-                    val tap = !horizontal && !vertical
+                    val tap = !end.horizontal && !end.vertical
                     val target = if ((tap && openAtDown) || revealOffset > -deleteWidth * .65f) 0f else -deleteWidth
                     if (revealOffset != target) settle = scope.launch { animate(revealOffset, target, animationSpec = currentMotion.swipe()) { value, _ -> revealOffset = value } }
                 }

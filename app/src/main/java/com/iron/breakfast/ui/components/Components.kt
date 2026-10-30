@@ -1,5 +1,19 @@
 package com.iron.breakfast.ui.components
 
+import com.iron.breakfast.ui.theme.Gutter
+import androidx.compose.foundation.layout.fillMaxSize
+import com.iron.breakfast.ui.theme.SnackbarGutter
+import com.iron.breakfast.domain.MeasureUnit
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.semantics.heading
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.animation.core.LinearEasing
@@ -467,12 +481,73 @@ fun DecimalField(
     required: Boolean = false,
     /** Applied to the text field itself, for a FocusRequester. */
     fieldModifier: Modifier = Modifier,
+    /** Soft text at the end of the box, such as a unit. */
+    hint: String? = null,
+    /** Centred 26/34 light amount, used by the quick-edit sheet. */
+    amountStyle: Boolean = false,
+    imeAction: ImeAction = ImeAction.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
 ) = Field(
     label, value, { onValueChange(it.decimalInput()) }, modifier,
-    labelVisible = labelVisible, error = error, errorMessage = errorMessage, required = required,
-    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+    labelVisible = labelVisible, error = error, errorMessage = errorMessage, required = required, hint = hint, amountStyle = amountStyle,
+    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = imeAction),
+    keyboardActions = keyboardActions,
     fieldModifier = fieldModifier,
 )
+
+/** One of [NutrientFields]: a [DecimalField]'s label, value and, when it has them, error and focus. */
+internal class NutrientField(
+    val label: String,
+    val value: String,
+    val onValueChange: (String) -> Unit,
+    val error: Boolean = false,
+    val errorMessage: String? = null,
+    val required: Boolean = false,
+    val fieldModifier: Modifier = Modifier,
+)
+
+/**
+ * The four nutrient fields of a food: two by two, [gap] apart as each mock draws them; with [oneRowWhenItFits], one row
+ * while the longest label fits in a quarter (the scan review).
+ */
+@Composable
+internal fun NutrientFields(fields: List<NutrientField>, gap: Dp, oneRowWhenItFits: Boolean = false) {
+    val cell: @Composable (NutrientField, Modifier) -> Unit = { field, modifier ->
+        DecimalField(field.label, field.value, field.onValueChange, modifier, error = field.error, errorMessage = field.errorMessage, required = field.required, fieldModifier = field.fieldModifier)
+    }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (oneRowWhenItFits && fitsAQuarter(fields.map { it.label }, BreakfastType.Meta, 0.dp, maxWidth, gap)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                fields.forEach { cell(it, Modifier.weight(1f)) }
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+                fields.chunked(2).forEach { pair ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                        pair.forEach { cell(it, Modifier.weight(1f)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Whether the widest of [labels] in [style], with [padding], fits a quarter of [width] with [gap] between the four. */
+@Composable
+private fun fitsAQuarter(labels: List<String>, style: TextStyle, padding: Dp, width: Dp, gap: Dp): Boolean {
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val widest = labels.maxOf { measurer.measure(it, style).size.width }
+    return with(density) { widest + padding.roundToPx() <= ((width - gap * 3) / 4).roundToPx() }
+}
+
+/** The g and ml of a basis or a serving, in the row they sit in; each takes [itemModifier]. */
+@Composable
+internal fun GramMlChoices(selected: MeasureUnit?, onSelect: (MeasureUnit) -> Unit, itemModifier: Modifier) {
+    listOf(MeasureUnit.GRAM, MeasureUnit.MILLILITER).forEach { unit ->
+        ChoiceOption(unit.label, selected == unit, { onSelect(unit) }, itemModifier)
+    }
+}
 
 /** Field with a leading magnifier and a trailing clear button. */
 @Composable
@@ -491,26 +566,60 @@ fun SearchField(
     val focus = remember { FocusRequester() }
     FieldFrame(error = false, modifier = modifier.fillMaxWidth()) { onFocus ->
         Icon(Icons.Outlined.Search, contentDescription = null, tint = colors.soft, modifier = Modifier.size(20.dp))
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier.weight(1f).then(fieldModifier).focusRequester(focus).onFocusChanged(onFocus).semantics { contentDescription = label },
-            singleLine = true,
-            textStyle = BreakfastType.Body.copy(color = colors.ink),
-            cursorBrush = SolidColor(colors.ink),
-            keyboardOptions = KeyboardOptions(imeAction = if (onSearch != null) ImeAction.Search else ImeAction.Done),
-            keyboardActions = KeyboardActions(onSearch = { onSearch?.invoke() }, onDone = { onSearch?.invoke() }),
-            decorationBox = { inner ->
-                Box(Modifier.heightIn(min = 22.dp), contentAlignment = Alignment.CenterStart) {
-                    if (value.isEmpty()) Text(label, color = colors.soft, style = BreakfastType.Body)
-                    inner()
-                }
-            },
+        SearchText(
+            value, onValueChange, { onClear(); focus.requestFocus() }, label, onSearch,
+            textColor = colors.ink, placeholderColor = colors.soft, clearTint = colors.soft,
+            fieldModifier = fieldModifier.focusRequester(focus).onFocusChanged(onFocus),
         )
-        if (value.isNotEmpty()) {
-            IconButton(onClick = { onClear(); focus.requestFocus() }, modifier = Modifier.size(IconTarget)) {
-                Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = colors.soft, modifier = Modifier.size(20.dp))
+    }
+}
+
+/** A search's text and its Clear, in the colours of the box they sit in: [SearchField], or the Library's ink bar. */
+@Composable
+internal fun RowScope.SearchText(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onClear: () -> Unit,
+    label: String,
+    onSearch: (() -> Unit)?,
+    textColor: Color,
+    placeholderColor: Color,
+    clearTint: Color,
+    fieldModifier: Modifier = Modifier,
+) {
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier.weight(1f).then(fieldModifier).semantics { contentDescription = label },
+        singleLine = true,
+        textStyle = BreakfastType.Body.copy(color = textColor),
+        cursorBrush = SolidColor(textColor),
+        keyboardOptions = KeyboardOptions(imeAction = if (onSearch != null) ImeAction.Search else ImeAction.Done),
+        keyboardActions = KeyboardActions(onSearch = { onSearch?.invoke() }, onDone = { onSearch?.invoke() }),
+        decorationBox = { inner ->
+            Box(Modifier.heightIn(min = 22.dp), contentAlignment = Alignment.CenterStart) {
+                if (value.isEmpty()) Text(label, color = placeholderColor, style = BreakfastType.Body)
+                inner()
             }
+        },
+    )
+    if (value.isNotEmpty()) IconButton(onClick = onClear, modifier = Modifier.size(IconTarget)) {
+        Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = clearTint, modifier = Modifier.size(20.dp))
+    }
+}
+
+/** An ink bar's placeholder: `bg` at 60%. */
+internal val Color.barPlaceholder: Color get() = copy(alpha = 0.6f)
+
+/** A [Field]'s frame around a value picked elsewhere: a tap opens the picker. */
+@Composable
+internal fun ValueField(label: String, value: String, onClick: () -> Unit, icon: ImageVector, iconDescription: String, modifier: Modifier = Modifier) {
+    val colors = LocalBreakfastColors.current
+    Column(modifier.fillMaxWidth()) {
+        Text(label, color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(bottom = 4.dp))
+        FieldFrame(error = false, modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick)) { _ ->
+            Text(value, Modifier.weight(1f), color = colors.ink, style = BreakfastType.Body)
+            Icon(icon, iconDescription, tint = colors.ink)
         }
     }
 }
@@ -719,7 +828,7 @@ fun ComposerFade(modifier: Modifier = Modifier, content: @Composable ColumnScope
             .fillMaxWidth()
             .background(Brush.verticalGradient(0f to colors.bg.copy(alpha = 0f), 0.22f to colors.bg))
             .navigationBarsPadding()
-            .padding(start = 16.dp, end = 16.dp, top = 12.dp),
+            .padding(start = SnackbarGutter, end = SnackbarGutter, top = 12.dp),
         content = content,
     )
 }
@@ -746,7 +855,7 @@ fun Composer(onScan: () -> Unit, modifier: Modifier = Modifier, text: @Composabl
 fun ComposerText(placeholder: String, onClick: () -> Unit, modifier: Modifier = Modifier, draft: Boolean = false, longDraft: LongDraft = LongDraft.START) {
     val colors = LocalBreakfastColors.current
     val text = placeholder.replace('\n', ' ')
-    val color = if (draft) colors.bg else colors.bg.copy(alpha = 0.6f)
+    val color = if (draft) colors.bg else colors.bg.barPlaceholder
     val textModifier = modifier.clickable(role = Role.Button, onClick = onClick)
     if (draft && longDraft == LongDraft.END) {
         EndOfText(text, color, textModifier)
@@ -1023,11 +1132,14 @@ fun LinearProgress(caption: String, modifier: Modifier = Modifier, onDark: Boole
 /** The sweep's phase that puts the bar in the middle of the track, where it stays when motion is reduced. */
 private const val STILL_PROGRESS_PHASE = 0.5f
 
-/** Sub-screen header: back arrow, a title (optionally a soft second line) and a trailing slot. */
+/**
+ * A screen's header: back arrow (none on a tab, [onBack] null, whose title then starts at the gutter), a title
+ * (optionally a soft second line) and a trailing slot.
+ */
 @Composable
 fun TopBar(
     title: String,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     backEnabled: Boolean = true,
@@ -1035,15 +1147,115 @@ fun TopBar(
 ) {
     val colors = LocalBreakfastColors.current
     Row(modifier.fillMaxWidth().heightIn(min = HeaderHeight), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onBack, enabled = backEnabled, modifier = Modifier.size(IconTarget)) {
+        if (onBack != null) IconButton(onClick = onBack, enabled = backEnabled, modifier = Modifier.size(IconTarget)) {
             Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", tint = colors.ink, modifier = Modifier.size(22.dp))
         }
-        Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
+        Column(Modifier.weight(1f).padding(horizontal = if (onBack != null) 4.dp else 0.dp)) {
             Text(title, color = colors.ink, style = BreakfastType.Title)
             if (subtitle != null) Text(subtitle, color = colors.soft, style = BreakfastType.Meta)
         }
         trailing()
     }
+}
+
+/**
+ * The shell of a full screen over the base: `bg`, the safe area, the gutter and the [TopBar] 8dp down. With [scroll] the
+ * header and [content] scroll together; without it [content] places its own scrolling part. [bottom] stays under them,
+ * above the keyboard.
+ */
+@Composable
+fun SubScreen(
+    title: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    trailing: @Composable () -> Unit = {},
+    scroll: Boolean = true,
+    bottom: (@Composable ColumnScope.() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(modifier.fillMaxSize(), color = LocalBreakfastColors.current.bg) {
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    .then(if (scroll) Modifier.verticalScroll(rememberScrollState()).padding(bottom = 12.dp) else Modifier)
+                    .padding(horizontal = Gutter),
+            ) {
+                TopBar(title, onBack, Modifier.padding(top = 8.dp), subtitle = subtitle, trailing = trailing)
+                content()
+            }
+            if (bottom != null) Column(Modifier.fillMaxWidth().padding(horizontal = Gutter), content = bottom)
+        }
+    }
+}
+
+/** A food's or recipe's page: the [SubScreen] with Edit in its bar, a hairline, then [name]; [content] follows. */
+@Composable
+internal fun ItemPage(title: String, onBack: () -> Unit, name: String, onEdit: (() -> Unit)?, content: @Composable ColumnScope.() -> Unit) {
+    SubScreen(title, onBack, trailing = { if (onEdit != null) TertiaryButton("Edit", onEdit) }) {
+        Hairline(Modifier.padding(top = 8.dp))
+        Text(foodText(name), color = LocalBreakfastColors.current.ink, style = BreakfastType.Section, modifier = Modifier.padding(top = 8.dp))
+        content()
+    }
+}
+
+/** One line of facts: the label, then the value in ink with its [unit] in soft, or, with no unit, the value in soft. */
+@Composable
+internal fun FactRow(label: String, value: String, unit: String? = null) {
+    val colors = LocalBreakfastColors.current
+    val shownValue: @Composable () -> Unit = {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(value, color = if (unit == null) colors.soft else colors.ink, style = if (unit == null) BreakfastType.Body else BreakfastType.BodyMedium, textAlign = TextAlign.End)
+            if (unit != null) Text(" $unit", color = colors.soft, style = BreakfastType.Meta, maxLines = 1)
+        }
+    }
+    if (unit != null && isLargeFont(LocalDensity.current.fontScale.coerceAtLeast(1f))) {
+        Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+            Text(label, color = colors.ink, style = BreakfastType.Body)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { shownValue() }
+        }
+    } else {
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
+            Text(label, color = colors.ink, style = BreakfastType.Body, modifier = Modifier.weight(1f))
+            shownValue()
+        }
+    }
+}
+
+/** The nutrition lines of a page, in the design's order: Energy, then the macros when there are any, each a value and unit. */
+@Composable
+internal fun NutritionFacts(energy: String, fat: Pair<String, String>? = null, carbs: Pair<String, String>? = null, protein: Pair<String, String>? = null) {
+    FactRow("Energy", energy, "kcal")
+    listOf("Fat" to fat, "Carbohydrate" to carbs, "Protein" to protein).forEach { (label, fact) ->
+        if (fact != null) FactRow(label, fact.first, fact.second)
+    }
+}
+
+/**
+ * A centred status under a header: the title, soft [lines], then its [actions], [top] down as each mock draws it.
+ */
+@Composable
+internal fun StatusBlock(title: String, lines: List<String>, top: Dp, actions: @Composable ColumnScope.() -> Unit) {
+    val colors = LocalBreakfastColors.current
+    Column(Modifier.fillMaxWidth().padding(top = top), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(title, color = colors.ink, style = BreakfastType.Title, modifier = Modifier.semantics { heading() })
+        lines.forEachIndexed { index, line ->
+            Text(line, color = colors.soft, style = BreakfastType.Secondary, textAlign = TextAlign.Center, modifier = Modifier.padding(top = if (index == 0) 8.dp else 4.dp).widthIn(max = 290.dp))
+        }
+        Column(Modifier.fillMaxWidth().padding(top = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = actions)
+    }
+}
+
+/** A two-way question over the screen: [confirm] or [dismiss]; [text] says what it does. */
+@Composable
+internal fun ConfirmDialog(confirm: String, onConfirm: () -> Unit, onDismiss: () -> Unit, dismiss: String = "Cancel", text: String? = null) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onConfirm) { Text(confirm) } },
+        dismissButton = { TextButton(onDismiss) { Text(dismiss) } },
+        text = text?.let { { Text(it) } },
+    )
 }
 
 /** Section heading inside a screen (meal, form section). */
@@ -1058,18 +1270,20 @@ fun Hairline(modifier: Modifier = Modifier) {
     Box(modifier.fillMaxWidth().height(1.dp).background(LocalBreakfastColors.current.line))
 }
 
-/**
- * Whether four compact meal choices fit one row of [availableDp]. Each chip needs about 84dp for "Breakfast" at 14sp
- * (an estimate, not measured on a device), scaled up with the font; otherwise the caller uses the 2x2 grid.
- */
-internal fun mealRowFits(availableDp: Float, fontScale: Float): Boolean =
-    (availableDp - 3 * 8f) / 4f >= 84f * fontScale.coerceAtLeast(1f)
-
 /** Font scale from which the large-font layouts take over (2.0 is the reference; 1.3 keeps the normal layout). */
 internal const val LargeFontScale = 1.8f
 
 /** True at the large-font layout: stacked macros and meal times under headings, and stacked add bars. */
 internal fun isLargeFont(fontScale: Float): Boolean = fontScale >= LargeFontScale
+
+/** "Meal" over the [MealChoices], one row when it fits (M-Library-AmountSheet, M-Entry-FullEdit, M-Scan-Review). */
+@Composable
+internal fun MealField(selected: MealSlot, onSelect: (MealSlot) -> Unit, modifier: Modifier = Modifier, compact: Boolean = false) {
+    Column(modifier.fillMaxWidth()) {
+        Text("Meal", color = LocalBreakfastColors.current.soft, style = BreakfastType.Meta, modifier = Modifier.padding(bottom = 4.dp))
+        MealChoices(selected, onSelect, singleRow = true, compact = compact)
+    }
+}
 
 /** The meal choices: a 2x2 grid, or one row of four when [singleRow] (Library repeat and amount sheets). */
 @Composable
@@ -1077,12 +1291,8 @@ fun MealChoices(selected: MealSlot?, onSelect: (MealSlot) -> Unit, modifier: Mod
     if (singleRow) {
         // One row only when the longest meal name fits on one line in a quarter; otherwise two by two, never a broken word.
         BoxWithConstraints(modifier.fillMaxWidth()) {
-            val measurer = rememberTextMeasurer()
             val style = if (compact) BreakfastType.SecondaryMedium else BreakfastType.BodyMedium
-            val widest = MealSlot.entries.maxOf { measurer.measure(it.label(), style).size.width }
-            val padding = with(LocalDensity.current) { (if (compact) 16.dp else 24.dp).roundToPx() + 2.dp.roundToPx() }
-            val quarter = with(LocalDensity.current) { ((maxWidth - 24.dp) / 4).roundToPx() }
-            if (widest + padding <= quarter) {
+            if (fitsAQuarter(MealSlot.entries.map { it.label() }, style, (if (compact) 16.dp else 24.dp) + 2.dp, maxWidth, 8.dp)) {
                 Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     MealSlot.entries.forEach { meal -> ChoiceOption(meal.label(), selected == meal, { onSelect(meal) }, Modifier.weight(1f), compact = compact) }
                 }

@@ -1,5 +1,8 @@
 package com.iron.breakfast.resolve
 
+import com.iron.breakfast.ui.theme.SnackbarGutter
+import com.iron.breakfast.search.SearchOrCreateButtons
+import com.iron.breakfast.ui.components.SubScreen
 import com.iron.breakfast.ui.screens.plainLine
 import com.iron.breakfast.ui.screens.QuantityDisplay
 import com.iron.breakfast.ui.theme.*
@@ -12,9 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,14 +30,10 @@ import com.iron.breakfast.ui.label
 import com.iron.breakfast.ui.components.foodText
 import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.Hairline
-import com.iron.breakfast.ui.components.PrimaryButton
-import com.iron.breakfast.ui.components.ButtonKind
 import com.iron.breakfast.ui.components.ConfirmationSnackbar
 import com.iron.breakfast.ui.components.SearchField
-import com.iron.breakfast.ui.components.SecondaryButton
 import com.iron.breakfast.ui.components.SectionHeading
 import com.iron.breakfast.ui.components.TertiaryButton
-import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import com.iron.breakfast.ui.screens.unknownDisplay
 import com.iron.breakfast.ui.screens.matchDisplay
@@ -59,9 +55,8 @@ import com.iron.breakfast.ui.screens.matchDisplay
     val meta = listOfNotNull(context.ifBlank { null }, "$position of $total").joinToString(". ")
     val typed = listOfNotNull(display.quantity, display.name).joinToString(" ")
     LaunchedEffect(raw) { resolve.onQuery(display.name) }
-    Surface(Modifier.fillMaxSize(), color = colors.bg) { Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter).verticalScroll(rememberScrollState())) {
-            TopBar("Resolve", resolve::close, Modifier.padding(top = 8.dp))
+    Box(Modifier.fillMaxSize()) {
+        SubScreen("Resolve", resolve::close) {
             Column(Modifier.padding(top = 14.dp).fillMaxWidth().semantics(mergeDescendants = true) { }) {
                 Text(meta, color = colors.soft, style = BreakfastType.Meta)
                 Text(foodText(typed), color = colors.ink, style = BreakfastType.LargeInput, modifier = Modifier.padding(top = 4.dp))
@@ -87,8 +82,7 @@ import com.iron.breakfast.ui.screens.matchDisplay
                     }
                 }
                 Column(Modifier.padding(top = 30.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PrimaryButton("Search Open Food Facts", { search.open(resolve.currentName(), fromResolver = true) }, kind = ButtonKind.Neutral)
-                    SecondaryButton("Create personal food", { foodForm.open(resolve.currentName(), fromResolver = true) })
+                    SearchOrCreateButtons({ search.open(resolve.currentName(), fromResolver = true) }, { foodForm.open(resolve.currentName(), fromResolver = true) })
                     TertiaryButton("Skip", resolve::skip, Modifier.fillMaxWidth(), soft = true)
                 }
             }
@@ -96,7 +90,7 @@ import com.iron.breakfast.ui.screens.matchDisplay
         // A part logged from a screen the resolver opened says "Logged!" here, while the queue goes on.
         ConfirmationSnackbar(
             confirmations.message,
-            Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = Gutter),
+            Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = SnackbarGutter),
         )
-    } }
+    }
 }

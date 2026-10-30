@@ -11,26 +11,23 @@ import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.ui.label
 
 @Composable internal fun MixedMealPickerDialog(library: LibraryState) {
-    AlertDialog(
-        onDismissRequest = library::dismissMixedMealPicker,
-        title = { Text("Which meal?") },
-        text = {
-            Column {
-                Text("Choose where to add this batch.")
-                MealSlot.entries.forEach { target ->
-                    TextButton({ library.chooseMixedMeal(target) }, Modifier.fillMaxWidth()) { Text(target.label()) }
-                }
-            }
-        },
-        confirmButton = { TextButton(library::dismissMixedMealPicker) { Text("Cancel") } }
-    )
+    MealPickerDialog("Which meal?", "Choose where to add this batch.", library::chooseMixedMeal, library::dismissMixedMealPicker)
 }
 
 @Composable internal fun LibraryBatchMealPickerDialog(library: LibraryState) {
+    MealPickerDialog("Add foods to which meal?", "Choose where to add this batch on the selected day.", library::chooseBatchMeal, library::dismissBatchMealPicker)
+}
+
+@Composable private fun MealPickerDialog(title: String, text: String, onPick: (MealSlot) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
-        onDismissRequest = library::dismissBatchMealPicker,
-        title = { Text("Add foods to which meal?") },
-        text = { Column { Text("Choose where to add this batch on the selected day."); MealSlot.entries.forEach { target -> TextButton({ library.chooseBatchMeal(target) }, Modifier.fillMaxWidth()) { Text(target.label()) } } } },
-        confirmButton = { TextButton(library::dismissBatchMealPicker) { Text("Cancel") } }
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                Text(text)
+                MealSlot.entries.forEach { target -> TextButton({ onPick(target) }, Modifier.fillMaxWidth()) { Text(target.label()) } }
+            }
+        },
+        confirmButton = { TextButton(onDismiss) { Text("Cancel") } },
     )
 }
