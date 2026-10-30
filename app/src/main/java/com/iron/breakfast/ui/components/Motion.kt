@@ -1,5 +1,7 @@
 package com.iron.breakfast.ui.components
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.slideInHorizontally
@@ -21,11 +23,9 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
@@ -168,12 +168,6 @@ internal enum class BaseMove { FORWARD, BACK, RISE, FALL, NONE }
  * around it, the bottom bar included, only fades. None outside a base screen change.
  */
 internal val LocalScreenBody = compositionLocalOf<Modifier> { Modifier }
-
-/**
- * Whether this base screen or Settings page is on its way out: it then takes no input, shows no snackbar (the screen
- * coming in shows it) and asks for no keyboard.
- */
-internal val LocalScreenLeaving = compositionLocalOf { false }
 
 /** The [Motion] for this composition: reduced by [rememberMotionReduced]. */
 @Composable

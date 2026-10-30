@@ -1,6 +1,8 @@
 package com.iron.breakfast.today
 
-import com.iron.breakfast.ui.components.ComposerFade
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import com.iron.breakfast.ui.components.BottomAreaClearance
 import com.iron.breakfast.ui.theme.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -9,12 +11,10 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -30,14 +30,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.core.animate
 import androidx.compose.ui.platform.LocalViewConfiguration
@@ -48,16 +44,13 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import com.iron.breakfast.app.Confirmations
 import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.app.Surfaces
 import com.iron.breakfast.contribution.ContributionFlow
 import com.iron.breakfast.entry.EntryEdit
 import com.iron.breakfast.log.LogComposer
-import com.iron.breakfast.scan.ScanSession
 import com.iron.breakfast.search.OffSearch
 import com.iron.breakfast.settings.SettingsState
-import com.iron.breakfast.transfer.ExportReminders
 import com.iron.breakfast.contribution.ContributionAction
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MacroTotal
@@ -68,20 +61,13 @@ import com.iron.breakfast.domain.nutritionTotalOf
 import com.iron.breakfast.domain.macroTotalsOf
 import com.iron.breakfast.ui.label
 import com.iron.breakfast.ui.pretty
-import com.iron.breakfast.ui.components.BottomNav
 import com.iron.breakfast.ui.components.LocalScreenBody
-import com.iron.breakfast.ui.components.LocalScreenLeaving
-import com.iron.breakfast.ui.components.NavTab
 import com.iron.breakfast.ui.components.ChoiceOption
-import com.iron.breakfast.ui.components.Composer
 import com.iron.breakfast.ui.components.DayHeader
 import com.iron.breakfast.ui.components.DayTotal
 import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.MacroStat
 import com.iron.breakfast.ui.components.MealHeader
-import com.iron.breakfast.ui.components.Snackbar
-import com.iron.breakfast.ui.components.ConfirmationSnackbar
-import com.iron.breakfast.ui.components.rememberTick
 import com.iron.breakfast.ui.components.AnimatedRows
 import com.iron.breakfast.ui.components.Motion
 import com.iron.breakfast.ui.components.Reveal
@@ -111,9 +97,6 @@ internal fun DailyScreen(
     undo: UndoController,
     feedback: MatchFeedback,
     search: OffSearch,
-    confirmations: Confirmations,
-    reminders: ExportReminders,
-    scan: ScanSession,
     modifier: Modifier,
 ) {
     val selected = session.entries.filter { it.dayKey == day.selectedDayKey }
@@ -154,8 +137,8 @@ internal fun DailyScreen(
                     if (horizontal && abs(dx) >= swipeThreshold) day.shift(if (dx < 0f) 1 else -1)
                 }
             },
-            // Room for the composer and nav that float over the end of the list.
-            contentPadding = PaddingValues(start = Gutter, end = Gutter, bottom = 260.dp),
+            // Room for the bottom area that floats over the end of the list.
+            contentPadding = PaddingValues(start = Gutter, end = Gutter, bottom = BottomAreaClearance),
         ) {
             item {
                 DayHeader(
@@ -184,8 +167,6 @@ internal fun DailyScreen(
                 if (contribution.actionShown) ContributionAction(contribution)
             }
         }
-        // Hidden during an entry edit, which owns the input and its own sheet.
-        if (!entryEdit.editing) DailyComposer(undo, confirmations, reminders, surfaces, log, scan, settings, Modifier.align(Alignment.BottomCenter))
     }
     if (pickerOpen) DayPickerDialog(
         dayKey = day.selectedDayKey,
@@ -307,52 +288,6 @@ private fun DailyMealSection(
         )
         Reveal(entry.takeIf { feedback.isOpen(it) }, resize = true) { CorrectionStrip(feedback, search, it) }
     } }
-}
-
-/**
- * The composer, snackbars and tabs, floating over the end of the list on a `bg` fade.
- * Tapping "Log food" opens the Log page with no meal preset; the scan icon opens the scanner.
- */
-@Composable
-internal fun DailyComposer(
-    undo: UndoController,
-    confirmations: Confirmations,
-    reminders: ExportReminders,
-    surfaces: Surfaces,
-    log: LogComposer,
-    scan: ScanSession,
-    settings: SettingsState,
-    modifier: Modifier = Modifier,
-) {
-    val tick = rememberTick()
-    ComposerFade(modifier) {
-        // A Daily on its way out leaves its snackbars to the screen coming in, so they show once.
-        if (!LocalScreenLeaving.current) {
-            Reveal(undo.loggedMessage) { Snackbar(it, UNDO, { tick(); undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
-            Reveal(undo.deletedEntry) { Snackbar(deletedText(it), UNDO, { tick(); undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
-            ConfirmationSnackbar(confirmations.message)
-            if (reminders.shownOnDaily(covered = surfaces.baseCovered())) {
-                LaunchedEffect(Unit) { reminders.onScreenNow() }
-                Snackbar("Export your diary.", "Export", reminders::export, Modifier.padding(bottom = 8.dp))
-            }
-        }
-        val draft = log.draft.isNotBlank()
-        Composer(
-            placeholder = if (draft) log.draft else "Log food",
-            onClick = { log.open(null) },
-            onScan = scan::begin,
-            draft = draft,
-            longDraft = settings.longDraft,
-        )
-        BottomNav(
-            selected = NavTab.MEALS,
-            onMeals = { surfaces.closeMeal(); surfaces.closeLibrary() },
-            onLibrary = { surfaces.closeMeal(); surfaces.openLibrary() },
-            onRecipes = { surfaces.closeMeal(); surfaces.openRecipes() },
-            onSettings = surfaces::openSettings,
-            settingsOpen = surfaces.settingsOpen,
-        )
-    }
 }
 
 /** A day's correction after a doubtful match: "<food> matched. Not right?" with the alternatives and Search. */

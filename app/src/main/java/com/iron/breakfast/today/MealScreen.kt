@@ -1,6 +1,8 @@
 package com.iron.breakfast.today
 
-import com.iron.breakfast.ui.components.ComposerFade
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import com.iron.breakfast.ui.components.BottomAreaClearance
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -18,7 +20,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.width
@@ -26,7 +27,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -35,7 +35,6 @@ import androidx.compose.animation.core.animate
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -49,7 +48,6 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import com.iron.breakfast.app.Confirmations
 import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.app.Surfaces
 import com.iron.breakfast.contribution.ContributionFlow
@@ -65,18 +63,13 @@ import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.nutritionTotalOf
 import com.iron.breakfast.ui.label
 import com.iron.breakfast.ui.components.isLargeFont
-import com.iron.breakfast.ui.components.Composer
 import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.SecondaryButton
-import com.iron.breakfast.ui.components.Snackbar
-import com.iron.breakfast.ui.components.ConfirmationSnackbar
-import com.iron.breakfast.ui.components.rememberTick
 import com.iron.breakfast.ui.components.Motion
 import com.iron.breakfast.ui.components.Reveal
 import com.iron.breakfast.ui.components.rememberMotion
 import com.iron.breakfast.ui.components.LocalScreenBody
-import com.iron.breakfast.ui.components.LocalScreenLeaving
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.theme.BreakfastType
 import com.iron.breakfast.ui.theme.Gutter
@@ -100,7 +93,6 @@ internal fun MealScreen(
     undo: UndoController,
     feedback: MatchFeedback,
     search: OffSearch,
-    confirmations: Confirmations,
     scan: ScanSession,
     modifier: Modifier,
     /** The meal shown: the Meal screen's own, or, while it glides out, the one it showed. */
@@ -116,8 +108,8 @@ internal fun MealScreen(
     Box(modifier.fillMaxSize().background(colors.bg)) {
         LazyColumn(
             Modifier.fillMaxSize().then(LocalScreenBody.current),
-            // Room for the composer over the fade at the bottom.
-            contentPadding = PaddingValues(start = Gutter, end = Gutter, bottom = 260.dp),
+            // Room for the bottom area that floats over the end of the list.
+            contentPadding = PaddingValues(start = Gutter, end = Gutter, bottom = BottomAreaClearance),
         ) {
             item {
                 TopBar(
@@ -159,38 +151,6 @@ internal fun MealScreen(
                 if (contribution.actionShown) ContributionAction(contribution)
             }
         }
-        // Hidden during an entry edit, which owns the input and its own sheet.
-        if (!entryEdit.editing) MealComposer(log, undo, confirmations, scan, settings, target, Modifier.align(Alignment.BottomCenter))
-    }
-}
-
-/** Ink composer that opens the Log page with this meal preset, over the fade. Shows the logged-batch and delete snackbars. */
-@Composable
-internal fun MealComposer(
-    log: LogComposer,
-    undo: UndoController,
-    confirmations: Confirmations,
-    scan: ScanSession,
-    settings: SettingsState,
-    target: MealSlot,
-    modifier: Modifier = Modifier,
-) {
-    val draft = log.draft.isNotBlank()
-    val tick = rememberTick()
-    ComposerFade(modifier) {
-        // A meal on its way out leaves its snackbars to the screen coming in, so they show once.
-        if (!LocalScreenLeaving.current) {
-            Reveal(undo.loggedMessage) { Snackbar(it, UNDO, { tick(); undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
-            Reveal(undo.deletedEntry) { deleted -> Snackbar(deletedText(deleted), UNDO, { tick(); undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
-            ConfirmationSnackbar(confirmations.message)
-        }
-        Composer(
-            placeholder = if (draft) log.draft else "Add to ${target.label()}",
-            onClick = { log.open(target) },
-            onScan = scan::begin,
-            draft = draft,
-            longDraft = settings.longDraft,
-        )
     }
 }
 

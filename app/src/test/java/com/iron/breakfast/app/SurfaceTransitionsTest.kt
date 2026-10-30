@@ -1,6 +1,8 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.ui.components.BaseMove
+import com.iron.breakfast.ui.components.NavTab
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -65,6 +67,22 @@ class SurfaceTransitionsTest {
         assertEquals(BaseScreen.RECIPES, BaseScreen.of(Surface.RECIPES, libraryForMeal = false))
         assertEquals(BaseScreen.DAILY, BaseScreen.of(Surface.DAILY, libraryForMeal = false))
         assertTrue(Surface.LIBRARY_NO_MATCH.glides)
+    }
+
+    @Test fun theOneBarOpensTheLogOnMealsSearchesInTheLibraryAndFadesOnRecipes() {
+        assertEquals(BarMode.Log(null), BaseScreen.DAILY.barMode(null))
+        assertEquals(BarMode.Log(MealSlot.LUNCH), BaseScreen.MEAL.barMode(MealSlot.LUNCH))
+        assertEquals(BarMode.Search, BaseScreen.LIBRARY.barMode(null))
+        assertEquals(BarMode.Search, BaseScreen.MEAL_LIBRARY.barMode(MealSlot.LUNCH))
+        assertEquals(null, BaseScreen.RECIPES.barMode(null))
+    }
+
+    @Test fun theTabsShowOnTheTabsAndFoldAwayUnderAMeal() {
+        assertEquals(NavTab.MEALS, BaseScreen.DAILY.navTab())
+        assertEquals(NavTab.LIBRARY, BaseScreen.LIBRARY.navTab())
+        assertEquals(NavTab.RECIPES, BaseScreen.RECIPES.navTab())
+        assertEquals(null, BaseScreen.MEAL.navTab())
+        assertEquals(null, BaseScreen.MEAL_LIBRARY.navTab())
     }
 
     @Test fun onlyScreensInTheAppsWindowAreRecorded() {

@@ -1,17 +1,15 @@
 package com.iron.breakfast.app
 
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.fillMaxSize
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
@@ -25,10 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.ui.components.inert
-import com.iron.breakfast.ui.components.LocalNavMemory
-import com.iron.breakfast.ui.components.NavMemory
 import com.iron.breakfast.ui.components.LocalScreenBody
-import com.iron.breakfast.ui.components.LocalScreenLeaving
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.animation.AnimatedContent
@@ -50,7 +45,6 @@ import com.iron.breakfast.scan.ScannerScreen
 import com.iron.breakfast.scan.ScanReviewBackdrop
 import com.iron.breakfast.entry.EntryDetailScreen
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
-import com.iron.breakfast.library.LibraryComposer
 import com.iron.breakfast.library.LibraryScreen
 import com.iron.breakfast.today.DailyScreen
 import com.iron.breakfast.today.MealScreen
@@ -78,7 +72,6 @@ import com.iron.breakfast.recipes.RecipeFormScreen
 import com.iron.breakfast.recipes.RecipeIngredientSearch
 import com.iron.breakfast.recipes.RecipeLogSheet
 import com.iron.breakfast.recipes.RecipePageScreen
-import com.iron.breakfast.recipes.RecipesBottomBar
 import com.iron.breakfast.recipes.RecipesScreen
 import com.iron.breakfast.ui.components.rememberMotion
 
@@ -114,13 +107,9 @@ fun IronApp(vm: BreakfastViewModel = viewModel()) {
     val shown = vm.surfaces.shown()
     val motion = rememberMotion()
     val transitions = rememberSurfaceTransitions()
-    // One memory of the bottom bar's highlight for the bars the base screens draw, so it moves on from bar to bar.
-    val navMemory = remember { NavMemory() }
-    CompositionLocalProvider(LocalNavMemory provides navMemory) {
-        for (drawn in transitions.frame(shown, motion)) key(if (drawn is Surface) drawn.slot else drawn) {
-            if (drawn is Surface) ShownSurface(transitions, drawn.slot, motion) { DrawSurface(vm, drawn) }
-            else GhostSurface(transitions, drawn as Ghost, motion)
-        }
+    for (drawn in transitions.frame(shown, motion)) key(if (drawn is Surface) drawn.slot else drawn) {
+        if (drawn is Surface) ShownSurface(transitions, drawn.slot, motion) { DrawSurface(vm, drawn) }
+        else GhostSurface(transitions, drawn as Ghost, motion)
     }
     // System Back goes to the topmost surface that takes it; a dialog or sheet takes it in its own window first.
     BackHandler(enabled = vm.surfaces.takesBack(shown)) { vm.surfaces.back() }
@@ -205,10 +194,12 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
 
 /**
  * The base screen, whichever shows (Daily, a meal, the Library, Recipes), and its changes: the new one fades in over the
- * old one, both in place, so the bottom bars they share cross where they stand and the bar's highlight slides between
- * them; the body moves by [baseMove] (from the side a tab lies on, a rise into a meal or a meal's Library, the reverse
- * back). The screen on its way out is [inert]: no tap, no TalkBack, and Back already acts on the new one.
+ * old one and its body moves by [baseMove] (from the side a tab lies on, a rise into a meal or a meal's Library, the
+ * reverse back). The screen on its way out is [inert]: no tap, no TalkBack, and Back already acts on the new one.
+ * The bottom area ([BaseBottomArea]: the snackbars, the ink bar, the tabs) is drawn once over them, outside the change,
+ * so it never leaves or comes back; hidden during an entry edit, which owns the input and its own sheet.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BaseScreens(vm: BreakfastViewModel, surface: Surface) {
     val motion = rememberMotion()
@@ -223,14 +214,21 @@ private fun BaseScreens(vm: BreakfastViewModel, surface: Surface) {
     })
     val last = remember { BaseScreenMemory(shown.screen) }
     val move = remember(shown.screen) { baseMove(last.screen, shown.screen).also { last.screen = shown.screen } }
-    // The Library and a meal's Library are one screen to it, as before: one search bar, which keeps its focus and
-    // keyboard when the Library changes between the two.
-    AnimatedContent(targetState = shown, transitionSpec = { motion.baseChange() }, contentKey = { it.key }, label = "base") { state ->
-        // Leaving from the frame the change starts, so a quick second tap cannot reach it.
-        val leaving = state.key != shown.key
-        val body = Modifier.animateEnterExit(enter = motion.baseBodyIn(move), exit = motion.baseBodyOut(move))
-        CompositionLocalProvider(LocalScreenBody provides body, LocalScreenLeaving provides leaving) {
-            Box(if (leaving) Modifier.inert() else Modifier) { BaseScaffold(vm, state.screen.surface(), state.meal) }
+    Scaffold(
+        containerColor = LocalBreakfastColors.current.bg,
+        contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout),
+    ) { pad ->
+        Box(Modifier.fillMaxSize()) {
+            // The Library and a meal's Library are one screen to it: the change between them is the bar's and the title's.
+            AnimatedContent(targetState = shown, transitionSpec = { motion.baseChange() }, contentKey = { it.key }, label = "base") { state ->
+                // Leaving from the frame the change starts, so a quick second tap cannot reach it.
+                val leaving = state.key != shown.key
+                val body = Modifier.animateEnterExit(enter = motion.baseBodyIn(move), exit = motion.baseBodyOut(move))
+                CompositionLocalProvider(LocalScreenBody provides body) {
+                    Box(if (leaving) Modifier.inert() else Modifier) { BaseScreenContent(vm, state.screen.surface(), state.meal, Modifier.padding(pad)) }
+                }
+            }
+            if (!vm.entryEdit.editing) BaseBottomArea(vm, shown.screen, shown.meal, Modifier.align(Alignment.BottomCenter))
         }
     }
 }
@@ -255,37 +253,24 @@ private fun BaseScreen.surface(): Surface = when (this) {
     BaseScreen.RECIPES -> Surface.RECIPES
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** One base screen's content, above the bottom area that [BaseScreens] draws over it. */
 @Composable
-private fun BaseScaffold(vm: BreakfastViewModel, surface: Surface, meal: MealSlot?) {
-    Scaffold(
-        containerColor = LocalBreakfastColors.current.bg,
-        contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout),
-        bottomBar = {
-            // The tray rides above the keyboard and clear of a side display cutout.
-            Box(Modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).imePadding()) {
-                // Daily and Meal composers float over their own content; only Library uses this bar.
-                if (!vm.entryEdit.editing && surface == Surface.LIBRARY) LibraryComposer(vm.library, vm.resolve, vm.scan, vm.surfaces, target = meal)
-                if (surface == Surface.RECIPES) RecipesBottomBar(vm.surfaces)
-            }
-        }
-    ) { pad ->
-        when (surface) {
-            Surface.LIBRARY -> LibraryScreen(
-                vm.library, vm.resolve, vm.day, vm.surfaces, vm.foodForm, vm.confirmations, vm::automaticMealNow, Modifier.padding(pad),
-                target = meal,
-            )
-            Surface.RECIPES -> RecipesScreen(vm.recipes, vm.confirmations, onNew = vm.recipeForm::openNew, Modifier.padding(pad))
-            Surface.DAILY -> DailyScreen(
-                vm.session, vm.day, vm.settings, vm.log, vm.contribution, vm.entryEdit, vm.surfaces, vm.undo, vm.feedback,
-                vm.search, vm.confirmations, vm.reminders, vm.scan, Modifier.padding(pad),
-            )
-            else -> MealScreen(
-                vm.session, vm.day, vm.settings, vm.log, vm.contribution, vm.entryEdit, vm.surfaces, vm.undo, vm.feedback,
-                vm.search, vm.confirmations, vm.scan, Modifier.padding(pad),
-                meal = meal,
-            )
-        }
+private fun BaseScreenContent(vm: BreakfastViewModel, surface: Surface, meal: MealSlot?, modifier: Modifier) {
+    when (surface) {
+        Surface.LIBRARY -> LibraryScreen(
+            vm.library, vm.resolve, vm.day, vm.surfaces, vm.foodForm, vm::automaticMealNow, modifier,
+            target = meal,
+        )
+        Surface.RECIPES -> RecipesScreen(vm.recipes, onNew = vm.recipeForm::openNew, modifier)
+        Surface.DAILY -> DailyScreen(
+            vm.session, vm.day, vm.settings, vm.log, vm.contribution, vm.entryEdit, vm.surfaces, vm.undo, vm.feedback,
+            vm.search, modifier,
+        )
+        else -> MealScreen(
+            vm.session, vm.day, vm.settings, vm.log, vm.contribution, vm.entryEdit, vm.surfaces, vm.undo, vm.feedback,
+            vm.search, vm.scan, modifier,
+            meal = meal,
+        )
     }
 }
 

@@ -1,6 +1,7 @@
 package com.iron.breakfast.recipes
 
-import com.iron.breakfast.ui.components.ComposerFade
+import androidx.compose.foundation.layout.PaddingValues
+import com.iron.breakfast.ui.components.BottomAreaClearance
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,7 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -21,7 +21,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.iron.breakfast.app.Confirmations
 import com.iron.breakfast.app.Surfaces
 import com.iron.breakfast.domain.MacroTotal
 import com.iron.breakfast.domain.Measure
@@ -38,12 +37,9 @@ import com.iron.breakfast.library.LibraryFactRow
 import com.iron.breakfast.library.libraryPresetMeal
 import com.iron.breakfast.log.previewQuantityLine
 import com.iron.breakfast.ui.components.AddCircle
-import com.iron.breakfast.ui.components.BottomNav
-import com.iron.breakfast.ui.components.ConfirmationSnackbar
 import com.iron.breakfast.ui.components.DestructiveButton
 import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.Hairline
-import com.iron.breakfast.ui.components.NavTab
 import com.iron.breakfast.ui.components.SectionHeading
 import com.iron.breakfast.ui.components.TertiaryButton
 import com.iron.breakfast.ui.components.TopBar
@@ -61,15 +57,19 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
 /**
  * The Recipes tab, laid out as the Library tab: the title, its count line and New recipe, then a row per recipe (its
  * name, a portion or 100 g, and that kcal) with a "+" that opens the amount sheet. "Logged!" floats over the end of the
- * list, as on the Library.
+ * list, as on the Library (from the bottom area, `app/BaseBottomArea.kt`).
  */
 @Composable
-internal fun RecipesScreen(recipes: RecipeBook, confirmations: Confirmations, onNew: (() -> Unit)?, modifier: Modifier) {
+internal fun RecipesScreen(recipes: RecipeBook, onNew: (() -> Unit)?, modifier: Modifier) {
     val colors = LocalBreakfastColors.current
     val motion = rememberMotion()
     val list = recipes.ordered()
     Box(modifier.fillMaxSize().background(colors.bg)) {
-        LazyColumn(Modifier.fillMaxSize().then(LocalScreenBody.current).padding(horizontal = Gutter)) {
+        // The bottom area floats over the end of the list.
+        LazyColumn(
+            Modifier.fillMaxSize().then(LocalScreenBody.current).padding(horizontal = Gutter),
+            contentPadding = PaddingValues(bottom = BottomAreaClearance),
+        ) {
             item {
                 Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -87,7 +87,6 @@ internal fun RecipesScreen(recipes: RecipeBook, confirmations: Confirmations, on
             // The list's closing line, only under rows: an empty list keeps just the header's line.
             if (list.isNotEmpty()) item { Hairline(Modifier.padding(top = 8.dp)) }
         }
-        ConfirmationSnackbar(confirmations.message, Modifier.align(Alignment.BottomCenter).padding(horizontal = Gutter))
     }
 }
 
@@ -103,21 +102,6 @@ private fun RecipeRow(recipes: RecipeBook, recipe: Recipe, modifier: Modifier) {
             onClick = { recipes.openRecipe(recipe) },
         )
         AddCircle(contentDescription = "Add ${recipe.name} to a meal", onClick = { recipes.beginLog(recipe) })
-    }
-}
-
-/** The Recipes tab's bottom bar: the tabs and Settings, as on the Library tab. */
-@Composable
-internal fun RecipesBottomBar(surfaces: Surfaces) {
-    ComposerFade {
-        BottomNav(
-            selected = NavTab.RECIPES,
-            onMeals = surfaces::closeRecipes,
-            onLibrary = surfaces::openLibrary,
-            onRecipes = {},
-            onSettings = surfaces::openSettings,
-            settingsOpen = surfaces.settingsOpen,
-        )
     }
 }
 

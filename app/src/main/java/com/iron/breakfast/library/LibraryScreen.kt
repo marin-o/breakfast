@@ -1,11 +1,11 @@
 package com.iron.breakfast.library
 
-import com.iron.breakfast.ui.components.ComposerFade
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.PaddingValues
+import com.iron.breakfast.ui.components.BottomAreaClearance
 import com.iron.breakfast.ui.theme.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -61,12 +61,10 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import com.iron.breakfast.app.Confirmations
 import com.iron.breakfast.app.Surfaces
 import com.iron.breakfast.contribution.ContributionFlow
 import com.iron.breakfast.food.FoodForm
 import com.iron.breakfast.resolve.ResolveFlow
-import com.iron.breakfast.scan.ScanSession
 import com.iron.breakfast.settings.SettingsState
 import com.iron.breakfast.today.DayState
 import com.iron.breakfast.domain.FoodOrigin
@@ -95,19 +93,13 @@ import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.MealChoices
 import com.iron.breakfast.ui.components.PrimaryButton
-import com.iron.breakfast.ui.components.InkBar
-import com.iron.breakfast.ui.components.ScanBarcodeIcon
 import com.iron.breakfast.ui.components.SecondaryButton
 import com.iron.breakfast.ui.components.Sheet
 import com.iron.breakfast.ui.components.TertiaryButton
 import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.components.SectionHeading
-import com.iron.breakfast.ui.components.BottomNav
-import com.iron.breakfast.ui.components.NavTab
-import com.iron.breakfast.ui.components.ConfirmationSnackbar
 import com.iron.breakfast.ui.components.rememberMotion
 import com.iron.breakfast.ui.components.LocalScreenBody
-import com.iron.breakfast.ui.components.LocalScreenLeaving
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import com.iron.breakfast.ui.screens.entryDateLabel
 import com.iron.breakfast.ui.screens.formatKcal
@@ -123,7 +115,6 @@ internal fun LibraryScreen(
     day: DayState,
     surfaces: Surfaces,
     foodForm: FoodForm,
-    confirmations: Confirmations,
     automaticMeal: () -> MealSlot?,
     modifier: Modifier,
     /** The meal it adds to: the Library's own, or, while it glides out, the one it added to as it showed. */
@@ -136,7 +127,11 @@ internal fun LibraryScreen(
     val title = if (resolve.resolvingPart) "Search" else if (root) "Library" else "Add to ${target!!.label()}"
     val subtitle = if (root) "${library.foods.size} foods, by last logged" else entryDateLabel(day.selectedDayKey)
     Box(modifier.fillMaxSize().background(colors.bg)) {
-        LazyColumn(Modifier.fillMaxSize().then(LocalScreenBody.current).padding(horizontal = Gutter)) {
+        // The bottom area floats over the end of the list, which rides above the keyboard while the search has it.
+        LazyColumn(
+            Modifier.fillMaxSize().then(LocalScreenBody.current).imePadding().padding(horizontal = Gutter),
+            contentPadding = PaddingValues(bottom = BottomAreaClearance),
+        ) {
             item {
                 Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (!root) IconButton(onClick = surfaces::exitLibrary, modifier = Modifier.size(44.dp)) {
@@ -159,8 +154,6 @@ internal fun LibraryScreen(
                 Hairline(Modifier.padding(top = 8.dp))
             }
         }
-        // "Logged!" floats over the end of the list, just above the bar, as on Daily and Meal: nothing moves.
-        ConfirmationSnackbar(confirmations.message, Modifier.align(Alignment.BottomCenter).padding(horizontal = Gutter))
     }
 }
 
@@ -204,57 +197,41 @@ private fun LibraryFoodRow(library: LibraryState, automaticMeal: () -> MealSlot?
 internal fun defaultServingCalories(food: FoodRecord): String = formatKcal(com.iron.breakfast.domain.defaultServingCalculation(food).nutrition.calories)
 
 /**
- * The Library's bottom bar: the Composer look (ink bar, "Search foods") over the existing text field.
- * It filters the list through [LibraryState.submitInput] and does not open the Log page.
+ * The Library's search, in the one ink bar of the bottom area (`app/BaseBottomArea.kt`): the text field and its
+ * Clear. It filters the list through [LibraryState.submitInput] and does not open the Log page.
  */
 @Composable
-internal fun LibraryComposer(library: LibraryState, resolve: ResolveFlow, scan: ScanSession, surfaces: Surfaces, target: MealSlot? = library.target) {
+internal fun LibrarySearchField(library: LibraryState, resolve: ResolveFlow, modifier: Modifier = Modifier) {
     val colors = LocalBreakfastColors.current
-    val inMeal = target != null
     // While resolving, a cleared search lands here: the bar takes the keyboard so typing goes on.
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    // A Library on its way out leaves the keyboard to the screen coming in.
-    val resolveCleared = resolve.resolvingPart && library.query.isEmpty() && !LocalScreenLeaving.current
+    val resolveCleared = resolve.resolvingPart && library.query.isEmpty()
     LaunchedEffect(resolveCleared) { if (resolveCleared) { runCatching { focus.requestFocus() }; keyboard?.show() } }
-    // The same bottom area as Daily and Meal, so the bar and the tabs do not move between tabs.
-    ComposerFade {
-        InkBar {
-            BasicTextField(
-                value = library.input,
-                onValueChange = library::onInput,
-                singleLine = true,
-                textStyle = BreakfastType.Body.copy(color = colors.bg),
-                cursorBrush = SolidColor(colors.bg),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { library.submitInput() }, onDone = { library.submitInput() }),
-                modifier = Modifier
-                    .weight(1f)
-                    .focusRequester(focus)
-                    .onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { library.submitInput(); true } else false }
-                    .semantics { contentDescription = "Search foods" },
-                decorationBox = { inner ->
-                    Box(Modifier.heightIn(min = 22.dp), contentAlignment = Alignment.CenterStart) {
-                        if (library.input.isEmpty()) Text("Search foods", color = colors.bg.copy(alpha = 0.6f), style = BreakfastType.Body)
-                        inner()
-                    }
-                },
-            )
-            if (library.input.isNotEmpty()) IconButton(onClick = { library.onInput("") }, modifier = Modifier.size(IconTarget)) {
-                Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = colors.bg, modifier = Modifier.size(20.dp))
-            }
-            IconButton(onClick = scan::begin, modifier = Modifier.size(IconTarget)) {
-                Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.bg)
-            }
-        }
-        if (!inMeal) BottomNav(
-            selected = NavTab.LIBRARY,
-            onMeals = { surfaces.closeMeal(); surfaces.closeLibrary() },
-            onLibrary = {},
-            onRecipes = surfaces::openRecipes,
-            onSettings = surfaces::openSettings,
-            settingsOpen = surfaces.settingsOpen,
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        BasicTextField(
+            value = library.input,
+            onValueChange = library::onInput,
+            singleLine = true,
+            textStyle = BreakfastType.Body.copy(color = colors.bg),
+            cursorBrush = SolidColor(colors.bg),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { library.submitInput() }, onDone = { library.submitInput() }),
+            modifier = Modifier
+                .weight(1f)
+                .focusRequester(focus)
+                .onPreviewKeyEvent { event -> if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) { library.submitInput(); true } else false }
+                .semantics { contentDescription = "Search foods" },
+            decorationBox = { inner ->
+                Box(Modifier.heightIn(min = 22.dp), contentAlignment = Alignment.CenterStart) {
+                    if (library.input.isEmpty()) Text("Search foods", color = colors.bg.copy(alpha = 0.6f), style = BreakfastType.Body)
+                    inner()
+                }
+            },
         )
+        if (library.input.isNotEmpty()) IconButton(onClick = { library.onInput("") }, modifier = Modifier.size(IconTarget)) {
+            Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = colors.bg, modifier = Modifier.size(20.dp))
+        }
     }
 }
 

@@ -1,5 +1,7 @@
 package com.iron.breakfast.ui.components
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -51,15 +53,12 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.core.Animatable
@@ -704,10 +703,13 @@ internal fun MacroTrack(share: Float) {
     }
 }
 
+/** The bottom padding a base screen's list keeps, so its last row clears the [ComposerFade] floating over it. */
+val BottomAreaClearance = 260.dp
+
 /**
- * A `bg` fade with 16dp gutters, above the system navigation bar; shared by every bottom area (Daily, Meal, Library,
- * Recipes), so the bar and the tabs sit in the same place on each.
- * The list behind it keeps enough bottom padding that its last row clears the composer and nav.
+ * A `bg` fade with 16dp gutters, above the system navigation bar: the one bottom area of the base screens (Daily,
+ * Meal, Library, Recipes; `app/BaseBottomArea.kt`), drawn once over whichever shows, so the bar and the tabs never
+ * move between them. The list behind it keeps [BottomAreaClearance] at its end.
  */
 @Composable
 fun ComposerFade(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
@@ -734,26 +736,38 @@ fun Composer(
     /** How a draft too long for one line is cut. */
     longDraft: LongDraft = LongDraft.START,
 ) {
-    val colors = LocalBreakfastColors.current
     InkBar(modifier, endPadding = if (onScan != null) 4.dp else 16.dp) {
-        val text = placeholder.replace('\n', ' ')
-        val color = if (draft) colors.bg else colors.bg.copy(alpha = 0.6f)
-        val textModifier = Modifier.weight(1f).clickable(role = Role.Button, onClick = onClick)
-        if (draft && longDraft == LongDraft.END) {
-            EndOfText(text, color, textModifier)
-        } else {
-            Text(
-                text,
-                color = color,
-                style = BreakfastType.Body,
-                maxLines = if (draft && longDraft == LongDraft.TWO_LINES) 2 else 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = textModifier,
-            )
-        }
-        if (onScan != null) IconButton(onClick = onScan, modifier = Modifier.size(IconTarget)) {
-            Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.bg)
-        }
+        ComposerText(placeholder, onClick, Modifier.weight(1f), draft, longDraft)
+        if (onScan != null) InkBarScan(onScan)
+    }
+}
+
+/** The [Composer]'s text: the placeholder, or the typed draft at full strength; a tap opens the Log page. */
+@Composable
+fun ComposerText(placeholder: String, onClick: () -> Unit, modifier: Modifier = Modifier, draft: Boolean = false, longDraft: LongDraft = LongDraft.START) {
+    val colors = LocalBreakfastColors.current
+    val text = placeholder.replace('\n', ' ')
+    val color = if (draft) colors.bg else colors.bg.copy(alpha = 0.6f)
+    val textModifier = modifier.clickable(role = Role.Button, onClick = onClick)
+    if (draft && longDraft == LongDraft.END) {
+        EndOfText(text, color, textModifier)
+    } else {
+        Text(
+            text,
+            color = color,
+            style = BreakfastType.Body,
+            maxLines = if (draft && longDraft == LongDraft.TWO_LINES) 2 else 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = textModifier,
+        )
+    }
+}
+
+/** The scan icon at the end of an [InkBar]. */
+@Composable
+fun InkBarScan(onScan: () -> Unit) {
+    IconButton(onClick = onScan, modifier = Modifier.size(IconTarget)) {
+        Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = LocalBreakfastColors.current.bg)
     }
 }
 
@@ -798,20 +812,6 @@ fun InkBar(modifier: Modifier = Modifier, endPadding: Dp = 4.dp, content: @Compo
 /** The bottom bar's tabs, in their order. */
 enum class NavTab(val label: String) { MEALS("Meals"), LIBRARY("Library"), RECIPES("Recipes") }
 
-/**
- * Where the bottom bar's highlight was last: each base screen draws its own bar, so a bar that comes in with another
- * screen starts its line where the last one left it, and the line moves on from there.
- */
-internal class NavMemory {
-    /** The item the line was under ([NavTab.ordinal], or [GEAR]), and where: its start and width in px. */
-    var item: Int = -1
-    var start: Float = 0f
-    var width: Float = 0f
-}
-
-/** The one [NavMemory] of the app, kept by the root so it outlives the screens; a fresh one elsewhere. */
-internal val LocalNavMemory = staticCompositionLocalOf { NavMemory() }
-
 /** The Settings gear as an item of the bar: after the tabs. */
 private const val GEAR = 3
 
@@ -832,7 +832,6 @@ fun BottomNav(
 ) {
     val colors = LocalBreakfastColors.current
     val motion = rememberMotion()
-    val memory = LocalNavMemory.current
     val active = if (settingsOpen) GEAR else selected.ordinal
     // Where each item sits in the bar, in px: the line goes under the one that is active.
     val spans = remember { NavSpans() }
@@ -843,13 +842,11 @@ fun BottomNav(
     LaunchedEffect(active, target) {
         val (toStart, toWidth) = target ?: return@LaunchedEffect
         if (!placed) {
-            // The first frame: from where the last bar left the line, or right under the item.
-            val from = memory.item.takeIf { it >= 0 && it != active }
-            start.snapTo(if (from != null) memory.start else toStart)
-            width.snapTo(if (from != null) memory.width else toWidth)
+            // The first frame: right under the item; from then on the line slides.
+            start.snapTo(toStart)
+            width.snapTo(toWidth)
             placed = true
         }
-        memory.item = active; memory.start = toStart; memory.width = toWidth
         launch { start.animateTo(toStart, motion.nav()) }
         width.animateTo(toWidth, motion.nav())
     }
@@ -998,7 +995,6 @@ fun Snackbar(
 @Composable
 internal fun ConfirmationSnackbar(message: String?, modifier: Modifier = Modifier) {
     // [modifier] places the whole reveal (an align in a Box must sit on it); the 8dp gap comes and goes with the bar.
-    if (LocalScreenLeaving.current) return
     Reveal(message, modifier) { Snackbar(it, modifier = Modifier.padding(bottom = 8.dp)) }
 }
 
