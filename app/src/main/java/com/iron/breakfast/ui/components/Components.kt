@@ -597,7 +597,7 @@ fun MealHeader(
     }
 }
 
-/** Date title with a previous/next pair; a "Today" text button appears when [showToday] is set. */
+/** Date title with a previous/next pair; a "Go To Today" text button appears when [showToday] is set. */
 @Composable
 fun DayHeader(
     title: String,
@@ -622,7 +622,7 @@ fun DayHeader(
             Text(title, color = colors.ink, style = BreakfastType.Title)
             if (onTitleClick != null) Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = null, tint = colors.soft, modifier = Modifier.padding(start = 4.dp).size(16.dp))
         }
-        if (showToday) TertiaryButton("Today", onToday)
+        if (showToday) TertiaryButton("Go To Today", onToday)
         IconButton(onClick = onPrevious, modifier = Modifier.size(IconTarget)) {
             Icon(Icons.Outlined.ChevronLeft, contentDescription = "Previous day", tint = colors.ink, modifier = Modifier.size(22.dp))
         }
