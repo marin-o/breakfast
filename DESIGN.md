@@ -87,7 +87,7 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 
 - **FoodRow**: name 16sp ink, quantity line 14sp soft beneath, kcal right-aligned in soft (ink 500 for totals). 9dp top padding, no separators.
 - **MealHeader**: a 30dp gap, a 1dp hairline, then 16dp, then the heading (20sp/500), the time (13sp soft), the total (17sp/500) and an AddCircle. At large font the time drops under the heading. "Nothing yet" in soft for an empty meal.
-- **DayHeader**: date title 17sp/500 on the left, a Today text button when not on today, previous and next arrows on the right.
+- **DayHeader**: date title 17sp/500 on the left, a "Go To Today" text button when not on today, previous and next arrows on the right.
 - **DayTotal**: 72sp/300 kcal, "kilocalories today" in soft 14sp, then three macro columns: a 2dp `line` track with a 2dp `ink` fill (the macro's share of kcal), the value 20sp/500 with its unit in soft 14sp, and a soft 13sp label. At large font (2.0) the macros stack one per row, with the value, unit and label on one line under each bar. A macro no entry has reads "—" (as in the Library); a sum that leaves out entries without the macro reads "12 g ?", the "?" in the unit's soft style, and one soft 13sp line "? some foods have no value" follows the macros.
 
 ## Layout
@@ -105,7 +105,7 @@ Quiet: short and smooth, standard easing (`FastOutSlowInEasing`), no bounce or o
 - **Undo snackbars and "Not right?":** fade and an 8dp rise, 180ms; "Not right?" opens and closes its space with it.
 - **Lists** (meal rows on Daily and the Meal screen, the Library list): a new row fades in, a removed row collapses out, 200ms; Library rows that move (a logged food goes to the top) glide to their place. Another day shows its rows at once. The Log's rows change without motion: a row has no identity that lasts while its text is typed.
 - **Day change** (swipe, arrows, Today, date picker): the day's content fades in from 24dp to the side the day lies on, 220ms.
-- **Swipe to delete:** the row follows the finger and the `bad` panel shows only as wide as the row has moved ("Delete" stays on one line, cut by the panel's edge until it is open); on every release (a tap too) it settles open or shut in 180ms; Delete collapses it, Undo fades it back.
+- **Swipe to delete:** the row follows the finger and the `bad` panel (a rounded button shaped like the primary buttons, inset 8dp from the row and 6dp top and bottom) shows only as wide as the row has moved; dragging right shuts an open row, and a tap on an open row shuts it ("Delete" stays on one line, cut by the panel's edge until it is open); on every release (a tap too) it settles open or shut in 180ms; Delete collapses it, Undo fades it back.
 - **Reduced motion** (Settings, Motion is Reduced, or the phone's animations are removed): all of this is off and every change is instant; a sheet is simply there (dragged or tapped away, it still uses Material's slide). The one rule is `ui/components/Motion.kt`.
 
 ## Shared components
