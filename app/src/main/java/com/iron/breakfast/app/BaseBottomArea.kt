@@ -16,20 +16,23 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
+import com.iron.breakfast.ui.theme.ComposerHeight
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.library.LibrarySearchField
 import com.iron.breakfast.today.UNDO
 import com.iron.breakfast.today.deletedText
 import com.iron.breakfast.ui.components.BottomNav
+import com.iron.breakfast.ui.components.Composer
 import com.iron.breakfast.ui.components.ComposerFade
 import com.iron.breakfast.ui.components.ComposerText
 import com.iron.breakfast.ui.components.ConfirmationSnackbar
-import com.iron.breakfast.ui.components.InkBar
-import com.iron.breakfast.ui.components.InkBarScan
 import com.iron.breakfast.ui.components.NavTab
 import com.iron.breakfast.ui.components.Reveal
 import com.iron.breakfast.ui.components.Snackbar
@@ -60,6 +63,12 @@ internal fun BaseScreen.navTab(): NavTab? = when (this) {
     BaseScreen.MEAL, BaseScreen.MEAL_LIBRARY -> null
 }
 
+/** Draws the content right above where it is placed, taking no height there. */
+private fun Modifier.aboveItsPlace(): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
+    layout(placeable.width, 0) { placeable.place(0, -placeable.height) }
+}
+
 /** The last value something showed, so it can keep drawing it while it fades. */
 private class Kept<T>(var value: T)
 
@@ -82,45 +91,41 @@ internal fun BaseBottomArea(vm: BreakfastViewModel, screen: BaseScreen, meal: Me
     val tab = screen.navTab()
     val keptTab = remember { Kept(NavTab.MEALS) }
     if (tab != null) keptTab.value = tab
-    // Off the Library the search lets the keyboard go, as it did when it left with its screen.
-    val searching = mode == BarMode.Search
-    val focus = LocalFocusManager.current
-    LaunchedEffect(searching) { if (!searching) focus.clearFocus() }
-    // The area rides above the keyboard while the search has it, and stays clear of a side display cutout.
-    ComposerFade(
-        modifier
-            .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
-            .then(if (searching) Modifier.imePadding() else Modifier),
-    ) {
+    // The area rides above the keyboard (also while it closes after the search), clear of a side display cutout.
+    ComposerFade(modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).imePadding()) {
         val logScreen = screen == BaseScreen.DAILY || screen == BaseScreen.MEAL
         Reveal(undo.loggedMessage.takeIf { logScreen }) { Snackbar(it, UNDO, { tick(); undo.undoBatch() }, Modifier.padding(bottom = 8.dp)) }
         Reveal(undo.deletedEntry.takeIf { logScreen }) { Snackbar(deletedText(it), UNDO, { tick(); undo.undoDelete() }, Modifier.padding(bottom = 8.dp)) }
-        ConfirmationSnackbar(vm.confirmations.message)
+        if (mode != null) ConfirmationSnackbar(vm.confirmations.message)
         if (screen == BaseScreen.DAILY && vm.reminders.shownOnDaily(covered = surfaces.baseCovered())) {
             LaunchedEffect(Unit) { vm.reminders.onScreenNow() }
             Snackbar("Export your diary.", "Export", vm.reminders::export, Modifier.padding(bottom = 8.dp))
         }
         val barAlpha by animateFloatAsState(if (mode != null) 1f else 0f, motion.nav(), label = "bar")
-        InkBar(Modifier.graphicsLayer { alpha = barAlpha }.then(if (mode == null) Modifier.inert() else Modifier)) {
-            Crossfade(barMode, Modifier.weight(1f), animationSpec = motion.nav(), label = "bar text") { shown ->
-                // The text on its way out is not read or tapped.
-                Box(if (shown != barMode) Modifier.inert() else Modifier) {
-                    when (shown) {
-                        BarMode.Search -> LibrarySearchField(vm.library, vm.resolve, Modifier.fillMaxWidth())
-                        is BarMode.Log -> {
-                            val draft = vm.log.draft.isNotBlank()
-                            ComposerText(
-                                placeholder = if (draft) vm.log.draft else shown.meal?.let { "Add to ${it.label()}" } ?: "Log food",
-                                onClick = { vm.log.open(shown.meal) },
-                                modifier = Modifier.fillMaxWidth(),
-                                draft = draft,
-                                longDraft = vm.settings.longDraft,
-                            )
+        // The bar's place keeps its height on Recipes, so the tabs do not move; there "Logged!" sits just above them.
+        Box(Modifier.fillMaxWidth().heightIn(min = ComposerHeight)) {
+            // Fading out on Recipes it is not read or tapped; once gone, taps reach what lies under its place.
+            if (mode != null || barAlpha > 0f) Composer(vm.scan::begin, Modifier.graphicsLayer { alpha = barAlpha }.then(if (mode == null) Modifier.inert() else Modifier)) {
+                Crossfade(barMode, Modifier.weight(1f), animationSpec = motion.nav(), label = "bar text") { shown ->
+                    // The text on its way out is not read or tapped.
+                    Box(if (shown != barMode) Modifier.inert() else Modifier) {
+                        when (shown) {
+                            BarMode.Search -> LibrarySearchField(vm.library, vm.resolve, Modifier.fillMaxWidth())
+                            is BarMode.Log -> {
+                                val draft = vm.log.draft.isNotBlank()
+                                ComposerText(
+                                    placeholder = if (draft) vm.log.draft else shown.meal?.let { "Add to ${it.label()}" } ?: "Log food",
+                                    onClick = { vm.log.open(shown.meal) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    draft = draft,
+                                    longDraft = vm.settings.longDraft,
+                                )
+                            }
                         }
                     }
                 }
             }
-            InkBarScan(vm.scan::begin)
+            if (mode == null) ConfirmationSnackbar(vm.confirmations.message, Modifier.align(Alignment.BottomCenter).aboveItsPlace())
         }
         AnimatedVisibility(tab != null, enter = motion.rowIn(), exit = motion.rowOut()) {
             val selected = keptTab.value

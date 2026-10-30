@@ -724,25 +724,24 @@ fun ComposerFade(modifier: Modifier = Modifier, content: @Composable ColumnScope
     )
 }
 
-/** The ink bar that opens the Log page. The text input lives there, not here. */
+/**
+ * The base screens' ink bar (`app/BaseBottomArea.kt`): [text] (the Log opener, [ComposerText], or the Library's search)
+ * then the scan icon.
+ */
 @Composable
-fun Composer(
-    placeholder: String,
-    onClick: () -> Unit,
-    onScan: (() -> Unit)?,
-    modifier: Modifier = Modifier,
-    /** True when [placeholder] is the typed draft: shown at full strength so it is never hidden. */
-    draft: Boolean = false,
-    /** How a draft too long for one line is cut. */
-    longDraft: LongDraft = LongDraft.START,
-) {
-    InkBar(modifier, endPadding = if (onScan != null) 4.dp else 16.dp) {
-        ComposerText(placeholder, onClick, Modifier.weight(1f), draft, longDraft)
-        if (onScan != null) InkBarScan(onScan)
+fun Composer(onScan: () -> Unit, modifier: Modifier = Modifier, text: @Composable RowScope.() -> Unit) {
+    InkBar(modifier) {
+        text()
+        IconButton(onClick = onScan, modifier = Modifier.size(IconTarget)) {
+            Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = LocalBreakfastColors.current.bg)
+        }
     }
 }
 
-/** The [Composer]'s text: the placeholder, or the typed draft at full strength; a tap opens the Log page. */
+/**
+ * The [Composer]'s Log opener: the placeholder, or the typed draft at full strength ([draft]) cut as [longDraft] says;
+ * a tap opens the Log page.
+ */
 @Composable
 fun ComposerText(placeholder: String, onClick: () -> Unit, modifier: Modifier = Modifier, draft: Boolean = false, longDraft: LongDraft = LongDraft.START) {
     val colors = LocalBreakfastColors.current
@@ -760,14 +759,6 @@ fun ComposerText(placeholder: String, onClick: () -> Unit, modifier: Modifier = 
             overflow = TextOverflow.Ellipsis,
             modifier = textModifier,
         )
-    }
-}
-
-/** The scan icon at the end of an [InkBar]. */
-@Composable
-fun InkBarScan(onScan: () -> Unit) {
-    IconButton(onClick = onScan, modifier = Modifier.size(IconTarget)) {
-        Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = LocalBreakfastColors.current.bg)
     }
 }
 

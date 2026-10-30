@@ -60,7 +60,7 @@ private fun ComponentGallery() {
             Field("Amount", "1.5", {}, errorMessage = "Enter more than 0 g.", error = true)
             Field("Name", "", {}, placeholder = "Name", hint = "from scan")
             SearchField("kiki", {}, {}, label = "Search foods")
-            Composer("Log food", {}, onScan = {})
+            Composer(onScan = {}) { ComposerText("Log food", {}, Modifier.weight(1f)) }
             BottomNav(selected = NavTab.MEALS, onMeals = {}, onLibrary = {}, onRecipes = {}, onSettings = {})
             Snackbar("Saved meal", "Undo", {})
             LinearProgress("Searching Open Food Facts")
