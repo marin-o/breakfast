@@ -1,5 +1,6 @@
 package com.iron.breakfast.domain
 
+import com.iron.breakfast.testFood
 import com.iron.breakfast.ui.screens.previewQuantityLine
 import com.iron.breakfast.ui.screens.countedQuantity
 import org.junit.Assert.assertEquals
@@ -15,8 +16,8 @@ class ServingsTest {
     private fun food(
         id: String, name: String, unit: MeasureUnit = MeasureUnit.GRAM, kcal: Double = 100.0,
         servings: List<ServingConversion> = emptyList(), density: Double? = null, defaultUnit: MeasureUnit = unit,
-    ) = FoodRecord(
-        id, name, emptyList(), "Personal food", FoodOrigin.CUSTOM, NutritionBasis(100.0, unit, NutritionValues(kcal, 1.0, 1.0, 1.0)),
+    ) = testFood(
+        id, name, category = "Personal food", unit = unit, values = NutritionValues(kcal, 1.0, 1.0, 1.0),
         conversions = listOf(ServingConversion(unit, 100.0, "custom basis")) + servings,
         defaultAmount = 100.0, defaultUnit = defaultUnit, density = density, personalOverride = true,
     )

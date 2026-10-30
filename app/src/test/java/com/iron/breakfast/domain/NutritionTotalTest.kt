@@ -1,5 +1,6 @@
 package com.iron.breakfast.domain
 
+import com.iron.breakfast.testEntry
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -8,8 +9,7 @@ import org.junit.Test
  * The "?" marks come from [macroTotalsOf], not from this total.
  */
 class NutritionTotalTest {
-    private fun entry(id: String, values: NutritionValues) =
-        MealEntry(id, "f-$id", "Food", 1.0, MeasureUnit.PIECE, 50.0, values, "1 piece", false, 0L)
+    private fun entry(id: String, values: NutritionValues) = testEntry(id, "f-$id", "Food", values)
 
     @Test fun nothingLoggedIsZero() {
         assertEquals(NutritionValues.ZERO, nutritionTotalOf(emptyList()))

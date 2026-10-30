@@ -1,9 +1,7 @@
 package com.iron.breakfast.log
 
-import com.iron.breakfast.domain.MealEntry
+import com.iron.breakfast.testEntry
 import com.iron.breakfast.domain.MealSlot
-import com.iron.breakfast.domain.MeasureUnit
-import com.iron.breakfast.domain.NutritionValues
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -54,9 +52,7 @@ class MealPolicyTest {
         assertEquals(MealSlot.LUNCH, automaticMeal(MealMode.BY_TIME, 13, bounds, MealSlot.SNACKS))
     }
 
-    private fun entry(id: String, meal: MealSlot, savedAt: Long) = MealEntry(
-        id, "egg", "Egg", 1.0, MeasureUnit.PIECE, 50.0, NutritionValues(70.0, 6.0, 0.5, 5.0), "1 piece", false, savedAt, mealSlot = meal,
-    )
+    private fun entry(id: String, meal: MealSlot, savedAt: Long) = testEntry(id, "egg", savedAt = savedAt, meal = meal)
 
     @Test fun lastUsedIsTheMealOfTheLatestLog() {
         assertNull(lastUsedMeal(emptyList()))

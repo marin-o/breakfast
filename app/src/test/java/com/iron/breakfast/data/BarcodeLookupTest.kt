@@ -1,9 +1,6 @@
 package com.iron.breakfast.data
 
-import com.iron.breakfast.domain.FoodOrigin
-import com.iron.breakfast.domain.FoodRecord
-import com.iron.breakfast.domain.MeasureUnit
-import com.iron.breakfast.domain.NutritionBasis
+import com.iron.breakfast.testFood
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.barcodeForms
 import org.junit.Assert.assertEquals
@@ -14,11 +11,8 @@ import org.junit.Test
 
 /** The store's barcode lookup: the SQL IN over [barcodeForms], then [pickBarcodeMatch]. */
 class BarcodeLookupTest {
-    private fun food(id: String, barcode: String) = FoodRecord(
-        id = id, name = id, aliases = emptyList(), category = "Personal food", origin = FoodOrigin.CUSTOM,
-        nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(100.0, null, null, null)),
-        barcode = barcode,
-    ).toEntity()
+    private fun food(id: String, barcode: String) =
+        testFood(id, category = "Personal food", values = NutritionValues(100.0, null, null, null), barcode = barcode).toEntity()
 
     private fun lookup(rows: List<FoodEntity>, scanned: String): FoodEntity? {
         val forms = barcodeForms(scanned)
@@ -40,10 +34,8 @@ class BarcodeLookupTest {
 }
 
 class BarcodeReviewFixTest {
-    private fun food(id: String, barcode: String) = FoodRecord(
-        id = id, name = id, aliases = emptyList(), category = "Personal food", origin = FoodOrigin.CUSTOM,
-        nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(100.0, null, null, null)), barcode = barcode,
-    ).toEntity()
+    private fun food(id: String, barcode: String) =
+        testFood(id, category = "Personal food", values = NutritionValues(100.0, null, null, null), barcode = barcode).toEntity()
 
     @Test fun severalLiveMatchesPickExactThenCanonicalThenId() {
         val rows = listOf(food("b-upc", "036000291452"), food("a-gtin", "00036000291452"), food("c-ean", "0036000291452"), food("a-ean", "0036000291452"))

@@ -1,5 +1,6 @@
 package com.iron.breakfast.domain
 
+import com.iron.breakfast.testFood
 import com.iron.breakfast.data.toConversionEntities
 import com.iron.breakfast.data.toDomain
 import com.iron.breakfast.food.FoodDraft
@@ -48,11 +49,8 @@ class FoodEditRulesTest {
         assertTrue(edited.personalOverride)
     }
 
-    private fun food(id: String, name: String, origin: FoodOrigin = FoodOrigin.GENERIC, barcode: String? = null, sourceId: String? = null) = FoodRecord(
-        id = id, name = name, aliases = emptyList(), category = "Test", origin = origin,
-        nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(100.0, 1.0, 2.0, 3.0)),
-        barcode = barcode, sourceId = sourceId,
-    )
+    private fun food(id: String, name: String, origin: FoodOrigin = FoodOrigin.GENERIC, barcode: String? = null, sourceId: String? = null) =
+        testFood(id, name, origin = origin, values = NutritionValues(100.0, 1.0, 2.0, 3.0), barcode = barcode, sourceId = sourceId)
 
     @Test
     fun barcodeRuleAcceptsOnlyAsciiDigitsOfProductLengths() {

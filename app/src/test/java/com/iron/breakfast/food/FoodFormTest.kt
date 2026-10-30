@@ -1,5 +1,6 @@
 package com.iron.breakfast.food
 
+import com.iron.breakfast.testFood
 import androidx.lifecycle.SavedStateHandle
 import com.iron.breakfast.resolve.ReviewLogPlan
 import com.iron.breakfast.app.DiaryChange
@@ -7,11 +8,9 @@ import com.iron.breakfast.app.Notices
 import com.iron.breakfast.app.restoreFoodForm
 import com.iron.breakfast.app.saveFoodForm
 import com.iron.breakfast.data.OffContributionDraft
-import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
-import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.TypedPart
 import com.iron.breakfast.resolve.ResolveQueueView
@@ -303,10 +302,8 @@ class FoodFormTest {
     }
 }
 
-private fun record(id: String, name: String, barcode: String?) = FoodRecord(
-    id, name, emptyList(), "Personal food", FoodOrigin.CUSTOM,
-    NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(60.0, 3.0, 4.0, 3.0)), barcode = barcode,
-)
+private fun record(id: String, name: String, barcode: String?) =
+    testFood(id, name, category = "Personal food", values = NutritionValues(60.0, 3.0, 4.0, 3.0), barcode = barcode)
 
 /** The barcode rule the field shows as it is typed is the one Save refuses by, on New food and on Edit food. */
 class FoodBarcodeErrorTest {

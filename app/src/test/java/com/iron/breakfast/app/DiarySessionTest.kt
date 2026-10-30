@@ -1,10 +1,9 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.testEntry
 import androidx.compose.runtime.snapshots.Snapshot
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
-import com.iron.breakfast.domain.MeasureUnit
-import com.iron.breakfast.domain.NutritionValues
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -19,8 +18,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DiarySessionTest {
-    private fun entry(id: String) =
-        MealEntry(id, "f", "Egg", 1.0, MeasureUnit.PIECE, 50.0, NutritionValues(70.0, 6.0, 0.5, 5.0), "1 piece", false, 0L)
+    private fun entry(id: String) = testEntry(id)
 
     /** A store whose rows the test sets; it counts reads and can report a stale snapshot once. */
     private class FakeSource : DiarySource {

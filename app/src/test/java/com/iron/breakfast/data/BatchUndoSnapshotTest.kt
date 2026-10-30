@@ -1,17 +1,12 @@
 package com.iron.breakfast.data
 
-import com.iron.breakfast.domain.MealEntry
-import com.iron.breakfast.domain.MeasureUnit
+import com.iron.breakfast.testEntry
 import com.iron.breakfast.domain.NutritionValues
 import org.junit.Test
 import kotlin.test.assertEquals
 
 class BatchUndoSnapshotTest {
-    private fun entry(id: String) = MealEntry(
-        id = id, foodId = "food-$id", foodName = "Food $id", enteredAmount = 1.0, enteredUnit = MeasureUnit.PIECE,
-        resolvedBaseAmount = 50.0, nutritionSnapshot = NutritionValues(70.0, 6.0, 0.5, 5.0), conversionProvenance = "1 piece",
-        approximateConversion = false, savedAtEpochMs = 1_000L, dayKey = "2026-10-25",
-    )
+    private fun entry(id: String) = testEntry(id, "food-$id", "Food $id", savedAt = 1_000L, dayKey = "2026-10-25")
 
     @Test fun unchangedRowsAreUndone() {
         val logged = listOf(entry("a"), entry("b"))

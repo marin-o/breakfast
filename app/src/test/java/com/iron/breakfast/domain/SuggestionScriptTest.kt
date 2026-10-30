@@ -1,17 +1,14 @@
 package com.iron.breakfast.domain
 
-import org.junit.Assert.assertEquals
+import com.iron.breakfast.testFood
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Suggestions match the fragment in the script it was typed in; scripts never cross. */
 class SuggestionScriptTest {
-    private fun food(id: String, name: String, aliases: List<String> = emptyList(), category: String = "Test") = FoodRecord(
-        id = id, name = name, aliases = aliases, category = category, origin = FoodOrigin.CUSTOM,
-        nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(100.0, 5.0, 10.0, 2.0)),
-        defaultAmount = 100.0, defaultUnit = MeasureUnit.GRAM,
-    )
+    private fun food(id: String, name: String, aliases: List<String> = emptyList(), category: String = "Test") =
+        testFood(id, name, aliases, category, values = NutritionValues(100.0, 5.0, 10.0, 2.0), defaultAmount = 100.0, defaultUnit = MeasureUnit.GRAM)
 
     private val buckwheat = food("buckwheat", "Buckwheat", category = "Grain")
     private val chicken = FoodCatalog.fixtures.first { it.id == "usda_2646171_chicken_thigh_raw" }

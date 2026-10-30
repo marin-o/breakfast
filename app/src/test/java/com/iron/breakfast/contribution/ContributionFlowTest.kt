@@ -1,14 +1,13 @@
 package com.iron.breakfast.contribution
 
+import com.iron.breakfast.testFood
 import com.iron.breakfast.QueueDispatcher
 import com.iron.breakfast.app.Notices
 import com.iron.breakfast.data.OffContributionDraft
 import com.iron.breakfast.data.OffContributionResult
 import com.iron.breakfast.data.OffPreflightResult
-import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MeasureUnit
-import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.NutritionValues
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,10 +42,8 @@ class ContributionFlowTest {
     private var showContribute = true
     private val flow = ContributionFlow(off, notices, CoroutineScope(Dispatchers.Unconfined + SupervisorJob()), io, showContribute = { showContribute })
 
-    private fun food(barcode: String?, name: String = "Kefir", unit: MeasureUnit = MeasureUnit.GRAM) = FoodRecord(
-        "f-$barcode", name, emptyList(), "dairy", FoodOrigin.CUSTOM, NutritionBasis(100.0, unit, NutritionValues(60.0, 3.0, 4.0, 3.0)),
-        barcode = barcode,
-    )
+    private fun food(barcode: String?, name: String = "Kefir", unit: MeasureUnit = MeasureUnit.GRAM) =
+        testFood("f-$barcode", name, category = "dairy", unit = unit, values = NutritionValues(60.0, 3.0, 4.0, 3.0), barcode = barcode)
 
     private fun draft(barcode: String, unit: MeasureUnit = MeasureUnit.GRAM) = OffContributionDraft.fromFood(food(barcode, unit = unit))!!
 

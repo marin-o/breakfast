@@ -1,16 +1,13 @@
 package com.iron.breakfast.domain
 
+import com.iron.breakfast.testFood
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PluralMatchTest {
-    private fun food(id: String, name: String, aliases: List<String> = emptyList()) = FoodRecord(
-        id = id, name = name, aliases = aliases, category = "Test", origin = FoodOrigin.CUSTOM,
-        nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(100.0, 1.0, 1.0, 1.0)),
-        defaultAmount = 100.0, defaultUnit = MeasureUnit.GRAM,
-    )
+    private fun food(id: String, name: String, aliases: List<String> = emptyList()) = testFood(id, name, aliases, defaultAmount = 100.0, defaultUnit = MeasureUnit.GRAM)
 
     private val matcher = FoodMatcher(FoodCatalog.fixtures)
 

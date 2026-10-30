@@ -1,5 +1,6 @@
 package com.iron.breakfast.domain
 
+import com.iron.breakfast.testFood
 import com.iron.breakfast.data.foodMatchesQuery
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -8,8 +9,8 @@ import org.junit.Test
 
 /** A hyphen between letters is a word break in food names and what is typed, within one script (owner, 2026-10-29). */
 class HyphenMatchTest {
-    private fun food(id: String, name: String) = FoodRecord(
-        id, name, emptyList(), "Personal food", FoodOrigin.CUSTOM, NutritionBasis(100.0, MeasureUnit.MILLILITER, NutritionValues(1.0, 0.0, 0.0, 0.0)),
+    private fun food(id: String, name: String) = testFood(
+        id, name, category = "Personal food", unit = MeasureUnit.MILLILITER, values = NutritionValues(1.0, 0.0, 0.0, 0.0),
         defaultAmount = 330.0, defaultUnit = MeasureUnit.MILLILITER, personalOverride = true,
     )
 

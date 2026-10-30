@@ -1,5 +1,6 @@
 package com.iron.breakfast.domain
 
+import com.iron.breakfast.testFood
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -11,11 +12,7 @@ class FixPassTest {
     private fun food(
         id: String, name: String, aliases: List<String> = emptyList(), category: String = "Test",
         amount: Double = 1.0, unit: MeasureUnit = MeasureUnit.PIECE,
-    ) = FoodRecord(
-        id = id, name = name, aliases = aliases, category = category, origin = FoodOrigin.CUSTOM,
-        nutrition = NutritionBasis(amount, unit, NutritionValues(100.0, 5.0, 10.0, 2.0)),
-        defaultAmount = amount, defaultUnit = unit,
-    )
+    ) = testFood(id, name, aliases, category, basisAmount = amount, unit = unit, values = NutritionValues(100.0, 5.0, 10.0, 2.0), defaultAmount = amount, defaultUnit = unit)
 
     private val fixtures = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
 

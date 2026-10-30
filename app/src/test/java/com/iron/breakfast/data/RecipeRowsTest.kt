@@ -1,9 +1,7 @@
 package com.iron.breakfast.data
 
-import com.iron.breakfast.domain.FoodOrigin
-import com.iron.breakfast.domain.FoodRecord
+import com.iron.breakfast.testFood
 import com.iron.breakfast.domain.MeasureUnit
-import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.Recipe
 import com.iron.breakfast.domain.RecipeIngredient
@@ -20,10 +18,8 @@ class RecipeRowsTest {
     private val beans = RecipeIngredient("custom-beans", "Kidney beans", 1.0, MeasureUnit.PIECE, 240.0, MeasureUnit.GRAM, NutritionValues(300.0, 20.0, 50.0, 1.0))
     private val chili = Recipe("recipe-chili", "Чили", listOf("chili", "чили"), portions = 4.0, totalWeight = null, ingredients = listOf(mince, beans))
 
-    private fun food(id: String, kcalPer100: Double, unit: MeasureUnit = MeasureUnit.GRAM, conversions: List<ServingConversion> = emptyList()) = FoodRecord(
-        id, "Edited $id", emptyList(), "Personal food", FoodOrigin.CUSTOM, NutritionBasis(100.0, unit, NutritionValues(kcalPer100, 10.0, 0.0, 5.0)),
-        conversions = conversions,
-    )
+    private fun food(id: String, kcalPer100: Double, unit: MeasureUnit = MeasureUnit.GRAM, conversions: List<ServingConversion> = emptyList()) =
+        testFood(id, "Edited $id", category = "Personal food", unit = unit, values = NutritionValues(kcalPer100, 10.0, 0.0, 5.0), conversions = conversions)
 
     @Test fun aRecipeComesBackFromItsRowsInTypedOrder() {
         val rows = chili.toIngredientEntities()
