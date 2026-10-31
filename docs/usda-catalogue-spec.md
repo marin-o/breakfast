@@ -1,43 +1,53 @@
-# USDA food catalogue
+# USDA as the app's food database
 
-Owner's request, 2026-10-31: generic foods the built-in list and Open Food Facts handle badly, such as home-made breaded chicken. Agreed with the owner and the researcher (`fndds_coding_agent_review_reply.md`, which holds the evidence).
+Owner's request, 2026-10-31: generic foods the built-in list and Open Food Facts handle badly, such as home-made breaded chicken. Evidence: `fndds_coding_agent_review_reply.md` from the researcher. Decided with the owner in chat.
 
 ## Decisions
-- The built-in foods stay. USDA FNDDS 2021-2023 is added as a separate read-only file, offline, and its foods never enter the matcher's in-memory list until picked.
-- No schema change to the diary. No new dependency. A picked food is stored with the `FoodRecord` fields that exist (`sourceId`, `sourceName`, `sourceRelease`, `preparation`, `sourceDescription`).
+- USDA FNDDS 2021-2023, shipped in the app, is the one bundled food database. `FoodCatalog.kt` and its ~40 foods are deleted, and everything that reads them moves over.
+- Foods already stored on a phone stay as that person's foods, and log entries keep their own values. A new install starts with no foods of its own.
+- No change to the diary schema, unless building this shows one is needed: ask the owner first. No new dependency.
 - No second dataset until a real gap shows up. CAPNUTRA is out: no licence to redistribute.
+- Open Food Facts stays behind the Find matches button, for packaged products.
 
-## The file
-- Built offline by a script in `tools/` from the official archive, checked against its SHA-256: zip `dfb06ae7ddc397ccd570b91c14b75438ab2ba39f64f22d321f61d4a52a77f3eb`. The archive itself is not committed; the script downloads it. The output is reproducible.
-- Foods: FDC ID, FNDDS code, description, additional descriptions (`SurveyFoods[].foodAttributes[]` where `foodAttributeType.id == 1001`, deduplicated per food), kcal (1008), protein (1003), fat (1004), carbs (1005). A food with no energy is dropped and the script reports it. A missing macro stays unknown, never 0.
-- Portions kept: a clear label with grams above 0. Dropped, with counts reported by the script: modifier `90000` or "Quantity not specified", any label containing "guideline amount", "yield" or "surface", and grams missing or not above 0.
-- Index: FTS4, `unicode61`, external content in the same file, built offline. Plus a small reviewed alias table in the script; the first rule is breaded to coated.
-- Shipped gzip-compressed in assets, extracted once per catalogue version to app-private storage through a temporary file and a rename, so a failed extract leaves nothing half done. Opened with `OPEN_READONLY`. Never extracted per query. If it cannot be opened, USDA results are simply absent and the rest of the app works.
+## The file (built; commit 7ff3f61)
+- Built offline by `tools/build_usda_catalogue.py` from the official archive, checked against its SHA-256: zip `dfb06ae7ddc397ccd570b91c14b75438ab2ba39f64f22d321f61d4a52a77f3eb`. The archive is not committed. The output is reproducible.
+- Foods: FDC ID, FNDDS code, description, additional descriptions (`SurveyFoods[].foodAttributes[]` where `foodAttributeType.id == 1001`, deduplicated per food), kcal (1008), protein (1003), fat (1004), carbs (1005). A food with no energy is dropped and reported. A missing macro stays unknown, never 0.
+- Portions kept: a clear label with grams above 0. Dropped, with counts reported: modifier `90000` or "Quantity not specified", any label containing "guideline amount", "yield" or "surface", and grams missing or not above 0.
+- Index: FTS4, `unicode61`, external content in the same file, built offline. Alias table in the script; the first rule is breaded to coated.
+- Gzip-compressed in assets, unpacked once per catalogue version to app-private storage through a temporary file and a rename. Opened read-only. If it can't be opened, its results are absent and the rest of the app works.
+
+### To add to the file
+- **Ranking bump:** one small number per food, above 0 for common foods ("Egg, whole, raw"), 0 for the rest. The list is short and lives in the script. It orders results and can never make a food green.
+- **Macedonian to English:** a table of Macedonian words and their English search words ("јајце" to "egg", "пилешко" to "chicken"). The owner checks the starter list.
 
 ## Search
-- All words must match, whole word, the last word also as a prefix once it has three letters. A breaded word also tries coated; the typed word stays in the query. Whole words in the name rank first, then prefixes in the name, then words only in additional descriptions, then the shorter name. At most 10 results, because "breaded chicken breast" has nine close answers and the shortest aren't always the one meant.
-- The script rule holds: USDA text is Latin, so Cyrillic or mixed input gets no results. User text is never passed as raw FTS syntax.
-- Off the main thread; a result for an older query is dropped.
+- All words must match, whole word; the last word also as a prefix once it has three letters, and also in its singular. A breaded word also tries coated, and the typed word stays in the query. Whole words in the name rank first, then prefixes in the name, then words only in additional descriptions, then the bump, then the shorter name. At most 10 results.
+- Macedonian: Cyrillic words are translated by the table, hidden from the user, and only to search this database. This is the one exception to the script rule. It doesn't reach the user's own foods or Open Food Facts, which keep the rule. A Cyrillic word the table lacks finds nothing, and a token mixing scripts finds nothing. Results show their English names.
+- User text is never passed as raw FTS syntax. It runs off the main thread, and a result for an older query is dropped.
 
-## Where results show
-- A part with no full local match ("breaded chicken breast", "cooked chicken" with only raw chicken) goes to Find matches as today. Its results read: your own foods, then USDA, then Open Food Facts. USDA needs no connection and no Add press of its own beyond that flow's. Open Food Facts behaves as now.
-- A part that goes green keeps its green pick. An end chip "Find matches" after the other chips opens the same results for that part (owner to approve).
-- The Log's green pick is untouched: a partial match already cannot go green (`resolutionOf`, `needsChoice`), and a USDA food can't be a pick until it is one of the user's foods. Results arriving never change the selection.
-- The first run in tests: "chicken" stays with the local food; "cooked chicken" with raw chicken alone does not go green.
+## In the Log
+- While typing: the user's own foods as chips, with the green pick as today; matching USDA foods as plain rows under them. Long names don't fit chips. No network, and no button to press. Rows arriving never change the selection. Add never logs a USDA row that wasn't tapped.
+- No "USDA" on the rows. The source shows in the food's details and in Licences.
+- A part nothing local fully matches keeps Find matches for Open Food Facts, as today. Its results come after the USDA rows.
 
 ## Picking one
-- A tap opens the existing product review with the typed amount, or 100 g with none. Its portions show as named servings, marked approximate, with grams visible. Nothing is written before Add.
-- Add stores it with id `fndds_<fdcId>`, the source fields above, and the original description as name. Picked twice, the stored food is reused, along with any edits to it.
-- The catalogue is never written back to a stored food. Log entries hold their own snapshots, so past logs don't move.
+- A tap opens the existing product review with the typed amount, or 100 g with none. Portions show as named servings, marked approximate, with grams visible. Nothing is written before Add.
+- Add stores it with id `fndds_<fdcId>`, its source fields and the original description as the name; the user can rename it. Picked twice, the stored food is reused with any edits. The catalogue never writes to a stored food.
+- A USDA food with no cup, tablespoon or teaspoon portion answers "1 cup" with the existing "No value for cup", not the generic 240 ml.
+
+## Learning
+- A tap on a food counts as a pick: a Log chip or a USDA row gets +1, through `reinforce`, while "Learn from my picks" is on. Today only the feedback strip adds it.
+- A green food logged with no tap adds nothing, so an unnoticed wrong pick can't reinforce itself.
+- A saved food goes green when its name fully matches. With two saved foods matching "egg", the one with the higher score must win the green pick: test it, and fix it if not.
 
 ## Wording (owner to approve)
-- USDA row, under the name: "USDA, 100 g", as an Open Food Facts row reads "brand, 100 g".
 - Source in a food's details: "USDA FoodData Central".
 - Settings, Licences, added: "U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, FNDDS 2021-2023. fdc.nal.usda.gov. CC0 1.0." USDA doesn't endorse the app, and nothing may imply it.
-- Button: "Find matches", as now; as the end chip it is the same words.
 
 ## Checks
 - Importer: 5,432 foods and 22,194 portions in, 9,647 additional descriptions, drops reported. FDC 2705975: 219 kcal, 24.6 g protein, 9.99 g fat, 6.01 g carbs; 165 g gives 361.35 kcal.
-- "chicken breast coated" finds 2705975, and so does "breaded chicken breast". "egg" doesn't find eggplant in first place; "млеко" finds nothing.
-- On a device: the exact file opens and answers under the oldest API available, the second start does not extract again, a typed query's time and the installed size are measured.
-- Existing diaries and exports are untouched.
+- "chicken breast coated" and "breaded chicken breast" both answer with 2705975. "egg" doesn't put eggplant first. "јајце" finds egg foods; a Cyrillic word outside the table finds nothing.
+- A tap adds +1; a green log with no tap adds nothing.
+- The app with no built-in list: a new install works, onboarding examples still draw, existing diaries and exports are untouched.
+- A comma in a portion label doesn't split a part in the Log.
+- On a device: time a typed query on the owner's phone, measure installed size, and check the oldest Android available. Android 8 is not yet tested.
