@@ -1,5 +1,6 @@
 package com.iron.breakfast.today
 
+import com.iron.breakfast.domain.ProfileValues
 import com.iron.breakfast.entry.entryActions
 import com.iron.breakfast.ui.components.followDrag
 import com.iron.breakfast.ui.components.DayPickerDialog
@@ -81,6 +82,7 @@ internal fun DailyScreen(
     undo: UndoController,
     feedback: MatchFeedback,
     search: OffSearch,
+    profile: ProfileValues,
     modifier: Modifier,
 ) {
     val selected = session.entries.filter { it.dayKey == day.selectedDayKey }
@@ -123,7 +125,7 @@ internal fun DailyScreen(
                 val macros = macroTotalsOf(selected.map { it.nutritionSnapshot })
                 DayTotal(
                     formatKcal(total.calories),
-                    if (settings.showMacros) macroStats(total.calories, macros) else emptyList(),
+                    if (settings.showMacros) macroStats(total.calories, macros, profile) else emptyList(),
                     Modifier.padding(top = 18.dp),
                     note = dailyMacroNote(macros, showMacros = settings.showMacros, showNote = settings.showMissingNote),
                 )

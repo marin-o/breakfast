@@ -62,6 +62,8 @@ class DiaryChangeTest {
         DiaryChange.FoodsChanged -> Effect(Undo.KEEP, rowsChanged = true, refreshesLibrary = true)
         // A recipe saved, edited or deleted: as a food edit, but the Library lists no recipes.
         DiaryChange.RecipesChanged -> Effect(Undo.KEEP, rowsChanged = true, refreshesLibrary = false)
+        // A weight point saved or deleted: nothing logged, so a pending Undo stays; the Library has no weights.
+        DiaryChange.WeightCurveChanged -> Effect(Undo.KEEP, rowsChanged = true, refreshesLibrary = false)
         DiaryChange.DiaryReplaced -> Effect(Undo.END, rowsChanged = true, refreshesLibrary = true)
     }
 
@@ -70,7 +72,7 @@ class DiaryChangeTest {
         DiaryChange.BatchLogged("1 food added to Breakfast", listOf(entry)), DiaryChange.FoodsLogged, DiaryChange.QueuedPartLogged,
         DiaryChange.EntryEdited, DiaryChange.EntryEditedAfterClose, DiaryChange.EntryDeleted(entry), DiaryChange.UndoApplied,
         DiaryChange.MatchCorrected, DiaryChange.MatchConfirmed, DiaryChange.FoodsChanged, DiaryChange.RecipesChanged,
-        DiaryChange.DiaryReplaced,
+        DiaryChange.WeightCurveChanged, DiaryChange.DiaryReplaced,
     )
 
     @Test fun everyKindOfChangeHasASample() {

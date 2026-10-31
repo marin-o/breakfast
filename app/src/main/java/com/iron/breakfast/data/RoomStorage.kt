@@ -1,5 +1,6 @@
 package com.iron.breakfast.data
 
+import com.iron.breakfast.domain.WeightPoint
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
@@ -329,6 +330,36 @@ interface RecipeIngredientDao {
     suspend fun deleteAll()
 }
 
+/** One point of the profile's weight curve: one per diary day. */
+@Entity(tableName = "weight_points")
+data class WeightPointEntity(
+    @PrimaryKey @ColumnInfo(name = "day_key") val dayKey: String,
+    val kg: Double,
+    @ColumnInfo(name = "saved_at_epoch_ms") val savedAtEpochMs: Long,
+)
+
+fun WeightPointEntity.toDomain() = WeightPoint(dayKey, kg, savedAtEpochMs)
+fun WeightPoint.toEntity() = WeightPointEntity(dayKey, kg, savedAtEpochMs)
+
+@Dao
+interface WeightPointDao {
+    @Query("SELECT * FROM weight_points ORDER BY day_key")
+    suspend fun all(): List<WeightPointEntity>
+
+    /** A point on a day that has one replaces it. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(point: WeightPointEntity)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAllOrAbort(points: List<WeightPointEntity>)
+
+    @Query("DELETE FROM weight_points WHERE day_key = :dayKey")
+    suspend fun delete(dayKey: String)
+
+    @Query("DELETE FROM weight_points")
+    suspend fun deleteAll()
+}
+
 @Database(
     entities = [
         FoodEntity::class,
@@ -339,8 +370,9 @@ interface RecipeIngredientDao {
         RecipeEntity::class,
         RecipeAliasEntity::class,
         RecipeIngredientEntity::class,
+        WeightPointEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true
 )
 abstract class BreakfastDatabase : RoomDatabase() {
@@ -352,6 +384,7 @@ abstract class BreakfastDatabase : RoomDatabase() {
     abstract fun recipeDao(): RecipeDao
     abstract fun recipeAliasDao(): RecipeAliasDao
     abstract fun recipeIngredientDao(): RecipeIngredientDao
+    abstract fun weightPointDao(): WeightPointDao
 }
 
 val ROOM_MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
@@ -447,6 +480,13 @@ val ROOM_MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
         listOf("PIECE" to "piece", "TABLESPOON" to "tbsp", "TEASPOON" to "tsp").forEach { (unit, name) ->
             db.execSQL("UPDATE OR IGNORE `serving_conversions` SET `label` = ? WHERE `unit` = ? AND `label` = ''", arrayOf<Any>(name, unit))
         }
+    }
+}
+
+/** Additive: one new table for the profile's weight curve; nothing that exists is touched. */
+val ROOM_MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `weight_points` (`day_key` TEXT NOT NULL, `kg` REAL NOT NULL, `saved_at_epoch_ms` INTEGER NOT NULL, PRIMARY KEY(`day_key`))")
     }
 }
 

@@ -1,5 +1,6 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.profile.ProfileState
 import com.iron.breakfast.contribution.ContributionFlow
 import com.iron.breakfast.entry.EntryEdit
 import com.iron.breakfast.food.FoodForm
@@ -29,12 +30,12 @@ internal class SessionReset(private val steps: List<() -> Unit>) {
  * resolve queue and resolver, the entry detail, and an Edit food whose food the new diary does not have (since the
  * D15 fix: a fresh diary after damage resets the session too), and on the Recipes tab the recipe page, its amount sheet
  * and a Delete recipe question, an Edit of a recipe the new diary does not have, and the recipe form's pins to foods
- * it does not have.
+ * it does not have, and the profile as it now stands.
  */
 internal fun sessionResetSteps(
     log: LogComposer, contribution: ContributionFlow, resolve: ResolveFlow, entryEdit: EntryEdit, foodForm: FoodForm,
-    recipes: RecipeBook, recipeForm: RecipeForm,
+    recipes: RecipeBook, recipeForm: RecipeForm, profile: ProfileState,
 ): List<() -> Unit> = listOf(
     log::clearPins, log::clearError, contribution::reset, resolve::abandon, entryEdit::closeDetail, foodForm::closeIfFoodGone,
-    recipes::reset, recipeForm::diaryReplaced,
+    recipes::reset, recipeForm::diaryReplaced, profile::reload,
 )

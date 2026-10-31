@@ -1,5 +1,7 @@
 package com.iron.breakfast.data
 
+import kotlin.test.assertFalse
+import com.iron.breakfast.domain.ProfileValues
 import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.ui.components.LongDraft
 import kotlinx.serialization.json.Json
@@ -84,6 +86,43 @@ class DiaryExportTest {
         assertEquals(entry("e-2", "deleted-food", 1_000L), imported.rows.entries.single { it.id == "e-2" })
     }
 
+    @Test fun theProfileAndTheCurveComeBack() {
+        val profile = ProfileValues("Ana", 120.0, null, 60.5, 82.5, 75.0)
+        val points = listOf(WeightPointEntity("2026-10-01", 80.0, 1L), WeightPointEntity("2026-10-02", 79.5, 2L))
+        val imported = valid(encodeDiary(diaryFileOf(rows().copy(profile = profile, weightPoints = points), settings, 5_000L)))
+        assertEquals(profile, imported.rows.profile)
+        assertEquals(points, imported.rows.weightPoints)
+    }
+
+    /** Format 3 speaks for both: an empty profile and curve in the file replace the phone's. */
+    @Test fun aCurrentFileWithNothingInItStillSpeaksForBoth() {
+        val imported = valid(encodeDiary(diaryFileOf(rows().copy(profile = ProfileValues(), weightPoints = emptyList()), settings, 5_000L)))
+        assertEquals(ProfileValues(), imported.rows.profile)
+        assertEquals(emptyList(), imported.rows.weightPoints)
+    }
+
+    /** A file from before the profile has neither field: it imports, and says nothing about the phone's profile or curve. */
+    @Test fun anOlderFileWithoutAProfileStillImports() {
+        val old = encodeDiary(file()).replace("\"formatVersion\":3,\"schemaVersion\":10,", "\"formatVersion\":2,\"schemaVersion\":9,")
+            .replace("\"profile\":null,", "").replace(",\"weightPoints\":[]", "")
+        assertFalse("weightPoints" in old)
+        val imported = valid(old)
+        assertNull(imported.rows.profile)
+        assertNull(imported.rows.weightPoints)
+    }
+
+    @Test fun badProfileNumbersAndPointsAreRefused() {
+        refused(file().copy(profile = ProfileDto("", 0.0, null, null, null, null)))
+        refused(file().copy(profile = ProfileDto("", 8000.0, null, null, null, null)))
+        refused(file().copy(profile = ProfileDto("", null, null, null, 0.04, null)))
+        refused(file().copy(profile = ProfileDto("", null, null, null, null, 8000.0)))
+        refused(file().copy(weightPoints = listOf(WeightPointDto("2026-10-01", 8000.0, 1L))))
+        refused(file().copy(weightPoints = listOf(WeightPointDto("2026-10-01", 0.04, 1L))))
+        refused(file().copy(weightPoints = listOf(WeightPointDto("not a day", 80.0, 1L))))
+        refused(file().copy(weightPoints = listOf(WeightPointDto("2026-10-01", -1.0, 1L))))
+        refused(file().copy(weightPoints = listOf(WeightPointDto("2026-10-01", 80.0, 1L), WeightPointDto("2026-10-01", 81.0, 2L))))
+    }
+
     /** Owner decision: an import leaves the phone's settings alone, so the file's settings never reach the result. */
     @Test fun settingsInTheFileDoNotChangeWhatIsImported() {
         val other = diaryFileOf(rows(), DiarySettings(0, LongDraft.END), exportedAtEpochMs = 5_000L)
@@ -92,7 +131,7 @@ class DiaryExportTest {
 
     @Test fun theFileNamesItsVersionsAndFields() {
         val text = encodeDiary(file())
-        assertTrue(text.startsWith("{\"format\":\"breakfast-diary\",\"formatVersion\":2,\"schemaVersion\":9,\"exportedAtEpochMs\":5000,"))
+        assertTrue(text.startsWith("{\"format\":\"breakfast-diary\",\"formatVersion\":3,\"schemaVersion\":10,\"exportedAtEpochMs\":5000,"))
         assertTrue("\"foodName\":\"Snapshot name e-1\"" in text)
         assertTrue("\"settings\":{\"dayStartHour\":4,\"longDraft\":\"TWO_LINES\"}" in text)
         assertTrue("\"snapshotCarbohydrates\":null" in text)
@@ -175,7 +214,7 @@ class DiaryExportTest {
         val schema = Json.parseToJsonElement(File(dir, "$latest.json").readText()).jsonObject
         val tables = schema["database"]!!.jsonObject["entities"]!!.jsonArray.map { it.jsonObject["tableName"]!!.jsonPrimitive.content }.toSet()
         assertEquals(
-            setOf("foods", "food_aliases", "serving_conversions", "preferences", "meal_entries", "recipes", "recipe_aliases", "recipe_ingredients"),
+            setOf("foods", "food_aliases", "serving_conversions", "preferences", "meal_entries", "recipes", "recipe_aliases", "recipe_ingredients", "weight_points"),
             tables,
         )
     }

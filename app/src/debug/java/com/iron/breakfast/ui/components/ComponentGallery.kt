@@ -54,6 +54,7 @@ private fun ComponentGallery() {
             Row2 {
                 ChoiceOption("g", true, {})
                 ChoiceOption("ml", false, {}, detail = "105 kcal")
+            CheckboxRow("Add to curve", true, {})
             }
             AddCircle("Add food", {})
             AddCircle("Remove serving", {}, icon = Icons.Outlined.Close)
@@ -61,7 +62,7 @@ private fun ComponentGallery() {
             Field("Name", "", {}, placeholder = "Name", hint = "from scan")
             SearchField("kiki", {}, {}, label = "Search foods")
             Composer(onScan = {}) { ComposerText("Log food", {}, Modifier.weight(1f)) }
-            BottomNav(selected = NavTab.MEALS, onMeals = {}, onLibrary = {}, onRecipes = {}, onSettings = {})
+            BottomNav(selected = NavTab.MEALS, onMeals = {}, onLibrary = {}, onRecipes = {}, onSettings = {}, onProfile = {})
             Snackbar("Saved meal", "Undo", {})
             LinearProgress("Searching Open Food Facts")
             SectionHeading("Servings")

@@ -1,5 +1,8 @@
 package com.iron.breakfast.data
 
+import com.iron.breakfast.domain.weightValid
+import com.iron.breakfast.domain.macroTargetValid
+import com.iron.breakfast.domain.ProfileValues
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
@@ -32,12 +35,16 @@ internal const val DIARY_FORMAT = "breakfast-diary"
 
 /**
  * The layout of the file below. Bump it (and keep reading the old one) when a field changes. 2 added the recipes; a
- * version 1 file has none, and reads as a diary without recipes.
+ * version 1 file has none, and reads as a diary without recipes. 3 added the
+ * profile and the weight curve; an older file has neither, and leaves the phone's profile and curve as they are; a file of 3 replaces both.
  */
-internal const val DIARY_FORMAT_VERSION = 2
+internal const val DIARY_FORMAT_VERSION = 3
+
+/** The first format with the profile and the curve. */
+private const val PROFILE_FORMAT_VERSION = 3
 
 /** The Room schema the rows were read from; a file from a newer schema is refused. Keep equal to [BreakfastDatabase]. */
-internal const val DIARY_SCHEMA_VERSION = 9
+internal const val DIARY_SCHEMA_VERSION = 10
 
 /** A file bigger than this is refused before it is parsed. A year of logging is well under 5 MB. */
 internal const val DIARY_MAX_BYTES = 32L * 1024 * 1024
@@ -52,6 +59,10 @@ internal data class DiaryRows(
     val recipes: List<RecipeEntity> = emptyList(),
     val recipeAliases: List<RecipeAliasEntity> = emptyList(),
     val recipeIngredients: List<RecipeIngredientEntity> = emptyList(),
+    /** Null: a file from before the curve, which says nothing about it. */
+    val weightPoints: List<WeightPointEntity>? = null,
+    /** Not a table's row: what the profile holds beside the curve. Null: a file from before it, which says nothing. */
+    val profile: ProfileValues? = null,
 )
 
 /** The settings stored in the file; [longDraft] is a [LongDraft] name. */
@@ -77,7 +88,23 @@ internal data class DiaryFile(
     val recipes: List<RecipeDto> = emptyList(),
     val recipeAliases: List<RecipeAliasDto> = emptyList(),
     val recipeIngredients: List<RecipeIngredientDto> = emptyList(),
+    // Since format 3; an older file has neither.
+    val profile: ProfileDto? = null,
+    val weightPoints: List<WeightPointDto> = emptyList(),
 )
+
+@Serializable
+internal data class ProfileDto(
+    val name: String,
+    val proteinTarget: Double?,
+    val carbsTarget: Double?,
+    val fatTarget: Double?,
+    val currentWeight: Double?,
+    val targetWeight: Double?,
+)
+
+@Serializable
+internal data class WeightPointDto(val dayKey: String, val kg: Double, val savedAtEpochMs: Long)
 
 @Serializable
 internal data class FoodDto(
@@ -213,6 +240,8 @@ internal fun diaryFileOf(rows: DiaryRows, settings: DiarySettings, exportedAtEpo
             .map { RecipeAliasDto(it.recipeId, it.alias) },
         recipeIngredients = rows.recipeIngredients.filter { it.recipeId in recipeIds }.sortedWith(compareBy({ it.recipeId }, { it.position }))
             .map { it.toDto() },
+        profile = rows.profile?.let { ProfileDto(it.name, it.proteinTarget, it.carbsTarget, it.fatTarget, it.currentWeight, it.targetWeight) },
+        weightPoints = rows.weightPoints.orEmpty().sortedBy { it.dayKey }.map { WeightPointDto(it.dayKey, it.kg, it.savedAtEpochMs) },
     )
 }
 
@@ -236,6 +265,7 @@ internal fun decodeDiary(text: String): DiaryImport {
 internal fun validateDiary(file: DiaryFile): DiaryImport {
     val problem = diaryProblem(file)
     if (problem != null) return DiaryImport.Invalid(problem)
+    val speaksForProfile = file.formatVersion >= PROFILE_FORMAT_VERSION
     return DiaryImport.Valid(
         rows = DiaryRows(
             foods = file.foods.map { it.toEntity() },
@@ -246,6 +276,8 @@ internal fun validateDiary(file: DiaryFile): DiaryImport {
             recipes = file.recipes.map { RecipeEntity(it.id, it.name, it.portions, it.totalWeight, it.totalVolume) },
             recipeAliases = file.recipeAliases.map { RecipeAliasEntity(it.recipeId, it.alias) },
             recipeIngredients = file.recipeIngredients.map { it.toEntity() },
+            weightPoints = file.weightPoints.map { WeightPointEntity(it.dayKey, it.kg, it.savedAtEpochMs) }.takeIf { speaksForProfile },
+            profile = (file.profile?.let { ProfileValues(it.name, it.proteinTarget, it.carbsTarget, it.fatTarget, it.currentWeight, it.targetWeight) } ?: ProfileValues()).takeIf { speaksForProfile },
         ),
     )
 }
@@ -267,6 +299,19 @@ internal fun diaryProblem(file: DiaryFile): String? {
     if (file.schemaVersion !in 1..DIARY_SCHEMA_VERSION) return "schema version ${file.schemaVersion}"
     if (file.settings.dayStartHour !in 0..23) return "day start hour ${file.settings.dayStartHour}"
     if (file.settings.longDraft !in LONG_DRAFT_NAMES) return "long draft ${file.settings.longDraft}"
+    file.profile?.let { p ->
+        if (listOf(p.proteinTarget, p.carbsTarget, p.fatTarget).any { it != null && !macroTargetValid(it) }) return "profile macro target"
+        if (listOf(p.currentWeight, p.targetWeight).any { it != null && !weightValid(it) }) return "profile weight"
+    }
+    val pointDays = HashSet<String>()
+    file.weightPoints.forEachIndexed { i, p ->
+        val at = "weight point $i"
+        when {
+            !isDayKey(p.dayKey) -> return "$at: day ${p.dayKey}"
+            !pointDays.add(p.dayKey) -> return "$at: duplicate day ${p.dayKey}"
+            !weightValid(p.kg) -> return "$at: kg ${p.kg}"
+        }
+    }
 
     val foodIds = HashSet<String>()
     file.foods.forEachIndexed { i, f ->

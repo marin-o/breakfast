@@ -1,5 +1,6 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.profile.ProfileState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -60,7 +61,10 @@ internal enum class Surface(
     /** "Delete recipe" asks first, over the recipe page or its form. */
     DELETE_RECIPE,
     MIXED_MEAL_PICKER, BATCH_MEAL_PICKER,
-    FOOD_FORM(coversBase = true), SETTINGS(coversBase = true), DISCARD_FOOD,
+    FOOD_FORM(coversBase = true), SETTINGS(coversBase = true), PROFILE(coversBase = true), DISCARD_PROFILE,
+    /** Deleting a point of the weight curve asks first, over the Profile page. */
+    DELETE_WEIGHT_POINT,
+    DISCARD_FOOD,
     /** "Delete food" asks first, over the food page or Edit food. */
     DELETE_FOOD,
     LIBRARY_NO_MATCH,
@@ -108,6 +112,7 @@ internal class Surfaces(
     private val transfer: DiaryTransfer<*>,
     private val recipes: RecipeBook,
     private val recipeForm: RecipeForm,
+    private val profile: ProfileState,
     /** The Meal screen's meal restored after process death (the Library does not reopen). */
     initialMeal: MealSlot?,
 ) {
@@ -121,6 +126,8 @@ internal class Surfaces(
      * the screen it was opened over; every way out of the Library closes it.
      */
     var settingsOpen by mutableStateOf(false); private set
+    /** The Profile page, opened and left as Settings is. */
+    val profileOpen: Boolean get() = profile.open
 
     /** What is drawn now, bottom first, in [Surface] order. */
     fun shown(): List<Surface> {
@@ -156,6 +163,9 @@ internal class Surfaces(
         Surface.BATCH_MEAL_PICKER -> library.batchMealPickerOpen
         Surface.FOOD_FORM -> foodForm.open
         Surface.SETTINGS -> settingsOpen
+        Surface.PROFILE -> profile.open
+        Surface.DISCARD_PROFILE -> profile.discardOpen
+        Surface.DELETE_WEIGHT_POINT -> profile.deleteRequest != null
         Surface.DISCARD_FOOD -> foodForm.discardOpen
         Surface.DELETE_FOOD -> library.deleteRequest != null
         Surface.LIBRARY_NO_MATCH -> false
@@ -207,6 +217,7 @@ internal class Surfaces(
         Surface.LIBRARY_FOOD -> library::closeFood
         Surface.FOOD_FORM -> foodForm::leave
         Surface.SETTINGS -> ::settingsBack
+        Surface.PROFILE -> profile::leave
         Surface.LIBRARY_NO_MATCH -> ::leaveNoMatch
         Surface.OFF_SEARCH -> search::close
         Surface.RESOLVER -> resolve::close
@@ -218,7 +229,7 @@ internal class Surfaces(
         Surface.SCANNER -> scan::end
         // Dialogs and sheets, in their own window; the backdrop goes with its review sheet.
         Surface.SCAN_REVIEW_BACKDROP, Surface.ENTRY_FOOD_PICKER, Surface.LIBRARY_FOOD_ADD, Surface.RECIPE_LOG, Surface.RECIPE_INGREDIENT_ADD,
-        Surface.DISCARD_RECIPE, Surface.DELETE_RECIPE, Surface.MIXED_MEAL_PICKER,
+        Surface.DISCARD_RECIPE, Surface.DELETE_RECIPE, Surface.DISCARD_PROFILE, Surface.DELETE_WEIGHT_POINT, Surface.MIXED_MEAL_PICKER,
         Surface.BATCH_MEAL_PICKER, Surface.DISCARD_FOOD, Surface.DELETE_FOOD, Surface.PRODUCT_REVIEW, Surface.NOTICE, Surface.REPLACE_DIARY,
         Surface.DELETE_ALL, Surface.STORAGE_UNAVAILABLE -> null
     }
@@ -279,7 +290,7 @@ internal class Surfaces(
     private fun leaveLibrary(returnTo: MealSlot?) {
         if (resolve.cancelPart()) return
         library.close()
-        closeSettings()
+        closePagesOverTheTabs()
         meal = returnTo
     }
     /**
@@ -290,14 +301,14 @@ internal class Surfaces(
         if (recipes.open) return
         entryEdit.cancel()
         if (library.open) closeLibrary()
-        closeSettings()
+        closePagesOverTheTabs()
         meal = null
         recipes.show()
     }
     /** Leaves the Recipes tab (and Settings over it) for Daily: its Meals tab and Back. */
     fun closeRecipes() {
         recipes.close()
-        closeSettings()
+        closePagesOverTheTabs()
         meal = null
     }
     /** [recipe]'s page on the Recipes tab, which opens if it was not (a recipe saved from a form restored over Daily). */
@@ -314,6 +325,10 @@ internal class Surfaces(
     private fun closeSettings() { settingsOpen = false; settings.showList() }
     /** Back or the arrow in Settings: a page goes back ([SettingsState.back]), the list closes Settings. */
     fun settingsBack() { if (!settings.back()) closeSettings() }
+    /** The Profile page, from the bottom bar's icon at its left; it starts from what is saved. */
+    fun openProfile() = profile.show()
+    /** A tab changing leaves neither of the bar's two pages over it. */
+    private fun closePagesOverTheTabs() { closeSettings(); profile.close() }
 
     /** The resolve frame ended ([ResolveFlow]): the Library and what was over it close, and the Log opens where it was. */
     fun returnToLog(request: LogResolveRequest, pick: FoodRecord?) {

@@ -13,6 +13,9 @@ import org.junit.Test
 /** An in-memory [SettingsStore], as SharedPreferences stores the values. */
 internal class FakeSettingsStore : SettingsStore {
     val values = mutableMapOf<String, Any>()
+    /** How many writes had to reach the disk before returning. */
+    var commits = 0
+    override fun commit(block: SettingsStore.Editor.() -> Unit) { commits++; edit(block) }
     override fun getInt(key: String, default: Int) = values[key] as Int? ?: default
     override fun getLong(key: String, default: Long) = values[key] as Long? ?: default
     override fun getBoolean(key: String, default: Boolean) = values[key] as Boolean? ?: default

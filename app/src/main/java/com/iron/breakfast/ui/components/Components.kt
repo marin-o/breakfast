@@ -1,5 +1,6 @@
 package com.iron.breakfast.ui.components
 
+import androidx.compose.material.icons.outlined.Person
 import com.iron.breakfast.ui.theme.Gutter
 import androidx.compose.foundation.layout.fillMaxSize
 import com.iron.breakfast.ui.theme.SnackbarGutter
@@ -510,11 +511,11 @@ internal class NutrientField(
 )
 
 /**
- * The four nutrient fields of a food: two by two, [gap] apart as each mock draws them; with [oneRowWhenItFits], one row
- * while a label and a number with the field's padding fit a quarter (the scan review).
+ * Number fields in [columns] per row (a food's four, two by two), [gap] apart as each mock draws them; with
+ * [oneRowWhenItFits], one row while a label and a number with the field's padding fit a quarter (the scan review).
  */
 @Composable
-internal fun NutrientFields(fields: List<NutrientField>, gap: Dp, oneRowWhenItFits: Boolean = false) {
+internal fun NutrientFields(fields: List<NutrientField>, gap: Dp, oneRowWhenItFits: Boolean = false, columns: Int = 2) {
     val cell: @Composable (NutrientField, Modifier) -> Unit = { field, modifier ->
         DecimalField(field.label, field.value, field.onValueChange, modifier, error = field.error, errorMessage = field.errorMessage, required = field.required, fieldModifier = field.fieldModifier)
     }
@@ -528,7 +529,7 @@ internal fun NutrientFields(fields: List<NutrientField>, gap: Dp, oneRowWhenItFi
             }
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-                fields.chunked(2).forEach { pair ->
+                fields.chunked(columns).forEach { pair ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                         pair.forEach { cell(it, Modifier.weight(1f)) }
                     }
@@ -770,7 +771,7 @@ fun DayHeader(
 }
 
 /** One macro column: [share] is its fraction of the 2dp track; [value] is ink and [unit] soft. */
-data class MacroStat(val label: String, val value: String, val unit: String, val share: Float)
+data class MacroStat(val label: String, val value: String, val unit: String, val share: Float, val target: String? = null)
 
 /** The one big figure of a screen: 72sp kcal, its caption, and three macro columns (none when [macros] is empty). */
 @Composable
@@ -784,6 +785,8 @@ fun DayTotal(
 ) {
     val colors = LocalBreakfastColors.current
     val stacked = isLargeFont(LocalDensity.current.fontScale)
+    // Any target gives every column the line, so the three stay the same height.
+    val anyTarget = macros.any { it.target != null }
     Column(modifier.fillMaxWidth()) {
         Text(kilocalories, color = colors.ink, style = BreakfastType.Hero)
         Text(caption, color = colors.soft, style = BreakfastType.Secondary)
@@ -798,6 +801,7 @@ fun DayTotal(
                         Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.Bottom) {
                             Text(macro.value, color = colors.ink, style = BreakfastType.MacroValue)
                             Text(" ${macro.unit}", color = colors.soft, style = BreakfastType.Secondary)
+                            macro.target?.let { Text(" $it", color = colors.soft, style = BreakfastType.Secondary) }
                             Text(macro.label, color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.weight(1f).padding(start = 12.dp))
                         }
                     }
@@ -812,6 +816,7 @@ fun DayTotal(
                             Text(macro.value, color = colors.ink, style = BreakfastType.MacroValue)
                             Text(" ${macro.unit}", color = colors.soft, style = BreakfastType.Secondary)
                         }
+                        if (anyTarget) Text(macro.target.orEmpty(), color = colors.soft, style = BreakfastType.Secondary, minLines = 1, maxLines = 1)
                         Text(macro.label, color = colors.soft, style = BreakfastType.Meta)
                     }
                 }
@@ -932,10 +937,12 @@ enum class NavTab(val label: String) { MEALS("Meals"), LIBRARY("Library"), RECIP
 
 /** The Settings gear as an item of the bar: after the tabs. */
 private const val GEAR = 3
+/** The Profile icon as an item of the bar: before the tabs. */
+private const val PROFILE = 4
 
 /**
- * The text tabs ([NavTab], in order), centred with a 40dp gap, and the Settings icon at the right end. The active item
- * (the gear while [settingsOpen]) is ink, the others soft, and a 2dp ink line sits under it; when it changes, the line
+ * The text tabs ([NavTab], in order), centred with a 40dp gap, the Profile icon at the left end and the Settings icon at
+ * the right end. The active item (an icon while [profileOpen] or [settingsOpen]) is ink, the others soft, and a 2dp ink line sits under it; when it changes, the line
  * slides to the new item and the emphasis crosses over ([Motion.nav]; at once with reduced motion).
  */
 @Composable
@@ -945,12 +952,14 @@ fun BottomNav(
     onLibrary: () -> Unit,
     onRecipes: () -> Unit,
     onSettings: () -> Unit,
+    onProfile: () -> Unit,
     modifier: Modifier = Modifier,
     settingsOpen: Boolean = false,
+    profileOpen: Boolean = false,
 ) {
     val colors = LocalBreakfastColors.current
     val motion = rememberMotion()
-    val active = if (settingsOpen) GEAR else selected.ordinal
+    val active = if (settingsOpen) GEAR else if (profileOpen) PROFILE else selected.ordinal
     // Where each item sits in the bar, in px: the line goes under the one that is active.
     val spans = remember { NavSpans() }
     val start = remember { Animatable(0f) }
@@ -984,7 +993,7 @@ fun BottomNav(
     ) {
         fun Modifier.span(item: Int) = onGloballyPositioned { spans.items[item] = it; spans.measure() }
         // Equal sides keep the tabs centred; each side is at least the icon's width.
-        Spacer(Modifier.weight(1f).widthIn(min = IconTarget))
+        NavIconItem(Icons.Outlined.Person, "Profile", active == PROFILE, motion, Alignment.CenterStart, Modifier.span(PROFILE), onProfile)
         Row(Modifier.selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
             NavTab.entries.forEachIndexed { index, tab ->
                 if (index > 0) Spacer(Modifier.width(40.dp))
@@ -995,11 +1004,18 @@ fun BottomNav(
                 })
             }
         }
-        Box(Modifier.weight(1f).widthIn(min = IconTarget), contentAlignment = Alignment.CenterEnd) {
-            val tint by animateColorAsState(if (active == GEAR) colors.ink else colors.soft, motion.nav(), label = "gear")
-            IconButton(onClick = onSettings, modifier = Modifier.size(IconTarget)) {
-                Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = tint, modifier = Modifier.size(22.dp).span(GEAR))
-            }
+        NavIconItem(Icons.Outlined.Settings, "Settings", active == GEAR, motion, Alignment.CenterEnd, Modifier.span(GEAR), onSettings)
+    }
+}
+
+/** One end of the bar: an icon, ink while active and soft otherwise, in a side that keeps the tabs centred. */
+@Composable
+private fun RowScope.NavIconItem(icon: ImageVector, description: String, active: Boolean, motion: Motion, side: Alignment, iconModifier: Modifier, onClick: () -> Unit) {
+    val colors = LocalBreakfastColors.current
+    Box(Modifier.weight(1f).widthIn(min = IconTarget), contentAlignment = side) {
+        val tint by animateColorAsState(if (active) colors.ink else colors.soft, motion.nav(), label = description)
+        IconButton(onClick = onClick, modifier = Modifier.size(IconTarget)) {
+            Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(22.dp).then(iconModifier))
         }
     }
 }
@@ -1011,7 +1027,7 @@ fun BottomNav(
  */
 private class NavSpans {
     var bar: LayoutCoordinates? = null
-    val items = arrayOfNulls<LayoutCoordinates>(GEAR + 1)
+    val items = arrayOfNulls<LayoutCoordinates>(PROFILE + 1)
     private val spans = mutableStateMapOf<Int, Pair<Float, Float>>()
 
     fun of(item: Int): Pair<Float, Float>? = spans[item]

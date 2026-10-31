@@ -74,7 +74,7 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 - **Field**: label 13sp soft above; 1dp `line` box, radius 12, min 52dp, 16sp text. Focus 1.5dp `ink`. Error 1.5dp `bad` and 13sp `bad` text below. Optional soft trailing hint.
 - **SearchField**: a Field with a leading magnifier and a trailing clear.
 - **Composer**: `ink` bar, radius 16, 52dp, placeholder in `bg` at 60%, scan icon on the right. Fixed at the bottom over a `bg` fade; one for all the base screens, its text the Log opener or the Library's search.
-- **BottomNav**: centred text tabs "Meals" (Daily) and "Library", 40dp apart, 14sp/500. Active ink, inactive soft. At the right end a 22dp soft Settings icon in a 44dp target opens Settings over the screen; Back returns to it.
+- **BottomNav**: centred text tabs "Meals" (Daily), "Library" and "Recipes", 40dp apart, 14sp/500. Active ink, inactive soft. At the left end a 22dp soft Profile icon and at the right end a 22dp soft Settings icon, each in a 44dp target, open their page over the screen; Back returns to it.
 - **Sheet**: `bg`, top radius 20, 36x5 `line` grabber, 24dp padding, `scrim` behind.
 - **Snackbar**: `ink` fill, radius 14, `bg` text, the action in `bg` 500 on the right, 16dp from the edges.
 
@@ -95,6 +95,12 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 - **MealHeader**: a 30dp gap, a 1dp hairline, then 16dp, then the heading (20sp/500), the time (13sp soft), the total (17sp/500) and an AddCircle. At large font the time drops under the heading. "Nothing yet" in soft for an empty meal.
 - **DayHeader**: date title 17sp/500 on the left, a "Go To Today" text button when not on today, previous and next arrows on the right.
 - **DayTotal**: 72sp/300 kcal, "kilocalories today" in soft 14sp, then three macro columns: a 2dp `line` track with a 2dp `ink` fill (the macro's share of kcal), the value 20sp/500 with its unit in soft 14sp, and a soft 13sp label. At large font (2.0) the macros stack one per row, with the value, unit and label on one line under each bar. A macro no entry has reads "—" (as in the Library); a sum that leaves out entries without the macro reads "12 g ?", the "?" in the unit's soft style, and one soft 13sp line "? some foods have no value" follows the macros.
+
+## Profile
+
+- A page from the bar's left icon: Name, macro targets (1 to 5000 g), current and target weight (1 to 500 kg); empty is not set. With a weight typed that changed, or with no point yet today, the "Add to curve" checkbox shows, on by default; a second point on a diary day replaces that day's. Back with changes asks Discard or Keep editing.
+- The curve is an ink line with dots, the target weight a soft line across; its points are listed newest first, and deleting one asks first.
+- With a macro target the bar on Meals fills toward it, full at most, never coloured, and "/ 120 g" is its own soft line between the amount and the label; any target gives all three columns that line.
 
 ## Layout
 

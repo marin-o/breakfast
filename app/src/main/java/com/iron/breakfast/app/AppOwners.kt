@@ -1,5 +1,9 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.domain.dayKeyFor
+import com.iron.breakfast.profile.WeightStore
+import com.iron.breakfast.profile.ProfileState
+import com.iron.breakfast.profile.ProfilePrefs
 import com.iron.breakfast.scan.ProductReviewOrigin
 import com.iron.breakfast.search.OffPartSearch
 import androidx.compose.runtime.snapshotFlow
@@ -73,6 +77,8 @@ internal class AppStores<D>(
     val recipes: RecipeStore,
     /** About, Licences: the bundled licence as text (an app asset); throws when it cannot be read. */
     val licence: () -> String,
+    val weights: WeightStore,
+    val profilePrefs: ProfilePrefs,
 )
 
 /**
@@ -164,6 +170,12 @@ internal class AppOwners<D>(
         onOpen = { fromResolver -> surfaces.searchOpened(fromResolver) },
         onClose = { resolve.childClosed() },
         onChoose = { food, origin -> review.choose(food, origin = origin) },
+    )
+    /** The Profile page and the macro targets Meals reads (see [ProfileState]). */
+    val profile = ProfileState(
+        session, stores.weights, stores.profilePrefs, notices,
+        today = { dayKeyFor(clock(), zone(), settings.dayStartHour) },
+        clock = clock,
     )
     /** The Open Food Facts results under the Log's unmatched foods (see [OffPartSearch]). */
     val offParts = OffPartSearch(stores.offSearch, threads.scope, threads.io, announce = announcements::say)
@@ -337,17 +349,19 @@ internal class AppOwners<D>(
     )
     /** What is open and in which order: drawing, Back and the top check (see [Surfaces]); the Meal screen and Settings. */
     val surfaces: Surfaces = Surfaces(
-        session, notices, settings, log, library, resolve, entryEdit, foodForm, search, scan, review, contribution, transfer, recipes, recipeForm,
+        session, notices, settings, log, library, resolve, entryEdit, foodForm, search, scan, review, contribution, transfer, recipes, recipeForm, profile,
         initialMeal = savedState.get<String>(MEAL_SLOT_KEY)?.let { runCatching { MealSlot.valueOf(it) }.getOrNull() },
     )
 
     init {
         restoreFoodForm(savedState)?.let(foodForm::restore)
         restoreRecipeForm(savedState)?.let(recipeForm::restore)
+        restoreProfile(savedState)?.let(profile::restore)
         // Every change is mirrored, so an added or cleared draft and a closed or saved form drop their keys.
         threads.scope.launch { snapshotFlow { log.savedDraft() }.collect { saveLogDraft(savedState, it) } }
         threads.scope.launch { snapshotFlow { foodForm.savedForm() }.collect { saveFoodForm(savedState, it) } }
         threads.scope.launch { snapshotFlow { recipeForm.savedForm() }.collect { saveRecipeForm(savedState, it) } }
+        threads.scope.launch { snapshotFlow { profile.savedPage() }.collect { saveProfile(savedState, it) } }
         // The meal on screen comes back after process death as the Meal screen (the Library does not reopen).
         threads.scope.launch { snapshotFlow { mealOnScreen() }.collect { savedState[MEAL_SLOT_KEY] = it?.name } }
         // After every committed write, in this order: Undo, "Not right?" feedback, the Library list.
@@ -355,7 +369,7 @@ internal class AppOwners<D>(
         session.onChange(feedback::onChange)
         session.onChange { change -> if (change.refreshesLibrary) library.refresh() }
         // Import and Delete all: one reset of everything that referred to the old diary (see [SessionReset]).
-        session.onChange(SessionReset(sessionResetSteps(log, contribution, resolve, entryEdit, foodForm, recipes, recipeForm))::onChange)
+        session.onChange(SessionReset(sessionResetSteps(log, contribution, resolve, entryEdit, foodForm, recipes, recipeForm, profile))::onChange)
         // A new day start: today follows it at once, and a user on today stays on today (it counts as a return).
         settings.dayStartHourSetting.observe { day.check(returning = true) }
         // An Undo offer showing now follows the new window from the moment it was made.

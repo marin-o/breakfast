@@ -223,7 +223,7 @@ class BreakfastDatabaseTest {
         migrated.close()
 
         // The app's own entities read the migrated file back: every old row, and the recipe as the store maps it.
-        val room = Room.databaseBuilder(context, BreakfastDatabase::class.java, name).addMigrations(ROOM_MIGRATION_6_7, ROOM_MIGRATION_7_8, ROOM_MIGRATION_8_9).build()
+        val room = Room.databaseBuilder(context, BreakfastDatabase::class.java, name).addMigrations(ROOM_MIGRATION_6_7, ROOM_MIGRATION_7_8, ROOM_MIGRATION_8_9, ROOM_MIGRATION_9_10).build()
         try {
             runBlocking {
                 assertEquals(listOf("e-3", "e-1", "e-2"), room.mealEntryDao().all().map { it.toDomain().id })
@@ -276,7 +276,7 @@ class BreakfastDatabaseTest {
         migrated.execSQL("UPDATE recipes SET total_volume_ml = 1500.0 WHERE id = 'recipe-soup'")
         migrated.close()
 
-        val room = Room.databaseBuilder(context, BreakfastDatabase::class.java, name).addMigrations(ROOM_MIGRATION_7_8, ROOM_MIGRATION_8_9).build()
+        val room = Room.databaseBuilder(context, BreakfastDatabase::class.java, name).addMigrations(ROOM_MIGRATION_7_8, ROOM_MIGRATION_8_9, ROOM_MIGRATION_9_10).build()
         try {
             runBlocking {
                 val recipes = recipesOf(room.recipeDao().all(), room.recipeAliasDao().all(), room.recipeIngredientDao().all()).associateBy { it.id }
@@ -343,7 +343,7 @@ class BreakfastDatabaseTest {
         assertEquals("bottle", label("custom-kefir", "MILLILITER", 330.0))
         migrated.close()
 
-        val room = Room.databaseBuilder(context, BreakfastDatabase::class.java, name).addMigrations(ROOM_MIGRATION_8_9).build()
+        val room = Room.databaseBuilder(context, BreakfastDatabase::class.java, name).addMigrations(ROOM_MIGRATION_8_9, ROOM_MIGRATION_9_10).build()
         try {
             runBlocking {
                 val entry = room.mealEntryDao().all().single().toDomain()
@@ -361,9 +361,24 @@ class BreakfastDatabaseTest {
         deleteTestDatabase(context, name)
     }
 
+    @Test
+    fun migration9To10AddsTheEmptyWeightTableAndKeepsTheDiary() {
+        val name = "migration-v10-${System.nanoTime()}.db".also(migrationNames::add)
+        migrationHelper.createDatabase(name, 9).use { old ->
+            old.execSQL("INSERT INTO recipes VALUES ('recipe-soup','Soup',NULL,NULL,1500.0)")
+        }
+        val migrated = migrationHelper.runMigrationsAndValidate(name, 10, true, ROOM_MIGRATION_9_10)
+        assertEquals(1, migrated.query("SELECT COUNT(*) FROM recipes").use { it.moveToFirst(); it.getInt(0) })
+        assertEquals(0, migrated.query("SELECT COUNT(*) FROM weight_points").use { it.moveToFirst(); it.getInt(0) })
+        migrated.execSQL("INSERT INTO weight_points VALUES ('2026-10-01',80.0,1)")
+        migrated.execSQL("INSERT OR REPLACE INTO weight_points VALUES ('2026-10-01',79.5,2)")
+        assertEquals(1, migrated.query("SELECT COUNT(*) FROM weight_points").use { it.moveToFirst(); it.getInt(0) })
+        migrated.close(); deleteTestDatabase(context, name)
+    }
+
     /** The whole chain from the first schema ends where a fresh install starts: the recipe tables included. */
     @Test
-    fun migration1To9RunsTheWholeChain() {
+    fun migration1To10RunsTheWholeChain() {
         val name = "migration-chain-${System.nanoTime()}.db".also(migrationNames::add)
         migrationHelper.createDatabase(name, 1).also { old ->
             old.execSQL("CREATE TABLE IF NOT EXISTS foods (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL, origin TEXT NOT NULL, nutrition_amount REAL NOT NULL, nutrition_unit TEXT NOT NULL, calories REAL NOT NULL, protein REAL, carbohydrates REAL, fat REAL, default_amount REAL NOT NULL, default_unit TEXT NOT NULL, source_id TEXT, source_name TEXT, source_release TEXT, preparation TEXT, source_description TEXT)")
@@ -376,10 +391,11 @@ class BreakfastDatabaseTest {
             old.close()
         }
         val migrated = migrationHelper.runMigrationsAndValidate(
-            name, 9, true, ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6, ROOM_MIGRATION_6_7,
-            ROOM_MIGRATION_7_8, ROOM_MIGRATION_8_9,
+            name, 10, true, ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6, ROOM_MIGRATION_6_7,
+            ROOM_MIGRATION_7_8, ROOM_MIGRATION_8_9, ROOM_MIGRATION_9_10,
         )
         assertEquals(1, migrated.query("SELECT COUNT(*) FROM meal_entries").use { it.moveToFirst(); it.getInt(0) })
+        assertEquals(0, migrated.query("SELECT COUNT(*) FROM weight_points").use { it.moveToFirst(); it.getInt(0) })
         assertEquals(0, migrated.query("SELECT COUNT(*) FROM recipes").use { it.moveToFirst(); it.getInt(0) })
         migrated.execSQL("INSERT INTO recipes VALUES ('recipe-soup','Soup',NULL,NULL,1500.0)")
         migrated.close(); deleteTestDatabase(context, name)

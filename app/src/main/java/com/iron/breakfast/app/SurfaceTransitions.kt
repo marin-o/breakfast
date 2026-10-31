@@ -36,7 +36,7 @@ internal val Surface.slot: Surface get() = if (base) Surface.DAILY else this
  * backdrop has its own bracket slide.
  */
 internal val Surface.glides: Boolean get() = when (this) {
-    Surface.LOG, Surface.ENTRY_FULL_EDIT, Surface.LIBRARY_FOOD, Surface.RECIPE, Surface.RECIPE_FORM, Surface.RECIPE_SEARCH, Surface.FOOD_FORM, Surface.SETTINGS, Surface.OFF_SEARCH,
+    Surface.LOG, Surface.ENTRY_FULL_EDIT, Surface.LIBRARY_FOOD, Surface.RECIPE, Surface.RECIPE_FORM, Surface.RECIPE_SEARCH, Surface.FOOD_FORM, Surface.SETTINGS, Surface.PROFILE, Surface.OFF_SEARCH,
     Surface.RESOLVER, Surface.LIBRARY_NO_MATCH, Surface.CONTRIBUTION_REVIEW, Surface.CONTRIBUTION_SIGN_IN, Surface.CONTRIBUTION_FAILURE,
     Surface.ENTRY_DETAIL -> true
     else -> false

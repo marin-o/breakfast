@@ -1,5 +1,6 @@
 package com.iron.breakfast.data
 
+import com.iron.breakfast.domain.WeightPoint
 import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
@@ -498,5 +499,41 @@ class BreakfastStoreTest {
         assertTrue(failed.isFailure)
         assertEquals(before, store.exportRows())
         assertEquals(listOf("all-a", "all-b"), store.entries().map { it.id }.sorted())
+    }
+
+    private fun point(day: String, kg: Double, at: Long = 1L) = WeightPoint(day, kg, at)
+
+    @Test
+    fun aSecondWeightPointOnADayReplacesIt() = runBlocking {
+        store.saveWeightPoint(point("2026-10-01", 80.0))
+        store.saveWeightPoint(point("2026-10-01", 79.5, 2L))
+        store.saveWeightPoint(point("2026-10-02", 79.0))
+        assertEquals(listOf(point("2026-10-01", 79.5, 2L), point("2026-10-02", 79.0)), store.weightPoints())
+    }
+
+    @Test
+    fun aDeletedWeightPointIsGone() = runBlocking {
+        store.saveWeightPoint(point("2026-10-01", 80.0))
+        store.deleteWeightPoint("2026-10-01")
+        assertTrue(store.weightPoints().isEmpty())
+    }
+
+    @Test
+    fun aReplaceWithPointsReplacesThemAndOneWithoutKeepsThem() = runBlocking {
+        store.saveWeightPoint(point("2026-10-01", 80.0))
+        val rows = store.exportRows()
+        store.replaceDiary(rows.copy(weightPoints = null))
+        assertEquals(listOf(point("2026-10-01", 80.0)), store.weightPoints())
+        store.replaceDiary(rows.copy(weightPoints = listOf(WeightPointEntity("2026-10-05", 70.0, 5L))))
+        assertEquals(listOf(point("2026-10-05", 70.0, 5L)), store.weightPoints())
+        store.replaceDiary(rows.copy(weightPoints = emptyList()))
+        assertTrue(store.weightPoints().isEmpty())
+    }
+
+    @Test
+    fun deleteAllClearsTheWeightPoints() = runBlocking {
+        store.saveWeightPoint(point("2026-10-01", 80.0))
+        store.deleteAllData(alsoPreferences = false)
+        assertTrue(store.weightPoints().isEmpty())
     }
 }

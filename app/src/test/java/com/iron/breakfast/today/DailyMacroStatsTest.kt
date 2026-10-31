@@ -1,5 +1,6 @@
 package com.iron.breakfast.today
 
+import com.iron.breakfast.domain.ProfileValues
 import com.iron.breakfast.ui.screens.dailyMacroNote
 import com.iron.breakfast.ui.screens.macroStats
 import com.iron.breakfast.domain.NutritionValues
@@ -40,5 +41,39 @@ class DailyMacroStatsTest {
         assertEquals(List(3) { "0" to "g" }, columns.map { it.value to it.unit })
         assertEquals(List(3) { 0f }, columns.map { it.share })
         assertNull(note)
+    }
+
+    private val oneFood = macroTotalsOf(listOf(NutritionValues(200.0, 28.6, 10.0, 5.0)))
+
+    @Test fun withoutATargetTheBarIsTheShareOfCalories() {
+        val protein = macroStats(200.0, oneFood).first()
+        assertEquals("g", protein.unit)
+        assertNull(protein.target)
+        assertEquals((28.6 * 4 / 200).toFloat(), protein.share, 0.001f)
+    }
+
+    @Test fun withATargetTheBarFillsTowardIt() {
+        val protein = macroStats(200.0, oneFood, ProfileValues(proteinTarget = 120.0)).first()
+        assertEquals("28.6", protein.value)
+        assertEquals("g", protein.unit)
+        assertEquals("/ 120 g", protein.target)
+        assertEquals((28.6 / 120).toFloat(), protein.share, 0.001f)
+    }
+
+    @Test fun overTheTargetTheBarIsFullAtMost() {
+        assertEquals(1f, macroStats(200.0, oneFood, ProfileValues(proteinTarget = 10.0)).first().share, 0f)
+    }
+
+    @Test fun aTargetChangesOnlyItsOwnMacro() {
+        val (_, carbs, fat) = macroStats(200.0, oneFood, ProfileValues(proteinTarget = 10.0))
+        assertNull(carbs.target)
+        assertNull(fat.target)
+    }
+
+    @Test fun aPartlyKnownMacroKeepsItsMarkOnTheAmountLine() {
+        val partly = macroTotalsOf(listOf(NutritionValues(100.0, 10.0, null, 1.0), NutritionValues(100.0, null, 2.0, 1.0)))
+        val protein = macroStats(200.0, partly, ProfileValues(proteinTarget = 120.0)).first()
+        assertEquals("g ?", protein.unit)
+        assertEquals("/ 120 g", protein.target)
     }
 }

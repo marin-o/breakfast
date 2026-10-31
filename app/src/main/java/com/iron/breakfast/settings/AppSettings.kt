@@ -13,6 +13,8 @@ internal interface SettingsStore {
     fun getString(key: String, default: String?): String?
     /** Applies the writes [block] makes, as one SharedPreferences edit. */
     fun edit(block: Editor.() -> Unit)
+    /** As [edit], on disk before it returns. */
+    fun commit(block: Editor.() -> Unit)
 
     interface Editor {
         fun putInt(key: String, value: Int)
@@ -29,7 +31,10 @@ internal class SharedPreferencesStore(private val prefs: SharedPreferences) : Se
     override fun getLong(key: String, default: Long) = prefs.getLong(key, default)
     override fun getBoolean(key: String, default: Boolean) = prefs.getBoolean(key, default)
     override fun getString(key: String, default: String?) = prefs.getString(key, default)
-    override fun edit(block: SettingsStore.Editor.() -> Unit) = prefs.edit {
+    override fun edit(block: SettingsStore.Editor.() -> Unit) = write(commit = false, block)
+    override fun commit(block: SettingsStore.Editor.() -> Unit) = write(commit = true, block)
+
+    private fun write(commit: Boolean, block: SettingsStore.Editor.() -> Unit) = prefs.edit(commit) {
         val editor = this
         object : SettingsStore.Editor {
             override fun putInt(key: String, value: Int) { editor.putInt(key, value) }

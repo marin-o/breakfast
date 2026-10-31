@@ -2,11 +2,12 @@
 <!--
   Android 11 (API 30) and earlier, where one rule set covers both cloud backup and device-to-device transfer. The diary
   (breakfast.db and its journal files) is left out of both; Settings > Export diary is the backup and the way to move
-  it. Settings (SharedPreferences) are still backed up.
+  it. The profile (profile.xml: name, targets, weights) is left out too. Settings (settings.xml) are still backed up.
 -->
 <full-backup-content>
     <exclude domain="database" path="breakfast.db" />
     <exclude domain="database" path="breakfast.db-wal" />
     <exclude domain="database" path="breakfast.db-shm" />
     <exclude domain="database" path="breakfast.db-journal" />
+    <exclude domain="sharedpref" path="profile.xml" />
 </full-backup-content>

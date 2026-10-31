@@ -1,5 +1,6 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.profile.SavedProfile
 import com.iron.breakfast.scan.ProductReviewOrigin
 import androidx.lifecycle.SavedStateHandle
 import kotlinx.serialization.Serializable
@@ -9,12 +10,13 @@ import com.iron.breakfast.food.FoodDraftFields
 import com.iron.breakfast.recipes.SavedRecipeForm
 
 // Typed work that survives the process being killed in the background: the log draft, a half-filled food form or
-// recipe form, and which day the diary shows. Only these keys are written here. The Open Food Facts login is never among them.
+// recipe form or Profile page, and which day the diary shows. Only these keys are written here. The Open Food Facts login is never among them.
 
 internal const val LOG_DRAFT_KEY = "log_draft"
 internal const val LOG_DRAFT_COMMITTED_KEY = "log_draft_committed"
 internal const val FOOD_FORM_KEY = "food_form"
 internal const val RECIPE_FORM_KEY = "recipe_form"
+internal const val PROFILE_KEY = "profile_page"
 internal const val SELECTED_DAY_KEY = "selected_day"
 internal const val FOLLOWING_TODAY_KEY = "following_today"
 
@@ -69,6 +71,16 @@ internal fun saveFoodForm(state: SavedStateHandle, form: SavedFoodForm?) {
 /** The saved food form, or null when there is none or it cannot be read. */
 internal fun restoreFoodForm(state: SavedStateHandle): SavedFoodForm? =
     state.get<String>(FOOD_FORM_KEY)?.let { runCatching { formJson.decodeFromString(SavedFoodForm.serializer(), it) }.getOrNull() }
+
+/** Mirrors the open Profile page; null (closed) removes the key. */
+internal fun saveProfile(state: SavedStateHandle, page: SavedProfile?) {
+    if (page == null) state.remove<String>(PROFILE_KEY)
+    else state[PROFILE_KEY] = formJson.encodeToString(SavedProfile.serializer(), page)
+}
+
+/** The saved Profile page, or null when there is none or it cannot be read. */
+internal fun restoreProfile(state: SavedStateHandle): SavedProfile? =
+    state.get<String>(PROFILE_KEY)?.let { runCatching { formJson.decodeFromString(SavedProfile.serializer(), it) }.getOrNull() }
 
 /** Mirrors the open recipe form; null (closed or saved) removes the key. */
 internal fun saveRecipeForm(state: SavedStateHandle, form: SavedRecipeForm?) {

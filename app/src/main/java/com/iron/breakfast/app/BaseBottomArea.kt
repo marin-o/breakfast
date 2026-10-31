@@ -142,6 +142,8 @@ internal fun BaseBottomArea(vm: BreakfastViewModel, screen: BaseScreen, meal: Me
                 },
                 onSettings = surfaces::openSettings,
                 settingsOpen = surfaces.settingsOpen,
+                onProfile = surfaces::openProfile,
+                profileOpen = surfaces.profileOpen,
             )
         }
     }

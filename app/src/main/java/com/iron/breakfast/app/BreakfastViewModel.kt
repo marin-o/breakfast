@@ -1,5 +1,9 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.profile.ProfileDiaryData
+import com.iron.breakfast.domain.WeightPoint
+import com.iron.breakfast.profile.WeightStore
+import com.iron.breakfast.profile.ProfilePrefs
 import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
@@ -50,6 +54,7 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
         compute = threads.compute,
     )
     private val off = OpenFoodFactsClient()
+    private val profilePrefs = ProfilePrefs(application)
     private val app = AppOwners(
         stores = AppStores(
             diary = object : DiarySource {
@@ -57,6 +62,7 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
                 override fun foods() = engine.foods()
                 override fun entries() = engine.persistedMeal().entries
                 override fun recipes() = engine.recipes()
+                override fun weightPoints() = engine.weightPoints()
                 override suspend fun reloadIfStale() = engine.reloadIfStale()
                 override fun damagedNoticePending() = engine.damagedNoticePending()
                 override fun damagedNoticeSeen() = engine.damagedNoticeSeen()
@@ -128,11 +134,14 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
                 override suspend fun localFood(barcode: String) = engine.foodByBarcode(barcode)
                 override suspend fun openFoodFacts(barcode: String) = off.barcode(barcode)
             },
-            diaryData = object : DiaryData {
-                override suspend fun exportRows() = engine.exportRows()
-                override suspend fun replaceDiary(rows: DiaryRows) { engine.replaceDiary(rows) }
-                override suspend fun deleteAllData(alsoPreferences: Boolean) { engine.deleteAllData(alsoPreferences) }
-            },
+            diaryData = ProfileDiaryData(
+                object : DiaryData {
+                    override suspend fun exportRows() = engine.exportRows()
+                    override suspend fun replaceDiary(rows: DiaryRows) { engine.replaceDiary(rows) }
+                    override suspend fun deleteAllData(alsoPreferences: Boolean) { engine.deleteAllData(alsoPreferences) }
+                },
+                profilePrefs,
+            ),
             diaryFiles = ContentDiaryFiles(application.contentResolver, application.noBackupFilesDir),
             transferLog = object : TransferLog {
                 override fun error(message: String, cause: Throwable?) { Log.e(LOG_TAG, message, cause) }
@@ -150,6 +159,11 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
                 }
             },
             licence = { application.assets.open(LICENCES_ASSET).bufferedReader().use { it.readText() } },
+            weights = object : WeightStore {
+                override suspend fun save(point: WeightPoint) = engine.saveWeightPoint(point)
+                override suspend fun delete(dayKey: String) = engine.deleteWeightPoint(dayKey)
+            },
+            profilePrefs = profilePrefs,
         ),
         settings = settingsState,
         savedState = savedState,
@@ -170,6 +184,7 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
     internal val feedback = app.feedback
     internal val contribution = app.contribution
     internal val search = app.search
+    internal val profile = app.profile
     internal val offParts = app.offParts
     internal val transfer = app.transfer
     internal val reminders = app.reminders

@@ -1,5 +1,6 @@
 package com.iron.breakfast.data
 
+import com.iron.breakfast.domain.WeightPoint
 import com.iron.breakfast.domain.searchKey
 import com.iron.breakfast.domain.searchFinds
 import android.content.Context
@@ -30,6 +31,7 @@ private data class StoreSnapshot(
     val entries: List<MealEntry> = emptyList(),
     val preferences: List<Preference> = emptyList(),
     val recipes: List<Recipe> = emptyList(),
+    val weightPoints: List<WeightPoint> = emptyList(),
 )
 
 /**
@@ -40,7 +42,7 @@ private data class StoreSnapshot(
 internal fun openBreakfastDatabase(context: Context, name: String, damaged: DamagedDiaries): BreakfastDatabase =
     Room.databaseBuilder(context.applicationContext, BreakfastDatabase::class.java, name)
         .openHelperFactory(DamageSafeOpenHelperFactory(damaged))
-        .addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6, ROOM_MIGRATION_6_7, ROOM_MIGRATION_7_8, ROOM_MIGRATION_8_9)
+        .addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6, ROOM_MIGRATION_6_7, ROOM_MIGRATION_7_8, ROOM_MIGRATION_8_9, ROOM_MIGRATION_9_10)
         .build()
 
 /** A write refused because the diary was found damaged and the fresh one is not open yet (see [BreakfastStore]). */
@@ -162,6 +164,20 @@ class BreakfastStore internal constructor(
 
     /** The recipes as stored, each ingredient with the numbers it keeps (see [Recipe]); the same list until a recipe write. */
     fun recipes(): List<Recipe> = model.recipes
+
+    /** The profile's weight curve. */
+    fun weightPoints(): List<WeightPoint> = model.weightPoints
+
+    /** Stores [point]; one already on its day is replaced. */
+    suspend fun saveWeightPoint(point: WeightPoint) {
+        requireReady()
+        write(WEIGHTS) { database.weightPointDao().upsert(point.toEntity()) }
+    }
+
+    suspend fun deleteWeightPoint(dayKey: String) {
+        requireReady()
+        write(WEIGHTS) { database.weightPointDao().delete(dayKey) }
+    }
 
     private var preferenceMapSource: List<Preference>? = null
     private var cachedPreferenceMap: Map<String, Preference> = emptyMap()
@@ -332,6 +348,7 @@ class BreakfastStore internal constructor(
                         recipes = database.recipeDao().all(),
                         recipeAliases = database.recipeAliasDao().all(),
                         recipeIngredients = database.recipeIngredientDao().all(),
+                        weightPoints = database.weightPointDao().all(),
                     )
                 }
             }
@@ -360,6 +377,11 @@ class BreakfastStore internal constructor(
             database.recipeDao().insertAllOrAbort(rows.recipes)
             database.recipeAliasDao().insertAllOrAbort(rows.recipeAliases)
             database.recipeIngredientDao().insertAllOrAbort(rows.recipeIngredients)
+            // Null: a file from before the curve says nothing about it, and the phone's stays.
+            rows.weightPoints?.let { points ->
+                database.weightPointDao().deleteAll()
+                database.weightPointDao().insertAllOrAbort(points)
+            }
             deleteArchivedFoods()
             seedMissingFixtures()
             syncBuiltInFoods()
@@ -381,6 +403,7 @@ class BreakfastStore internal constructor(
             database.servingConversionDao().deleteAll()
             database.foodAliasDao().deleteAll()
             database.foodDao().deleteAll()
+            database.weightPointDao().deleteAll()
             beforeSeed()
             seedMissingFixtures()
             syncBuiltInFoods()
@@ -511,6 +534,7 @@ class BreakfastStore internal constructor(
         entries = if (StoreTable.ENTRIES in tables) database.mealEntryDao().all().map { it.toDomain() } else current.entries,
         preferences = if (StoreTable.PREFERENCES in tables) database.preferenceDao().all().map { it.toDomain() } else current.preferences,
         recipes = if (StoreTable.RECIPES in tables) readRecipes() else current.recipes,
+        weightPoints = if (StoreTable.WEIGHTS in tables) database.weightPointDao().all().map { it.toDomain() } else current.weightPoints,
     )
 
     private suspend fun readRecipes(): List<Recipe> = recipesOf(
@@ -537,8 +561,9 @@ class BreakfastStore internal constructor(
 }
 
 /** The groups of tables a write can touch: foods (with aliases and conversions), entries, preferences, recipes (with theirs). */
-internal enum class StoreTable { FOODS, ENTRIES, PREFERENCES, RECIPES }
+internal enum class StoreTable { FOODS, ENTRIES, PREFERENCES, RECIPES, WEIGHTS }
 
+private val WEIGHTS = setOf(StoreTable.WEIGHTS)
 private val FOODS = setOf(StoreTable.FOODS)
 private val ENTRIES = setOf(StoreTable.ENTRIES)
 private val PREFERENCES = setOf(StoreTable.PREFERENCES)

@@ -1,5 +1,6 @@
 package com.iron.breakfast.ui.screens
 
+import com.iron.breakfast.domain.ProfileValues
 import com.iron.breakfast.domain.SegmentResolution
 import com.iron.breakfast.domain.KCAL_PER_GRAM_CARBS
 import com.iron.breakfast.domain.KCAL_PER_GRAM_FAT
@@ -234,15 +235,17 @@ internal fun macroFact(total: MacroTotal, noneIsUnknown: Boolean = false): Pair<
  * The three macro columns under a kcal figure ([macros] of [kcal]), each with its known share of the kcal: a day's total
  * and one entry's. A macro nothing has reads "—"; a sum that leaves some out reads "12 g ?".
  */
-internal fun macroStats(kcal: Double, macros: MacroTotals): List<MacroStat> {
-    fun stat(label: String, total: MacroTotal, kcalPerGram: Double): MacroStat {
+internal fun macroStats(kcal: Double, macros: MacroTotals, targets: ProfileValues = ProfileValues()): List<MacroStat> {
+    fun stat(label: String, total: MacroTotal, kcalPerGram: Double, target: Double?): MacroStat {
         val (value, unit) = macroFact(total)
+        // With a target the bar fills toward it, full at most: going over is neither coloured nor scolded.
+        if (target != null) return MacroStat(label, value, unit, (total.sum / target).toFloat().coerceIn(0f, 1f), "/ ${target.pretty()} g")
         return MacroStat(label, value, unit, if (kcal > 0.0) (total.sum * kcalPerGram / kcal).toFloat() else 0f)
     }
     return listOf(
-        stat("Protein", macros.protein, KCAL_PER_GRAM_PROTEIN),
-        stat("Carbs", macros.carbohydrates, KCAL_PER_GRAM_CARBS),
-        stat("Fat", macros.fat, KCAL_PER_GRAM_FAT),
+        stat("Protein", macros.protein, KCAL_PER_GRAM_PROTEIN, targets.proteinTarget),
+        stat("Carbs", macros.carbohydrates, KCAL_PER_GRAM_CARBS, targets.carbsTarget),
+        stat("Fat", macros.fat, KCAL_PER_GRAM_FAT, targets.fatTarget),
     )
 }
 

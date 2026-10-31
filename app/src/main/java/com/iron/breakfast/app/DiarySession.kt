@@ -1,5 +1,6 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.domain.WeightPoint
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -24,6 +25,8 @@ internal interface DiarySource {
     fun entries(): List<MealEntry>
     /** The recipes, each ingredient following its food while it exists. */
     fun recipes(): List<Recipe> = emptyList()
+    /** The profile's weight curve. */
+    fun weightPoints(): List<WeightPoint> = emptyList()
     /** Reloads the snapshot a committed write could not reload; true when it did. */
     suspend fun reloadIfStale(): Boolean
     /** A damaged diary was set aside (D15) and the user has not seen the notice yet. */
@@ -69,6 +72,7 @@ internal class DiarySession(
     var foods by mutableStateOf<List<FoodRecord>>(emptyList()); private set
     var entries by mutableStateOf<List<MealEntry>>(emptyList()); private set
     var recipes by mutableStateOf<List<Recipe>>(emptyList()); private set
+    var weightPoints by mutableStateOf<List<WeightPoint>>(emptyList()); private set
 
     private val listeners = mutableListOf<(DiaryChange) -> Unit>()
     private var opening = false
@@ -107,6 +111,7 @@ internal class DiarySession(
         foods = source.foods()
         entries = source.entries()
         recipes = source.recipes()
+        weightPoints = source.weightPoints()
         onRefreshed()
         checkStale()
     }

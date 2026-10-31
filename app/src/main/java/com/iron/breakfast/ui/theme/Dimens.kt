@@ -23,3 +23,4 @@ val AddCircleSize = 32.dp
 /** How far the drawn add circle sits in from the end of its touch target. */
 val AddCircleInset = (IconTarget - AddCircleSize) / 2
 val ComposerHeight = 52.dp
+val CurveHeight = 160.dp

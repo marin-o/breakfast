@@ -1,5 +1,8 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.ui.shortDateLabel
+import com.iron.breakfast.ui.pretty
+import com.iron.breakfast.profile.ProfileScreen
 import com.iron.breakfast.log.UnmatchedParts
 import com.iron.breakfast.ui.components.ConfirmDialog
 import androidx.compose.ui.Alignment
@@ -141,6 +144,11 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         Surface.MIXED_MEAL_PICKER -> MixedMealPickerDialog(vm.library)
         Surface.BATCH_MEAL_PICKER -> LibraryBatchMealPickerDialog(vm.library)
         Surface.FOOD_FORM -> if (vm.foodForm.editingFoodId != null) EditFoodScreen(vm.foodForm, vm.session, vm.library) else CreateFoodScreen(vm.foodForm, vm.session)
+        Surface.PROFILE -> ProfileScreen(vm.profile)
+        Surface.DISCARD_PROFILE -> ConfirmDialog("Discard", vm.profile::discard, vm.profile::keepEditing, dismiss = "Keep editing")
+        Surface.DELETE_WEIGHT_POINT -> vm.profile.deleteRequest?.let { point ->
+            ConfirmDialog("Delete", vm.profile::confirmDelete, vm.profile::cancelDelete, text = "${shortDateLabel(point.dayKey)}, ${point.kg.pretty()} kg")
+        }
         Surface.SETTINGS -> SettingsScreen(vm.settings, vm.surfaces, vm.transfer, vm.session, vm::licenceText)
         // Deleting is for good: past entries keep their own name and numbers.
         Surface.DELETE_FOOD -> ConfirmDialog("Delete food", vm.library::confirmDelete, vm.library::cancelDelete, text = "Past entries keep their numbers.")
@@ -243,7 +251,7 @@ private fun BaseScreenContent(vm: BreakfastViewModel, surface: Surface, meal: Me
         Surface.RECIPES -> RecipesScreen(vm.recipes, onNew = vm.recipeForm::openNew, modifier)
         Surface.DAILY -> DailyScreen(
             vm.session, vm.day, vm.settings, vm.log, vm.contribution, vm.entryEdit, vm.surfaces, vm.undo, vm.feedback,
-            vm.search, modifier,
+            vm.search, vm.profile.values, modifier,
         )
         else -> MealScreen(
             vm.session, vm.day, vm.settings, vm.log, vm.contribution, vm.entryEdit, vm.surfaces, vm.undo, vm.feedback,

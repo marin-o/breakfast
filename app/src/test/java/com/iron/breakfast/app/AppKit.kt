@@ -1,5 +1,8 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.profile.WeightStore
+import com.iron.breakfast.profile.ProfilePrefs
+import com.iron.breakfast.domain.WeightPoint
 import androidx.lifecycle.SavedStateHandle
 import com.iron.breakfast.QueueDispatcher
 import com.iron.breakfast.contribution.OffContributions
@@ -86,7 +89,11 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
     val data = FakeData(transferEvents)
     /** File and Open Food Facts work; set [QueueDispatcher.holding] to keep it "in flight" until [QueueDispatcher.runAll]. */
     val io = QueueDispatcher(holding = false)
-    private val now = Instant.parse("2026-10-28T12:00:00Z").toEpochMilli()
+    /** The clock; a test moves it to reach another diary day. */
+    var nowMs = Instant.parse("2026-10-28T12:00:00Z").toEpochMilli()
+    private val now get() = nowMs
+    /** Where the profile's values are kept. */
+    val profileStore = FakeSettingsStore()
 
     val owners = AppOwners(
         stores = AppStores(
@@ -163,6 +170,11 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
             },
             offSearch = object : OffSearchService { override suspend fun search(query: String): OffSearchResult { offSearched += query; return OffSearchResult.Success(emptyList()) } },
             licence = { "SIL Open Font License" },
+            weights = object : WeightStore {
+                override suspend fun save(point: WeightPoint) { diary.weights = diary.weights.filterNot { it.dayKey == point.dayKey } + point }
+                override suspend fun delete(dayKey: String) { diary.weights = diary.weights.filterNot { it.dayKey == dayKey } }
+            },
+            profilePrefs = ProfilePrefs(profileStore),
             recipes = object : RecipeStore {
                 override fun ingredientPlanner(pins: Map<String, FoodRecord>) = plannerFor(pins)
                 override suspend fun foodsMatching(query: String) = libraryFoods
@@ -258,12 +270,14 @@ internal class KitDiary {
     var rows: List<MealEntry> = emptyList()
     var foods: List<FoodRecord> = emptyList()
     var recipes: List<Recipe> = emptyList()
+    var weights: List<WeightPoint> = emptyList()
     val scope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
     val source = object : DiarySource {
         override suspend fun open() {}
         override fun foods(): List<FoodRecord> = foods
         override fun entries(): List<MealEntry> = rows
         override fun recipes(): List<Recipe> = recipes
+        override fun weightPoints(): List<WeightPoint> = weights
         override suspend fun reloadIfStale() = false
         override fun damagedNoticePending() = damaged
         override fun damagedNoticeSeen() { damaged = false }
