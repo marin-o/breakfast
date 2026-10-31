@@ -65,7 +65,13 @@ import java.time.ZoneOffset
  * `Surfaces` (the view model's coordination, `IronApp`'s composition order and BackHandler order, `topOverlay()`,
  * transcribed here at 6da279d) and passed unchanged against `Surfaces` (B17).
  */
-internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foods: List<FoodRecord> = emptyList(), damagedDiary: Boolean = false) {
+internal class AppKit(
+    val savedState: SavedStateHandle = SavedStateHandle(),
+    foods: List<FoodRecord> = emptyList(),
+    damagedDiary: Boolean = false,
+    /** The stored settings; the tutorial is done, unless a test passes an empty store: a first launch. */
+    val settingsStore: FakeSettingsStore = FakeSettingsStore().also { AppSettings(it).tutorialDone = true },
+) {
     val diary = KitDiary().also { it.foods = foods; it.damaged = damagedDiary }
     /** Writes the fakes received, in order. */
     val calls = mutableListOf<String>()
@@ -192,7 +198,7 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
                 }
             },
         ),
-        settings = SettingsState(AppSettings(FakeSettingsStore())) { now },
+        settings = SettingsState(AppSettings(settingsStore)) { now },
         savedState = savedState,
         threads = AppThreads(diary.scope, io = io, main = Dispatchers.Unconfined, compute = Dispatchers.Unconfined, sleep = { awaitCancellation() }),
         clock = { now },

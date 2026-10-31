@@ -17,6 +17,7 @@ internal const val LOG_DRAFT_COMMITTED_KEY = "log_draft_committed"
 internal const val FOOD_FORM_KEY = "food_form"
 internal const val RECIPE_FORM_KEY = "recipe_form"
 internal const val PROFILE_KEY = "profile_page"
+internal const val ONBOARDING_PAGE_KEY = "onboarding_page"
 internal const val SELECTED_DAY_KEY = "selected_day"
 internal const val FOLLOWING_TODAY_KEY = "following_today"
 
@@ -71,6 +72,13 @@ internal fun saveFoodForm(state: SavedStateHandle, form: SavedFoodForm?) {
 /** The saved food form, or null when there is none or it cannot be read. */
 internal fun restoreFoodForm(state: SavedStateHandle): SavedFoodForm? =
     state.get<String>(FOOD_FORM_KEY)?.let { runCatching { formJson.decodeFromString(SavedFoodForm.serializer(), it) }.getOrNull() }
+
+/** Mirrors the tutorial's page; null (closed) removes the key. */
+internal fun saveOnboardingPage(state: SavedStateHandle, page: Int?) {
+    if (page == null) state.remove<Int>(ONBOARDING_PAGE_KEY) else state[ONBOARDING_PAGE_KEY] = page
+}
+
+internal fun restoreOnboardingPage(state: SavedStateHandle): Int? = state.get<Int>(ONBOARDING_PAGE_KEY)
 
 /** Mirrors the open Profile page; null (closed) removes the key. */
 internal fun saveProfile(state: SavedStateHandle, page: SavedProfile?) {

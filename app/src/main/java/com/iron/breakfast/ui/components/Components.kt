@@ -1199,7 +1199,7 @@ fun TopBar(
 @Composable
 fun SubScreen(
     title: String,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     trailing: @Composable () -> Unit = {},

@@ -159,6 +159,11 @@ internal class SettingsState(private val prefs: AppSettings, private val clock: 
         get() = prefs.exportReminderShownMs
         set(value) { prefs.exportReminderShownMs = value }
 
+    /** The tutorial was finished or skipped (see [AppSettings]). */
+    var tutorialDone: Boolean
+        get() = prefs.tutorialDone
+        set(value) { prefs.tutorialDone = value }
+
     /**
      * Every setting back to its default, on the phone and on screen (Delete all data with "Also settings and learned
      * picks"): the stored settings are cleared, every declared setting is read again, then the [Setting.observe]

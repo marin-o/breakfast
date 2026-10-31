@@ -1,5 +1,6 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.onboarding.OnboardingScreen
 import com.iron.breakfast.ui.shortDateLabel
 import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.profile.ProfileScreen
@@ -175,6 +176,7 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         )
         Surface.STORAGE_UNAVAILABLE -> AlertDialog(onDismissRequest = {}, confirmButton = { TextButton(vm::retryStorage) { Text("Try again") } }, title = { Text("Storage unavailable") }, text = { Text("Storage could not be opened.") })
         Surface.ENTRY_DETAIL -> vm.entryEdit.selectedEntry?.let { EntryDetailScreen(vm.entryEdit, vm.session, vm.surfaces, vm.undo, it) }
+        Surface.ONBOARDING -> OnboardingScreen(vm.onboarding, vm.surfaces)
         Surface.SCANNER -> ScannerScreen(vm.scan, vm.settings.flashlightAtStart)
     }
 }

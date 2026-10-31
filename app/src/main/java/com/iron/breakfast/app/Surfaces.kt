@@ -1,5 +1,6 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.onboarding.OnboardingState
 import com.iron.breakfast.profile.ProfileState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,7 +75,8 @@ internal enum class Surface(
     /** Drawn alone, nothing else (not even a notice) until it closes; under the scan backdrop it waits undrawn. */
     ENTRY_DETAIL(coversBase = true),
     /** Drawn alone, over whatever it was opened from, which comes back as it was. */
-    SCANNER(coversBase = true);
+    SCANNER(coversBase = true),
+    ONBOARDING(coversBase = true);
 
     val base: Boolean get() = this == DAILY || this == MEAL || this == LIBRARY || this == RECIPES
 }
@@ -113,6 +115,7 @@ internal class Surfaces(
     private val recipes: RecipeBook,
     private val recipeForm: RecipeForm,
     private val profile: ProfileState,
+    private val onboarding: OnboardingState,
     /** The Meal screen's meal restored after process death (the Library does not reopen). */
     initialMeal: MealSlot?,
 ) {
@@ -131,6 +134,8 @@ internal class Surfaces(
 
     /** What is drawn now, bottom first, in [Surface] order. */
     fun shown(): List<Surface> {
+        // Alone, over everything: the state of what was open or restored waits under it, though not its scroll position.
+        if (onboarding.open) return listOf(Surface.ONBOARDING)
         if (scan.open) return listOf(Surface.SCANNER)
         val backdrop = review.product != null && review.fromScan
         if (!backdrop && entryEdit.selectedEntry != null) return listOf(Surface.ENTRY_DETAIL)
@@ -179,7 +184,7 @@ internal class Surfaces(
         Surface.REPLACE_DIARY -> transfer.pendingImport != null
         Surface.DELETE_ALL -> transfer.deleteAllOpen
         Surface.STORAGE_UNAVAILABLE -> session.storageUnavailable
-        Surface.ENTRY_DETAIL, Surface.SCANNER -> false
+        Surface.ENTRY_DETAIL, Surface.SCANNER, Surface.ONBOARDING -> false
     }
 
     /** The top check: something is drawn over the base screen. */
@@ -227,6 +232,7 @@ internal class Surfaces(
         Surface.CONTRIBUTION_FAILURE -> contribution::dismissFailure
         Surface.ENTRY_DETAIL -> entryEdit::closeDetail
         Surface.SCANNER -> scan::end
+        Surface.ONBOARDING -> onboarding::back.takeIf { onboarding.takesBack }
         // Dialogs and sheets, in their own window; the backdrop goes with its review sheet.
         Surface.SCAN_REVIEW_BACKDROP, Surface.ENTRY_FOOD_PICKER, Surface.LIBRARY_FOOD_ADD, Surface.RECIPE_LOG, Surface.RECIPE_INGREDIENT_ADD,
         Surface.DISCARD_RECIPE, Surface.DELETE_RECIPE, Surface.DISCARD_PROFILE, Surface.DELETE_WEIGHT_POINT, Surface.MIXED_MEAL_PICKER,
@@ -327,6 +333,16 @@ internal class Surfaces(
     fun settingsBack() { if (!settings.back()) closeSettings() }
     /** The Profile page, from the bottom bar's icon at its left; it starts from what is saved. */
     fun openProfile() = profile.show()
+    /** Settings, "Show the tutorial": what it was opened over comes back when it ends, unless an end says otherwise. */
+    fun openOnboarding() = onboarding.show()
+    /** The tutorial's "Open Profile": done, and the page is open. */
+    fun onboardingToProfile() { onboarding.finish(); openProfile() }
+    /** The tutorial's "Start logging": done, and Meals shows, whatever a replay was opened over. */
+    fun onboardingToMeals() {
+        onboarding.finish()
+        if (library.open) closeLibrary()
+        closeRecipes()
+    }
     /** A tab changing leaves neither of the bar's two pages over it. */
     private fun closePagesOverTheTabs() { closeSettings(); profile.close() }
 

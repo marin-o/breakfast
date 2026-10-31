@@ -70,7 +70,7 @@ internal fun SettingsScreen(settings: SettingsState, surfaces: Surfaces, transfe
                 SettingsPage.ACCESSIBILITY -> AccessibilityPage(settings)
                 SettingsPage.SCANNER -> ScannerPage(settings)
                 SettingsPage.DATA -> DataPage(settings, transfer, session)
-                SettingsPage.ABOUT -> AboutPage(settings)
+                SettingsPage.ABOUT -> AboutPage(settings, surfaces)
                 SettingsPage.LICENCES -> LicencesPage(licenceText)
             }
         }
@@ -153,8 +153,10 @@ private fun ColumnScope.DataPage(settings: SettingsState, transfer: DiaryTransfe
 }
 
 @Composable
-private fun ColumnScope.AboutPage(settings: SettingsState) {
+private fun ColumnScope.AboutPage(settings: SettingsState, surfaces: Surfaces) {
     ValueRow("Version", versionLabel(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE))
+    Hairline()
+    SettingsAction("Show the tutorial", onClick = surfaces::openOnboarding)
     Hairline()
     SettingsAction("Licences") { settings.openPage(SettingsPage.LICENCES) }
     Hairline()

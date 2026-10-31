@@ -1,5 +1,6 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.onboarding.OnboardingState
 import com.iron.breakfast.domain.asFood
 import com.iron.breakfast.domain.dayKeyFor
 import com.iron.breakfast.profile.WeightStore
@@ -357,9 +358,12 @@ internal class AppOwners<D>(
     /** A food stored now is the pick of a part: of the Log's draft, or of the recipe form's ingredient search. */
     private fun resolvingAPart(): Boolean = resolve.resolvingPart || recipeForm.searchOpen
 
+    /** The tutorial (see [OnboardingState]); its page comes back after process death. */
+    val onboarding = OnboardingState(settings, restoreOnboardingPage(savedState))
+
     /** What is open and in which order: drawing, Back and the top check (see [Surfaces]); the Meal screen and Settings. */
     val surfaces: Surfaces = Surfaces(
-        session, notices, settings, log, library, resolve, entryEdit, foodForm, search, scan, review, contribution, transfer, recipes, recipeForm, profile,
+        session, notices, settings, log, library, resolve, entryEdit, foodForm, search, scan, review, contribution, transfer, recipes, recipeForm, profile, onboarding,
         initialMeal = savedState.get<String>(MEAL_SLOT_KEY)?.let { runCatching { MealSlot.valueOf(it) }.getOrNull() },
     )
 
@@ -372,6 +376,7 @@ internal class AppOwners<D>(
         threads.scope.launch { snapshotFlow { foodForm.savedForm() }.collect { saveFoodForm(savedState, it) } }
         threads.scope.launch { snapshotFlow { recipeForm.savedForm() }.collect { saveRecipeForm(savedState, it) } }
         threads.scope.launch { snapshotFlow { profile.savedPage() }.collect { saveProfile(savedState, it) } }
+        threads.scope.launch { snapshotFlow { onboarding.savedPage() }.collect { saveOnboardingPage(savedState, it) } }
         // The meal on screen comes back after process death as the Meal screen (the Library does not reopen).
         threads.scope.launch { snapshotFlow { mealOnScreen() }.collect { savedState[MEAL_SLOT_KEY] = it?.name } }
         // A pin holds a food or recipe as it was picked: it follows an edit, so the draft saves what it is now.

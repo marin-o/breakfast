@@ -185,6 +185,7 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
     internal val contribution = app.contribution
     internal val search = app.search
     internal val profile = app.profile
+    internal val onboarding = app.onboarding
     internal val offParts = app.offParts
     internal val transfer = app.transfer
     internal val reminders = app.reminders

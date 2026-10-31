@@ -173,10 +173,25 @@ internal class AppSettings(private val prefs: SettingsStore) {
         get() = prefs.getBoolean(KEEP_SAFETY_COPY_KEY, true)
         set(value) = prefs.edit { putBoolean(KEEP_SAFETY_COPY_KEY, value) }
 
-    /** Delete all data with "Also settings and learned picks": every setting goes back to its default. */
-    fun clear() = prefs.edit { clear() }
+    /** The tutorial was finished or skipped, for good; a first launch shows it. */
+    var tutorialDone: Boolean
+        get() = prefs.getBoolean(TUTORIAL_DONE_KEY, false)
+        set(value) = prefs.commit { putBoolean(TUTORIAL_DONE_KEY, value) }
+
+    /**
+     * Delete all data with "Also settings and learned picks": every setting goes back to its default. The tutorial stays
+     * as it was: it is no preference, and clearing a diary is no reason to show it again.
+     */
+    fun clear() {
+        val done = tutorialDone
+        prefs.edit {
+            clear()
+            if (done) putBoolean(TUTORIAL_DONE_KEY, true)
+        }
+    }
 
     private companion object {
+        const val TUTORIAL_DONE_KEY = "tutorial_done"
         const val EXPORT_REMINDER_KEY = "export_reminder"
         const val LAST_EXPORT_KEY = "last_export_ms"
         const val EXPORT_REMINDER_SHOWN_KEY = "export_reminder_shown_ms"

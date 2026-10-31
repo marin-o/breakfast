@@ -55,6 +55,7 @@ private fun ComponentGallery() {
                 ChoiceOption("g", true, {})
                 ChoiceOption("ml", false, {}, detail = "105 kcal")
             CheckboxRow("Add to curve", true, {})
+            StepDots(StepPosition(1, 5))
             }
             AddCircle("Add food", {})
             AddCircle("Remove serving", {}, icon = Icons.Outlined.Close)

@@ -106,6 +106,16 @@ internal fun syncedInputField(field: TextFieldValue, text: String): TextFieldVal
 /** The Log field for [text] with the caret at the end: a page that opens again starts there, not at the start. */
 internal fun inputFieldFor(text: String): TextFieldValue = TextFieldValue(text, TextRange(text.length))
 
+/** The typed line and the line under it, with [trailing] at its end. [text] takes the modifier that places it. */
+@Composable
+internal fun DraftLine(trailing: @Composable () -> Unit = {}, text: @Composable (Modifier) -> Unit) {
+    Row(verticalAlignment = Alignment.Top) {
+        text(Modifier.weight(1f).padding(top = 18.dp))
+        trailing()
+    }
+    Hairline(Modifier.padding(top = 22.dp))
+}
+
 /** A draft's field as it shows now, and what a change to it does. */
 internal class DraftField(val value: TextFieldValue, val onChange: (TextFieldValue) -> Unit)
 

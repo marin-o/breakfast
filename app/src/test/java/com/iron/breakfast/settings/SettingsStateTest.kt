@@ -32,6 +32,19 @@ internal class FakeSettingsStore : SettingsStore {
 }
 
 class SettingsStateTest {
+    /** "Also settings and learned picks" clears the settings; the tutorial stays done, and stays not done. */
+    @Test fun aResetLeavesTheTutorialAsItWas() {
+        val done = FakeSettingsStore()
+        AppSettings(done).tutorialDone = true
+        AppSettings(done).haptics = true
+        SettingsState(AppSettings(done)) { 0L }.resetToDefaults()
+        assertTrue(AppSettings(done).tutorialDone)
+        assertFalse(AppSettings(done).haptics)
+        val notYet = FakeSettingsStore()
+        SettingsState(AppSettings(notYet)) { 0L }.resetToDefaults()
+        assertFalse(AppSettings(notYet).tutorialDone)
+    }
+
     private val store = FakeSettingsStore()
     private var now = 1_000L
     private val state = SettingsState(AppSettings(store)) { now }
@@ -116,8 +129,8 @@ class SettingsStateTest {
 
     @Test fun everyStoredSettingIsDeclaredOnce() {
         // Every AppSettings property with a setter is a setting, except the export reminder's times, which are not
-        // shown and go with a reset through the cleared store.
-        val bookkeeping = setOf("lastExportMs", "exportReminderEnabledMs", "exportReminderShownMs")
+        // shown and go with a reset through the cleared store, and the tutorial's done, which a reset keeps.
+        val bookkeeping = setOf("lastExportMs", "exportReminderEnabledMs", "exportReminderShownMs", "tutorialDone")
         val stored = AppSettings::class.java.methods.map { it.name }.filter { it.startsWith("set") }
             .map { it.removePrefix("set").replaceFirstChar(Char::lowercaseChar) }.toSet() - bookkeeping
         val declared = state.all.map { it.name }

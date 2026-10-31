@@ -102,6 +102,11 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 - The curve is an ink line with dots, the target weight a soft line across; its points are listed newest first, and deleting one asks first.
 - With a macro target the bar on Meals fills toward it, full at most, never coloured, and "/ 120 g" is its own soft line between the amount and the label; any target gives all three columns that line.
 
+## Onboarding
+
+- A sequence of pages, once on a first launch and again from Settings, About, "Show the tutorial". The one place explanatory sentences are allowed.
+- Each page: Skip in the bar, a title, a sentence or two, and an example in the real components with fixed values, which takes no tap. Next and dots at the foot; the last page has "Open Profile" and "Start logging". Pages scroll, so a large font or a small screen still fits.
+
 ## Layout
 
 - Gutters are 24dp. The status bar is 40dp as the system gives it. The header is 52dp.
@@ -112,7 +117,7 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 
 Quiet: short and smooth, standard easing (`FastOutSlowInEasing`), no bounce or overshoot. Things glide in and out and stop; nothing waits for an animation, and a screen or row on its way out can no longer be used.
 
-- **Screens over the base** (Log, entry detail and full edit, Library food page, food form, Settings, Open Food Facts search, resolver, "No local match", contribution screens): fade and a 24dp rise, 220ms in, 160ms out. The base stays still under the entry detail as it comes in. The scanner opens and closes without motion (its brackets keep their 280ms slide above the review sheet).
+- **Screens over the base** (Log, entry detail and full edit, Library food page, food form, Settings, Profile, tutorial, Open Food Facts search, resolver, "No local match", contribution screens): fade and a 24dp rise, 220ms in, 160ms out. The base stays still under the entry detail as it comes in. The scanner opens and closes without motion (its brackets keep their 280ms slide above the review sheet).
 - **Base screens** (Daily, a meal, the Library, a meal's Library, Recipes): the new screen fades in over the old one, 240ms in, 200ms out. The bottom area (the snackbars, the ink bar, the tabs) is one, over every base screen, and stays where it is: only the bar's text crosses (the Log opener to the Library's search and back, a meal's "Add to" line), 220ms; on Recipes the bar fades where it stands, so the tabs do not move; under a meal or a meal's Library the tabs fold away, 200ms. The list moves too: to another tab it comes 24dp from the side that tab lies on in the bar (Meals, Library, Recipes, the gear last) and the old one leaves the other way; into a meal or a meal's Library it rises 24dp, and back out the old one falls 24dp. The screen on its way out can no longer be used.
 - **Bottom bar:** the active item (the gear while Settings is open) is ink with a 2dp ink line under it, the others soft; when it changes, the line slides to the new item and the colours cross, 220ms.
 - **Settings pages:** a page fades in from 24dp at the end, Back brings the one before in from the start (Licences lies under About), 220ms in, 160ms out.

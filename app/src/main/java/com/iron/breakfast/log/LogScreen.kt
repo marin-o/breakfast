@@ -1,5 +1,6 @@
 package com.iron.breakfast.log
 
+import com.iron.breakfast.ui.components.DraftLine
 import com.iron.breakfast.ui.components.rememberDraftField
 import com.iron.breakfast.app.rememberDraftView
 import com.iron.breakfast.ui.components.DraftParts
@@ -70,7 +71,6 @@ import com.iron.breakfast.today.DayState
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.ui.label
 import com.iron.breakfast.ui.components.isLargeFont
-import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.components.rememberTick
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
@@ -119,34 +119,36 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Gutter)) {
             val field = rememberDraftField(log.draft, log::onDraft)
-            Row(verticalAlignment = Alignment.Top) {
-            BasicTextField(
-                value = field.value,
-                // Add's write takes this text: nothing typed meanwhile could be kept apart from it.
-                readOnly = session.busy,
-                onValueChange = field.onChange,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = {
-                    // Done commits the text: the last word is no longer being typed.
-                    log.commit()
-                    if (canAdd) { tick(); log.submit() }
-                }),
-                textStyle = BreakfastType.LargeInput.copy(color = colors.ink),
-                cursorBrush = SolidColor(colors.ink),
-                modifier = Modifier.weight(1f).padding(top = 18.dp).focusRequester(requester),
-                decorationBox = { inner ->
-                    Box {
-                        if (log.draft.isEmpty()) Text(placeholder, color = colors.soft, style = BreakfastType.LargeInput)
-                        inner()
+            DraftLine(
+                trailing = {
+                    // The whole draft stays: what is scanned comes back as one more part of it.
+                    IconButton(onClick = { scan.begin(forLog = true) }, modifier = Modifier.padding(top = 8.dp).size(IconTarget)) {
+                        Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.ink)
                     }
                 },
-            )
-            // The whole draft stays: what is scanned comes back as one more part of it.
-            IconButton(onClick = { scan.begin(forLog = true) }, modifier = Modifier.padding(top = 8.dp).size(IconTarget)) {
-                Icon(ScanBarcodeIcon, contentDescription = "Scan barcode", tint = colors.ink)
+            ) { line ->
+                BasicTextField(
+                    value = field.value,
+                    // Add's write takes this text: nothing typed meanwhile could be kept apart from it.
+                    readOnly = session.busy,
+                    onValueChange = field.onChange,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        // Done commits the text: the last word is no longer being typed.
+                        log.commit()
+                        if (canAdd) { tick(); log.submit() }
+                    }),
+                    textStyle = BreakfastType.LargeInput.copy(color = colors.ink),
+                    cursorBrush = SolidColor(colors.ink),
+                    modifier = line.focusRequester(requester),
+                    decorationBox = { inner ->
+                        Box {
+                            if (log.draft.isEmpty()) Text(placeholder, color = colors.soft, style = BreakfastType.LargeInput)
+                            inner()
+                        }
+                    },
+                )
             }
-            }
-            Hairline(Modifier.padding(top = 22.dp))
             log.error?.let { Text(it, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(top = 8.dp)) }
             DraftParts(draft, onChoose = log::chooseSuggestion, onResolve = log::resolveNotInFoods, queued = unmatched.resolve.parts.takeIf { unmatched.resolve.queueActive }.orEmpty(), queuedRow = rememberUnmatchedRows(unmatched))
         }
