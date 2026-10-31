@@ -1,13 +1,11 @@
 package com.iron.breakfast.domain
 
-import kotlinx.serialization.Serializable
 
 /**
  * One ingredient line of a recipe: the food, the amount as entered and as resolved on the food's basis, and the
  * nutrition of that amount. While the food exists the line follows it ([current]); the stored numbers are what is
  * left once the food is deleted, as an entry keeps its own.
  */
-@Serializable
 data class RecipeIngredient(
     val foodId: String,
     val foodName: String,
@@ -23,7 +21,6 @@ data class RecipeIngredient(
  * ml (the measured finished dish), or any of them together: at least one. Its name and aliases are matched like a
  * personal food's. Recipes are never ingredients.
  */
-@Serializable
 data class Recipe(
     val id: String,
     val name: String,
@@ -112,9 +109,6 @@ fun Recipe.shownServing(): Pair<Double, MeasureUnit> = when {
     validYield(totalWeight) || !validYield(totalVolume) -> 100.0 to MeasureUnit.GRAM
     else -> 100.0 to MeasureUnit.MILLILITER
 }
-
-/** The units a recipe logs in: portion with portions, g with a total weight, ml with a total volume. */
-fun Recipe.units(): List<MeasureUnit> = yields().map { it.first }
 
 /**
  * The recipe as a food the Log matches and logs: its name and aliases, personal (so it ranks as a personal food does),

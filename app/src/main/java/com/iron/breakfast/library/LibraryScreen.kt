@@ -1,5 +1,11 @@
 package com.iron.breakfast.library
 
+import com.iron.breakfast.ui.components.PageSection
+import com.iron.breakfast.ui.components.FoodRowWithAdd
+import com.iron.breakfast.ui.components.listRowMotion
+import com.iron.breakfast.ui.components.TabList
+import com.iron.breakfast.ui.screens.defaultServingCalories
+import com.iron.breakfast.domain.presetMeal
 import com.iron.breakfast.ui.components.FoodAmountSheet
 import com.iron.breakfast.ui.components.barPlaceholder
 import com.iron.breakfast.ui.components.SearchText
@@ -12,21 +18,15 @@ import com.iron.breakfast.ui.shortDateLabel
 import com.iron.breakfast.ui.countLabel
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
-import androidx.compose.foundation.layout.PaddingValues
-import com.iron.breakfast.ui.components.BottomAreaClearance
 import com.iron.breakfast.ui.theme.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
@@ -51,7 +51,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.semantics.contentDescription
 import com.iron.breakfast.app.Surfaces
 import com.iron.breakfast.contribution.ContributionFlow
 import com.iron.breakfast.food.FoodForm
@@ -69,18 +68,13 @@ import com.iron.breakfast.ui.label
 import com.iron.breakfast.contribution.contributionShown
 import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.components.isLargeFont
-import com.iron.breakfast.ui.components.AddCircle
 import com.iron.breakfast.ui.components.DestructiveButton
-import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.MealChoices
 import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.components.SecondaryButton
 import com.iron.breakfast.ui.components.TertiaryButton
-import com.iron.breakfast.ui.components.TopBar
-import com.iron.breakfast.ui.components.SectionHeading
 import com.iron.breakfast.ui.components.rememberMotion
-import com.iron.breakfast.ui.components.LocalScreenBody
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import com.iron.breakfast.ui.screens.formatKcal
 import com.iron.breakfast.ui.screens.entrySourceLabel
@@ -99,33 +93,21 @@ internal fun LibraryScreen(
     /** The meal it adds to: the Library's own, or, while it glides out, the one it added to as it showed. */
     target: MealSlot? = library.target,
 ) {
-    val colors = LocalBreakfastColors.current
     val motion = rememberMotion()
     val root = target == null
     // A part being resolved is searched for, not added to a meal the user did not choose here.
     val title = if (resolve.resolvingPart) "Search" else if (root) "Library" else "Add to ${target!!.label()}"
     val subtitle = if (root) "${countLabel(library.foods.size, "food", "foods")}, by last logged" else shortDateLabel(day.selectedDayKey)
-    Box(modifier.fillMaxSize().background(colors.bg)) {
-        // The bottom area floats over the end of the list, which rides above the keyboard while the search has it.
-        LazyColumn(
-            Modifier.fillMaxSize().then(LocalScreenBody.current).imePadding().padding(horizontal = Gutter),
-            contentPadding = PaddingValues(bottom = BottomAreaClearance),
-        ) {
-            item {
-                TopBar(
-                    title, if (root) null else surfaces::exitLibrary, Modifier.padding(top = 8.dp, bottom = 6.dp), subtitle = subtitle,
-                    trailing = { if (root) TertiaryButton("New food", { foodForm.open() }) },
-                )
-                Hairline()
-            }
-            // Rows fade in and out as the list changes, and move to their new place (logged foods go to the top).
-            items(library.foods, key = { it.id }) { food ->
-                LibraryFoodRow(library, automaticMeal, food, root, Modifier.animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem()))
-            }
-            // The list's closing line, only under rows: an empty list keeps just the header's line.
-            if (library.foods.isNotEmpty()) item {
-                Hairline(Modifier.padding(top = 8.dp))
-            }
+    // The list rides above the keyboard while the search has it.
+    TabList(
+        title, subtitle, library.foods.isNotEmpty(), modifier,
+        onBack = if (root) null else surfaces::exitLibrary,
+        bodyModifier = Modifier.imePadding(),
+        trailing = { if (root) TertiaryButton("New food", { foodForm.open() }) },
+    ) {
+        // Logged foods go to the top.
+        items(library.foods, key = { it.id }) { food ->
+            LibraryFoodRow(library, automaticMeal, food, root, listRowMotion(motion))
         }
     }
 }
@@ -143,20 +125,15 @@ private fun LibraryFoodRow(library: LibraryState, automaticMeal: () -> MealSlot?
     val expanded = root && library.expandedFoodId == food.id
     val target = library.target
     Column(modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            FoodRow(
-                name = food.name,
-                quantityLine = if (last == null) repeatLine else "last $repeatLine",
-                calories = last?.let { formatKcal(it.nutritionSnapshot.calories) } ?: defaultServingCalories(food),
-                modifier = Modifier.weight(1f),
-                onClick = { library.openFood(food) },
-            )
-            AddCircle(
-                contentDescription = if (target == null) "Add ${food.name} to a meal" else "Add ${food.name} to ${target.label()}",
-                onClick = { if (root) library.toggleFoodPicker(food) else library.log(food, target!!, repeatAmount, repeatUnit, repeatName) },
-                icon = if (expanded) Icons.Outlined.Close else Icons.Outlined.Add,
-            )
-        }
+        FoodRowWithAdd(
+            name = food.name,
+            quantityLine = if (last == null) repeatLine else "last $repeatLine",
+            calories = last?.let { formatKcal(it.nutritionSnapshot.calories) } ?: defaultServingCalories(food),
+            onClick = { library.openFood(food) },
+            addDescription = if (target == null) "Add ${food.name} to a meal" else "Add ${food.name} to ${target.label()}",
+            onAdd = { if (root) library.toggleFoodPicker(food) else library.log(food, target!!, repeatAmount, repeatUnit, repeatName) },
+            addIcon = if (expanded) Icons.Outlined.Close else Icons.Outlined.Add,
+        )
         if (expanded) {
             Column(Modifier.padding(bottom = 8.dp)) {
                 Text("Add $repeatLine to", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(bottom = 6.dp))
@@ -166,8 +143,6 @@ private fun LibraryFoodRow(library: LibraryState, automaticMeal: () -> MealSlot?
         }
     }
 }
-
-internal fun defaultServingCalories(food: FoodRecord): String = formatKcal(com.iron.breakfast.domain.defaultServingCalculation(food).nutrition.calories)
 
 /**
  * The Library's search, in the one ink bar of the bottom area (`app/BaseBottomArea.kt`): the text field and its
@@ -220,14 +195,13 @@ internal fun LibraryFoodDetailDialog(
     var amountSheetOpen by rememberSaveable(food.id) { mutableStateOf(false) }
     var mealMenuOpen by rememberSaveable(food.id) { mutableStateOf(false) }
     // Starts on the meal it was opened from, else the Meal setting's meal (By time, Last used), else Lunch.
-    var targetMeal by rememberSaveable(food.id) { mutableStateOf(libraryPresetMeal(surfaces.mealOnScreen(), automaticMeal())) }
+    var targetMeal by rememberSaveable(food.id) { mutableStateOf(presetMeal(surfaces.mealOnScreen(), automaticMeal())) }
     val servings = food.householdServings()
     ItemPage("Food", library::closeFood, food.name, { library.closeFood(); foodForm.openEdit(food) }) {
         food.brand?.takeIf { it.isNotBlank() }?.let { Text(it, color = colors.soft, style = BreakfastType.Secondary) }
         Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Secondary)
         food.barcode?.let { Text("Barcode $it", color = colors.soft, style = BreakfastType.Secondary) }
-        Hairline(Modifier.padding(top = 16.dp))
-        SectionHeading(basisLabel(food.nutrition.amount, food.nutrition.unit), Modifier.padding(top = 16.dp))
+        PageSection(basisLabel(food.nutrition.amount, food.nutrition.unit))
         NutritionFacts(
             formatKcal(food.nutrition.values.calories),
             fat = macroText(food.nutrition.values.fat) to "g",
@@ -235,8 +209,7 @@ internal fun LibraryFoodDetailDialog(
             protein = macroText(food.nutrition.values.protein) to "g",
         )
         if (servings.isNotEmpty()) {
-            Hairline(Modifier.padding(top = 16.dp))
-            SectionHeading("Servings", Modifier.padding(top = 16.dp))
+            PageSection("Servings")
             servings.forEach { conversion ->
                 Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text(servingRowName(conversion), color = colors.ink, style = BreakfastType.Body)
@@ -245,8 +218,7 @@ internal fun LibraryFoodDetailDialog(
             }
         }
         if (food.aliases.isNotEmpty()) {
-            Hairline(Modifier.padding(top = 16.dp))
-            SectionHeading("Aliases", Modifier.padding(top = 16.dp))
+            PageSection("Aliases")
             food.aliases.forEach { Text(it, color = colors.ink, style = BreakfastType.Body, modifier = Modifier.padding(top = 4.dp)) }
         }
         Hairline(Modifier.padding(top = 16.dp))
@@ -290,7 +262,6 @@ private fun LibraryAmountSheet(library: LibraryState, food: FoodRecord, target: 
         startMeasure = last?.let { Measure(it.enteredUnit, it.enteredUnitLabel.takeIf { _ -> it.enteredUnit == MeasureUnit.SERVING }) } ?: Measure(food.defaultUnit),
         startMeal = target,
         onAdd = { amount, measure, meal -> library.log(food, meal!!, amount, measure.unit, measure.name); onDismiss() },
-        onInvalid = library::invalidAmount,
         onDismiss = onDismiss,
     )
 }

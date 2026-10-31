@@ -1,5 +1,6 @@
 package com.iron.breakfast.today
 
+import com.iron.breakfast.ui.components.listRowMotion
 import com.iron.breakfast.entry.entryActions
 import com.iron.breakfast.ui.components.followDrag
 import com.iron.breakfast.ui.shortDateLabel
@@ -124,7 +125,7 @@ internal fun MealScreen(
             }
             // A new or restored row fades in; a deleted one fades as the rows below close the gap.
             items(entries, key = { it.id }) { entry ->
-                Column(Modifier.fillMaxWidth().animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem())) {
+                Column(Modifier.fillMaxWidth().then(listRowMotion(motion))) {
                     EntryRow(entry, undo, entryEdit, motion)
                     // Same correction block as Daily, for a doubtful match from the Log page.
                     Reveal(entry.takeIf { feedback.isOpen(it) }, resize = true) { CorrectionStrip(feedback, search, it) }

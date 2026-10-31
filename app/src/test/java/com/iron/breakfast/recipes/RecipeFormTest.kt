@@ -1,5 +1,6 @@
 package com.iron.breakfast.recipes
 
+import com.iron.breakfast.domain.Measure
 import com.iron.breakfast.QueueDispatcher
 import com.iron.breakfast.app.DiaryChange
 import com.iron.breakfast.app.Notices
@@ -47,7 +48,7 @@ class RecipeFormTest {
         val view = form.ingredientsView()
         val rows = view.draft.rows
         assertEquals(listOf("egg", "rolled_oats"), rows.filterIsInstance<DraftRow.Entry>().map { it.resolution.food.id })
-        assertEquals("Not in your foods", (rows.last() as DraftRow.Unresolved).text.let { "Not in your foods" })
+        assertEquals("ayranxyz", (rows.last() as DraftRow.Unresolved).text)
         assertFalse("a part not in your foods keeps Save back", view.complete)
         form.onIngredients("2 eggs, 40 g oats")
         assertTrue(form.ingredientsView().complete)
@@ -112,7 +113,7 @@ class RecipeFormTest {
         assertNull(form.adding)
         assertTrue("the search stays", form.searchOpen)
         form.pick(kefir)
-        form.addIngredient(kefir, 250.0, MeasureUnit.GRAM)
+        form.addIngredient(kefir, 250.0, Measure(MeasureUnit.GRAM))
         assertEquals("2 eggs, 250 g Kefir", form.fields.ingredients)
         assertFalse(form.searchOpen)
         assertNull(form.adding)
@@ -196,7 +197,7 @@ class RecipeFormTest {
         assertFalse(form.open)
 
         typed(ingredients = "")
-        form.addIngredient(kefir, 250.0, MeasureUnit.GRAM)
+        form.addIngredient(kefir, 250.0, Measure(MeasureUnit.GRAM))
         assertTrue(form.pinsSnapshot().values.any { it.id == kefir.id })
         form.dropPinsOf(kefir.id)
         assertTrue(form.pinsSnapshot().isEmpty())
@@ -215,7 +216,7 @@ class RecipeFormTest {
         diary.recipes = listOf(recipe)
         diary.session.refresh()
         form.openEdit(recipe)
-        form.addIngredient(kefir, 250.0, MeasureUnit.GRAM)
+        form.addIngredient(kefir, 250.0, Measure(MeasureUnit.GRAM))
         assertEquals(setOf("custom-gone", "custom-kefir"), form.pinsSnapshot().values.map { it.id }.toSet())
         diary.foods = FoodCatalog.fixtures
         diary.session.refresh()
@@ -224,19 +225,108 @@ class RecipeFormTest {
         assertEquals(setOf("custom-gone"), form.pinsSnapshot().values.map { it.id }.toSet())
         // A New recipe keeps no pin to a food the new diary lacks either.
         typed(ingredients = "")
-        form.addIngredient(egg, 2.0, MeasureUnit.PIECE)
+        form.addIngredient(egg, 2.0, Measure(MeasureUnit.PIECE))
         diary.foods = emptyList()
         diary.session.refresh()
         form.diaryReplaced()
         assertTrue(form.pinsSnapshot().isEmpty())
     }
 
+    private fun restored(): RecipeForm =
+        RecipeForm(diary.session, store, notices, diary.scope, io, Dispatchers.Unconfined, Dispatchers.Unconfined, onSaved = {}).apply { restore(form.savedForm()!!) }
+
+    /** F1: a New recipe's picks are not in the baseline, which is empty. */
+    @Test fun aNewRecipesPickComesBackAfterTheProcessWasKilled() {
+        typed(ingredients = "")
+        form.addIngredient(kefir, 250.0, Measure(MeasureUnit.GRAM))
+        assertEquals(kefir, form.pinsSnapshot()["250 g Kefir"])
+        assertEquals(form.pinsSnapshot(), restored().pinsSnapshot())
+    }
+
+    private fun editedRecipe() = chili.copy(ingredients = listOf(mince.copy(foodId = "egg", foodName = egg.name, enteredAmount = 2.0, enteredUnit = MeasureUnit.PIECE), mince.copy(foodId = "custom-gone", foodName = "Old mince")))
+
+    /** F1: the amount changed, so the part's text is not in the baseline; the food is deleted, so only the pin has its numbers. */
+    @Test fun anEditsChangedAmountKeepsItsPinAfterTheProcessWasKilled() {
+        form.openEdit(editedRecipe())
+        form.onIngredients("2 piece ${egg.name}, 400 g Old mince")
+        assertEquals("custom-gone", form.pinsSnapshot()["400 g Old mince"]?.id)
+        assertEquals("custom-gone", restored().pinsSnapshot()["400 g Old mince"]?.id)
+    }
+
+    /** F1: the text got shorter; a key found in the baseline used to point past its end. */
+    @Test fun anEditThatGotShorterComesBackWithoutCrashing() {
+        form.openEdit(editedRecipe())
+        form.onIngredients("500 g Old mince")
+        val again = restored()
+        assertEquals("500 g Old mince", again.fields.ingredients)
+        assertEquals("custom-gone", again.pinsSnapshot()["500 g Old mince"]?.id)
+    }
+
+    private fun saveEdit(recipe: Recipe, change: () -> Unit): Recipe {
+        diary.recipes = listOf(recipe)
+        diary.session.refresh()
+        form.openEdit(recipe)
+        change()
+        form.save()
+        return saved.last()
+    }
+
+    /** F2: the form shows the weight; the volume it does not show stays. */
+    @Test fun anEditKeepsTheTotalTheFormDoesNotShow() {
+        val both = chili.copy(totalVolume = 1500.0)
+        val stored = saveEdit(both) { form.onPortions("5") }
+        assertEquals(1600.0, stored.totalWeight!!, 0.0)
+        assertEquals(1500.0, stored.totalVolume!!, 0.0)
+        // A total as it was typed anew is the same total.
+        val sameAgain = saveEdit(both) { form.onTotal("1600 g") }
+        assertEquals(1500.0, sameAgain.totalVolume!!, 0.0)
+    }
+
+    /** Another weight is another dish: the volume kept no longer matches it, and goes. */
+    @Test fun aChangedWeightDropsTheVolumeItNoLongerMatches() {
+        val stored = saveEdit(chili.copy(totalVolume = 1500.0)) { form.onTotal("3200") }
+        assertEquals(3200.0, stored.totalWeight!!, 0.0)
+        assertNull(stored.totalVolume)
+    }
+
+    /** The other direction: a recipe with only a volume keeps it, whole, while the Total is untouched. */
+    @Test fun anUntouchedVolumeStaysAsItWas() {
+        val stored = saveEdit(chili.copy(totalWeight = null, totalVolume = 1500.25)) { form.onPortions("5") }
+        assertNull(stored.totalWeight)
+        assertEquals(1500.25, stored.totalVolume!!, 0.0)
+    }
+
+    /** What the user typed still wins: a Total in the other family replaces the shown one, and a cleared Total clears both. */
+    @Test fun anEditsTypedTotalWinsOverWhatItKept() {
+        val both = chili.copy(totalVolume = 1500.0)
+        val inMl = saveEdit(both) { form.onTotal("1.2 l") }
+        assertNull(inMl.totalWeight)
+        assertEquals(1200.0, inMl.totalVolume!!, 0.0)
+        val cleared = saveEdit(both) { form.onTotal("") }
+        assertNull(cleared.totalWeight)
+        assertNull(cleared.totalVolume)
+        val volumeOnly = chili.copy(totalWeight = null, totalVolume = 1500.0)
+        val toGrams = saveEdit(volumeOnly) { form.onTotal("900 g") }
+        assertEquals(900.0, toGrams.totalWeight!!, 0.0)
+        assertNull(toGrams.totalVolume)
+    }
+
+    /** F12: a failed save says so, and the form stays with everything typed. */
+    @Test fun aFailedSaveKeepsTheFormAndSaysSo() {
+        typed(ingredients = "2 eggs")
+        val fields = form.fields
+        store.failSave = true
+        form.save()
+        assertTrue(form.open)
+        assertEquals(fields, form.fields)
+        assertTrue(saved.isEmpty())
+        assertEquals("Could not save this recipe.", notices.message)
+    }
+
     @Test fun anOpenFormComesBackAfterTheProcessWasKilled() {
         typed(ingredients = "2 eggs")
         form.chooseSuggestion(egg)
-        val savedForm = form.savedForm()!!
-        val again = RecipeForm(diary.session, store, notices, diary.scope, io, Dispatchers.Unconfined, Dispatchers.Unconfined, onSaved = {})
-        again.restore(savedForm)
+        val again = restored()
         assertTrue(again.open)
         assertEquals(form.fields, again.fields)
         assertEquals(form.pinsSnapshot(), again.pinsSnapshot())

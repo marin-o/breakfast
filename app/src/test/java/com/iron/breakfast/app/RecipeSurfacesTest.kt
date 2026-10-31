@@ -1,5 +1,12 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.scan.ProductReviewOrigin
+import com.iron.breakfast.domain.DraftRow
+import com.iron.breakfast.resolve.food
+import com.iron.breakfast.domain.asFood
+import com.iron.breakfast.domain.MeasureUnit
+import com.iron.breakfast.domain.Measure
+import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.recipes.chili
 import com.iron.breakfast.today.entry
@@ -129,7 +136,7 @@ class RecipeSurfacesTest {
         app.recipeForm.openSearch()
         app.recipeForm.pick(kefir)
         shows("RECIPES", "RECIPE_FORM", "RECIPE_SEARCH", "RECIPE_INGREDIENT_ADD")
-        app.recipeForm.addIngredient(kefir, 200.0, com.iron.breakfast.domain.MeasureUnit.GRAM)
+        app.recipeForm.addIngredient(kefir, 200.0, Measure(MeasureUnit.GRAM))
         shows("RECIPES", "RECIPE_FORM")
         assertEquals("200 g Kefir", app.recipeForm.fields.ingredients)
     }
@@ -216,5 +223,153 @@ class RecipeSurfacesTest {
         app.recipes.openRecipe(chili)
         app.owners.session.write(DiaryChange.DiaryReplaced) {}
         shows("RECIPES")
+    }
+
+    /** F4: a Log draft's pin holds the recipe as it was picked; after an edit it logs the new numbers. */
+    @Test fun aLogPinToARecipeFollowsItsEdit() {
+        val halved = chili.copy(portions = 8.0)
+        app.plannerFoods = FoodCatalog.fixtures + chili.asFood()
+        app.log.onDraft("1 portion chil")
+        app.log.chooseSuggestion(chili.asFood())
+        assertEquals(chili.asFood(), app.log.pinsSnapshot().values.single())
+        app.owners.session.write(DiaryChange.RecipesChanged) { app.diary.recipes = listOf(halved) }
+        assertEquals(halved.asFood(), app.log.pinsSnapshot().values.single())
+    }
+
+    /** F4: renamed, the pin's name is no longer in the text, so the part is matched again. */
+    @Test fun aLogPinToARecipeRenamedGoes() {
+        app.plannerFoods = FoodCatalog.fixtures + chili.asFood()
+        app.log.onDraft("1 portion chil")
+        app.log.chooseSuggestion(chili.asFood())
+        app.owners.session.write(DiaryChange.RecipesChanged) { app.diary.recipes = listOf(chili.copy(name = "Stew")) }
+        assertTrue(app.log.pinsSnapshot().isEmpty())
+    }
+
+    /** F4: the recipe form's pin to a food follows that food's edit too, so Save stores its new numbers. */
+    @Test fun aRecipeFormPinFollowsItsFoodsEdit() {
+        val kefir = food("custom-kefir", "Kefir")
+        val richer = kefir.copy(nutrition = kefir.nutrition.copy(values = kefir.nutrition.values.copy(calories = 999.0)))
+        app.diary.foods = listOf(kefir)
+        app.owners.session.refresh()
+        app.recipeForm.openNew()
+        app.recipeForm.addIngredient(kefir, 250.0, Measure(MeasureUnit.GRAM))
+        app.owners.session.write(DiaryChange.FoodsChanged) { app.diary.foods = listOf(richer) }
+        assertEquals(richer, app.recipeForm.pinsSnapshot().values.single())
+    }
+
+    private fun searchingANewFood() {
+        app.plannerFoods = FoodCatalog.fixtures
+        app.libraryFoods = emptyList()
+        app.recipeForm.openNew()
+        app.recipeForm.onIngredients("300 g kefyr")
+        app.recipeForm.commitIngredients()
+        app.recipeForm.resolveNotInFoods(app.recipeForm.ingredientsView().draft.rows.filterIsInstance<DraftRow.Unresolved>().single())
+    }
+
+    /** F3: a part in no food says so, and the way on is the search's: not a blank list. */
+    @Test fun anIngredientSearchThatFindsNothingOffersTheWayOn() {
+        searchingANewFood()
+        assertEquals("kefyr", app.recipeForm.query)
+        assertTrue(app.recipeForm.noMatch)
+        app.recipeForm.onQuery("")
+        assertFalse(app.recipeForm.noMatch)
+    }
+
+    /** F3: a food made there comes back as the part's pick, with its typed amount; nothing is logged. */
+    @Test fun aPersonalFoodMadeFromTheIngredientSearchIsThePartsPick() {
+        searchingANewFood()
+        app.foodForm.open("Kefyr")
+        shows("DAILY", "RECIPE_FORM", "RECIPE_SEARCH", "FOOD_FORM")
+        app.foodForm.draft.calories = "100"
+        app.foodForm.save()
+        // No notice: nothing covers the form.
+        shows("DAILY", "RECIPE_FORM")
+        assertEquals("Kefyr 300 g", app.recipeForm.fields.ingredients)
+        assertEquals("kefyr", app.recipeForm.pinsSnapshot().values.single().id)
+        assertEquals(listOf("save food Kefyr"), app.calls)
+    }
+
+    /** The origin stays through Rescan, so that sheet shows Add and no meal too. */
+    @Test fun aRescanFromTheIngredientSearchKeepsTheSheetWithoutAMeal() {
+        val scanned = food("off-kefyr", "Kefyr")
+        app.barcodes["4006381333931"] = scanned
+        searchingANewFood()
+        app.search.open("kefyr", reviewOrigin = ProductReviewOrigin.LOG_PART)
+        app.search.choose(food("off-other", "Other"))
+        app.review.rescan()
+        app.scan.onBarcode("4006381333931")
+        assertEquals(ProductReviewOrigin.LOG_PART, app.review.origin)
+        app.review.addToLog()
+        assertEquals("off-kefyr", app.recipeForm.pinsSnapshot().values.single().id)
+        assertTrue(app.calls.none { it.startsWith("review log") })
+    }
+
+    /** A food made from the magnifier: the sheet goes without adding, and the search must not say it does not exist. */
+    @Test fun dismissingTheSheetForANewFoodSearchesAgain() {
+        app.plannerFoods = FoodCatalog.fixtures
+        app.libraryFoods = emptyList()
+        app.recipeForm.openNew()
+        app.recipeForm.openSearch()
+        app.recipeForm.onQuery("kefyr")
+        assertTrue(app.recipeForm.noMatch)
+        app.foodForm.open("Kefyr")
+        app.foodForm.draft.calories = "100"
+        app.foodForm.save()
+        assertEquals("kefyr", app.recipeForm.adding?.id)
+        app.libraryFoods = listOf(food("kefyr", "Kefyr"))
+        app.recipeForm.dismissAdding()
+        assertFalse(app.recipeForm.noMatch)
+        assertEquals(listOf("kefyr"), app.recipeForm.results.map { it.id })
+    }
+
+    /** A review stores the food it logs over the stored one: a Log pin to it follows, so Add logs the corrected kcal. */
+    @Test fun aLogPinFollowsAKcalCorrectedThroughAScanReview() {
+        val kefir = food("custom-kefir", "Kefir")
+        val app = AppKit(foods = listOf(kefir))
+        app.plannerFoods = listOf(kefir)
+        app.log.onDraft("200 g kef")
+        app.log.chooseSuggestion(kefir)
+        val before = app.log.draftView().logged.single().calculation.nutrition.calories
+        app.review.choose(kefir, fromScan = true, origin = ProductReviewOrigin.MEAL)
+        app.review.onCalories("999")
+        app.review.add(MealSlot.LUNCH)
+        val after = app.log.pinsSnapshot().values.single()
+        assertEquals(999.0, after.nutrition.values.calories, 0.0)
+        assertTrue(app.log.draftView().logged.single().calculation.nutrition.calories > before)
+    }
+
+    @Test fun aQueuedPartsWriteRefreshesPinsToo() {
+        val kefir = food("custom-kefir", "Kefir")
+        val richer = kefir.copy(nutrition = kefir.nutrition.copy(values = kefir.nutrition.values.copy(calories = 999.0)))
+        val app = AppKit(foods = listOf(kefir))
+        app.plannerFoods = listOf(kefir)
+        app.log.onDraft("200 g kef")
+        app.log.chooseSuggestion(kefir)
+        app.owners.session.write(DiaryChange.QueuedPartLogged) { app.diary.foods = listOf(richer) }
+        assertEquals(richer, app.log.pinsSnapshot().values.single())
+    }
+
+    /** F3: closing what it opened comes back to the search, with the part still waiting. */
+    @Test fun leavingThePersonalFoodFormReturnsToTheIngredientSearch() {
+        searchingANewFood()
+        app.foodForm.open("Kefyr")
+        app.foodForm.close()
+        shows("DAILY", "RECIPE_FORM", "RECIPE_SEARCH")
+        assertEquals("300 g kefyr", app.recipeForm.fields.ingredients)
+    }
+
+    /** F3: an Open Food Facts product reviewed from there comes back the same way. */
+    @Test fun aReviewedProductFromTheIngredientSearchIsThePartsPick() {
+        searchingANewFood()
+        app.search.open("kefyr", reviewOrigin = ProductReviewOrigin.LOG_PART)
+        app.search.choose(food("off-kefyr", "Kefyr"))
+        assertTrue("RECIPE_SEARCH" in app.shown() && "PRODUCT_REVIEW" in app.shown())
+        assertEquals("the sheet shows Add and no meal", ProductReviewOrigin.LOG_PART, app.review.origin)
+        // What that sheet's Add calls.
+        app.review.addToLog()
+        shows("DAILY", "RECIPE_FORM")
+        assertEquals("off-kefyr", app.recipeForm.pinsSnapshot().values.single().id)
+        assertEquals("stored, and no diary entry written", listOf("review store off-kefyr"), app.calls)
+        assertEquals("the Log's draft is not touched", "", app.log.draft)
     }
 }

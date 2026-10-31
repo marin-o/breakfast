@@ -41,16 +41,6 @@ internal fun foodSaveRefusal(name: String, input: NutritionInput, resolved: Reso
     return null
 }
 
-/** What Back or the arrow does on New food or Edit food. */
-internal enum class FoodFormBack { IGNORE, ASK, CLOSE }
-
-/** While a save runs, Back waits for it; a changed form asks before discarding; an unchanged one closes. */
-internal fun foodFormBack(saving: Boolean, dirty: Boolean): FoodFormBack = when {
-    saving -> FoodFormBack.IGNORE
-    dirty -> FoodFormBack.ASK
-    else -> FoodFormBack.CLOSE
-}
-
 /** What the create form resolves to and whether it can be saved. Calories are required. */
 internal data class CreateFoodState(
     val nutrition: ResolvedNutrition,

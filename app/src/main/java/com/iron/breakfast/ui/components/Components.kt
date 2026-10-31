@@ -1223,6 +1223,37 @@ fun SubScreen(
     }
 }
 
+/** A form's Save at its foot, in a [SubScreen]'s `bottom`. */
+@Composable
+internal fun SaveButton(onClick: () -> Unit, enabled: Boolean) {
+    PrimaryButton("Save", onClick, Modifier.padding(top = 16.dp, bottom = 8.dp), enabled = enabled, kind = ButtonKind.Constructive)
+}
+
+/** A form's fields, in the one spacing every form has. */
+@Composable
+internal fun FormFields(content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp), content = content)
+}
+
+/** [label] over an amount's [field] (it takes the modifier, and keeps its own label hidden), then g and ml. */
+@Composable
+internal fun AmountWithUnit(label: String, unit: MeasureUnit?, onUnit: (MeasureUnit) -> Unit, field: @Composable (Modifier) -> Unit) {
+    Column {
+        Text(label, color = LocalBreakfastColors.current.soft, style = BreakfastType.Meta, modifier = Modifier.padding(bottom = 4.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            field(Modifier.weight(1.6f))
+            GramMlChoices(unit, onUnit, Modifier.weight(1f))
+        }
+    }
+}
+
+/** The next section of a food's or recipe's page: a line, then its heading. */
+@Composable
+internal fun PageSection(title: String) {
+    Hairline(Modifier.padding(top = 16.dp))
+    SectionHeading(title, Modifier.padding(top = 16.dp))
+}
+
 /** A food's or recipe's page: the [SubScreen] with Edit in its bar, a hairline, then [name]; [content] follows. */
 @Composable
 internal fun ItemPage(title: String, onBack: () -> Unit, name: String, onEdit: (() -> Unit)?, content: @Composable ColumnScope.() -> Unit) {
@@ -1344,4 +1375,11 @@ fun MealChoices(selected: MealSlot?, onSelect: (MealSlot) -> Unit, modifier: Mod
             }
         }
     }
+}
+
+/** The ways on for a food not found here: Open Food Facts, or a personal food. */
+@Composable
+internal fun SearchOrCreateButtons(onSearch: () -> Unit, onCreate: () -> Unit) {
+    PrimaryButton("Search Open Food Facts", onSearch, kind = ButtonKind.Neutral)
+    SecondaryButton("Create personal food", onCreate)
 }

@@ -41,13 +41,6 @@ internal fun logSubmitPlan(
     return LogSubmitPlan.Save(target)
 }
 
-/**
- * A "Not in your foods" row still names its text in [draft] (MOB-025): the Log draws rows from a draft computed off
- * the main thread, so after a keystroke a tapped row's span may hold other text, and that tap must do nothing.
- */
-internal fun rowStillInDraft(draft: String, row: DraftRow.Unresolved): Boolean =
-    row.start >= 0 && row.start < row.end && row.end <= draft.length && draft.substring(row.start, row.end) == row.text
-
 /** What the Log's bar offers. */
 internal enum class LogBar {
     /** "Add to <meal>" with the sum. */

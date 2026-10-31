@@ -82,19 +82,30 @@ internal fun ingredientsOf(plan: LogPlan): List<RecipeIngredient> = plan.entries
     )
 }
 
-/** The recipe the form saves: [id] blank for a new one. Call only when [recipeCanSave]. */
-internal fun recipeOf(id: String?, fields: RecipeFields, plan: LogPlan): Recipe {
-    // One total, as g (total weight) or ml (total volume); the other stays empty.
+/**
+ * The recipe the form saves: [id] blank for a new one. Call only when [recipeCanSave]. The form shows one total, the
+ * weight when there is one. A Total left as [kept] has it keeps both, exactly; any other Total is the only one, since a
+ * volume kept beside another weight would no longer match the dish.
+ */
+internal fun recipeOf(id: String?, fields: RecipeFields, plan: LogPlan, kept: Recipe? = null): Recipe {
     val total = totalOf(fields.total, fields.totalUnit)
+    val same = kept?.takeIf { totalUntouched(fields, total, it) }
     return Recipe(
         id = id.orEmpty(),
         name = fields.name.trim(),
         aliases = splitAliases(fields.aliases).distinct(),
         portions = yieldOf(fields.portions),
-        totalWeight = total?.takeIf { it.first == MeasureUnit.GRAM }?.second,
-        totalVolume = total?.takeIf { it.first == MeasureUnit.MILLILITER }?.second,
+        totalWeight = if (same != null) same.totalWeight else total?.takeIf { it.first == MeasureUnit.GRAM }?.second,
+        totalVolume = if (same != null) same.totalVolume else total?.takeIf { it.first == MeasureUnit.MILLILITER }?.second,
         ingredients = ingredientsOf(plan),
     )
+}
+
+/** The Total still reads as the one [recipe] shows, as Edit filled it or typed to the same amount. */
+private fun totalUntouched(fields: RecipeFields, total: Pair<MeasureUnit, Double>?, recipe: Recipe): Boolean {
+    val shown = recipe.totalWeight ?: recipe.totalVolume ?: return false
+    val unit = if (recipe.totalWeight != null) MeasureUnit.GRAM else MeasureUnit.MILLILITER
+    return (fields.totalUnit == unit && fields.total == editableNumber(shown)) || total == (unit to shown)
 }
 
 /** What Edit opens with: the recipe's fields, its ingredients typed back as the Log writes a choice, and their pins. */

@@ -1,6 +1,7 @@
 package com.iron.breakfast.profile
 
-import androidx.compose.foundation.layout.Arrangement
+import com.iron.breakfast.ui.components.FormFields
+import com.iron.breakfast.ui.components.SaveButton
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,7 +25,6 @@ import com.iron.breakfast.domain.curveX
 import com.iron.breakfast.domain.macroTargetTextValid
 import com.iron.breakfast.domain.weightTextValid
 import com.iron.breakfast.ui.components.AddCircle
-import com.iron.breakfast.ui.components.ButtonKind
 import com.iron.breakfast.ui.components.CheckboxRow
 import com.iron.breakfast.ui.components.CurvePoint
 import com.iron.breakfast.ui.components.DecimalField
@@ -34,7 +34,6 @@ import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.NutrientField
 import com.iron.breakfast.ui.components.NutrientFields
 import com.iron.breakfast.ui.components.PointCurve
-import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.components.SubScreen
 import com.iron.breakfast.ui.components.isLargeFont
 import com.iron.breakfast.ui.pretty
@@ -47,7 +46,7 @@ internal fun ProfileScreen(profile: ProfileState) {
     val curve = remember(points) { points.mapNotNull { point -> curveX(point.dayKey)?.let { CurvePoint(it, point.kg) } } }
     SubScreen(
         "Profile", profile::leave, scroll = false,
-        bottom = { PrimaryButton("Save", profile::save, Modifier.padding(top = 16.dp, bottom = 8.dp), enabled = profile.canSave, kind = ButtonKind.Constructive) },
+        bottom = { SaveButton(profile::save, profile.canSave) },
     ) {
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(bottom = 12.dp)) {
             item(key = "fields") { ProfileFields(profile) }
@@ -62,7 +61,7 @@ private fun ProfileFields(profile: ProfileState) {
     val draft = profile.draft
     Column {
         Hairline(Modifier.padding(top = 8.dp))
-        Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        FormFields {
             Field("Name", draft.name, { profile.edit(draft.copy(name = it)) })
             NutrientFields(
                 listOf(

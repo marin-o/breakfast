@@ -1,5 +1,6 @@
 package com.iron.breakfast.app
 
+import com.iron.breakfast.domain.asFood
 import com.iron.breakfast.domain.dayKeyFor
 import com.iron.breakfast.profile.WeightStore
 import com.iron.breakfast.profile.ProfileState
@@ -275,12 +276,16 @@ internal class AppOwners<D>(
         selectedDay = { day.selectedDayKey },
         openMeal = ::mealOnScreen,
         queue = resolve::queueView,
-        resolvingPart = { resolve.resolvingPart },
+        resolvingPart = ::resolvingAPart,
         offerContribution = contribution::offerAfterLocalSave,
         startScanFor = { onBarcode -> scan.beginFor(onBarcode) },
         onOpen = { fromResolver -> surfaces.foodFormOpened(fromResolver) },
         onClose = resolve::childClosed,
-        onSaved = resolve::foodSaved,
+        onSaved = { food, newFood, advancesQueue ->
+            val forRecipe = newFood && recipeForm.searchOpen
+            resolve.foodSaved(food, newFood, advancesQueue)
+            if (forRecipe) recipeForm.pick(food)
+        },
         confirmLogged = confirmations::logged,
         onSavedToLog = { food, origin -> review.choose(food, origin = origin, fetchServings = false) },
     )
@@ -311,9 +316,11 @@ internal class AppOwners<D>(
         openMeal = ::mealOnScreen,
         automaticMeal = ::automaticMealNow,
         queue = resolve::queueView,
-        resolvingPart = { resolve.resolvingPart },
+        resolvingPart = ::resolvingAPart,
         offerContribution = contribution::offerAfterLocalSave,
-        onPartResolved = resolve::finishPart,
+        onPartResolved = { food ->
+            if (recipeForm.searchOpen) { review.hide(); recipeForm.pick(food) } else resolve.finishPart(food)
+        },
         onLogPart = log::addScannedPart,
         onLogged = resolve::childLogged,
         onClosed = resolve::childClosed,
@@ -347,6 +354,9 @@ internal class AppOwners<D>(
         compute = threads.compute,
         onSaved = { recipe -> surfaces.showRecipe(recipe) },
     )
+    /** A food stored now is the pick of a part: of the Log's draft, or of the recipe form's ingredient search. */
+    private fun resolvingAPart(): Boolean = resolve.resolvingPart || recipeForm.searchOpen
+
     /** What is open and in which order: drawing, Back and the top check (see [Surfaces]); the Meal screen and Settings. */
     val surfaces: Surfaces = Surfaces(
         session, notices, settings, log, library, resolve, entryEdit, foodForm, search, scan, review, contribution, transfer, recipes, recipeForm, profile,
@@ -364,6 +374,14 @@ internal class AppOwners<D>(
         threads.scope.launch { snapshotFlow { profile.savedPage() }.collect { saveProfile(savedState, it) } }
         // The meal on screen comes back after process death as the Meal screen (the Library does not reopen).
         threads.scope.launch { snapshotFlow { mealOnScreen() }.collect { savedState[MEAL_SLOT_KEY] = it?.name } }
+        // A pin holds a food or recipe as it was picked: it follows an edit, so the draft saves what it is now.
+        session.onChange { change ->
+            // Every write that stores a food or recipe; a log through a review or a queue stores its food over the stored one.
+            if (change == DiaryChange.FoodsChanged || change == DiaryChange.RecipesChanged || change == DiaryChange.FoodsLogged || change == DiaryChange.QueuedPartLogged) {
+                log.refreshPins(session.foods + session.recipes.map { it.asFood() })
+                recipeForm.refreshPins(session.foods)
+            }
+        }
         // After every committed write, in this order: Undo, "Not right?" feedback, the Library list.
         session.onChange(undo::onChange)
         session.onChange(feedback::onChange)
@@ -389,7 +407,7 @@ internal class AppOwners<D>(
 
     /**
      * The meal the "Meal" setting gives a log with no chosen, typed or preset meal, at this moment; null for Ask. The
-     * Log page falls back to it, and the Library preselects it (see [com.iron.breakfast.library.libraryPresetMeal]).
+     * Log page falls back to it, and the Library preselects it (see [com.iron.breakfast.domain.presetMeal]).
      */
     fun automaticMealNow(): MealSlot? = automaticMeal(
         settings.mealMode, Instant.ofEpochMilli(clock()).atZone(zone()).hour, settings.mealBounds, lastUsedMeal(session.entries),

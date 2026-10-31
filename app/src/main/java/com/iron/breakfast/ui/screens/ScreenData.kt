@@ -1,5 +1,6 @@
 package com.iron.breakfast.ui.screens
 
+import com.iron.breakfast.domain.defaultServingCalculation
 import com.iron.breakfast.domain.ProfileValues
 import com.iron.breakfast.domain.SegmentResolution
 import com.iron.breakfast.domain.KCAL_PER_GRAM_CARBS
@@ -258,3 +259,6 @@ internal fun dailyMacroNote(macros: MacroTotals, showMacros: Boolean = true, sho
 
 /** What a recipe makes: "4 portions", "1600 g", "1500 ml", or what it has of them, "4 portions, 1600 g, 1500 ml". */
 internal fun yieldLine(recipe: Recipe): String = recipe.yields().joinToString(", ") { (unit, amount) -> previewQuantityLine(amount, unit) }
+
+/** The kcal of a food's default serving, as a list row shows it. */
+internal fun defaultServingCalories(food: FoodRecord): String = formatKcal(defaultServingCalculation(food).nutrition.calories)

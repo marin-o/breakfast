@@ -1,5 +1,7 @@
 package com.iron.breakfast.log
 
+import com.iron.breakfast.ui.components.NotInYourFoodsRow
+import com.iron.breakfast.ui.components.DraftParts
 import com.iron.breakfast.search.SkipButton
 import com.iron.breakfast.search.SearchYourFoodsButton
 import androidx.compose.ui.graphics.graphicsLayer
@@ -39,7 +41,7 @@ import com.iron.breakfast.search.OffPartSearch
 import com.iron.breakfast.search.OffPartState
 import com.iron.breakfast.search.OffSearch
 import com.iron.breakfast.search.OffSearchStatus
-import com.iron.breakfast.search.SearchOrCreateButtons
+import com.iron.breakfast.ui.components.SearchOrCreateButtons
 import com.iron.breakfast.search.offStatusText
 import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.LinearProgress

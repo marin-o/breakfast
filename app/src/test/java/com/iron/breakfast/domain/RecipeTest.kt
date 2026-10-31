@@ -51,9 +51,9 @@ class RecipeTest {
     @Test fun theListShowsAPortionOrElseOneHundredGrams() {
         assertEquals(1.0 to MeasureUnit.PORTION, chili.shownServing())
         assertEquals(100.0 to MeasureUnit.GRAM, chili.copy(portions = null).shownServing())
-        assertEquals(listOf(MeasureUnit.PORTION, MeasureUnit.GRAM), chili.units())
-        assertEquals(listOf(MeasureUnit.PORTION), chili.copy(totalWeight = null).units())
-        assertEquals(listOf(MeasureUnit.GRAM), chili.copy(portions = null).units())
+        assertEquals(listOf(MeasureUnit.PORTION, MeasureUnit.GRAM), chili.yields().map { it.first })
+        assertEquals(listOf(MeasureUnit.PORTION), chili.copy(totalWeight = null).yields().map { it.first })
+        assertEquals(listOf(MeasureUnit.GRAM), chili.copy(portions = null).yields().map { it.first })
     }
 
     /** As a food, the calculator gives exactly what [nutritionFor] gives, in every unit the recipe has and no other. */
@@ -68,7 +68,7 @@ class RecipeTest {
             for (unit in listOf(MeasureUnit.PORTION, MeasureUnit.GRAM)) {
                 val calculation = calculator.calculate(food, 1.5, unit)
                 val expected = recipe.nutritionFor(1.5, unit)
-                assertEquals("$unit for ${recipe.units()}", expected != null, calculation.supported)
+                assertEquals("$unit for ${recipe.yields().map { it.first }}", expected != null, calculation.supported)
                 if (expected != null) {
                     assertEquals(expected.values.calories, calculation.nutrition.calories, 1e-9)
                     assertEquals(expected.values.protein!!, calculation.nutrition.protein!!, 1e-9)
@@ -88,20 +88,20 @@ class RecipeTest {
         assertEquals(456.0, soup.nutritionFor(300.0, MeasureUnit.MILLILITER)!!.values.calories, 1e-9)
         assertNull(soup.nutritionFor(300.0, MeasureUnit.GRAM))
         assertNull(chili.nutritionFor(300.0, MeasureUnit.MILLILITER))
-        assertEquals(listOf(MeasureUnit.MILLILITER), soup.units())
+        assertEquals(listOf(MeasureUnit.MILLILITER), soup.yields().map { it.first })
         assertEquals(100.0 to MeasureUnit.MILLILITER, soup.shownServing())
         // A weight wins the basis over a volume; portions win the serving over both.
         assertEquals(100.0 to MeasureUnit.GRAM, soup.copy(totalWeight = 1600.0).shownServing())
         assertEquals(1.0 to MeasureUnit.PORTION, soup.copy(portions = 4.0).shownServing())
         val all = chili.copy(totalVolume = 1500.0)
-        assertEquals(listOf(MeasureUnit.PORTION, MeasureUnit.GRAM, MeasureUnit.MILLILITER), all.units())
+        assertEquals(listOf(MeasureUnit.PORTION, MeasureUnit.GRAM, MeasureUnit.MILLILITER), all.yields().map { it.first })
         val calculator = NutritionCalculator()
         for (recipe in listOf(soup, all, soup.copy(portions = 4.0), soup.copy(totalWeight = 1600.0))) {
             val food = recipe.asFood()
             for (unit in listOf(MeasureUnit.PORTION, MeasureUnit.GRAM, MeasureUnit.MILLILITER)) {
                 val calculation = calculator.calculate(food, 300.0, unit)
                 val expected = recipe.nutritionFor(300.0, unit)
-                assertEquals("$unit for ${recipe.units()}", expected != null, calculation.supported)
+                assertEquals("$unit for ${recipe.yields().map { it.first }}", expected != null, calculation.supported)
                 if (expected != null) assertEquals(expected.values.calories, calculation.nutrition.calories, 1e-9)
             }
         }

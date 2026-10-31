@@ -3,7 +3,7 @@ package com.iron.breakfast.scan
 import kotlinx.serialization.Serializable
 import com.iron.breakfast.domain.isPositiveAmount
 import com.iron.breakfast.domain.fieldNumber
-import com.iron.breakfast.library.libraryPresetMeal
+import com.iron.breakfast.domain.presetMeal
 import com.iron.breakfast.domain.editableNumber
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -236,7 +236,7 @@ internal class ProductReview(
     fun resolveQueue(): ResolveQueueView? = queue()
 
     /** The meal the sheet's choice starts on. */
-    fun initialMeal(): MealSlot = queueMeal() ?: libraryPresetMeal(openMeal(), automaticMeal())
+    fun initialMeal(): MealSlot = queueMeal() ?: presetMeal(openMeal(), automaticMeal())
 
     fun calculation(food: FoodRecord): Calculation? = draft(food)?.calculation
 
@@ -293,9 +293,13 @@ internal class ProductReview(
         ) { store.updateFood(draft.food) }
     }
 
-    /** Add from the Log page: the food is stored, then goes back as a part of the draft. The meal is the Log's, at its Add. */
+    /**
+     * Add with no meal: the food is stored, then goes back as a part of the Log's draft (the meal is the Log's, at its
+     * Add), or, with a part being resolved, as that part's pick.
+     */
     fun addToLog() {
         val food = product ?: return
+        if (resolvingPart()) { resolvePart(); return }
         if (!session.canWrite) return
         val draft = draft(food) ?: run {
             notices.show("Enter a positive amount, a supported unit, and valid calories.")
@@ -316,7 +320,7 @@ internal class ProductReview(
         ) { store.cacheFood(draft.food) }
     }
 
-    /** A product picked while a Log part is being resolved: stored as the food it is, then picked for the part. */
+    /** A product picked while a part is being resolved (of the Log's draft or a recipe's ingredients): stored as the food it is, then picked for the part. */
     private fun resolvePart() {
         val food = product ?: return
         if (!session.canWrite) return

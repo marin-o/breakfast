@@ -171,7 +171,6 @@ internal class LibraryState(
 
     fun lastLoggedEntry(food: FoodRecord): MealEntry? = lastLoggedEntry(session.entries, food.id)
 
-    fun invalidAmount() { notices.show("Enter a positive amount and a supported unit such as g, ml, tbsp, tsp, or piece.") }
 
     /**
      * Logs [food] to [target], in [unit] ([servingName] names the serving for [MeasureUnit.SERVING]); while resolving, it

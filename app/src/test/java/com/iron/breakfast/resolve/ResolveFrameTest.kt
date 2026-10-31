@@ -154,7 +154,7 @@ class ResolveFrameTest {
         foodForm.save()
         assertEquals("saved alone, though the Library adds to Lunch", listOf("save food Ayran"), calls)
         assertEquals(listOf<DiaryChange>(DiaryChange.FoodsChanged), diary.published)
-        assertEquals("Saved to your food library.", notices.message)
+        assertNull("nothing covers the next step", notices.message)
         assertFalse(foodForm.open)
         assertFalse(library.open)
         assertEquals("2 eggs, Ayran 200ml", log.draft)

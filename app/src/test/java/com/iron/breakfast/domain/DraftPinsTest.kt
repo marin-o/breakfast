@@ -59,6 +59,16 @@ class DraftPinsTest {
         assertTrue(pins.current().isEmpty())
     }
 
+    /** A save takes the pins it used; a refresh during it made new instances, and those still go. */
+    @Test fun forgetFindsAPinARefreshRemade() {
+        val draft = "Mleko"
+        pins.add(draft, "Mleko", milkB)
+        val used = pins.current()
+        pins.refresh(listOf(milkB.copy(aliases = milkB.aliases + "other")))
+        pins.forget(used)
+        assertTrue(pins.current().isEmpty())
+    }
+
     @Test fun earlierTextMovesAPinWithIt() {
         var draft = "Mleko"
         pins.add(draft, "Mleko", milkB)

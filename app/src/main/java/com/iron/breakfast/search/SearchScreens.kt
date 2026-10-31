@@ -1,5 +1,7 @@
 package com.iron.breakfast.search
 
+import com.iron.breakfast.scan.ProductReviewOrigin
+import com.iron.breakfast.ui.components.SearchOrCreateButtons
 import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.components.StatusBlock
 import com.iron.breakfast.ui.components.SubScreen
@@ -43,9 +45,14 @@ import com.iron.breakfast.ui.screens.formatKcal
     SubScreen("Search", leave, scroll = false) {
         SearchCaption(Modifier.padding(top = 6.dp))
         SearchField(query, library::onQuery, onClear = clear, label = "Search library", modifier = Modifier.padding(top = 6.dp))
-        StatusBlock("No local match", listOf("Nothing in your foods matches \"$query\"."), top = 48.dp) {
-            SearchOrCreateButtons({ search.open(query.trim()) }, { foodForm.open(query.trim()) })
-        }
+        NoLocalMatch(query, search, foodForm)
+    }
+}
+
+/** A local search found nothing for [query]: it says so, and the way on is Open Food Facts or a personal food. */
+@Composable internal fun NoLocalMatch(query: String, search: OffSearch, foodForm: FoodForm, reviewOrigin: ProductReviewOrigin? = null) {
+    StatusBlock("No local match", listOf("Nothing in your foods matches \"$query\"."), top = 48.dp) {
+        SearchOrCreateButtons({ search.open(query.trim(), reviewOrigin = reviewOrigin) }, { foodForm.open(query.trim()) })
     }
 }
 
@@ -57,12 +64,6 @@ import com.iron.breakfast.ui.screens.formatKcal
 /** Skip: the part is left unlogged. */
 @Composable internal fun SkipButton(onClick: () -> Unit) {
     TertiaryButton("Skip", onClick, Modifier.fillMaxWidth(), soft = true)
-}
-
-/** The ways on for a food not found here: Open Food Facts, or a personal food. */
-@Composable internal fun SearchOrCreateButtons(onSearch: () -> Unit, onCreate: () -> Unit) {
-    PrimaryButton("Search Open Food Facts", onSearch, kind = ButtonKind.Neutral)
-    SecondaryButton("Create personal food", onCreate)
 }
 
 /** Explicit Open Food Facts search: nothing is sent until Search (or the keyboard's search key) is used. */

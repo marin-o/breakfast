@@ -1,5 +1,7 @@
 package com.iron.breakfast.food
 
+import com.iron.breakfast.domain.formBack
+import com.iron.breakfast.domain.FormBack
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MeasureUnit
@@ -109,10 +111,10 @@ class FoodDraftDirtyTest {
     }
 
     @Test fun backDuringASaveDoesNothing() {
-        assertEquals(FoodFormBack.IGNORE, foodFormBack(saving = true, dirty = true))
-        assertEquals(FoodFormBack.IGNORE, foodFormBack(saving = true, dirty = false))
-        assertEquals(FoodFormBack.ASK, foodFormBack(saving = false, dirty = true))
-        assertEquals(FoodFormBack.CLOSE, foodFormBack(saving = false, dirty = false))
+        assertEquals(FormBack.IGNORE, formBack(saving = true, dirty = true))
+        assertEquals(FormBack.IGNORE, formBack(saving = true, dirty = false))
+        assertEquals(FormBack.ASK, formBack(saving = false, dirty = true))
+        assertEquals(FormBack.CLOSE, formBack(saving = false, dirty = false))
     }
 
     @Test fun typingBackTheOriginalValueIsClean() {

@@ -48,7 +48,6 @@ internal fun FoodAmountSheet(
     startMeasure: Measure,
     startMeal: MealSlot?,
     onAdd: (amount: Double, measure: Measure, meal: MealSlot?) -> Unit,
-    onInvalid: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val colors = LocalBreakfastColors.current
@@ -78,10 +77,7 @@ internal fun FoodAmountSheet(
             Text(calc?.let { macroLine(it.nutrition) } ?: "", color = colors.soft, style = BreakfastType.Secondary)
             PrimaryButton(
                 chosenMeal?.let { "Add to ${it.label()}" } ?: "Add",
-                onClick = {
-                    val amount = exactAmount
-                    if (amount != null && calc?.supported == true) onAdd(amount, measure, chosenMeal) else onInvalid()
-                },
+                onClick = { exactAmount?.let { onAdd(it, measure, chosenMeal) } },
                 enabled = calc?.supported == true,
             )
         }

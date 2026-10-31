@@ -248,7 +248,7 @@ class SurfacesTest {
         app.foodForm.draft.name = "Ayran"
         app.foodForm.draft.calories = "40"
         app.foodForm.save()
-        shows("MEAL", "LOG", "NOTICE")
+        shows("MEAL", "LOG")
         assertEquals("2 eggs, Ayran 200ml", app.log.draft)
     }
 

@@ -14,8 +14,8 @@ import com.iron.breakfast.domain.curveOffered
 import com.iron.breakfast.domain.curveWeightOf
 import com.iron.breakfast.domain.newestFirst
 import com.iron.breakfast.domain.profileOf
-import com.iron.breakfast.food.FoodFormBack
-import com.iron.breakfast.food.foodFormBack
+import com.iron.breakfast.domain.FormBack
+import com.iron.breakfast.domain.formBack
 import kotlinx.serialization.Serializable
 
 /** The writes the weight curve makes; the view model adapts `BreakfastEngine`. */
@@ -87,10 +87,10 @@ internal class ProfileState(
 
     /** Back or the arrow: a changed draft asks before it is dropped; while a save runs, nothing happens. */
     fun leave() {
-        when (foodFormBack(saving = session.busy, dirty = draft != ProfileDraft.of(values))) {
-            FoodFormBack.IGNORE -> Unit
-            FoodFormBack.ASK -> discardOpen = true
-            FoodFormBack.CLOSE -> close()
+        when (formBack(saving = session.busy, dirty = draft != ProfileDraft.of(values))) {
+            FormBack.IGNORE -> Unit
+            FormBack.ASK -> discardOpen = true
+            FormBack.CLOSE -> close()
         }
     }
 

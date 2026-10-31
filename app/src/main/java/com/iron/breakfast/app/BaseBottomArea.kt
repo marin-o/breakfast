@@ -18,10 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.layout
-import androidx.compose.ui.unit.Constraints
 import com.iron.breakfast.ui.theme.ComposerHeight
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
@@ -60,12 +57,6 @@ internal fun BaseScreen.navTab(): NavTab? = when (this) {
     BaseScreen.MEAL, BaseScreen.MEAL_LIBRARY -> null
 }
 
-/** Draws the content right above where it is placed, taking no height there. */
-private fun Modifier.aboveItsPlace(): Modifier = layout { measurable, constraints ->
-    val placeable = measurable.measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
-    layout(placeable.width, 0) { placeable.place(0, -placeable.height) }
-}
-
 /** The last value something showed, so it can keep drawing it while it fades. */
 private class Kept<T>(var value: T)
 
@@ -91,13 +82,13 @@ internal fun BaseBottomArea(vm: BreakfastViewModel, screen: BaseScreen, meal: Me
     ComposerFade(modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).imePadding()) {
         val logScreen = screen == BaseScreen.DAILY || screen == BaseScreen.MEAL
         UndoSnackbars(undo, shown = logScreen)
-        if (mode != null) ConfirmationSnackbar(vm.confirmations.message)
+        ConfirmationSnackbar(vm.confirmations.message)
         if (screen == BaseScreen.DAILY && vm.reminders.shownOnDaily(covered = surfaces.baseCovered())) {
             LaunchedEffect(Unit) { vm.reminders.onScreenNow() }
             Snackbar("Export your diary.", "Export", vm.reminders::export, Modifier.padding(bottom = 8.dp))
         }
         val barAlpha by animateFloatAsState(if (mode != null) 1f else 0f, motion.nav(), label = "bar")
-        // The bar's place keeps its height on Recipes, so the tabs do not move; there "Logged!" sits just above them.
+        // The bar's place keeps its height on Recipes, so the tabs and "Logged!" do not move.
         Box(Modifier.fillMaxWidth().heightIn(min = ComposerHeight)) {
             // Fading out on Recipes it is not read or tapped; once gone, taps reach what lies under its place.
             if (mode != null || barAlpha > 0f) Composer(vm.scan::begin, Modifier.graphicsLayer { alpha = barAlpha }.then(if (mode == null) Modifier.inert() else Modifier)) {
@@ -120,7 +111,6 @@ internal fun BaseBottomArea(vm: BreakfastViewModel, screen: BaseScreen, meal: Me
                     }
                 }
             }
-            if (mode == null) ConfirmationSnackbar(vm.confirmations.message, Modifier.align(Alignment.BottomCenter).aboveItsPlace())
         }
         AnimatedVisibility(tab != null, enter = motion.rowIn(), exit = motion.rowOut()) {
             val selected = keptTab.value

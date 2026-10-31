@@ -1,6 +1,6 @@
 package com.iron.breakfast.domain
 
-import com.iron.breakfast.log.rowStillInDraft
+import com.iron.breakfast.domain.rowStillInDraft
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull

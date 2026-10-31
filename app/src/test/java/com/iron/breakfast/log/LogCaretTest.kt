@@ -1,5 +1,7 @@
 package com.iron.breakfast.log
 
+import com.iron.breakfast.ui.components.syncedInputField
+import com.iron.breakfast.ui.components.inputFieldFor
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import org.junit.Assert.assertEquals

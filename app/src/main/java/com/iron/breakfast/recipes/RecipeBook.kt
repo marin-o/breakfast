@@ -69,9 +69,7 @@ internal class RecipeBook(
     /** Leaves the tab and everything open on it. */
     fun close() {
         open = false
-        pageId = null
-        loggingId = null
-        deleteId = null
+        reset()
     }
 
     fun openRecipe(recipe: Recipe) { pageId = recipe.id }

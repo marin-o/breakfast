@@ -3,7 +3,7 @@ package com.iron.breakfast.resolve
 import com.iron.breakfast.search.SkipButton
 import com.iron.breakfast.search.SearchYourFoodsButton
 import com.iron.breakfast.ui.theme.SnackbarGutter
-import com.iron.breakfast.search.SearchOrCreateButtons
+import com.iron.breakfast.ui.components.SearchOrCreateButtons
 import com.iron.breakfast.ui.components.SubScreen
 import com.iron.breakfast.ui.screens.plainLine
 import com.iron.breakfast.ui.screens.QuantityDisplay

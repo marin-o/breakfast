@@ -242,7 +242,7 @@ class FoodFormTest {
         form.save()
         assertEquals(listOf("save Ayran"), store.calls)
         assertEquals("Undo is kept", listOf<DiaryChange>(DiaryChange.FoodsChanged), diary.published)
-        assertEquals("Saved to your food library.", notices.message)
+        assertNull("nothing covers the next step", notices.message)
         assertEquals("saved Ayran new=true advances=false", events.last())
     }
 

@@ -1,5 +1,9 @@
 package com.iron.breakfast.recipes
 
+import com.iron.breakfast.ui.components.PageSection
+import com.iron.breakfast.ui.components.FoodRowWithAdd
+import com.iron.breakfast.ui.components.listRowMotion
+import com.iron.breakfast.ui.components.TabList
 import com.iron.breakfast.ui.components.FoodAmountSheet
 import com.iron.breakfast.ui.components.NutritionFacts
 import com.iron.breakfast.ui.components.ItemPage
@@ -7,19 +11,12 @@ import com.iron.breakfast.ui.screens.yieldLine
 import com.iron.breakfast.ui.screens.macroFact
 import com.iron.breakfast.ui.screens.previewQuantityLine
 import com.iron.breakfast.ui.countLabel
-import androidx.compose.foundation.layout.PaddingValues
-import com.iron.breakfast.ui.components.BottomAreaClearance
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.app.Surfaces
@@ -29,20 +26,14 @@ import com.iron.breakfast.domain.Recipe
 import com.iron.breakfast.domain.asFood
 import com.iron.breakfast.domain.nutritionFor
 import com.iron.breakfast.domain.shownServing
-import com.iron.breakfast.library.libraryPresetMeal
-import com.iron.breakfast.ui.components.AddCircle
+import com.iron.breakfast.domain.presetMeal
 import com.iron.breakfast.ui.components.DestructiveButton
 import com.iron.breakfast.ui.components.FoodRow
-import com.iron.breakfast.ui.components.Hairline
-import com.iron.breakfast.ui.components.SectionHeading
 import com.iron.breakfast.ui.components.TertiaryButton
-import com.iron.breakfast.ui.components.TopBar
 import com.iron.breakfast.ui.components.rememberMotion
-import com.iron.breakfast.ui.components.LocalScreenBody
 import com.iron.breakfast.ui.screens.basisLabel
 import com.iron.breakfast.ui.screens.formatKcal
 import com.iron.breakfast.ui.theme.BreakfastType
-import com.iron.breakfast.ui.theme.Gutter
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 
 /**
@@ -51,29 +42,13 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
  * list, as on the Library (from the bottom area, `app/BaseBottomArea.kt`).
  */
 @Composable
-internal fun RecipesScreen(recipes: RecipeBook, onNew: (() -> Unit)?, modifier: Modifier) {
-    val colors = LocalBreakfastColors.current
+internal fun RecipesScreen(recipes: RecipeBook, onNew: () -> Unit, modifier: Modifier) {
     val motion = rememberMotion()
     val list = recipes.ordered()
-    Box(modifier.fillMaxSize().background(colors.bg)) {
-        // The bottom area floats over the end of the list.
-        LazyColumn(
-            Modifier.fillMaxSize().then(LocalScreenBody.current).padding(horizontal = Gutter),
-            contentPadding = PaddingValues(bottom = BottomAreaClearance),
-        ) {
-            item {
-                TopBar(
-                    "Recipes", null, Modifier.padding(top = 8.dp, bottom = 6.dp), subtitle = countLabel(list.size, "recipe", "recipes"),
-                    trailing = { if (onNew != null) TertiaryButton("New recipe", onNew) },
-                )
-                Hairline()
-            }
-            // Rows fade in and out as the list changes, and move to their new place (a logged recipe goes to the top).
-            items(list, key = { it.id }) { recipe ->
-                RecipeRow(recipes, recipe, Modifier.animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem()))
-            }
-            // The list's closing line, only under rows: an empty list keeps just the header's line.
-            if (list.isNotEmpty()) item { Hairline(Modifier.padding(top = 8.dp)) }
+    TabList("Recipes", countLabel(list.size, "recipe", "recipes"), list.isNotEmpty(), modifier, trailing = { TertiaryButton("New recipe", onNew) }) {
+        // A logged recipe goes to the top.
+        items(list, key = { it.id }) { recipe ->
+            RecipeRow(recipes, recipe, listRowMotion(motion))
         }
     }
 }
@@ -81,15 +56,15 @@ internal fun RecipesScreen(recipes: RecipeBook, onNew: (() -> Unit)?, modifier: 
 @Composable
 private fun RecipeRow(recipes: RecipeBook, recipe: Recipe, modifier: Modifier) {
     val (amount, unit) = recipe.shownServing()
-    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        FoodRow(
+    Box(modifier) {
+        FoodRowWithAdd(
             name = recipe.name,
             quantityLine = previewQuantityLine(amount, unit),
             calories = formatKcal(recipe.nutritionFor(amount, unit)?.values?.calories ?: 0.0),
-            modifier = Modifier.weight(1f),
             onClick = { recipes.openRecipe(recipe) },
+            addDescription = "Add ${recipe.name} to a meal",
+            onAdd = { recipes.beginLog(recipe) },
         )
-        AddCircle(contentDescription = "Add ${recipe.name} to a meal", onClick = { recipes.beginLog(recipe) })
     }
 }
 
@@ -98,14 +73,13 @@ private fun RecipeRow(recipes: RecipeBook, recipe: Recipe, modifier: Modifier) {
  * nutrition per portion (or per 100 g), then Delete recipe; Edit sits in the bar, as on a food's page.
  */
 @Composable
-internal fun RecipePageScreen(recipes: RecipeBook, recipe: Recipe, onEdit: ((Recipe) -> Unit)?) {
+internal fun RecipePageScreen(recipes: RecipeBook, recipe: Recipe, onEdit: (Recipe) -> Unit) {
     val colors = LocalBreakfastColors.current
     val (amount, unit) = recipe.shownServing()
     val nutrition = recipe.nutritionFor(amount, unit)
-    ItemPage("Recipe", recipes::closeRecipe, recipe.name, onEdit?.let { edit -> { recipes.closeRecipe(); edit(recipe) } }) {
+    ItemPage("Recipe", recipes::closeRecipe, recipe.name, { recipes.closeRecipe(); onEdit(recipe) }) {
         Text(yieldLine(recipe), color = colors.soft, style = BreakfastType.Secondary)
-        Hairline(Modifier.padding(top = 16.dp))
-        SectionHeading("Ingredients", Modifier.padding(top = 16.dp))
+        PageSection("Ingredients")
         recipe.ingredients.forEach { ingredient ->
             FoodRow(
                 name = ingredient.foodName,
@@ -113,8 +87,7 @@ internal fun RecipePageScreen(recipes: RecipeBook, recipe: Recipe, onEdit: ((Rec
                 calories = formatKcal(ingredient.nutritionSnapshot.calories),
             )
         }
-        Hairline(Modifier.padding(top = 16.dp))
-        SectionHeading(basisLabel(amount, unit), Modifier.padding(top = 16.dp))
+        PageSection(basisLabel(amount, unit))
         val macros = nutrition?.macros
         NutritionFacts(
             formatKcal(nutrition?.values?.calories ?: 0.0),
@@ -135,9 +108,8 @@ internal fun RecipeLogSheet(recipes: RecipeBook, surfaces: Surfaces, automaticMe
         food = food,
         startAmount = last?.enteredAmount ?: food.defaultAmount,
         startMeasure = Measure(last?.enteredUnit ?: food.defaultUnit),
-        startMeal = libraryPresetMeal(surfaces.mealOnScreen(), automaticMeal()),
+        startMeal = presetMeal(surfaces.mealOnScreen(), automaticMeal()),
         onAdd = { amount, measure, meal -> recipes.log(recipe, meal!!, amount, measure.unit) },
-        onInvalid = {},
         onDismiss = recipes::dismissLog,
     )
 }

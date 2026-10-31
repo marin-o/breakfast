@@ -15,11 +15,11 @@ import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.Recipe
 import com.iron.breakfast.domain.libraryRecencyOrder
 import com.iron.breakfast.domain.replaceDraftPart
-import com.iron.breakfast.food.FoodFormBack
-import com.iron.breakfast.food.foodFormBack
-import com.iron.breakfast.log.LogDraftView
-import com.iron.breakfast.log.logDraftViewOf
-import com.iron.breakfast.log.rowStillInDraft
+import com.iron.breakfast.domain.FormBack
+import com.iron.breakfast.domain.formBack
+import com.iron.breakfast.domain.LogDraftView
+import com.iron.breakfast.domain.logDraftViewOf
+import com.iron.breakfast.domain.rowStillInDraft
 import kotlinx.serialization.Serializable
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -49,8 +49,9 @@ internal data class SavedRecipeForm(
  * - **The ingredient search** ([searchOpen]): the foods, filtered by [query] ([results], read on [io] and applied on
  *   [main] while still current). A food picked there opens the amount sheet ([adding]); its Add appends the part
  *   ([addIngredient]). Opened from a "Not in your foods" row ([resolveNotInFoods]), a pick replaces that part instead,
- *   with its typed amount, as the Library does for the Log.
- * - **Back** asks before discarding a changed form ([discardOpen]), by the food form's rule ([foodFormBack]).
+ *   with its typed amount, as the Library does for the Log. With nothing found ([noMatch]), Open Food Facts or a personal
+ *   food are the way on, and what they store comes back as that pick.
+ * - **Back** asks before discarding a changed form ([discardOpen]), by the food form's rule ([formBack]).
  * - **Save** writes the recipe through [session] ([DiaryChange.RecipesChanged]) and hands it to [onSaved].
  * - **Process death:** [savedForm] is what the coordinator mirrors into `SavedStateHandle` and [restore] puts back; the
  *   search and the sheet do not come back.
@@ -81,6 +82,10 @@ internal class RecipeForm(
     var searchOpen by mutableStateOf(false); private set
     var query by mutableStateOf(""); private set
     var results by mutableStateOf<List<FoodRecord>>(emptyList()); private set
+    /** The query [results] answer; until then an empty list says nothing. */
+    private var answered by mutableStateOf<String?>(null)
+    /** The search looked and found nothing: the way on is Open Food Facts or a personal food. */
+    val noMatch: Boolean get() = searchOpen && query.isNotBlank() && answered == query && results.isEmpty()
     /** The food whose amount sheet is open, from the search. */
     var adding by mutableStateOf<FoodRecord?>(null); private set
     /** The "Not in your foods" part the search was opened for; a food picked there replaces it. */
@@ -90,17 +95,21 @@ internal class RecipeForm(
     /** New recipe. */
     fun openNew() = begin(null, RecipeFields(), emptyMap())
 
+    /** The recipe Edit is for, while the diary has it. */
+    val editing: Recipe? get() = editingRecipeId?.let { id -> session.recipes.firstOrNull { it.id == id } }
+
     /** Edit [recipe]: its fields, its ingredients typed back and pinned to their foods ([recipeEdit]). */
     fun openEdit(recipe: Recipe) {
         val edit = recipeEdit(recipe, session.foods, store.ingredientPlanner())
         begin(recipe.id, edit.fields, edit.pins)
     }
 
-    private fun begin(id: String?, start: RecipeFields, startPins: Map<String, FoodRecord>) {
+    /** The form on [start], with [startPins] on its text; [opened] is what Back compares it with. */
+    private fun begin(id: String?, start: RecipeFields, startPins: Map<String, FoodRecord>, opened: RecipeFields = start, done: Boolean = id != null) {
         editingRecipeId = id
         fields = start
-        baseline = start
-        committed = id != null
+        baseline = opened
+        committed = done
         pins.restore(start.ingredients, startPins)
         discardOpen = false
         endSearch()
@@ -175,6 +184,7 @@ internal class RecipeForm(
         searchOpen = false
         query = ""
         results = emptyList()
+        answered = null
         resolving = null
         adding = null
     }
@@ -186,12 +196,13 @@ internal class RecipeForm(
         searching.launch(
             load = { libraryRecencyOrder(store.foodsMatching(value), entries) },
             wanted = { searchOpen },
-        ) { results = it }
+        ) { results = it; answered = value }
     }
 
     /**
      * A food tapped in the search: the amount sheet for it, as in the Library; opened for a "Not in your foods" part,
-     * the food takes that part's place with its typed amount ([com.iron.breakfast.domain.LogPlanner.pickedText]).
+     * the food takes that part's place with its typed amount ([com.iron.breakfast.domain.LogPlanner.pickedText]). A
+     * food made or reviewed from the search ([noMatch]) comes back here too.
      */
     fun pick(food: FoodRecord) {
         val row = resolving
@@ -204,11 +215,11 @@ internal class RecipeForm(
         endSearch()
     }
 
-    /** The amount sheet went without adding: the search stays. */
-    fun dismissAdding() { adding = null }
-
-    /** The sheet's Add: [amount] [unit] of [food] is the last ingredient, pinned to it, and the form shows again. */
-    fun addIngredient(food: FoodRecord, amount: Double, unit: MeasureUnit) = addIngredient(food, amount, Measure(unit))
+    /** The amount sheet went without adding: the search stays, and reads again, since the food may be new. */
+    fun dismissAdding() {
+        adding = null
+        if (searchOpen) onQuery(query)
+    }
 
     /** The sheet's Add: [amount] of [measure] of [food] ("2 slices") is the last ingredient, pinned to it. */
     fun addIngredient(food: FoodRecord, amount: Double, measure: Measure) {
@@ -221,10 +232,10 @@ internal class RecipeForm(
 
     /** Back or the arrow: a changed form asks before it is discarded; while a save runs, nothing happens. */
     fun leave() {
-        when (foodFormBack(saving = session.busy, dirty = fields != baseline)) {
-            FoodFormBack.IGNORE -> Unit
-            FoodFormBack.ASK -> discardOpen = true
-            FoodFormBack.CLOSE -> close()
+        when (formBack(saving = session.busy, dirty = fields != baseline)) {
+            FormBack.IGNORE -> Unit
+            FormBack.ASK -> discardOpen = true
+            FormBack.CLOSE -> close()
         }
     }
 
@@ -259,12 +270,15 @@ internal class RecipeForm(
         ) {
             val plan = withContext(compute) { store.ingredientPlanner(capturedPins).plan(captured.ingredients) }
             if (!recipeCanSave(captured, ingredientsComplete(plan))) null
-            else store.saveRecipe(recipeOf(id, captured, plan))
+            else store.saveRecipe(recipeOf(id, captured, plan, kept = session.recipes.firstOrNull { it.id == id }))
         }
     }
 
     /** Recipe [id] was deleted: an Edit of it closes, so it cannot store the recipe again. */
     fun recipeDeleted(id: String) { if (editingRecipeId == id) close() }
+
+    /** Foods changed: a pin holds the food as it was picked, so Save stores what it is now. */
+    fun refreshPins(current: List<FoodRecord>) { pins.refresh(current) }
 
     /** Food [id] was deleted: a part pinned to it is matched again, so Save cannot keep that food. */
     fun dropPinsOf(foodId: String) { pins.dropFood(foodId) }
@@ -290,8 +304,6 @@ internal class RecipeForm(
 
     /** Puts back a form saved before the process was killed. */
     fun restore(form: SavedRecipeForm) {
-        begin(form.editingRecipeId, form.baseline, form.pins)
-        fields = form.fields
-        committed = form.committed
+        begin(form.editingRecipeId, form.fields, form.pins, form.baseline, form.committed)
     }
 }

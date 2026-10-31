@@ -1,5 +1,7 @@
 package com.iron.breakfast.food
 
+import com.iron.breakfast.domain.formBack
+import com.iron.breakfast.domain.FormBack
 import com.iron.breakfast.scan.ProductReviewOrigin
 import com.iron.breakfast.domain.POSITIVE_AMOUNT_MESSAGE
 import androidx.compose.runtime.getValue
@@ -57,13 +59,14 @@ internal data class NewFood(
  *   scanner for one barcode ([startScanFor]); the scanner opens over the form and Back on it returns here.
  * - **Save targeting** ([foodSaveTarget]): an edit updates the food; a new food is logged too when there is a meal (the
  *   resolve queue's while one is being resolved, else the meal open beneath), and is saved alone otherwise, and always
- *   while a Log part is being resolved ([resolvingPart]: the part's pick goes into the draft, which logs it). A queue
+ *   while a part is being resolved ([resolvingPart]: of the Log's draft, which logs it, or of a recipe's ingredients; the
+ *   food becomes that part's pick, with no notice, so nothing covers the next step). A queue
  *   without a meal refuses the save.
  * - **Process death:** [savedForm] is what the coordinator mirrors into `SavedStateHandle` and [restore] puts back; not
  *   while a part or a queue is being resolved, since what Save does there would not come back.
  *
  * Inputs from the screens around it are explicit: the day ([selectedDay]), the meal open beneath ([openMeal]), the resolve
- * queue ([queue]), a Log part being resolved ([resolvingPart]). Opening and closing tell the coordinator ([onOpen], [onClose]); a save hands its contribution
+ * queue ([queue]), a part being resolved ([resolvingPart]). Opening and closing tell the coordinator ([onOpen], [onClose]); a save hands its contribution
  * candidate to [offerContribution] and then reports to [onSaved]. Writes go through [session].
  */
 internal class FoodForm(
@@ -73,7 +76,7 @@ internal class FoodForm(
     private val selectedDay: () -> String,
     private val openMeal: () -> MealSlot?,
     private val queue: () -> ResolveQueueView?,
-    /** A Log part is being resolved in the Library: a new food saved here is that part's pick. */
+    /** A part is being resolved (of the Log's draft, or of a recipe's ingredients): a new food saved here is its pick. */
     private val resolvingPart: () -> Boolean,
     private val offerContribution: (OffContributionDraft?) -> Unit,
     /** Opens the scanner for one barcode, which it hands to the callback (see [beginBarcodeRescan]). */
@@ -129,10 +132,10 @@ internal class FoodForm(
 
     /** Back or the arrow: a changed form asks before it is discarded; while a save runs, nothing happens. */
     fun leave() {
-        when (foodFormBack(saving = session.busy, dirty = draft.isDirty(baseline))) {
-            FoodFormBack.IGNORE -> Unit
-            FoodFormBack.ASK -> discardOpen = true
-            FoodFormBack.CLOSE -> close()
+        when (formBack(saving = session.busy, dirty = draft.isDirty(baseline))) {
+            FormBack.IGNORE -> Unit
+            FormBack.ASK -> discardOpen = true
+            FormBack.CLOSE -> close()
         }
     }
 
@@ -211,6 +214,7 @@ internal class FoodForm(
             notices.show("Choose a meal before saving this food.")
             return
         }
+        val forPart = editingId == null && resolvingPart()
         val fromOff = draft.fromOff
         val candidate = if (fromOff) normalizeBarcode(barcode)?.let {
             OffContributionDraft(
@@ -236,7 +240,7 @@ internal class FoodForm(
                 when {
                     editingId != null -> notices.show("Personal food updated for future logs.")
                     saveTarget != null -> confirmLogged()
-                    thenReview != null -> Unit
+                    thenReview != null || forPart -> Unit
                     else -> notices.show("Saved to your food library.")
                 }
                 reviewAfterSave = null
@@ -256,8 +260,8 @@ internal class FoodForm(
 }
 
 /**
- * Where Save logs a new food, or null to save it alone. While a Log part is being resolved ([resolvingPart]) it is
- * never logged: it becomes the part's pick, and Add logs the draft. Otherwise the rule product review follows too
+ * Where Save logs a new food, or null to save it alone. While a part is being resolved ([resolvingPart]) it is never
+ * logged: it becomes the part's pick, and the Log's Add or the recipe's Save takes it from there. Otherwise the rule product review follows too
  * ([queueLogPlan]): while a resolve [queue] is being resolved its meal wins and the queue advances; else the meal open
  * beneath, if any.
  */

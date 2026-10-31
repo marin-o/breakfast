@@ -1,5 +1,8 @@
 package com.iron.breakfast.log
 
+import com.iron.breakfast.domain.rowStillInDraft
+import com.iron.breakfast.domain.logDraftViewOf
+import com.iron.breakfast.domain.LogDraftView
 import com.iron.breakfast.ui.screens.formatKcal
 import com.iron.breakfast.ui.screens.previewQuantityLine
 import com.iron.breakfast.search.foodsInScript
@@ -96,6 +99,9 @@ internal class LogComposer(
 
     /** A food was deleted: a part pinned to it is matched again, so Add cannot log (or bring back) that food. */
     fun dropPinsOf(foodId: String) { pins.dropFood(foodId) }
+
+    /** Foods or recipes changed: a pin holds them as they were picked, so Add logs what they are now. */
+    fun refreshPins(current: List<FoodRecord>) { pins.refresh(current) }
 
     /** A meal, the Library or an entry edit opened, or the diary was replaced: the Log's error no longer applies. */
     fun clearError() { error = null }

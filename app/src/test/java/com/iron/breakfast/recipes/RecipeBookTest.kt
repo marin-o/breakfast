@@ -30,9 +30,12 @@ internal class FakeRecipeStore(private val diary: OpenDiary) : RecipeStore {
     val calls = mutableListOf<String>()
     var foods: List<FoodRecord> = FoodCatalog.fixtures
     var failDelete = false
+    var failSave = false
+    var failLog = false
     override fun ingredientPlanner(pins: Map<String, FoodRecord>) = LogPlanner(FoodMatcher(foods), pins = pins)
     override suspend fun foodsMatching(query: String) = foods.filter { it.name.contains(query, ignoreCase = true) }
     override suspend fun saveRecipe(recipe: Recipe): Recipe {
+        if (failSave) throw IllegalStateException()
         val stored = recipe.copy(id = recipe.id.ifBlank { "recipe-new" })
         calls += "save ${stored.id}"
         diary.recipes = diary.recipes.filterNot { it.id == stored.id } + stored
@@ -44,6 +47,7 @@ internal class FakeRecipeStore(private val diary: OpenDiary) : RecipeStore {
         diary.recipes = diary.recipes.filterNot { it.id == id }
     }
     override suspend fun logRecipe(recipe: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
+        if (failLog) throw IllegalStateException()
         calls += "log ${recipe.id} $amount ${unit.name} $meal $dayKey"
     }
 }
@@ -62,6 +66,16 @@ class RecipeBookTest {
     )
 
     init { diary.session.refresh() }
+
+    /** F12: a failed log says so, and "Logged!" does not show. */
+    @Test fun aFailedLogSaysSoAndConfirmsNothing() {
+        store.failLog = true
+        recipes.beginLog(chili)
+        recipes.log(chili, MealSlot.LUNCH, 1.0, MeasureUnit.PORTION)
+        assertEquals(0, confirmed)
+        assertEquals("Could not log this food.", notices.message)
+        assertTrue(store.calls.isEmpty())
+    }
 
     @Test fun theListIsOrderedByTheLastLogThenByName() {
         val soup = chili.copy(id = "recipe-soup", name = "Soup")

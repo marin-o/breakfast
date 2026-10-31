@@ -1,17 +1,13 @@
 package com.iron.breakfast.food
 
+import com.iron.breakfast.ui.components.AmountWithUnit
+import com.iron.breakfast.ui.components.FormFields
+import com.iron.breakfast.ui.components.SaveButton
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.ui.components.NutrientFields
 import com.iron.breakfast.ui.components.NutrientField
-import com.iron.breakfast.ui.components.GramMlChoices
 import com.iron.breakfast.ui.components.SubScreen
 import com.iron.breakfast.ui.theme.*
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -28,10 +24,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.domain.parseNutritionShorthand
-import com.iron.breakfast.ui.components.ButtonKind
 import com.iron.breakfast.ui.components.DecimalField
 import com.iron.breakfast.ui.components.Field
-import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import com.iron.breakfast.domain.editableNumber
 
@@ -56,9 +50,9 @@ import com.iron.breakfast.domain.editableNumber
     }
     SubScreen(
         "New food", form::leave,
-        bottom = { PrimaryButton("Save", form::save, Modifier.padding(top = 16.dp, bottom = 8.dp), enabled = state.canSave, kind = ButtonKind.Constructive) },
+        bottom = { SaveButton(form::save, state.canSave) },
     ) {
-        Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        FormFields {
             Field("Name", draft.name, { draft.name = it }, required = true, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.NAME)))
             Field("Brand", draft.brand, { draft.brand = it })
             FoodBarcodeField(form, barcodeError, Modifier.focusRequester(focus.getValue(FoodFormField.BARCODE)))
@@ -79,12 +73,8 @@ import com.iron.breakfast.domain.editableNumber
             val protein = if (draft.proteinEdited) draft.protein else state.nutrition.protein?.let(::editableNumber).orEmpty()
             val carbs = if (draft.carbsEdited) draft.carbs else state.nutrition.carbohydrates?.let(::editableNumber).orEmpty()
             val fat = if (draft.fatEdited) draft.fat else state.nutrition.fat?.let(::editableNumber).orEmpty()
-            Column {
-                Text("Basis", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(bottom = 4.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DecimalField("Basis", basisAmount, { draft.basisEdited = true; draft.basisAmount = it }, Modifier.weight(1.6f), labelVisible = false, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.BASIS)))
-                    GramMlChoices(MeasureUnit.entries.firstOrNull { it.label == basisUnit }, { draft.basisEdited = true; draft.basisUnit = it.label }, Modifier.weight(1f))
-                }
+            AmountWithUnit("Basis", MeasureUnit.entries.firstOrNull { it.label == basisUnit }, { draft.basisEdited = true; draft.basisUnit = it.label }) { amountModifier ->
+                DecimalField("Basis", basisAmount, { draft.basisEdited = true; draft.basisAmount = it }, amountModifier, labelVisible = false, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.BASIS)))
             }
             NutrientFields(
                 listOf(

@@ -1,9 +1,10 @@
 package com.iron.breakfast.log
 
+import com.iron.breakfast.ui.components.rememberDraftField
+import com.iron.breakfast.app.rememberDraftView
+import com.iron.breakfast.ui.components.DraftParts
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.draw.alpha
-import com.iron.breakfast.ui.screens.noValueLine
-import com.iron.breakfast.domain.SegmentResolution
 import com.iron.breakfast.today.UndoSnackbars
 import com.iron.breakfast.today.UndoController
 import com.iron.breakfast.ui.theme.SnackbarGutter
@@ -13,14 +14,11 @@ import com.iron.breakfast.ui.components.ScanBarcodeIcon
 import com.iron.breakfast.scan.ScanSession
 import com.iron.breakfast.ui.shortDateLabel
 import com.iron.breakfast.ui.countLabel
-import com.iron.breakfast.ui.screens.previewQuantityLine
 import com.iron.breakfast.ui.theme.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,11 +40,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -72,20 +67,14 @@ import androidx.compose.ui.unit.dp
 import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.settings.SettingsState
 import com.iron.breakfast.today.DayState
-import com.iron.breakfast.domain.DraftRow
-import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.ui.label
-import com.iron.breakfast.ui.components.ChoiceOption
-import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.isLargeFont
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.PrimaryButton
-import com.iron.breakfast.ui.components.foodText
 import com.iron.breakfast.ui.components.rememberTick
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import com.iron.breakfast.ui.screens.formatKcal
-import com.iron.breakfast.ui.screens.choiceKcalDetail
 
 
 /**
@@ -96,14 +85,7 @@ import com.iron.breakfast.ui.screens.choiceKcalDetail
 internal fun LogScreen(log: LogComposer, session: DiarySession, settings: SettingsState, day: DayState, scan: ScanSession, confirmations: Confirmations, undo: UndoController, unmatched: UnmatchedParts) {
     val colors = LocalBreakfastColors.current
     // One resolution pass per draft: rows, choices and the add-bar sum all come from the same planner run.
-    // It runs off the main thread so typing never waits on matching; the last draft shows until the next is ready.
-    var draft by remember { mutableStateOf(log.draftView()) }
-    val pins = log.pinsSnapshot()
-    LaunchedEffect(log.draft, log.committed, pins, session.foods, session.ready, settings.countTyping, settings.learnFromPicks) {
-        val input = log.draft
-        val committed = log.committed
-        draft = log.computeDraftView(input, committed, pins)
-    }
+    val draft = rememberDraftView(log.draft, log.committed, log.pinsSnapshot(), session, settings, { log.draftView() }, log::computeDraftView)
     val target = log.targetMeal()
     // The bar counts what Add will save, including the active segment's preselected match.
     val logged = draft.logged
@@ -136,20 +118,13 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
             Box(Modifier.size(IconTarget))
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Gutter)) {
-            // The field keeps its own caret. A change made from outside (a tapped choice) moves the caret to the end.
-            var field by remember { mutableStateOf(inputFieldFor(log.draft)) }
-            LaunchedEffect(log.draft) { field = syncedInputField(field, log.draft) }
+            val field = rememberDraftField(log.draft, log::onDraft)
             Row(verticalAlignment = Alignment.Top) {
             BasicTextField(
-                value = field,
+                value = field.value,
                 // Add's write takes this text: nothing typed meanwhile could be kept apart from it.
                 readOnly = session.busy,
-                // One logical line: Done submits, so a newline is never typed.
-                onValueChange = { next ->
-                    val text = next.text.replace("\n", " ")
-                    field = next.copy(text = text)
-                    log.onDraft(text)
-                },
+                onValueChange = field.onChange,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = {
                     // Done commits the text: the last word is no longer being typed.
@@ -226,58 +201,6 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
     }
 }
 
-/**
- * A draft's parts as the Log page shows them, under its field: the rows in typed order (an entry, or "Not in your
- * foods", which [onResolve] takes), then the choice group for the part being typed ("which one?" for real choices),
- * whose tap is [onChoose]. The Log page and a recipe's ingredients both draw it.
- */
-@Composable
-internal fun DraftParts(
-    draft: LogDraftView,
-    onChoose: (FoodRecord) -> Unit,
-    onResolve: (DraftRow.Unresolved) -> Unit,
-    /** The rows Add could not match, drawn by [queuedRow] instead. */
-    queued: List<String> = emptyList(),
-    queuedRow: @Composable (DraftRow.Unresolved) -> Unit = {},
-) {
-    val colors = LocalBreakfastColors.current
-    // Rows in typed order. Typed text that matches no food stays visible, so it is never lost when Add is pressed.
-    // Not animated: a row has no identity that lasts while its text is typed (DESIGN.md, Motion).
-    draft.rows.forEach { row ->
-        when (row) {
-            is DraftRow.Entry -> FoodRow(
-                name = row.resolution.food.name,
-                quantityLine = previewQuantityLine(row.resolution.amount, row.resolution.unit, row.resolution.calculation.approximate, row.resolution.label),
-                calories = formatKcal(row.resolution.calculation.nutrition.calories),
-                modifier = Modifier.padding(top = 4.dp),
-            )
-            is DraftRow.Unresolved -> if (row.text in queued) queuedRow(row) else NotInYourFoodsRow(row.text, Modifier.padding(top = 4.dp), onClick = { onResolve(row) }, noValue = row.noValue)
-        }
-    }
-    val suggestions = draft.choices
-    if (suggestions.isNotEmpty()) {
-        Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.Bottom) {
-            Text(foodText(draft.activePhrase), color = colors.ink, style = BreakfastType.Body, modifier = Modifier.weight(1f))
-            if (draft.choiceHint) Text("which one?", color = colors.soft, style = BreakfastType.Meta)
-        }
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            suggestions.forEachIndexed { index, ranked ->
-                ChoiceOption(
-                    label = ranked.food.name,
-                    selected = index == 0 && draft.preselected,
-                    autoPick = index == 0 && draft.firstIsAddPick,
-                    onClick = { onChoose(ranked.food) },
-                    modifier = Modifier.widthIn(min = 168.dp),
-                    detail = draft.choiceCalculations.getOrNull(index)?.let(::choiceKcalDetail),
-                )
-            }
-        }
-    }
-}
-
 /** The meal button at the top of the Log page. Its menu sets the target meal; "Meal" when nothing is chosen or typed. */
 @Composable
 private fun LogMealPicker(label: String, log: LogComposer) {
@@ -311,25 +234,3 @@ private fun LogMealPicker(label: String, log: LogComposer) {
         }
     }
 }
-
-/** A typed part no food was logged for: no food behind it, or, with [noValue], its food in a unit that has no value. */
-@Composable
-internal fun NotInYourFoodsRow(text: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, noValue: SegmentResolution? = null) {
-    FoodRow(
-        name = noValue?.food?.name ?: text,
-        quantityLine = noValue?.let(::noValueLine) ?: "Not in your foods",
-        calories = "",
-        modifier = modifier,
-        onClick = onClick,
-    )
-}
-
-/**
- * The field after the text changed from outside the field (a tapped suggestion or choice): the caret goes to the end
- * of the new text. When the text is what the field already shows (the user typed it), the field keeps its caret.
- */
-internal fun syncedInputField(field: TextFieldValue, text: String): TextFieldValue =
-    if (field.text == text) field else inputFieldFor(text)
-
-/** The Log field for [text] with the caret at the end: a page that opens again starts there, not at the start. */
-internal fun inputFieldFor(text: String): TextFieldValue = TextFieldValue(text, TextRange(text.length))

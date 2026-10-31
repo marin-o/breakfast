@@ -13,15 +13,32 @@ internal const val PIN_OCCURRENCE = '\u0001'
  * The planner reads them as [keys]: a part's text to its food, the plain text unless parts with that text differ.
  */
 internal class DraftPins {
-    class Pin(val nameStart: Int, val food: FoodRecord, val madeFor: String)
+    class Pin(val nameStart: Int, val food: FoodRecord, val madeFor: String) {
+        /** What makes it this pin, whatever instance holds it and however its food was refreshed. */
+        val key: Triple<Int, String, String> get() = Triple(nameStart, food.id, madeFor)
+    }
 
     private val pins = mutableStateListOf<Pin>()
 
     fun clear() = pins.clear()
     fun current(): List<Pin> = pins.toList()
-    fun forget(used: List<Pin>) { pins.removeAll(used) }
+    fun forget(used: List<Pin>) {
+        val keys = used.mapTo(HashSet()) { it.key }
+        pins.removeAll { it.key in keys }
+    }
     fun dropFood(foodId: String) { pins.removeAll { it.food.id == foodId } }
     fun dropWhere(gone: (FoodRecord) -> Boolean) { pins.removeAll { gone(it.food) } }
+
+    /** Each pin holds its food as it is in [current]; one whose name changed goes, since its text no longer names it. */
+    fun refresh(current: List<FoodRecord>) {
+        val byId = current.associateBy { it.id }
+        val next = pins.mapNotNull { pin ->
+            val food = byId[pin.food.id] ?: return@mapNotNull pin
+            if (food.name == pin.food.name) Pin(pin.nameStart, food, pin.madeFor) else null
+        }
+        pins.clear()
+        pins.addAll(next)
+    }
 
     /** Back from [keys] as they were saved, or as an edit types its parts back: each part with that text in [draft]. */
     fun restore(draft: String, keys: Map<String, FoodRecord>) {

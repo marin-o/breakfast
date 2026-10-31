@@ -136,7 +136,7 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         Surface.RECIPE -> vm.recipes.page?.let { RecipePageScreen(vm.recipes, it, onEdit = vm.recipeForm::openEdit) }
         Surface.RECIPE_LOG -> vm.recipes.logging?.let { RecipeLogSheet(vm.recipes, vm.surfaces, vm::automaticMealNow, it) }
         Surface.RECIPE_FORM -> RecipeFormScreen(vm.recipeForm, vm.recipes, vm.session, vm.settings)
-        Surface.RECIPE_SEARCH -> RecipeIngredientSearch(vm.recipeForm)
+        Surface.RECIPE_SEARCH -> RecipeIngredientSearch(vm.recipeForm, vm.search, vm.foodForm)
         Surface.RECIPE_INGREDIENT_ADD -> vm.recipeForm.adding?.let { IngredientAmountSheet(vm.recipeForm, it) }
         Surface.DISCARD_RECIPE -> ConfirmDialog("Discard", vm.recipeForm::discard, vm.recipeForm::keepEditing, dismiss = "Keep editing")
         // As Delete food: for good, and past entries keep their own name and numbers.

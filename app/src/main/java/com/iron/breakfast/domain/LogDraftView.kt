@@ -1,15 +1,7 @@
-package com.iron.breakfast.log
+package com.iron.breakfast.domain
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import com.iron.breakfast.domain.DraftRow
-import com.iron.breakfast.domain.RankedFood
-import com.iron.breakfast.domain.SegmentResolution
-import com.iron.breakfast.domain.Calculation
-import com.iron.breakfast.domain.DraftView
-import com.iron.breakfast.domain.LogPlanner
 
-/** What the Log page shows for one draft, computed in one planner pass by [BreakfastViewModel.logDraftView]. */
+/** What the Log page shows for one draft, computed in one planner pass by the planner. */
 internal data class LogDraftView(
     /** The draft's rows in typed order: entries, and parts shown as "Not in your foods". */
     val rows: List<DraftRow>,
@@ -59,3 +51,10 @@ internal fun logDraftViewOf(planner: LogPlanner, text: String, committed: Boolea
         choiceCalculations = view.choices.map { planner.calculationFor(view.activeText, it.food) },
     )
 }
+
+/**
+ * A "Not in your foods" row still names its text in [draft] (MOB-025): a draft's rows are computed off the main thread,
+ * so after a keystroke a tapped row's span may hold other text, and that tap must do nothing.
+ */
+internal fun rowStillInDraft(draft: String, row: DraftRow.Unresolved): Boolean =
+    row.start >= 0 && row.start < row.end && row.end <= draft.length && draft.substring(row.start, row.end) == row.text

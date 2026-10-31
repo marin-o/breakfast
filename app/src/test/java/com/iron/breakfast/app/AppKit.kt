@@ -152,6 +152,8 @@ internal class AppKit(val savedState: SavedStateHandle = SavedStateHandle(), foo
             products = object : ProductStore {
                 override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
                     calls += "review log ${food.id} $meal"
+                    // As the engine stores it: over a stored food with its id.
+                    diary.foods = diary.foods.map { if (it.id == food.id) food else it }
                 }
                 override suspend fun updateFood(food: FoodRecord) { calls += "review save ${food.id}" }
                 override suspend fun cacheFood(food: FoodRecord): FoodRecord { calls += "review store ${food.id}"; return food }

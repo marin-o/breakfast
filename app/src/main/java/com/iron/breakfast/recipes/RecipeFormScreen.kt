@@ -1,15 +1,21 @@
 package com.iron.breakfast.recipes
 
+import com.iron.breakfast.scan.ProductReviewOrigin
+import com.iron.breakfast.food.FoodForm
+import com.iron.breakfast.search.OffSearch
+import com.iron.breakfast.search.NoLocalMatch
+import com.iron.breakfast.ui.components.listRowMotion
+import com.iron.breakfast.ui.components.AmountWithUnit
+import com.iron.breakfast.ui.components.FormFields
+import com.iron.breakfast.ui.components.SaveButton
+import com.iron.breakfast.ui.components.rememberDraftField
+import com.iron.breakfast.app.rememberDraftView
 import com.iron.breakfast.ui.components.FoodAmountSheet
-import com.iron.breakfast.ui.components.GramMlChoices
 import com.iron.breakfast.ui.components.DecimalField
 import com.iron.breakfast.ui.components.SubScreen
 import com.iron.breakfast.domain.POSITIVE_AMOUNT_MESSAGE
 import com.iron.breakfast.ui.screens.previewQuantityLine
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,7 +30,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -35,17 +40,13 @@ import androidx.compose.ui.unit.dp
 import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.Measure
-import com.iron.breakfast.library.defaultServingCalories
-import com.iron.breakfast.log.DraftParts
-import com.iron.breakfast.log.inputFieldFor
-import com.iron.breakfast.log.syncedInputField
+import com.iron.breakfast.ui.screens.defaultServingCalories
+import com.iron.breakfast.ui.components.DraftParts
 import com.iron.breakfast.settings.SettingsState
-import com.iron.breakfast.ui.components.ButtonKind
 import com.iron.breakfast.ui.components.DestructiveButton
 import com.iron.breakfast.ui.components.Field
 import com.iron.breakfast.ui.components.FoodRow
 import com.iron.breakfast.ui.components.Hairline
-import com.iron.breakfast.ui.components.PrimaryButton
 import com.iron.breakfast.ui.components.SearchField
 import com.iron.breakfast.ui.components.rememberMotion
 import com.iron.breakfast.ui.theme.IconTarget
@@ -58,23 +59,17 @@ import com.iron.breakfast.ui.theme.LocalBreakfastColors
  */
 @Composable
 internal fun RecipeFormScreen(form: RecipeForm, recipes: RecipeBook, session: DiarySession, settings: SettingsState) {
-    val colors = LocalBreakfastColors.current
     val fields = form.fields
-    // One planner pass per text, off the main thread, as on the Log page; the last view shows until the next is ready.
-    var view by remember { mutableStateOf(form.ingredientsView()) }
-    val pins = form.pinsSnapshot()
-    LaunchedEffect(fields.ingredients, form.committed, pins, session.foods, session.ready, settings.countTyping, settings.learnFromPicks) {
-        view = form.computeView(fields.ingredients, form.committed, pins)
-    }
-    val editing = form.editingRecipeId?.let { id -> session.recipes.firstOrNull { it.id == id } }
+    val view = rememberDraftView(fields.ingredients, form.committed, form.pinsSnapshot(), session, settings, { form.ingredientsView() }, form::computeView)
+    val editing = form.editing
     val canSave = recipeCanSave(fields, view.complete) && !session.busy
     SubScreen(
         if (form.editingRecipeId != null) "Edit recipe" else "New recipe", form::leave,
-        bottom = { PrimaryButton("Save", form::save, Modifier.padding(top = 16.dp, bottom = 8.dp), enabled = canSave, kind = ButtonKind.Constructive) },
+        bottom = { SaveButton(form::save, canSave) },
     ) {
-        Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        FormFields {
             Field("Name", fields.name, form::onName, required = true)
-            YieldField("Portions", fields.portions, form::onPortions, Modifier.fillMaxWidth())
+            PortionsField(form)
             TotalField(form)
             Column {
                 IngredientsField(form)
@@ -96,42 +91,33 @@ private fun TotalField(form: RecipeForm) {
     val fields = form.fields
     val error = totalError(fields)
     val unit = totalOf(fields.total, fields.totalUnit)?.first ?: fields.totalUnit
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
+    AmountWithUnit("Total", unit, form::onTotalUnit) { amountModifier ->
         Field(
-            "Total", fields.total, form::onTotal, Modifier.weight(1.6f),
+            "Total", fields.total, form::onTotal, amountModifier, labelVisible = false,
             error = error,
             errorMessage = if (error) POSITIVE_AMOUNT_MESSAGE else null,
         )
-        GramMlChoices(unit, form::onTotalUnit, Modifier.weight(1f))
     }
 }
 
-/** Portions: a decimal field whose typed value that is not a positive number shows as an error. */
+/** Portions: a typed value that is not a positive number shows as an error. */
 @Composable
-private fun YieldField(label: String, value: String, onValue: (String) -> Unit, modifier: Modifier) {
-    val error = yieldError(value)
-    DecimalField(label, value, onValue, modifier, error = error, errorMessage = if (error) POSITIVE_AMOUNT_MESSAGE else null)
+private fun PortionsField(form: RecipeForm) {
+    val error = yieldError(form.fields.portions)
+    DecimalField("Portions", form.fields.portions, form::onPortions, Modifier.fillMaxWidth(), error = error, errorMessage = if (error) POSITIVE_AMOUNT_MESSAGE else null)
 }
 
 /**
  * The ingredients, typed like the Log bar: Done finishes the last part, and the magnifier opens the ingredient search.
- * The field keeps its own caret; a change made from outside (a tapped choice, an added ingredient) moves it to the end.
  */
 @Composable
 private fun IngredientsField(form: RecipeForm) {
     val colors = LocalBreakfastColors.current
-    val text = form.fields.ingredients
-    var field by remember { mutableStateOf(inputFieldFor(text)) }
-    LaunchedEffect(text) { field = syncedInputField(field, text) }
+    val field = rememberDraftField(form.fields.ingredients, form::onIngredients)
     Field(
         label = "Ingredients",
-        value = field,
-        onValueChange = { next ->
-            // One logical line, as on the Log page: Done finishes it, so a newline is never typed.
-            val typed = next.text.replace("\n", " ")
-            field = next.copy(text = typed)
-            form.onIngredients(typed)
-        },
+        value = field.value,
+        onValueChange = field.onChange,
         singleLine = false,
         minLines = 2,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -146,11 +132,11 @@ private fun IngredientsField(form: RecipeForm) {
 
 /**
  * The ingredient search: the foods, the last logged first, as the Library lists them, filtered as it is typed. A food
- * tapped opens the amount sheet over it (or, for a "Not in your foods" part, takes its place).
+ * tapped opens the amount sheet over it (or, for a "Not in your foods" part, takes its place). Nothing found: Open Food
+ * Facts or a personal food, whose stored food comes back as that pick.
  */
 @Composable
-internal fun RecipeIngredientSearch(form: RecipeForm) {
-    val colors = LocalBreakfastColors.current
+internal fun RecipeIngredientSearch(form: RecipeForm, search: OffSearch, foodForm: FoodForm) {
     val motion = rememberMotion()
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
@@ -160,13 +146,15 @@ internal fun RecipeIngredientSearch(form: RecipeForm) {
             modifier = Modifier.padding(top = 6.dp), fieldModifier = Modifier.focusRequester(focus),
         )
         Hairline(Modifier.padding(top = 12.dp))
-        LazyColumn(Modifier.weight(1f)) {
+        // What it finds goes into the recipe, so its review has no meal to log to, as a part of the Log's draft has none.
+        if (form.noMatch) NoLocalMatch(form.query, search, foodForm, ProductReviewOrigin.LOG_PART)
+        else LazyColumn(Modifier.weight(1f)) {
             items(form.results, key = { it.id }) { food ->
                 FoodRow(
                     name = food.name,
                     quantityLine = previewQuantityLine(food.defaultAmount, food.defaultUnit),
                     calories = defaultServingCalories(food),
-                    modifier = Modifier.animateItem(fadeInSpec = motion.listItem(), placementSpec = motion.listItem(), fadeOutSpec = motion.listItem()),
+                    modifier = listRowMotion(motion),
                     onClick = { form.pick(food) },
                 )
             }
@@ -183,7 +171,6 @@ internal fun IngredientAmountSheet(form: RecipeForm, food: FoodRecord) {
         startMeasure = Measure(food.defaultUnit),
         startMeal = null,
         onAdd = { amount, measure, _ -> form.addIngredient(food, amount, measure) },
-        onInvalid = {},
         onDismiss = form::dismissAdding,
     )
 }

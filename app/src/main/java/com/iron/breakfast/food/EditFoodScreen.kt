@@ -1,5 +1,6 @@
 package com.iron.breakfast.food
 
+import com.iron.breakfast.ui.components.FormFields
 import com.iron.breakfast.ui.components.NutrientFields
 import com.iron.breakfast.ui.components.NutrientField
 import com.iron.breakfast.ui.components.GramMlChoices
@@ -48,7 +49,7 @@ internal fun EditFoodScreen(form: FoodForm, session: DiarySession, library: Libr
     val food = session.foods.firstOrNull { it.id == form.editingFoodId } ?: return
     val draft = form.draft
     SubScreen("Edit food", form::leave) {
-        Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        FormFields {
             Field("Name", draft.name, { draft.name = it }, required = true)
             Field("Brand", draft.brand, { draft.brand = it })
             FoodBarcodeField(form, foodBarcodeError(draft.barcode, session.foods, food.id))
