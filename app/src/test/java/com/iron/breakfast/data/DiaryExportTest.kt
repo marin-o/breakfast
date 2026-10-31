@@ -87,7 +87,7 @@ class DiaryExportTest {
     }
 
     @Test fun theProfileAndTheCurveComeBack() {
-        val profile = ProfileValues("Ana", 120.0, null, 60.5, 82.5, 75.0)
+        val profile = ProfileValues("Ana", 120.0, null, 60.5, 82.5, 75.0, kcalTarget = 2100.0)
         val points = listOf(WeightPointEntity("2026-10-01", 80.0, 1L), WeightPointEntity("2026-10-02", 79.5, 2L))
         val imported = valid(encodeDiary(diaryFileOf(rows().copy(profile = profile, weightPoints = points), settings, 5_000L)))
         assertEquals(profile, imported.rows.profile)
@@ -109,6 +109,20 @@ class DiaryExportTest {
         val imported = valid(old)
         assertNull(imported.rows.profile)
         assertNull(imported.rows.weightPoints)
+    }
+
+    /** The kcal target came later in format 3: a file of 3 without it imports, with none set. */
+    @Test fun aProfileWithoutAKcalTargetStillImports() {
+        val profile = ProfileValues("Ana", proteinTarget = 120.0)
+        val encoded = encodeDiary(diaryFileOf(rows().copy(profile = profile, weightPoints = emptyList()), settings, 5_000L))
+        val without = encoded.replace(",\"kcalTarget\":null", "")
+        assertFalse("kcalTarget" in without)
+        assertEquals(profile, valid(without).rows.profile)
+    }
+
+    @Test fun aKcalTargetOutOfRangeIsRefused() {
+        refused(file().copy(profile = ProfileDto("", null, null, null, null, null, kcalTarget = 0.5)))
+        refused(file().copy(profile = ProfileDto("", null, null, null, null, null, kcalTarget = 20001.0)))
     }
 
     @Test fun badProfileNumbersAndPointsAreRefused() {

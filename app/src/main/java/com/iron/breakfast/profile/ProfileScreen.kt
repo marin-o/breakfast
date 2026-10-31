@@ -2,8 +2,11 @@ package com.iron.breakfast.profile
 
 import com.iron.breakfast.ui.components.FormFields
 import com.iron.breakfast.ui.components.SaveButton
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,49 +16,58 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import com.iron.breakfast.domain.KCAL_FIRST_MESSAGE
+import com.iron.breakfast.domain.KCAL_RANGE_MESSAGE
 import com.iron.breakfast.domain.MACRO_TARGET_RANGE_MESSAGE
+import com.iron.breakfast.domain.MacroPreset
 import com.iron.breakfast.domain.WEIGHT_RANGE_MESSAGE
 import com.iron.breakfast.domain.WeightPoint
-import com.iron.breakfast.domain.curveX
+import com.iron.breakfast.domain.kcalTargetTextValid
 import com.iron.breakfast.domain.macroTargetTextValid
 import com.iron.breakfast.domain.weightTextValid
 import com.iron.breakfast.ui.components.AddCircle
 import com.iron.breakfast.ui.components.CheckboxRow
-import com.iron.breakfast.ui.components.CurvePoint
+import com.iron.breakfast.ui.components.ChoiceOption
 import com.iron.breakfast.ui.components.DecimalField
 import com.iron.breakfast.ui.components.FactRow
 import com.iron.breakfast.ui.components.Field
 import com.iron.breakfast.ui.components.Hairline
 import com.iron.breakfast.ui.components.NutrientField
 import com.iron.breakfast.ui.components.NutrientFields
-import com.iron.breakfast.ui.components.PointCurve
 import com.iron.breakfast.ui.components.SubScreen
+import com.iron.breakfast.ui.components.WeightChart
 import com.iron.breakfast.ui.components.isLargeFont
 import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.shortDateLabel
 
-/** The Profile page: the name, the macro targets, the two weights, then the curve and its points, newest first. */
+/** The Profile page: the name, the kcal and macro targets, the two weights, then the curve and its points, newest first. */
 @Composable
 internal fun ProfileScreen(profile: ProfileState) {
     val points = profile.points
-    val curve = remember(points) { points.mapNotNull { point -> curveX(point.dayKey)?.let { CurvePoint(it, point.kg) } } }
     SubScreen(
         "Profile", profile::leave, scroll = false,
         bottom = { SaveButton(profile::save, profile.canSave) },
     ) {
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(bottom = 12.dp)) {
             item(key = "fields") { ProfileFields(profile) }
-            if (points.isNotEmpty()) item(key = "curve") { PointCurve(curve, profile.values.targetWeight, Modifier.padding(top = 16.dp)) }
+            item(key = "curve") { WeightChart(points, profile.values.targetWeight, Modifier.padding(top = 16.dp)) }
             items(points, key = { it.dayKey }) { point -> PointRow(point) { profile.askDelete(point) } }
         }
     }
 }
 
+private val PRESET_CHOICES = listOf(
+    MacroPreset.KCAL_AND_PROTEIN to "Kcal and protein",
+    MacroPreset.BALANCED to "Balanced",
+    MacroPreset.HIGH_PROTEIN to "High protein",
+    MacroPreset.LOW_CARB to "Low carb",
+)
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ProfileFields(profile: ProfileState) {
     val draft = profile.draft
@@ -63,6 +75,10 @@ private fun ProfileFields(profile: ProfileState) {
         Hairline(Modifier.padding(top = 8.dp))
         FormFields {
             Field("Name", draft.name, { profile.edit(draft.copy(name = it)) })
+            KcalField(profile)
+            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PRESET_CHOICES.forEach { (preset, label) -> ChoiceOption(label, false, { profile.applyPreset(preset) }, selectable = false) }
+            }
             NutrientFields(
                 listOf(
                     targetField("Protein, g", draft.protein) { profile.edit(draft.copy(protein = it)) },
@@ -77,6 +93,18 @@ private fun ProfileFields(profile: ProfileState) {
             WeightField("Target weight, kg", draft.target) { profile.edit(draft.copy(target = it)) }
         }
     }
+}
+
+/** Out of range shows the red ring alone; "Enter your daily kcal first." comes from a preset that needed it. */
+@Composable
+private fun KcalField(profile: ProfileState) {
+    val draft = profile.draft
+    val valid = kcalTargetTextValid(draft.kcal)
+    DecimalField(
+        "Daily kcal", draft.kcal, { profile.edit(draft.copy(kcal = it)) },
+        error = profile.kcalAsked || !valid,
+        errorMessage = if (!valid) KCAL_RANGE_MESSAGE else KCAL_FIRST_MESSAGE.takeIf { profile.kcalAsked },
+    )
 }
 
 private fun targetField(label: String, value: String, onValue: (String) -> Unit): NutrientField {

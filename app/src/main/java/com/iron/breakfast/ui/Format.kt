@@ -20,6 +20,10 @@ internal fun Double.pretty() = markDecimals(plain(), DisplayDecimal.mark)
 internal fun shortDateLabel(dayKey: String): String =
     runCatching { LocalDate.parse(dayKey).format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH)) }.getOrDefault(dayKey)
 
+/** "12 Oct", or "12 Oct 26" [withYear]: where the same day could otherwise read twice. */
+internal fun dayMonthLabel(date: LocalDate, withYear: Boolean = false): String =
+    date.format(DateTimeFormatter.ofPattern(if (withYear) "d MMM yy" else "d MMM", Locale.ENGLISH))
+
 /** "07:52", the time of a moment on this phone. */
 internal fun clockLabel(epochMs: Long, zone: ZoneId = ZoneId.systemDefault()): String =
     DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT).withZone(zone).format(Instant.ofEpochMilli(epochMs))

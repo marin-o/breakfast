@@ -1,7 +1,5 @@
 package com.iron.breakfast.domain
 
-import com.iron.breakfast.ui.components.CurvePoint
-import com.iron.breakfast.ui.components.curveLayout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -71,34 +69,80 @@ class ProfileTest {
         assertNull(curveX("not a day"))
     }
 
-    @Test fun noPointsLayNothingEvenWithATarget() {
-        val layout = curveLayout(emptyList(), 70.0, 100f, 100f, 0f)
-        assertTrue(layout.points.isEmpty())
-        assertNull(layout.targetY)
+    @Test fun aKcalTargetIsEmptyOrFrom1To20000() {
+        listOf("", "1", "2000,5", "20000").forEach { assertTrue(kcalTargetTextValid(it), it) }
+        listOf("0", "0.5", "20000.5", "abc").forEach { assertFalse(kcalTargetTextValid(it), it) }
+        assertNull(profileOf(ProfileDraft(kcal = "20001"), ProfileValues()))
+        assertEquals(ProfileValues(kcalTarget = 2000.5), profileOf(ProfileDraft(kcal = "2000,5"), ProfileValues()))
     }
 
-    @Test fun onePointSitsInTheMiddle() {
-        val point = curveLayout(listOf(CurvePoint(5.0, 80.0)), null, 200f, 100f, 10f).points.single()
-        assertEquals(100f, point.x)
-        assertEquals(50f, point.y)
+    @Test fun anUneditedKcalTargetKeepsItsExactNumber() {
+        val saved = ProfileValues(kcalTarget = 2000.123456)
+        assertEquals(saved, profileOf(ProfileDraft.of(saved), saved))
     }
 
-    @Test fun xIsProportionalToTimeAndLargerYIsHigher() {
-        val points = curveLayout(listOf(CurvePoint(0.0, 80.0), CurvePoint(1.0, 90.0), CurvePoint(4.0, 85.0)), null, 120f, 120f, 10f).points
-        assertEquals(listOf(10f, 35f, 110f), points.map { it.x })
-        assertEquals(listOf(110f, 10f, 60f), points.map { it.y })
+    @Test fun balancedIs30Protein40Carbs30Fat() {
+        assertEquals(MacroGrams(150, 200, 67), presetGrams(MacroPreset.BALANCED, 2000.0, null))
     }
 
-    @Test fun theRangeIncludesTheTarget() {
-        val layout = curveLayout(listOf(CurvePoint(0.0, 80.0), CurvePoint(1.0, 90.0)), 70.0, 100f, 100f, 0f)
-        assertEquals(0f, layout.points[1].y)
-        assertEquals(50f, layout.points[0].y)
-        assertEquals(100f, layout.targetY)
+    @Test fun highProteinIs40Protein30Carbs30Fat() {
+        assertEquals(MacroGrams(200, 150, 67), presetGrams(MacroPreset.HIGH_PROTEIN, 2000.0, null))
     }
 
-    @Test fun aFlatRangeSitsInTheMiddle() {
-        val layout = curveLayout(listOf(CurvePoint(0.0, 80.0), CurvePoint(1.0, 80.0)), 80.0, 100f, 100f, 0f)
-        assertEquals(listOf(50f, 50f), layout.points.map { it.y })
-        assertEquals(50f, layout.targetY)
+    @Test fun lowCarbIs30Protein20Carbs50Fat() {
+        assertEquals(MacroGrams(150, 100, 111), presetGrams(MacroPreset.LOW_CARB, 2000.0, null))
+    }
+
+    @Test fun kcalAndProteinIsTwoGramsPerKgAndLeavesCarbsAndFatEmpty() {
+        assertEquals(MacroGrams(165, null, null), presetGrams(MacroPreset.KCAL_AND_PROTEIN, 2000.0, 82.5))
+    }
+
+    @Test fun kcalAndProteinWithNoWeightIsAQuarterOfTheKcal() {
+        assertEquals(MacroGrams(125, null, null), presetGrams(MacroPreset.KCAL_AND_PROTEIN, 2000.0, null))
+    }
+
+    @Test fun kcalAndProteinWithAWeightNeedsNoKcal() {
+        assertEquals(MacroGrams(160, null, null), presetGrams(MacroPreset.KCAL_AND_PROTEIN, null, 80.0))
+    }
+
+    @Test fun aPresetThatNeedsKcalHasNoGramsWithoutIt() {
+        assertNull(presetGrams(MacroPreset.KCAL_AND_PROTEIN, null, null))
+        listOf(MacroPreset.BALANCED, MacroPreset.HIGH_PROTEIN, MacroPreset.LOW_CARB).forEach { assertNull(presetGrams(it, null, 80.0), it.name) }
+    }
+
+    @Test fun theWeightDoesNotChangeThePercentPresets() {
+        assertEquals(MacroGrams(150, 200, 67), presetGrams(MacroPreset.BALANCED, 2000.0, 80.0))
+    }
+
+    @Test fun gramsRoundToTheNearestWholeAndHalfGoesUp() {
+        // 25% of 2008 is 502 kcal, 125.5 g; 25% of 2004 is 125.25 g.
+        assertEquals(126, presetGrams(MacroPreset.KCAL_AND_PROTEIN, 2008.0, null)?.protein)
+        assertEquals(125, presetGrams(MacroPreset.KCAL_AND_PROTEIN, 2004.0, null)?.protein)
+        assertEquals(165, presetGrams(MacroPreset.KCAL_AND_PROTEIN, null, 82.3)?.protein)
+    }
+
+    @Test fun everyPresetGramIsAValidTargetAtTheEndsOfTheRanges() {
+        MacroPreset.entries.forEach { preset ->
+            listOf(1.0 to null, 1.0 to 1.0, 20000.0 to null, 20000.0 to 500.0).forEach { (kcal, kg) ->
+                val grams = presetGrams(preset, kcal, kg)!!
+                listOfNotNull(grams.protein, grams.carbs, grams.fat).forEach { assertTrue(macroTargetValid(it.toDouble()), "$preset $kcal $kg $it") }
+            }
+        }
+    }
+
+    @Test fun aPresetFillsTheDraftFromWhatIsTypedAndTouchesNothingElse() {
+        val draft = ProfileDraft(name = "Ana", kcal = "2000,0", current = "80", target = "75")
+        assertEquals(draft.copy(protein = "150", carbs = "200", fat = "67"), draft.withPreset(MacroPreset.BALANCED))
+    }
+
+    @Test fun kcalAndProteinEmptiesCarbsAndFat() {
+        val draft = ProfileDraft(kcal = "2000", carbs = "10", fat = "20")
+        assertEquals(draft.copy(protein = "125", carbs = "", fat = ""), draft.withPreset(MacroPreset.KCAL_AND_PROTEIN))
+    }
+
+    @Test fun aKcalOrWeightOutOfRangeCountsAsNotSet() {
+        assertNull(ProfileDraft(kcal = "0").withPreset(MacroPreset.BALANCED))
+        assertNull(ProfileDraft(kcal = "20001", current = "0").withPreset(MacroPreset.KCAL_AND_PROTEIN))
+        assertEquals("125", ProfileDraft(kcal = "2000", current = "0").withPreset(MacroPreset.KCAL_AND_PROTEIN)?.protein)
     }
 }

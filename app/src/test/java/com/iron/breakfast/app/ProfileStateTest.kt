@@ -3,6 +3,7 @@ package com.iron.breakfast.app
 import androidx.lifecycle.SavedStateHandle
 import androidx.compose.runtime.snapshots.Snapshot
 import com.iron.breakfast.domain.ProfileDraft
+import com.iron.breakfast.domain.MacroPreset
 import com.iron.breakfast.domain.ProfileValues
 import com.iron.breakfast.domain.WeightPoint
 import com.iron.breakfast.profile.ProfilePrefs
@@ -132,6 +133,39 @@ internal class ProfileStateTest {
 
     @Test fun anEmptyProfileHasNothingToSave() {
         assertFalse(profile.canSave)
+    }
+
+    @Test fun aPresetFillsTheFieldsAndSavesNothing() {
+        profile.edit(ProfileDraft(kcal = "2000"))
+        profile.applyPreset(MacroPreset.LOW_CARB)
+        assertEquals(ProfileDraft(kcal = "2000", protein = "150", carbs = "100", fat = "111"), profile.draft)
+        assertEquals(ProfileValues(), profile.values)
+        assertEquals(ProfileValues(), ProfilePrefs(app.profileStore).read())
+        assertFalse(profile.kcalAsked)
+    }
+
+    @Test fun aPresetWithoutKcalAsksForItAndChangesNothing() {
+        val typed = ProfileDraft(protein = "90")
+        profile.edit(typed)
+        profile.applyPreset(MacroPreset.BALANCED)
+        assertEquals(typed, profile.draft)
+        assertTrue(profile.kcalAsked)
+    }
+
+    @Test fun typingKcalEndsTheAskingButTypingElsewhereDoesNot() {
+        profile.applyPreset(MacroPreset.BALANCED)
+        profile.edit(profile.draft.copy(protein = "90"))
+        assertTrue(profile.kcalAsked)
+        profile.edit(profile.draft.copy(kcal = "2"))
+        assertFalse(profile.kcalAsked)
+    }
+
+    @Test fun aKcalTargetIsStoredAndABadOneCannotBeSaved() {
+        profile.edit(ProfileDraft(kcal = "20001"))
+        assertFalse(profile.canSave)
+        profile.edit(ProfileDraft(kcal = "2100"))
+        profile.save()
+        assertEquals(ProfileValues(kcalTarget = 2100.0), ProfilePrefs(app.profileStore).read())
     }
 
     @Test fun aBadNumberCannotBeSaved() {

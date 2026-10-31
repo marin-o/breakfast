@@ -250,6 +250,9 @@ internal fun macroStats(kcal: Double, macros: MacroTotals, targets: ProfileValue
     )
 }
 
+/** "/ 2000 kcal" beside a day's total, as a macro reads "/ 120 g"; null with no target. */
+internal fun kcalTargetLine(profile: ProfileValues): String? = profile.kcalTarget?.let { "/ ${kcalLabel(it)}" }
+
 /**
  * The one line under the macros when any of them shows "?". Never drawn when the macros are hidden ("Macros on today"
  * Hide) or the note is ("Missing values note" Hide).

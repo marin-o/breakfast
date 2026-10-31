@@ -782,6 +782,8 @@ fun DayTotal(
     caption: String = "kilocalories today",
     /** One soft line under the macros, or nothing. */
     note: String? = null,
+    /** The kcal target's soft line between the figure and its caption, as a macro's sits between amount and label. */
+    target: String? = null,
 ) {
     val colors = LocalBreakfastColors.current
     val stacked = isLargeFont(LocalDensity.current.fontScale)
@@ -789,6 +791,7 @@ fun DayTotal(
     val anyTarget = macros.any { it.target != null }
     Column(modifier.fillMaxWidth()) {
         Text(kilocalories, color = colors.ink, style = BreakfastType.Hero)
+        target?.let { Text(it, color = colors.soft, style = BreakfastType.Secondary) }
         Text(caption, color = colors.soft, style = BreakfastType.Secondary)
         if (macros.isEmpty()) {
             // Only the kcal: "Macros on today" is hidden.

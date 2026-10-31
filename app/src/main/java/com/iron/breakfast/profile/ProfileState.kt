@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import com.iron.breakfast.app.DiaryChange
 import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.app.Notices
+import com.iron.breakfast.domain.MacroPreset
 import com.iron.breakfast.domain.ProfileDraft
 import com.iron.breakfast.domain.ProfileValues
 import com.iron.breakfast.domain.WeightPoint
@@ -14,6 +15,7 @@ import com.iron.breakfast.domain.curveOffered
 import com.iron.breakfast.domain.curveWeightOf
 import com.iron.breakfast.domain.newestFirst
 import com.iron.breakfast.domain.profileOf
+import com.iron.breakfast.domain.withPreset
 import com.iron.breakfast.domain.FormBack
 import com.iron.breakfast.domain.formBack
 import kotlinx.serialization.Serializable
@@ -30,7 +32,7 @@ internal interface WeightStore {
 internal data class SavedProfile(val draft: ProfileDraft, val addToCurve: Boolean)
 
 /**
- * The Profile page's owner: whether it is [open], the saved [values] (Meals reads the macro targets from them), the
+ * The Profile page's owner: whether it is [open], the saved [values] (Meals reads the targets from them), the
  * [draft] being typed, and the curve as the session reads it ([points]).
  *
  * Save writes through [session]: a point when the rules ask for one ([curveWeightOf]), then the values. Back asks before
@@ -49,6 +51,8 @@ internal class ProfileState(
     var values by mutableStateOf(prefs.read()); private set
     var draft by mutableStateOf(ProfileDraft.of(values)); private set
     var addToCurve by mutableStateOf(true); private set
+    /** The kcal field asks to be filled, after a preset that needed it. */
+    var kcalAsked by mutableStateOf(false); private set
     var discardOpen by mutableStateOf(false); private set
     /** The point the delete dialog asks about. */
     var deleteRequest by mutableStateOf<WeightPoint?>(null); private set
@@ -82,7 +86,18 @@ internal class ProfileState(
 
     fun savedPage(): SavedProfile? = if (open) SavedProfile(draft, addToCurve) else null
 
-    fun edit(next: ProfileDraft) { draft = next }
+    fun edit(next: ProfileDraft) {
+        if (next.kcal != draft.kcal) kcalAsked = false
+        draft = next
+    }
+
+    /** A preset that needs the kcal target has none: the field says so until it is typed in. */
+    fun applyPreset(preset: MacroPreset) {
+        val next = draft.withPreset(preset)
+        kcalAsked = next == null
+        if (next != null) draft = next
+    }
+
     fun toggleAddToCurve() { addToCurve = !addToCurve }
 
     /** Back or the arrow: a changed draft asks before it is dropped; while a save runs, nothing happens. */
@@ -126,6 +141,7 @@ internal class ProfileState(
     private fun resetDraft() {
         draft = ProfileDraft.of(values)
         addToCurve = true
+        kcalAsked = false
         discardOpen = false
         deleteRequest = null
     }

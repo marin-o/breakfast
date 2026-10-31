@@ -1,6 +1,7 @@
 package com.iron.breakfast.data
 
 import com.iron.breakfast.domain.weightValid
+import com.iron.breakfast.domain.kcalTargetValid
 import com.iron.breakfast.domain.macroTargetValid
 import com.iron.breakfast.domain.ProfileValues
 import com.iron.breakfast.domain.FoodOrigin
@@ -101,6 +102,8 @@ internal data class ProfileDto(
     val fatTarget: Double?,
     val currentWeight: Double?,
     val targetWeight: Double?,
+    // Added within format 3; a file without it has no kcal target.
+    val kcalTarget: Double? = null,
 )
 
 @Serializable
@@ -240,7 +243,7 @@ internal fun diaryFileOf(rows: DiaryRows, settings: DiarySettings, exportedAtEpo
             .map { RecipeAliasDto(it.recipeId, it.alias) },
         recipeIngredients = rows.recipeIngredients.filter { it.recipeId in recipeIds }.sortedWith(compareBy({ it.recipeId }, { it.position }))
             .map { it.toDto() },
-        profile = rows.profile?.let { ProfileDto(it.name, it.proteinTarget, it.carbsTarget, it.fatTarget, it.currentWeight, it.targetWeight) },
+        profile = rows.profile?.let { ProfileDto(it.name, it.proteinTarget, it.carbsTarget, it.fatTarget, it.currentWeight, it.targetWeight, it.kcalTarget) },
         weightPoints = rows.weightPoints.orEmpty().sortedBy { it.dayKey }.map { WeightPointDto(it.dayKey, it.kg, it.savedAtEpochMs) },
     )
 }
@@ -277,7 +280,7 @@ internal fun validateDiary(file: DiaryFile): DiaryImport {
             recipeAliases = file.recipeAliases.map { RecipeAliasEntity(it.recipeId, it.alias) },
             recipeIngredients = file.recipeIngredients.map { it.toEntity() },
             weightPoints = file.weightPoints.map { WeightPointEntity(it.dayKey, it.kg, it.savedAtEpochMs) }.takeIf { speaksForProfile },
-            profile = (file.profile?.let { ProfileValues(it.name, it.proteinTarget, it.carbsTarget, it.fatTarget, it.currentWeight, it.targetWeight) } ?: ProfileValues()).takeIf { speaksForProfile },
+            profile = (file.profile?.let { ProfileValues(it.name, it.proteinTarget, it.carbsTarget, it.fatTarget, it.currentWeight, it.targetWeight, it.kcalTarget) } ?: ProfileValues()).takeIf { speaksForProfile },
         ),
     )
 }
@@ -302,6 +305,7 @@ internal fun diaryProblem(file: DiaryFile): String? {
     file.profile?.let { p ->
         if (listOf(p.proteinTarget, p.carbsTarget, p.fatTarget).any { it != null && !macroTargetValid(it) }) return "profile macro target"
         if (listOf(p.currentWeight, p.targetWeight).any { it != null && !weightValid(it) }) return "profile weight"
+        if (p.kcalTarget != null && !kcalTargetValid(p.kcalTarget)) return "profile kcal target"
     }
     val pointDays = HashSet<String>()
     file.weightPoints.forEachIndexed { i, p ->

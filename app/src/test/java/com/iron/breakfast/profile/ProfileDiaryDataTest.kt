@@ -17,7 +17,7 @@ internal class ProfileDiaryDataTest {
     private val prefs = ProfilePrefs(store)
     private val fake = FakeData(events)
     private val data = ProfileDiaryData(fake, prefs)
-    private val saved = ProfileValues("Ana", proteinTarget = 120.0, currentWeight = 80.0)
+    private val saved = ProfileValues("Ana", proteinTarget = 120.0, currentWeight = 80.0, kcalTarget = 2100.5)
 
     @Test fun anExportCarriesTheProfile() = runBlocking {
         prefs.write(saved)

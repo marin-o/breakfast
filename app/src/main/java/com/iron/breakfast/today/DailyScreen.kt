@@ -66,6 +66,7 @@ import com.iron.breakfast.ui.components.rememberMotion
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 import kotlin.math.abs
 import com.iron.breakfast.ui.screens.formatKcal
+import com.iron.breakfast.ui.screens.kcalTargetLine
 import com.iron.breakfast.ui.screens.earliestMealTime
 import com.iron.breakfast.ui.screens.entryQuantityLine
 
@@ -128,6 +129,7 @@ internal fun DailyScreen(
                     if (settings.showMacros) macroStats(total.calories, macros, profile) else emptyList(),
                     Modifier.padding(top = 18.dp),
                     note = dailyMacroNote(macros, showMacros = settings.showMacros, showNote = settings.showMissingNote),
+                    target = kcalTargetLine(profile),
                 )
             }
             log.error?.let { message -> item { Text(message, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(vertical = 6.dp)) } }

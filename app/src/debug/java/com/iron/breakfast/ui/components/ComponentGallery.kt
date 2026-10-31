@@ -1,5 +1,6 @@
 package com.iron.breakfast.ui.components
 
+import com.iron.breakfast.domain.WeightPoint
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +39,7 @@ private fun ComponentGallery() {
             TopBar("Entry", {}, subtitle = "Wed 14.10.2026")
             DayHeader("Wednesday 14.10.2026", {}, {}, showToday = true, onToday = {}, onTitleClick = {})
             DayTotal("1424", listOf(MacroStat("Protein", "95", "g", 0.27f), MacroStat("Carbs", "193", "g", 0.54f), MacroStat("Fat", "32", "g", 0.2f)))
+            DayTotal("1424", emptyList(), target = "/ 2000 kcal")
             MealHeader("Breakfast", "546", onAdd = {}, addDescription = "Add food to Breakfast", time = "07:52")
             MealHeader("Dinner", "0", onAdd = {}, addDescription = "Add food to Dinner", emptyText = "Nothing yet")
             FoodRow("Rolled oats", "60 g", "233")
@@ -55,6 +57,8 @@ private fun ComponentGallery() {
                 ChoiceOption("g", true, {})
                 ChoiceOption("ml", false, {}, detail = "105 kcal")
             CheckboxRow("Add to curve", true, {})
+            WeightChart(listOf(WeightPoint("2026-10-01", 82.4, 0L), WeightPoint("2026-10-12", 81.0, 0L), WeightPoint("2026-10-31", 80.2, 0L)), 78.0)
+            WeightChart(listOf(WeightPoint("2026-10-31", 80.2, 0L)), null)
             StepDots(StepPosition(1, 5))
             }
             AddCircle("Add food", {})

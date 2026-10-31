@@ -2,6 +2,7 @@ package com.iron.breakfast.today
 
 import com.iron.breakfast.domain.ProfileValues
 import com.iron.breakfast.ui.screens.dailyMacroNote
+import com.iron.breakfast.ui.screens.kcalTargetLine
 import com.iron.breakfast.ui.screens.macroStats
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.macroTotalsOf
@@ -50,6 +51,15 @@ class DailyMacroStatsTest {
         assertEquals("g", protein.unit)
         assertNull(protein.target)
         assertEquals((28.6 * 4 / 200).toFloat(), protein.share, 0.001f)
+    }
+
+    @Test fun aKcalTargetReadsLikeAMacroTargetInWholeKcal() {
+        assertEquals("/ 2000 kcal", kcalTargetLine(ProfileValues(kcalTarget = 2000.0)))
+        assertEquals("/ 2101 kcal", kcalTargetLine(ProfileValues(kcalTarget = 2100.6)))
+    }
+
+    @Test fun noKcalTargetHasNoLine() {
+        assertNull(kcalTargetLine(ProfileValues(proteinTarget = 120.0)))
     }
 
     @Test fun withATargetTheBarFillsTowardIt() {
