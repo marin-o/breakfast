@@ -12,9 +12,9 @@ Owner's request, 2026-10-31: the app is opinionated and unconventional, so it ne
 ## Pages
 Each page: a short title, one or two short sentences, and a live example drawn with the app's real components and sample data. Nothing on these pages writes to the diary.
 
-1. **Type what you ate.** "Comma separated plain text." Example: "2 eggs, 100g oats" with its rows and kcal.
+1. **Type what you ate.** "Your entry is just a comma separated list." Example: "2 eggs, 100g oats" with its rows and kcal.
 2. **The green one is what the app would log.** "Partial searches also work." Example: "ban" with a green Banana chip; the words sit under it, with an arrow up to the chip.
-3. **Not in your foods?** "Look it up on Open Food Facts." Example: a "Not in your foods" row with the "Find matches" button.
+3. **Not in your foods?** "Tap Find matches to look it up on Open Food Facts." Example: a "Not in your foods" row with the "Find matches" button.
 4. **We remember what you pick.** "You can also scan barcodes." Example: a food row and a recipe row.
 5. **Your goals.** "Set up your goals in Profile." Buttons: "Open Profile" and "Start logging". Example: macro stats with targets.
 

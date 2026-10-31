@@ -1,6 +1,6 @@
 current,new,where
 "Type what you ate.","this one is fine","Page 1, title"
-"One line, like a text. Commas split foods.","Comma separated plain text.","Page 1, text under the title"
+"One line, like a text. Commas split foods.","Your entry is just a comma separated list.","Page 1, text under the title"
 "2 eggs, 100 g oats","2 eggs, 100g oats","Page 1, example, typed line"
 "Egg","this one is fine","Page 1, example, first food row, name"
 "2 pieces","this one is fine","Page 1, example, first food row, amount"
@@ -11,7 +11,7 @@ current,new,where
 "ban","this one is fine","Page 2, example, typed line"
 "Banana","this one is fine","Page 2, example, green chip"
 "Not in your foods?","this one is fine","Page 3, title"
-"Find matches looks it up on Open Food Facts. Tap a result and carry on.","Look it up on Open Food Facts.","Page 3, text under the title"
+"Find matches looks it up on Open Food Facts. Tap a result and carry on.","Tap Find matches to look it up on Open Food Facts.","Page 3, text under the title"
 "100 g kefyr","this one is fine","Page 3, example, row, typed food"
 "Not in your foods","this one is fine","Page 3, example, row, line under the food (same label in the Log)"
 "Find matches","this one is fine","Page 3, example, button (same label in the Log)"

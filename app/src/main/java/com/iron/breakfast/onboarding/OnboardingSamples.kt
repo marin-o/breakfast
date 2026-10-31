@@ -17,9 +17,9 @@ import com.iron.breakfast.ui.screens.macroStats
 internal data class OnboardingPage(val title: String, val body: String, val pointsAtExample: Boolean = false)
 
 internal val ONBOARDING_PAGES = listOf(
-    OnboardingPage("Type what you ate.", "Comma separated plain text."),
+    OnboardingPage("Type what you ate.", "Your entry is just a comma separated list."),
     OnboardingPage("The green one is what the app would log.", "Partial searches also work.", pointsAtExample = true),
-    OnboardingPage("Not in your foods?", "Look it up on Open Food Facts."),
+    OnboardingPage("Not in your foods?", "Tap Find matches to look it up on Open Food Facts."),
     OnboardingPage("We remember what you pick.", "You can also scan barcodes."),
     OnboardingPage("Your goals.", "Set up your goals in Profile."),
 )
