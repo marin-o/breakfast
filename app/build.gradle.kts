@@ -16,7 +16,7 @@ android {
         minSdk = 26
         targetSdk = 35
         // Bump versionCode by 1 for every build installed on the phone; versionName stays 0.x until a release.
-        versionCode = 33
+        versionCode = 34
         versionName = "0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -58,7 +58,7 @@ android {
 }
 
 dependencies {
-    implementation(platform("androidx.compose:compose-bom:2024.09.03"))
+    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.6")
@@ -74,10 +74,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
-    // Without the exclude, Vico's own BOM (2024.12.01) would move the whole app's Compose past the BOM above.
-    implementation("com.patrykandpatrick.vico:compose-m3:2.0.0") {
-        exclude(group = "androidx.compose", module = "compose-bom")
-    }
+    implementation("com.patrykandpatrick.vico:compose-m3:2.0.0")
 
     kapt("androidx.room:room-compiler:2.8.5")
 

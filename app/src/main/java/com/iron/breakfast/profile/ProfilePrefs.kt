@@ -13,7 +13,7 @@ internal class ProfilePrefs(private val store: SettingsStore) {
     constructor(context: Context) : this(SharedPreferencesStore(context.applicationContext.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)))
 
     fun read() = ProfileValues(
-        store.getString(NAME, null).orEmpty(), number(PROTEIN), number(CARBS), number(FAT), number(CURRENT), number(TARGET), number(KCAL),
+        store.getString(NAME, null).orEmpty(), number(PROTEIN), number(CARBS), number(FAT), number(CURRENT), number(TARGET), number(KCAL), store.getBoolean(SEVERAL_WEIGHTS, false),
     )
 
     /** The page's Save: applied in the background, as settings are. */
@@ -30,6 +30,7 @@ internal class ProfilePrefs(private val store: SettingsStore) {
         putString(NAME, values.name)
         listOf(PROTEIN to values.proteinTarget, CARBS to values.carbsTarget, FAT to values.fatTarget, CURRENT to values.currentWeight, TARGET to values.targetWeight, KCAL to values.kcalTarget)
             .forEach { (key, value) -> if (value != null) putString(key, value.toString()) }
+        putBoolean(SEVERAL_WEIGHTS, values.severalWeights)
     }
 
     private fun number(key: String): Double? = store.getString(key, null)?.toDoubleOrNull()
@@ -43,5 +44,6 @@ internal class ProfilePrefs(private val store: SettingsStore) {
         const val CURRENT = "current_weight"
         const val TARGET = "target_weight"
         const val KCAL = "kcal_target"
+        const val SEVERAL_WEIGHTS = "several_weights"
     }
 }

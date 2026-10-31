@@ -1,6 +1,10 @@
 package com.iron.breakfast.ui.components
 
 import com.iron.breakfast.domain.WeightPoint
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -10,6 +14,9 @@ import kotlin.test.assertTrue
 
 class WeightChartTest {
     private fun point(day: String, kg: Double) = WeightPoint(day, kg, 0L)
+    private val utc = ZoneOffset.UTC
+    private fun at(day: String, time: String, kg: Double = 80.0, zone: ZoneId = utc) =
+        WeightPoint(day, kg, LocalDateTime.parse("${day}T$time").atZone(zone).toInstant().toEpochMilli())
 
     private fun assertAxisHolds(axis: KgAxis, vararg values: Double) {
         values.forEach { assertTrue(it > axis.min && it < axis.max, "$it in $axis") }
@@ -30,7 +37,7 @@ class WeightChartTest {
 
     @Test fun pointsAreOldestFirstAndSpacedByRealTime() {
         val data = assertNotNull(weightChartData(listOf(point("2026-10-12", 79.0), point("2026-10-01", 81.0), point("2026-10-02", 80.0)), null))
-        assertEquals(listOf(0.0, 1.0, 11.0), data.xs.map { it - data.xs.first() })
+        assertEquals(listOf(0.0, 1440.0, 15840.0), data.xs.map { it - data.xs.first() })
         assertEquals(listOf(81.0, 80.0, 79.0), data.ys)
         assertEquals(data.xs.first(), data.minX)
         assertEquals(data.xs.last(), data.maxX)
@@ -38,8 +45,8 @@ class WeightChartTest {
 
     @Test fun onePointSitsInTheMiddleOfItsOwnDate() {
         val data = assertNotNull(weightChartData(listOf(point("2026-10-12", 80.0)), null))
-        assertEquals(data.xs.single() - 1, data.minX)
-        assertEquals(data.xs.single() + 1, data.maxX)
+        assertEquals(data.xs.single() - 1440, data.minX)
+        assertEquals(data.xs.single() + 1440, data.maxX)
         assertEquals(listOf(data.xs.single()), dateTicks(data, maxLabels = 5))
     }
 
@@ -72,7 +79,7 @@ class WeightChartTest {
         assertEquals(4, ticks.size)
         assertEquals(data.minX, ticks.first())
         assertEquals(data.maxX, ticks.last())
-        assertTrue(ticks.all { it % 1.0 == 0.0 })
+        assertTrue(ticks.all { it % 1440.0 == 0.0 })
         assertEquals(ticks, ticks.sorted().distinct())
     }
 
@@ -87,9 +94,65 @@ class WeightChartTest {
         assertEquals(listOf(data.maxX), dateTicks(data, maxLabels = 0))
     }
 
+    @Test fun onePointSitsOnItsDateWhateverItsTime() {
+        val data = assertNotNull(weightChartData(listOf(at("2026-10-12", "23:30:00")), null, utc))
+        assertEquals("2026-10-12", curveDate(data.xs.single()).toString())
+        assertEquals(data.xs, dateTicks(data, maxLabels = 5))
+    }
+
+    @Test fun twoPointsOnADayAreApartByTheirRealTime() {
+        val data = assertNotNull(weightChartData(listOf(at("2026-10-12", "19:00:00", 79.0), at("2026-10-12", "07:00:00", 80.0)), null, utc))
+        assertEquals(listOf(80.0, 79.0), data.ys)
+        assertEquals(720.0, data.xs[1] - data.xs[0])
+        assertEquals(listOf(7.0 / 24, 19.0 / 24), data.xs.map { (it - data.minX) / (data.maxX - data.minX) })
+        assertEquals(listOf(data.minX), dateTicks(data, maxLabels = 5))
+        assertEquals("2026-10-12", curveDate(data.minX).toString())
+    }
+
+    /** The chart's x step is 1, and it draws every point at x over step, so x must be whole and no two alike. */
+    @Test fun everyXIsAWholeMinuteAndNoTwoAreAlike() {
+        val points = listOf(
+            at("2026-10-12", "07:52:31", 80.0), at("2026-10-12", "07:52:59", 79.0), at("2026-10-12", "07:52:59", 78.0),
+            point("2026-10-13", 77.0), point("2026-10-13", 76.0),
+        )
+        val data = assertNotNull(weightChartData(points, null, utc))
+        assertTrue(data.xs.all { it % 1.0 == 0.0 }, "${data.xs}")
+        assertEquals(data.xs.sorted().distinct(), data.xs)
+        assertEquals(5, data.xs.size)
+        assertEquals(listOf(80.0, 79.0, 78.0, 77.0, 76.0), data.ys)
+    }
+
+    @Test fun theSameHourOnTwoDaysIsADayApartAcrossAClockChange() {
+        val skopje = ZoneId.of("Europe/Skopje")
+        val data = assertNotNull(weightChartData(listOf(at("2026-10-24", "07:00:00", zone = skopje), at("2026-10-25", "07:00:00", zone = skopje)), null, skopje))
+        assertEquals(1440.0, data.xs[1] - data.xs[0])
+    }
+
+    @Test fun theDaysLabelledAreWholeDaysFromTheFirstPointsDayToTheLast() {
+        val data = assertNotNull(weightChartData(listOf(at("2026-10-12", "07:00:00"), at("2026-10-14", "20:00:00")), null, utc))
+        assertEquals(listOf("2026-10-12", "2026-10-13", "2026-10-14"), dateTicks(data, maxLabels = 5).map { curveDate(it).toString() })
+        assertTrue(data.minX <= data.xs.first() && data.xs.last() <= data.maxX)
+        assertEquals(data.xs.last(), data.maxX)
+    }
+
+    @Test fun labelsNeverCrowdWhateverTheSpanAndWidth() {
+        val first = LocalDate.parse("2026-01-01")
+        for (days in 1L..400L) for (hour in listOf("00:00:00", "07:00:00", "23:59:00")) {
+            val data = assertNotNull(weightChartData(listOf(at(first.toString(), hour), at(first.plusDays(days).toString(), hour)), null, utc))
+            for (across in listOf(1f, 2f, 2.5f, 3f, 4f, 5f, 6f, 7.5f)) {
+                val ticks = dateTicksThatFit(data, across)
+                assertTrue(ticks.isNotEmpty() && ticks.size <= maxOf(1, across.toInt()))
+                val width = data.maxX - data.minX
+                ticks.zipWithNext().forEach { (a, b) -> assertTrue((b - a) / width * across >= 1f, "$days $hour $across $ticks") }
+                assertEquals(data.xs.last() - data.xs.last().mod(1440.0), ticks.last())
+                assertEquals(ticks.sorted().distinct(), ticks)
+            }
+        }
+    }
+
     @Test fun aDateLabelIsDayAndShortMonth() {
         val x = assertNotNull(weightChartData(listOf(point("2026-10-12", 80.0)), null)).xs.single()
-        val date = java.time.LocalDate.ofEpochDay(x.toLong())
+        val date = curveDate(x)
         assertEquals("12 Oct", com.iron.breakfast.ui.dayMonthLabel(date))
         assertEquals("12 Oct 26", com.iron.breakfast.ui.dayMonthLabel(date, withYear = true))
     }

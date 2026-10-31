@@ -502,37 +502,71 @@ class BreakfastStoreTest {
     }
 
     private fun point(day: String, kg: Double, at: Long = 1L) = WeightPoint(day, kg, at)
+    private fun storedPoints() = store.weightPoints().map { it.copy(id = 0) }
 
     @Test
-    fun aSecondWeightPointOnADayReplacesIt() = runBlocking {
-        store.saveWeightPoint(point("2026-10-01", 80.0))
-        store.saveWeightPoint(point("2026-10-01", 79.5, 2L))
-        store.saveWeightPoint(point("2026-10-02", 79.0))
-        assertEquals(listOf(point("2026-10-01", 79.5, 2L), point("2026-10-02", 79.0)), store.weightPoints())
+    fun replacingOnADayWithOnePointReplacesIt() = runBlocking {
+        store.replaceLatestWeightPoint(point("2026-10-01", 80.0))
+        store.replaceLatestWeightPoint(point("2026-10-01", 79.5, 2L))
+        store.replaceLatestWeightPoint(point("2026-10-02", 79.0))
+        assertEquals(listOf(point("2026-10-01", 79.5, 2L), point("2026-10-02", 79.0)), storedPoints())
+    }
+
+    @Test
+    fun addingKeepsEveryPointOfADayEvenAtTheSameTime() = runBlocking {
+        store.addWeightPoint(point("2026-10-01", 80.0, 5L))
+        store.addWeightPoint(point("2026-10-01", 80.0, 5L))
+        store.addWeightPoint(point("2026-10-01", 79.0, 2L))
+        assertEquals(listOf(point("2026-10-01", 79.0, 2L), point("2026-10-01", 80.0, 5L), point("2026-10-01", 80.0, 5L)), storedPoints())
+        assertEquals(3, store.weightPoints().map { it.id }.distinct().size)
+    }
+
+    @Test
+    fun replacingTouchesOnlyTheDaysLatest() = runBlocking {
+        store.addWeightPoint(point("2026-10-01", 80.0, 5L))
+        store.addWeightPoint(point("2026-10-01", 79.0, 9L))
+        store.addWeightPoint(point("2026-10-02", 70.0, 1L))
+        store.replaceLatestWeightPoint(point("2026-10-01", 78.0, 10L))
+        assertEquals(listOf(point("2026-10-01", 80.0, 5L), point("2026-10-01", 78.0, 10L), point("2026-10-02", 70.0, 1L)), storedPoints())
+    }
+
+    @Test
+    fun deletingRemovesOnlyThatPoint() = runBlocking {
+        store.addWeightPoint(point("2026-10-01", 80.0, 5L))
+        store.addWeightPoint(point("2026-10-01", 79.0, 5L))
+        store.deleteWeightPoint(store.weightPoints().first { it.kg == 80.0 }.id)
+        assertEquals(listOf(point("2026-10-01", 79.0, 5L)), storedPoints())
+    }
+
+    @Test
+    fun anImportHoldsSeveralPointsOnADay() = runBlocking {
+        val rows = store.exportRows()
+        store.replaceDiary(rows.copy(weightPoints = listOf(WeightPointEntity("2026-10-05", 70.0, 5L), WeightPointEntity("2026-10-05", 71.0, 5L))))
+        assertEquals(listOf(point("2026-10-05", 70.0, 5L), point("2026-10-05", 71.0, 5L)), storedPoints())
     }
 
     @Test
     fun aDeletedWeightPointIsGone() = runBlocking {
-        store.saveWeightPoint(point("2026-10-01", 80.0))
-        store.deleteWeightPoint("2026-10-01")
+        store.addWeightPoint(point("2026-10-01", 80.0))
+        store.deleteWeightPoint(store.weightPoints().single().id)
         assertTrue(store.weightPoints().isEmpty())
     }
 
     @Test
     fun aReplaceWithPointsReplacesThemAndOneWithoutKeepsThem() = runBlocking {
-        store.saveWeightPoint(point("2026-10-01", 80.0))
+        store.addWeightPoint(point("2026-10-01", 80.0))
         val rows = store.exportRows()
         store.replaceDiary(rows.copy(weightPoints = null))
-        assertEquals(listOf(point("2026-10-01", 80.0)), store.weightPoints())
+        assertEquals(listOf(point("2026-10-01", 80.0)), storedPoints())
         store.replaceDiary(rows.copy(weightPoints = listOf(WeightPointEntity("2026-10-05", 70.0, 5L))))
-        assertEquals(listOf(point("2026-10-05", 70.0, 5L)), store.weightPoints())
+        assertEquals(listOf(point("2026-10-05", 70.0, 5L)), storedPoints())
         store.replaceDiary(rows.copy(weightPoints = emptyList()))
         assertTrue(store.weightPoints().isEmpty())
     }
 
     @Test
     fun deleteAllClearsTheWeightPoints() = runBlocking {
-        store.saveWeightPoint(point("2026-10-01", 80.0))
+        store.addWeightPoint(point("2026-10-01", 80.0))
         store.deleteAllData(alsoPreferences = false)
         assertTrue(store.weightPoints().isEmpty())
     }

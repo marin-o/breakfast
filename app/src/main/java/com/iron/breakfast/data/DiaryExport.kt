@@ -37,15 +37,19 @@ internal const val DIARY_FORMAT = "breakfast-diary"
 /**
  * The layout of the file below. Bump it (and keep reading the old one) when a field changes. 2 added the recipes; a
  * version 1 file has none, and reads as a diary without recipes. 3 added the
- * profile and the weight curve; an older file has neither, and leaves the phone's profile and curve as they are; a file of 3 replaces both.
+ * profile and the weight curve; an older file has neither, and leaves the phone's profile and curve as they are; a file of 3 replaces both. 4 added "Several weights a day": a day can hold several
+ * points, where up to 3 two on one day refuse the file, and a file of 3 reads with the setting off.
  */
-internal const val DIARY_FORMAT_VERSION = 3
+internal const val DIARY_FORMAT_VERSION = 4
 
 /** The first format with the profile and the curve. */
 private const val PROFILE_FORMAT_VERSION = 3
 
+/** The first format where a day can hold several points. */
+private const val SEVERAL_WEIGHTS_FORMAT_VERSION = 4
+
 /** The Room schema the rows were read from; a file from a newer schema is refused. Keep equal to [BreakfastDatabase]. */
-internal const val DIARY_SCHEMA_VERSION = 10
+internal const val DIARY_SCHEMA_VERSION = 11
 
 /** A file bigger than this is refused before it is parsed. A year of logging is well under 5 MB. */
 internal const val DIARY_MAX_BYTES = 32L * 1024 * 1024
@@ -104,6 +108,8 @@ internal data class ProfileDto(
     val targetWeight: Double?,
     // Added within format 3; a file without it has no kcal target.
     val kcalTarget: Double? = null,
+    // Since format 4; an older file has it off.
+    val severalWeights: Boolean = false,
 )
 
 @Serializable
@@ -243,8 +249,8 @@ internal fun diaryFileOf(rows: DiaryRows, settings: DiarySettings, exportedAtEpo
             .map { RecipeAliasDto(it.recipeId, it.alias) },
         recipeIngredients = rows.recipeIngredients.filter { it.recipeId in recipeIds }.sortedWith(compareBy({ it.recipeId }, { it.position }))
             .map { it.toDto() },
-        profile = rows.profile?.let { ProfileDto(it.name, it.proteinTarget, it.carbsTarget, it.fatTarget, it.currentWeight, it.targetWeight, it.kcalTarget) },
-        weightPoints = rows.weightPoints.orEmpty().sortedBy { it.dayKey }.map { WeightPointDto(it.dayKey, it.kg, it.savedAtEpochMs) },
+        profile = rows.profile?.let { ProfileDto(it.name, it.proteinTarget, it.carbsTarget, it.fatTarget, it.currentWeight, it.targetWeight, it.kcalTarget, it.severalWeights) },
+        weightPoints = rows.weightPoints.orEmpty().sortedWith(compareBy({ it.dayKey }, { it.savedAtEpochMs }, { it.id })).map { WeightPointDto(it.dayKey, it.kg, it.savedAtEpochMs) },
     )
 }
 
@@ -280,7 +286,7 @@ internal fun validateDiary(file: DiaryFile): DiaryImport {
             recipeAliases = file.recipeAliases.map { RecipeAliasEntity(it.recipeId, it.alias) },
             recipeIngredients = file.recipeIngredients.map { it.toEntity() },
             weightPoints = file.weightPoints.map { WeightPointEntity(it.dayKey, it.kg, it.savedAtEpochMs) }.takeIf { speaksForProfile },
-            profile = (file.profile?.let { ProfileValues(it.name, it.proteinTarget, it.carbsTarget, it.fatTarget, it.currentWeight, it.targetWeight, it.kcalTarget) } ?: ProfileValues()).takeIf { speaksForProfile },
+            profile = (file.profile?.let { ProfileValues(it.name, it.proteinTarget, it.carbsTarget, it.fatTarget, it.currentWeight, it.targetWeight, it.kcalTarget, it.severalWeights) } ?: ProfileValues()).takeIf { speaksForProfile },
         ),
     )
 }
@@ -307,12 +313,13 @@ internal fun diaryProblem(file: DiaryFile): String? {
         if (listOf(p.currentWeight, p.targetWeight).any { it != null && !weightValid(it) }) return "profile weight"
         if (p.kcalTarget != null && !kcalTargetValid(p.kcalTarget)) return "profile kcal target"
     }
+    val oneADay = file.formatVersion < SEVERAL_WEIGHTS_FORMAT_VERSION
     val pointDays = HashSet<String>()
     file.weightPoints.forEachIndexed { i, p ->
         val at = "weight point $i"
         when {
             !isDayKey(p.dayKey) -> return "$at: day ${p.dayKey}"
-            !pointDays.add(p.dayKey) -> return "$at: duplicate day ${p.dayKey}"
+            !pointDays.add(p.dayKey) && oneADay -> return "$at: duplicate day ${p.dayKey}"
             !weightValid(p.kg) -> return "$at: kg ${p.kg}"
         }
     }

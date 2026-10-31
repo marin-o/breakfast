@@ -98,8 +98,8 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 
 ## Profile
 
-- A page from the bar's left icon: Name, Daily kcal (1 to 20000), the macro presets as action chips that fill the fields and save nothing, macro targets (1 to 5000 g), current and target weight (1 to 500 kg); empty is not set. With a weight typed that changed, or with no point yet today, the "Add to curve" checkbox shows, on by default; a second point on a diary day replaces that day's. Back with changes asks Discard or Keep editing.
-- The curve is a Vico chart behind `ui/components/WeightChart.kt`: an ink line with dots, dates along the bottom spaced by real time, kg up the side in Geologica, `line` guidelines, the target weight a soft line across, no scroll or zoom of its own; one point is one dot, none is no chart. Its points are listed newest first, and deleting one asks first.
+- A page from the bar's left icon: Name, Daily kcal (1 to 20000), the macro presets as action chips that fill the fields and save nothing, macro targets (1 to 5000 g), current and target weight (1 to 500 kg); empty is not set. With a weight typed that changed, or with no point yet today, the "Add to curve" checkbox shows, on by default; a second point on a diary day replaces that day's latest. With the "Several weights a day" checkbox on, it shows for any valid weight and every save with it on adds a point. Back with changes asks Discard or Keep editing.
+- The curve is a Vico chart behind `ui/components/WeightChart.kt`: an ink line with dots, dates along the bottom spaced by real time, kg up the side in Geologica, `line` guidelines, the target weight a soft line across, no scroll or zoom of its own; one point is one dot, none is no chart. Points sit at their real time, the labels stay dates. They are listed newest first, a day with several showing the time on each row, and deleting one asks first.
 - With a macro target the bar on Meals fills toward it, full at most, never coloured, and "/ 120 g" is its own soft line between the amount and the label; any target gives all three columns that line.
 
 ## Onboarding

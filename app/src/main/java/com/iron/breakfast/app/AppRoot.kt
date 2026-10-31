@@ -1,8 +1,6 @@
 package com.iron.breakfast.app
 
 import com.iron.breakfast.onboarding.OnboardingScreen
-import com.iron.breakfast.ui.shortDateLabel
-import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.profile.ProfileScreen
 import com.iron.breakfast.log.UnmatchedParts
 import com.iron.breakfast.ui.components.ConfirmDialog
@@ -148,7 +146,7 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         Surface.PROFILE -> ProfileScreen(vm.profile)
         Surface.DISCARD_PROFILE -> ConfirmDialog("Discard", vm.profile::discard, vm.profile::keepEditing, dismiss = "Keep editing")
         Surface.DELETE_WEIGHT_POINT -> vm.profile.deleteRequest?.let { point ->
-            ConfirmDialog("Delete", vm.profile::confirmDelete, vm.profile::cancelDelete, text = "${shortDateLabel(point.dayKey)}, ${point.kg.pretty()} kg")
+            ConfirmDialog("Delete", vm.profile::confirmDelete, vm.profile::cancelDelete, text = vm.profile.pointSummary(point))
         }
         Surface.SETTINGS -> SettingsScreen(vm.settings, vm.surfaces, vm.transfer, vm.session, vm::licenceText)
         // Deleting is for good: past entries keep their own name and numbers.

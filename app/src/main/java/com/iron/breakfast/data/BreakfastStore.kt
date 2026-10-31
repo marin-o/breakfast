@@ -42,7 +42,7 @@ private data class StoreSnapshot(
 internal fun openBreakfastDatabase(context: Context, name: String, damaged: DamagedDiaries): BreakfastDatabase =
     Room.databaseBuilder(context.applicationContext, BreakfastDatabase::class.java, name)
         .openHelperFactory(DamageSafeOpenHelperFactory(damaged))
-        .addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6, ROOM_MIGRATION_6_7, ROOM_MIGRATION_7_8, ROOM_MIGRATION_8_9, ROOM_MIGRATION_9_10)
+        .addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6, ROOM_MIGRATION_6_7, ROOM_MIGRATION_7_8, ROOM_MIGRATION_8_9, ROOM_MIGRATION_9_10, ROOM_MIGRATION_10_11)
         .build()
 
 /** A write refused because the diary was found damaged and the fresh one is not open yet (see [BreakfastStore]). */
@@ -168,15 +168,24 @@ class BreakfastStore internal constructor(
     /** The profile's weight curve. */
     fun weightPoints(): List<WeightPoint> = model.weightPoints
 
-    /** Stores [point]; one already on its day is replaced. */
-    suspend fun saveWeightPoint(point: WeightPoint) {
+    /** Stores [point] beside any on its day. */
+    suspend fun addWeightPoint(point: WeightPoint) {
         requireReady()
-        write(WEIGHTS) { database.weightPointDao().upsert(point.toEntity()) }
+        write(WEIGHTS) { database.weightPointDao().insert(point.toEntity()) }
     }
 
-    suspend fun deleteWeightPoint(dayKey: String) {
+    /** Stores [point] in place of its day's latest, if there is one, in one transaction. */
+    suspend fun replaceLatestWeightPoint(point: WeightPoint) {
         requireReady()
-        write(WEIGHTS) { database.weightPointDao().delete(dayKey) }
+        write(WEIGHTS) {
+            database.weightPointDao().deleteLatestOfDay(point.dayKey)
+            database.weightPointDao().insert(point.toEntity())
+        }
+    }
+
+    suspend fun deleteWeightPoint(id: Long) {
+        requireReady()
+        write(WEIGHTS) { database.weightPointDao().delete(id) }
     }
 
     private var preferenceMapSource: List<Preference>? = null

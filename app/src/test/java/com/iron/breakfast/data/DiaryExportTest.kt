@@ -94,7 +94,7 @@ class DiaryExportTest {
         assertEquals(points, imported.rows.weightPoints)
     }
 
-    /** Format 3 speaks for both: an empty profile and curve in the file replace the phone's. */
+    /** Format 3 and on speak for both: an empty profile and curve in the file replace the phone's. */
     @Test fun aCurrentFileWithNothingInItStillSpeaksForBoth() {
         val imported = valid(encodeDiary(diaryFileOf(rows().copy(profile = ProfileValues(), weightPoints = emptyList()), settings, 5_000L)))
         assertEquals(ProfileValues(), imported.rows.profile)
@@ -103,7 +103,7 @@ class DiaryExportTest {
 
     /** A file from before the profile has neither field: it imports, and says nothing about the phone's profile or curve. */
     @Test fun anOlderFileWithoutAProfileStillImports() {
-        val old = encodeDiary(file()).replace("\"formatVersion\":3,\"schemaVersion\":10,", "\"formatVersion\":2,\"schemaVersion\":9,")
+        val old = encodeDiary(file()).replace("\"formatVersion\":$DIARY_FORMAT_VERSION,\"schemaVersion\":$DIARY_SCHEMA_VERSION,", "\"formatVersion\":2,\"schemaVersion\":9,")
             .replace("\"profile\":null,", "").replace(",\"weightPoints\":[]", "")
         assertFalse("weightPoints" in old)
         val imported = valid(old)
@@ -134,7 +134,48 @@ class DiaryExportTest {
         refused(file().copy(weightPoints = listOf(WeightPointDto("2026-10-01", 0.04, 1L))))
         refused(file().copy(weightPoints = listOf(WeightPointDto("not a day", 80.0, 1L))))
         refused(file().copy(weightPoints = listOf(WeightPointDto("2026-10-01", -1.0, 1L))))
-        refused(file().copy(weightPoints = listOf(WeightPointDto("2026-10-01", 80.0, 1L), WeightPointDto("2026-10-01", 81.0, 2L))))
+    }
+
+    private val twoOnADay = listOf(WeightPointDto("2026-10-01", 80.0, 1L), WeightPointDto("2026-10-01", 81.0, 2L))
+
+    /** One a day was the rule up to format 3, and such a file is still held to it. */
+    @Test fun twoPointsOnADayAreRefusedOnlyInFormatsOfOneADay() {
+        refused(file().copy(formatVersion = 3, schemaVersion = 10, weightPoints = twoOnADay))
+        refused(file().copy(formatVersion = 2, schemaVersion = 9, weightPoints = twoOnADay))
+        assertEquals(4, DIARY_FORMAT_VERSION)
+        val imported = valid(encodeDiary(file().copy(weightPoints = twoOnADay)))
+        assertEquals(listOf(1L, 2L), imported.rows.weightPoints?.map { it.savedAtEpochMs })
+    }
+
+    @Test fun severalPointsOnADayAndTheSettingComeBackWithTheirTimes() {
+        val profile = ProfileValues(currentWeight = 80.0, severalWeights = true)
+        // Stored ids stay on the phone: an import gives each row a new one.
+        val points = listOf(
+            WeightPointEntity("2026-10-02", 79.0, 9L, id = 7),
+            WeightPointEntity("2026-10-01", 80.0, 5L, id = 3),
+            WeightPointEntity("2026-10-01", 81.0, 5L, id = 8),
+            WeightPointEntity("2026-10-01", 79.5, 2L, id = 4),
+        )
+        val text = encodeDiary(diaryFileOf(rows().copy(profile = profile, weightPoints = points), settings, 5_000L))
+        assertFalse("\"id\":7" in text)
+        val imported = valid(text)
+        assertEquals(profile, imported.rows.profile)
+        assertEquals(
+            listOf(WeightPointEntity("2026-10-01", 79.5, 2L), WeightPointEntity("2026-10-01", 80.0, 5L), WeightPointEntity("2026-10-01", 81.0, 5L), WeightPointEntity("2026-10-02", 79.0, 9L)),
+            imported.rows.weightPoints,
+        )
+    }
+
+    /** A file of format 3 as it was written: its points keep their stored time, and the setting is off. */
+    @Test fun aFormat3FileImportsWithItsTimesAndTheSettingOff() {
+        val points = listOf(WeightPointEntity("2026-10-01", 80.0, 1_700_000_000_000L))
+        val encoded = encodeDiary(diaryFileOf(rows().copy(profile = ProfileValues("Ana"), weightPoints = points), settings, 5_000L))
+        val old = encoded.replace("\"formatVersion\":$DIARY_FORMAT_VERSION,\"schemaVersion\":$DIARY_SCHEMA_VERSION,", "\"formatVersion\":3,\"schemaVersion\":10,")
+            .replace(",\"severalWeights\":false", "")
+        assertFalse("severalWeights" in old)
+        val imported = valid(old)
+        assertEquals(ProfileValues("Ana"), imported.rows.profile)
+        assertEquals(points, imported.rows.weightPoints)
     }
 
     /** Owner decision: an import leaves the phone's settings alone, so the file's settings never reach the result. */
@@ -145,7 +186,7 @@ class DiaryExportTest {
 
     @Test fun theFileNamesItsVersionsAndFields() {
         val text = encodeDiary(file())
-        assertTrue(text.startsWith("{\"format\":\"breakfast-diary\",\"formatVersion\":3,\"schemaVersion\":10,\"exportedAtEpochMs\":5000,"))
+        assertTrue(text.startsWith("{\"format\":\"breakfast-diary\",\"formatVersion\":4,\"schemaVersion\":11,\"exportedAtEpochMs\":5000,"))
         assertTrue("\"foodName\":\"Snapshot name e-1\"" in text)
         assertTrue("\"settings\":{\"dayStartHour\":4,\"longDraft\":\"TWO_LINES\"}" in text)
         assertTrue("\"snapshotCarbohydrates\":null" in text)

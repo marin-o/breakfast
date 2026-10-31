@@ -27,8 +27,9 @@ class BreakfastEngine(
     suspend fun initialize() = store.initialize()
 
     fun weightPoints(): List<WeightPoint> = store.weightPoints()
-    suspend fun saveWeightPoint(point: WeightPoint) = store.saveWeightPoint(point)
-    suspend fun deleteWeightPoint(dayKey: String) = store.deleteWeightPoint(dayKey)
+    suspend fun addWeightPoint(point: WeightPoint) = store.addWeightPoint(point)
+    suspend fun replaceLatestWeightPoint(point: WeightPoint) = store.replaceLatestWeightPoint(point)
+    suspend fun deleteWeightPoint(id: Long) = store.deleteWeightPoint(id)
 
     /** Every stored row, for Export diary. */
     internal suspend fun exportRows(): DiaryRows = store.exportRows()

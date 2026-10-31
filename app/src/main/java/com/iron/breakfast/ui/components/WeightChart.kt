@@ -11,7 +11,10 @@ import androidx.compose.ui.platform.LocalFontFamilyResolver
 import androidx.compose.ui.text.font.resolveAsTypeface
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.domain.WeightPoint
-import com.iron.breakfast.domain.curveX
+import com.iron.breakfast.domain.MINUTES_PER_DAY
+import com.iron.breakfast.domain.curveMinute
+import com.iron.breakfast.domain.dayStartMinute
+import com.iron.breakfast.domain.oldestFirst
 import com.iron.breakfast.ui.pretty
 import com.iron.breakfast.ui.theme.BreakfastType
 import com.iron.breakfast.ui.theme.CurveHeight
@@ -49,6 +52,7 @@ import com.patrykandpatrick.vico.core.cartesian.layer.LineCartesianLayer
 import com.patrykandpatrick.vico.core.common.shape.CorneredShape
 import com.iron.breakfast.ui.dayMonthLabel
 import java.time.LocalDate
+import java.time.ZoneId
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.roundToLong
@@ -56,7 +60,7 @@ import kotlin.math.roundToLong
 /** The kg axis: [min] and [max] are multiples of [step], a round number. */
 internal data class KgAxis(val min: Double, val max: Double, val step: Double)
 
-/** The chart's points, oldest first, with x in days since the epoch, and the ranges the axes show. */
+/** The chart's points, oldest first, with x in whole minutes (see [curveMinute]) and no two alike, and the ranges the axes show. */
 internal data class WeightChartData(
     val xs: List<Double>,
     val ys: List<Double>,
@@ -66,15 +70,29 @@ internal data class WeightChartData(
     val target: Double?,
 )
 
-/** What [points] draw; null when there is nothing to draw. One point takes a day each side, so it sits in the middle. */
-internal fun weightChartData(points: List<WeightPoint>, target: Double?): WeightChartData? {
-    val dated = points.mapNotNull { point -> curveX(point.dayKey)?.let { it to point.kg } }.sortedBy { it.first }
-    if (dated.isEmpty()) return null
-    val xs = dated.map { it.first }
-    val ys = dated.map { it.second }
-    val margin = if (xs.size == 1) 1.0 else 0.0
-    return WeightChartData(xs, ys, xs.first() - margin, xs.last() + margin, kgAxis(ys + listOfNotNull(target)), target)
+/**
+ * What [points] draw; null when there is nothing to draw. One point sits on its own date, with a day each side. More run
+ * from the start of the first one's day to the last one, a day at least. Points in the same minute are a minute apart,
+ * as the library keeps one drawing position per x.
+ */
+internal fun weightChartData(points: List<WeightPoint>, target: Double?, zone: ZoneId = ZoneId.systemDefault()): WeightChartData? {
+    val placed = oldestFirst(points).mapNotNull { point -> curveMinute(point, zone)?.let { it to point } }.sortedBy { it.first }
+    if (placed.isEmpty()) return null
+    val ys = placed.map { it.second.kg }
+    val axis = kgAxis(ys + listOfNotNull(target))
+    placed.singleOrNull()?.let { (_, point) ->
+        val x = dayStartMinute(point.dayKey) ?: return null
+        return WeightChartData(listOf(x), ys, x - MINUTES_PER_DAY, x + MINUTES_PER_DAY, axis, target)
+    }
+    val xs = placed.map { it.first }.runningReduce { before, x -> maxOf(x, before + 1) }
+    val minX = dayStart(xs.first())
+    return WeightChartData(xs, ys, minX, maxOf(xs.last(), minX + MINUTES_PER_DAY), axis, target)
 }
+
+/** The date a position along the x axis falls on. */
+internal fun curveDate(x: Double): LocalDate = LocalDate.ofEpochDay(Math.floorDiv(x.toLong(), MINUTES_PER_DAY))
+
+private fun dayStart(x: Double): Double = (curveDate(x).toEpochDay() * MINUTES_PER_DAY).toDouble()
 
 private val ROUND_STEPS = listOf(1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0)
 private const val MAX_STEPS = 4.0
@@ -90,17 +108,27 @@ internal fun kgAxis(values: List<Double>): KgAxis {
     return KgAxis(floor(from / step) * step, ceil(to / step) * step, step)
 }
 
-/** The whole days to label, evenly spread with both ends, no more than [maxLabels]; with room for one, the newest. */
+/** The whole days to label, evenly spread from the first point's day to the last's, no more than [maxLabels]; with room for one, the newest. */
 internal fun dateTicks(data: WeightChartData, maxLabels: Int): List<Double> {
     if (data.xs.size == 1) return data.xs
-    val first = data.xs.first()
-    val span = data.xs.last() - first
-    val count = minOf(maxLabels, span.toInt() + 1)
-    if (count <= 1) return listOf(data.xs.last())
-    return List(count) { first + (it * span / (count - 1)).roundToLong() }
+    val first = dayStart(data.xs.first())
+    val days = (dayStart(data.xs.last()) - first) / MINUTES_PER_DAY
+    val count = minOf(maxLabels, days.toInt() + 1)
+    if (count <= 1) return listOf(dayStart(data.xs.last()))
+    return List(count) { first + (it * days / (count - 1)).roundToLong() * MINUTES_PER_DAY }
 }
 
 private const val MAX_DATE_LABELS = 5
+
+/** The most [dateTicks] whose closest two stay a label's room apart, when [labelsAcross] labels with their room fill the axis. */
+internal fun dateTicksThatFit(data: WeightChartData, labelsAcross: Float): List<Double> {
+    val width = data.maxX - data.minX
+    for (count in minOf(MAX_DATE_LABELS, labelsAcross.toInt()) downTo 2) {
+        val ticks = dateTicks(data, count)
+        if (ticks.zipWithNext().all { (a, b) -> (b - a) / width * labelsAcross >= 1 }) return ticks
+    }
+    return dateTicks(data, 1)
+}
 
 /** A gap of half a label between dates, so they never touch at any font size. */
 private const val LABEL_ROOM = 1.5f
@@ -108,9 +136,9 @@ private const val LABEL_ROOM = 1.5f
 /** Labels only [dateTicks], so dates fit the width whatever the time the points span. The first and last value make the axis keep room for half a label at each end. */
 private class DateLabels(private val data: WeightChartData) : HorizontalAxis.ItemPlacer {
     private fun ticks(context: CartesianDrawingContext, maxLabelWidth: Float) =
-        dateTicks(data, minOf(MAX_DATE_LABELS, (context.layerBounds.width() / (maxLabelWidth * LABEL_ROOM)).toInt()))
+        dateTicksThatFit(data, context.layerBounds.width() / (maxLabelWidth * LABEL_ROOM))
 
-    private val ends = listOf(data.xs.first(), data.xs.last()).distinct()
+    private val ends = if (data.xs.size == 1) data.xs else listOf(data.minX, data.maxX)
 
     override fun getShiftExtremeLines(context: CartesianDrawingContext) = false
     override fun getFirstLabelValue(context: CartesianMeasuringContext, maxLabelWidth: Float) = ends.first()
@@ -185,13 +213,12 @@ internal fun WeightChart(points: List<WeightPoint>, target: Double?, modifier: M
                 guideline = null,
                 itemPlacer = remember { DateLabels(data) },
                 valueFormatter = remember {
-                    val first = LocalDate.ofEpochDay(data.xs.first().toLong())
-                    val last = LocalDate.ofEpochDay(data.xs.last().toLong())
-                    CartesianValueFormatter { _, value, _ -> dayMonthLabel(LocalDate.ofEpochDay(value.toLong()), withYear = first.year != last.year) }
+                    val withYear = curveDate(data.xs.first()).year != curveDate(data.xs.last()).year
+                    CartesianValueFormatter { _, value, _ -> dayMonthLabel(curveDate(value), withYear) }
                 },
             ),
             decorations = data.target?.let { kg -> listOf(remember { HorizontalLine({ kg }, targetLine) }) }.orEmpty(),
-            // Real time: one step is one day, however far apart the points are.
+            // Real time: one step is one minute, however far apart the points are.
             getXStep = { 1.0 },
         )
         val model = remember { CartesianChartModel(LineCartesianLayerModel.build { series(data.xs, data.ys) }) }

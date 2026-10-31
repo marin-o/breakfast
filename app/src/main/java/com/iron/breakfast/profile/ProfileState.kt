@@ -12,19 +12,32 @@ import com.iron.breakfast.domain.ProfileDraft
 import com.iron.breakfast.domain.ProfileValues
 import com.iron.breakfast.domain.WeightPoint
 import com.iron.breakfast.domain.curveOffered
+import com.iron.breakfast.domain.curveTickStart
 import com.iron.breakfast.domain.curveWeightOf
 import com.iron.breakfast.domain.newestFirst
 import com.iron.breakfast.domain.profileOf
 import com.iron.breakfast.domain.withPreset
 import com.iron.breakfast.domain.FormBack
 import com.iron.breakfast.domain.formBack
+import com.iron.breakfast.ui.clockLabel
+import com.iron.breakfast.ui.pretty
+import com.iron.breakfast.ui.shortDateLabel
+import java.time.ZoneId
 import kotlinx.serialization.Serializable
 
 /** The writes the weight curve makes; the view model adapts `BreakfastEngine`. */
 internal interface WeightStore {
-    /** Stores [point]; one already on its day is replaced. */
-    suspend fun save(point: WeightPoint)
-    suspend fun delete(dayKey: String)
+    /** Stores [point] beside any on its day. */
+    suspend fun add(point: WeightPoint)
+    /** Stores [point] in place of its day's latest, if there is one. */
+    suspend fun replaceLatest(point: WeightPoint)
+    suspend fun delete(id: Long)
+}
+
+/** "Sat 31 Oct", and on a day with several of [points] its time: "Sat 31 Oct, 07:52". */
+internal fun weightPointLabel(point: WeightPoint, points: List<WeightPoint>, zone: ZoneId = ZoneId.systemDefault()): String {
+    val date = shortDateLabel(point.dayKey)
+    return if (points.count { it.dayKey == point.dayKey } > 1) "$date, ${clockLabel(point.savedAtEpochMs, zone)}" else date
 }
 
 /** The open Profile page as typed, for coming back after the process dies. */
@@ -50,7 +63,9 @@ internal class ProfileState(
     var open by mutableStateOf(false); private set
     var values by mutableStateOf(prefs.read()); private set
     var draft by mutableStateOf(ProfileDraft.of(values)); private set
-    var addToCurve by mutableStateOf(true); private set
+    /** The user's own tick; until they touch it, [addToCurve] follows [curveTickStart]. */
+    private var curveTick by mutableStateOf<Boolean?>(null)
+    val addToCurve: Boolean get() = curveTick ?: curveTickStart(draft, values, hasPointToday)
     /** The kcal field asks to be filled, after a preset that needed it. */
     var kcalAsked by mutableStateOf(false); private set
     var discardOpen by mutableStateOf(false); private set
@@ -59,6 +74,11 @@ internal class ProfileState(
 
     /** Newest first; sorted again only when the curve changes, not on each key typed. */
     val points: List<WeightPoint> by derivedStateOf { newestFirst(session.weightPoints) }
+
+    fun pointLabel(point: WeightPoint): String = weightPointLabel(point, session.weightPoints)
+
+    /** What tells [point] from any other: the delete question and its button's TalkBack label. */
+    fun pointSummary(point: WeightPoint): String = "${pointLabel(point)}, ${point.kg.pretty()} kg"
 
     private val hasPointToday: Boolean get() = today().let { day -> session.weightPoints.any { it.dayKey == day } }
 
@@ -80,7 +100,7 @@ internal class ProfileState(
     /** The page as it was when the process died. */
     fun restore(saved: SavedProfile) {
         draft = saved.draft
-        addToCurve = saved.addToCurve
+        curveTick = saved.addToCurve
         open = true
     }
 
@@ -98,7 +118,7 @@ internal class ProfileState(
         if (next != null) draft = next
     }
 
-    fun toggleAddToCurve() { addToCurve = !addToCurve }
+    fun toggleAddToCurve() { curveTick = !addToCurve }
 
     /** Back or the arrow: a changed draft asks before it is dropped; while a save runs, nothing happens. */
     fun leave() {
@@ -129,7 +149,9 @@ internal class ProfileState(
         val kg = curveWeightOf(values, next, addToCurve, hasPointToday)
         if (kg == null) { commit(next); return }
         val point = WeightPoint(today(), kg, clock())
-        write(onSuccess = { commit(next) }) { store.save(point) }
+        // A save that turns the setting off still adds: turning it off keeps every point there.
+        val adds = next.severalWeights || values.severalWeights
+        write(onSuccess = { commit(next) }) { if (adds) store.add(point) else store.replaceLatest(point) }
     }
 
     private fun commit(next: ProfileValues) {
@@ -140,7 +162,7 @@ internal class ProfileState(
 
     private fun resetDraft() {
         draft = ProfileDraft.of(values)
-        addToCurve = true
+        curveTick = null
         kcalAsked = false
         discardOpen = false
         deleteRequest = null
@@ -152,7 +174,7 @@ internal class ProfileState(
     fun confirmDelete() {
         val point = deleteRequest ?: return
         deleteRequest = null
-        write { store.delete(point.dayKey) }
+        write { store.delete(point.id) }
     }
 
     private fun write(onSuccess: () -> Unit = {}, run: suspend () -> Unit) {

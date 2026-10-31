@@ -160,8 +160,9 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
             },
             licence = { application.assets.open(LICENCES_ASSET).bufferedReader().use { it.readText() } },
             weights = object : WeightStore {
-                override suspend fun save(point: WeightPoint) = engine.saveWeightPoint(point)
-                override suspend fun delete(dayKey: String) = engine.deleteWeightPoint(dayKey)
+                override suspend fun add(point: WeightPoint) = engine.addWeightPoint(point)
+                override suspend fun replaceLatest(point: WeightPoint) = engine.replaceLatestWeightPoint(point)
+                override suspend fun delete(id: Long) = engine.deleteWeightPoint(id)
             },
             profilePrefs = profilePrefs,
         ),

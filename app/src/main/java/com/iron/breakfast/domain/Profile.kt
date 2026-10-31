@@ -1,7 +1,10 @@
 package com.iron.breakfast.domain
 
 import kotlinx.serialization.Serializable
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import kotlin.math.roundToInt
 
 // The user's profile: pure values and rules. Everything is optional, and an empty profile changes nothing in the app.
@@ -15,10 +18,12 @@ data class ProfileValues(
     val currentWeight: Double? = null,
     val targetWeight: Double? = null,
     val kcalTarget: Double? = null,
+    /** "Several weights a day": each save adds a point, rather than replacing the day's latest. */
+    val severalWeights: Boolean = false,
 )
 
-/** One point of the weight curve: one per diary day. */
-data class WeightPoint(val dayKey: String, val kg: Double, val savedAtEpochMs: Long)
+/** One point of the weight curve. [id] tells apart points of one day; 0 until stored. */
+data class WeightPoint(val dayKey: String, val kg: Double, val savedAtEpochMs: Long, val id: Long = 0)
 
 /** The profile's fields as typed. */
 @Serializable
@@ -30,6 +35,7 @@ data class ProfileDraft(
     val current: String = "",
     val target: String = "",
     val kcal: String = "",
+    val severalWeights: Boolean = false,
 ) {
     companion object {
         fun of(values: ProfileValues) = ProfileDraft(
@@ -40,6 +46,7 @@ data class ProfileDraft(
             editableNumber(values.currentWeight),
             editableNumber(values.targetWeight),
             editableNumber(values.kcalTarget),
+            values.severalWeights,
         )
     }
 }
@@ -85,24 +92,51 @@ fun profileOf(draft: ProfileDraft, saved: ProfileValues): ProfileValues? {
         fieldNumber(draft.current, saved.currentWeight),
         fieldNumber(draft.target, saved.targetWeight),
         fieldNumber(draft.kcal, saved.kcalTarget),
+        draft.severalWeights,
     )
 }
 
-/** "Add to curve" shows: a weight is typed, and it is another one or today has no point yet, so a steady weight can be recorded. */
-fun curveOffered(draft: ProfileDraft, saved: ProfileValues, hasPointToday: Boolean): Boolean =
-    draft.current.isNotBlank() && (!hasPointToday || draft.current != ProfileDraft.of(saved).current)
-
-/** The weight a save puts on the curve today: with the tick on, a changed weight, or any weight on a day without a point; else none. */
-fun curveWeightOf(before: ProfileValues, after: ProfileValues, addToCurve: Boolean, hasPointToday: Boolean): Double? {
-    val kg = after.currentWeight ?: return null
-    return if (addToCurve && (kg != before.currentWeight || !hasPointToday)) kg else null
+/** "Add to curve" shows: with several weights a day, for any valid weight; else a weight is typed, and it is another one or today has no point yet, so a steady weight can be recorded. */
+fun curveOffered(draft: ProfileDraft, saved: ProfileValues, hasPointToday: Boolean): Boolean = when {
+    draft.current.isBlank() -> false
+    draft.severalWeights -> weightTextValid(draft.current)
+    else -> !hasPointToday || draft.current != ProfileDraft.of(saved).current
 }
 
-/** The curve as a list reads it: the newest day first. */
-fun newestFirst(points: List<WeightPoint>): List<WeightPoint> = points.sortedByDescending { it.dayKey }
+/** Where "Add to curve" starts: on for a weight not yet recorded, off for one already there, so a save of anything else adds no point. */
+fun curveTickStart(draft: ProfileDraft, saved: ProfileValues, hasPointToday: Boolean): Boolean =
+    !hasPointToday || draft.current != ProfileDraft.of(saved).current
 
-/** A diary day as a position along the curve's x axis; null for a key that is no date. */
-fun curveX(dayKey: String): Double? = runCatching { LocalDate.parse(dayKey).toEpochDay().toDouble() }.getOrNull()
+/** The weight a save puts on the curve today: with the tick on, any weight with several a day, a changed weight, or any weight on a day without a point; else none. */
+fun curveWeightOf(before: ProfileValues, after: ProfileValues, addToCurve: Boolean, hasPointToday: Boolean): Double? {
+    val kg = after.currentWeight ?: return null
+    return if (addToCurve && (after.severalWeights || kg != before.currentWeight || !hasPointToday)) kg else null
+}
+
+/** By day, then time; a repeated time keeps the order stored. */
+fun oldestFirst(points: List<WeightPoint>): List<WeightPoint> =
+    points.sortedWith(compareBy({ it.dayKey }, { it.savedAtEpochMs }, { it.id }))
+
+/** The curve as a list reads it: the newest day first, and within a day the latest. */
+fun newestFirst(points: List<WeightPoint>): List<WeightPoint> = oldestFirst(points).asReversed()
+
+const val MINUTES_PER_DAY = 1440L
+
+/** A diary day's start as a position along the curve's x axis, in minutes; null for a key that is no date. */
+fun dayStartMinute(dayKey: String): Double? = runCatching { (LocalDate.parse(dayKey).toEpochDay() * MINUTES_PER_DAY).toDouble() }.getOrNull()
+
+/**
+ * Where [point] sits along the curve, in whole minutes by the phone's clock, so a day is always 1440 even when the clocks
+ * change. A diary day can run past midnight, up to the next one's "Day starts at". A time outside that (imported or seeded)
+ * says nothing about the day, and the point sits at the day's start. Null for a key that is no date.
+ */
+fun curveMinute(point: WeightPoint, zone: ZoneId = ZoneId.systemDefault()): Double? {
+    val start = dayStartMinute(point.dayKey) ?: return null
+    val day = LocalDate.parse(point.dayKey)
+    val at = Instant.ofEpochMilli(point.savedAtEpochMs).atZone(zone).toLocalDateTime()
+    val onItsDay = at.toLocalDate() == day || at.toLocalDate() == day.plusDays(1)
+    return if (onItsDay) start + ChronoUnit.MINUTES.between(day.atStartOfDay(), at) else start
+}
 
 /** A choice that fills the macro fields from the kcal target and the current weight. */
 enum class MacroPreset { KCAL_AND_PROTEIN, BALANCED, HIGH_PROTEIN, LOW_CARB }

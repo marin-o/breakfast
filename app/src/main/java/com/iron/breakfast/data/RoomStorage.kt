@@ -330,31 +330,34 @@ interface RecipeIngredientDao {
     suspend fun deleteAll()
 }
 
-/** One point of the profile's weight curve: one per diary day. */
+/** One point of the profile's weight curve; a day can hold several, and times can repeat, so the row has its own [id]. */
 @Entity(tableName = "weight_points")
 data class WeightPointEntity(
-    @PrimaryKey @ColumnInfo(name = "day_key") val dayKey: String,
+    @ColumnInfo(name = "day_key") val dayKey: String,
     val kg: Double,
     @ColumnInfo(name = "saved_at_epoch_ms") val savedAtEpochMs: Long,
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
 )
 
-fun WeightPointEntity.toDomain() = WeightPoint(dayKey, kg, savedAtEpochMs)
-fun WeightPoint.toEntity() = WeightPointEntity(dayKey, kg, savedAtEpochMs)
+fun WeightPointEntity.toDomain() = WeightPoint(dayKey, kg, savedAtEpochMs, id)
+fun WeightPoint.toEntity() = WeightPointEntity(dayKey, kg, savedAtEpochMs, id)
 
 @Dao
 interface WeightPointDao {
-    @Query("SELECT * FROM weight_points ORDER BY day_key")
+    @Query("SELECT * FROM weight_points ORDER BY day_key, saved_at_epoch_ms, id")
     suspend fun all(): List<WeightPointEntity>
 
-    /** A point on a day that has one replaces it. */
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(point: WeightPointEntity)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insert(point: WeightPointEntity)
+
+    @Query("DELETE FROM weight_points WHERE id = (SELECT id FROM weight_points WHERE day_key = :dayKey ORDER BY saved_at_epoch_ms DESC, id DESC LIMIT 1)")
+    suspend fun deleteLatestOfDay(dayKey: String)
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertAllOrAbort(points: List<WeightPointEntity>)
 
-    @Query("DELETE FROM weight_points WHERE day_key = :dayKey")
-    suspend fun delete(dayKey: String)
+    @Query("DELETE FROM weight_points WHERE id = :id")
+    suspend fun delete(id: Long)
 
     @Query("DELETE FROM weight_points")
     suspend fun deleteAll()
@@ -372,7 +375,7 @@ interface WeightPointDao {
         RecipeIngredientEntity::class,
         WeightPointEntity::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = true
 )
 abstract class BreakfastDatabase : RoomDatabase() {
@@ -487,6 +490,16 @@ val ROOM_MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
 val ROOM_MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
     override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
         db.execSQL("CREATE TABLE IF NOT EXISTS `weight_points` (`day_key` TEXT NOT NULL, `kg` REAL NOT NULL, `saved_at_epoch_ms` INTEGER NOT NULL, PRIMARY KEY(`day_key`))")
+    }
+}
+
+/** Rebuilds only `weight_points` so a day can hold several: every row is copied and takes its own id; no other table is touched. */
+val ROOM_MIGRATION_10_11 = object : androidx.room.migration.Migration(10, 11) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE `weight_points_new` (`day_key` TEXT NOT NULL, `kg` REAL NOT NULL, `saved_at_epoch_ms` INTEGER NOT NULL, `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL)")
+        db.execSQL("INSERT INTO `weight_points_new` (`day_key`, `kg`, `saved_at_epoch_ms`) SELECT `day_key`, `kg`, `saved_at_epoch_ms` FROM `weight_points` ORDER BY `day_key`")
+        db.execSQL("DROP TABLE `weight_points`")
+        db.execSQL("ALTER TABLE `weight_points_new` RENAME TO `weight_points`")
     }
 }
 

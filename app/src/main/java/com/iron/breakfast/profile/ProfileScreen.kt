@@ -42,7 +42,6 @@ import com.iron.breakfast.ui.components.SubScreen
 import com.iron.breakfast.ui.components.WeightChart
 import com.iron.breakfast.ui.components.isLargeFont
 import com.iron.breakfast.ui.pretty
-import com.iron.breakfast.ui.shortDateLabel
 
 /** The Profile page: the name, the kcal and macro targets, the two weights, then the curve and its points, newest first. */
 @Composable
@@ -55,7 +54,7 @@ internal fun ProfileScreen(profile: ProfileState) {
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(bottom = 12.dp)) {
             item(key = "fields") { ProfileFields(profile) }
             item(key = "curve") { WeightChart(points, profile.values.targetWeight, Modifier.padding(top = 16.dp)) }
-            items(points, key = { it.dayKey }) { point -> PointRow(point) { profile.askDelete(point) } }
+            items(points, key = { it.id }) { point -> PointRow(point, profile) }
         }
     }
 }
@@ -90,6 +89,7 @@ private fun ProfileFields(profile: ProfileState) {
             )
             WeightField("Current weight, kg", draft.current) { profile.edit(draft.copy(current = it)) }
             if (profile.curveOffered) CheckboxRow("Add to curve", profile.addToCurve, profile::toggleAddToCurve)
+            CheckboxRow("Several weights a day", draft.severalWeights, { profile.edit(draft.copy(severalWeights = !draft.severalWeights)) })
             WeightField("Target weight, kg", draft.target) { profile.edit(draft.copy(target = it)) }
         }
     }
@@ -119,11 +119,10 @@ private fun WeightField(label: String, value: String, onValue: (String) -> Unit)
 }
 
 @Composable
-private fun PointRow(point: WeightPoint, onDelete: () -> Unit) {
-    val date = shortDateLabel(point.dayKey)
+private fun PointRow(point: WeightPoint, profile: ProfileState) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         // FactRow keeps 8dp above itself; the same below centres its text on the circle.
-        Box(Modifier.weight(1f).padding(bottom = 8.dp)) { FactRow(date, point.kg.pretty(), "kg") }
-        AddCircle("Delete $date", onDelete, icon = Icons.Outlined.Close)
+        Box(Modifier.weight(1f).padding(bottom = 8.dp)) { FactRow(profile.pointLabel(point), point.kg.pretty(), "kg") }
+        AddCircle("Delete ${profile.pointSummary(point)}", { profile.askDelete(point) }, icon = Icons.Outlined.Close)
     }
 }

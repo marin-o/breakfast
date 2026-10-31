@@ -64,9 +64,59 @@ class ProfileTest {
         assertEquals(listOf("2026-10-03", "2026-10-02", "2026-10-01"), newestFirst(points).map { it.dayKey })
     }
 
-    @Test fun curveXIsDaysApart() {
-        assertEquals(2.0, curveX("2026-10-03")!! - curveX("2026-10-01")!!)
-        assertNull(curveX("not a day"))
+    @Test fun aDayWithSeveralListsItsLatestFirstAndTiesByStoredOrder() {
+        val a = WeightPoint("2026-10-01", 80.0, 5L, id = 1)
+        val b = WeightPoint("2026-10-01", 79.0, 9L, id = 2)
+        val c = WeightPoint("2026-10-01", 78.0, 9L, id = 3)
+        val d = WeightPoint("2026-10-02", 77.0, 1L, id = 4)
+        assertEquals(listOf(d, c, b, a), newestFirst(listOf(a, b, c, d)))
+        assertEquals(listOf(a, b, c, d), oldestFirst(listOf(d, c, b, a)))
+    }
+
+    @Test fun withSeveralOnASaveMakesAPointAtAnyWeightWithTheTickOn() {
+        val same = ProfileValues(currentWeight = 80.0, severalWeights = true)
+        assertEquals(80.0, curveWeightOf(same, same, addToCurve = true, hasPointToday = true))
+        assertNull(curveWeightOf(same, same, addToCurve = false, hasPointToday = true))
+        assertNull(curveWeightOf(same, same.copy(currentWeight = null), addToCurve = true, hasPointToday = true))
+    }
+
+    @Test fun withSeveralOnTheTickIsOfferedForAnyValidWeight() {
+        val saved = ProfileValues(currentWeight = 80.0, severalWeights = true)
+        assertTrue(curveOffered(ProfileDraft.of(saved), saved, hasPointToday = true))
+        assertFalse(curveOffered(ProfileDraft.of(saved).copy(current = "0"), saved, hasPointToday = true))
+        assertFalse(curveOffered(ProfileDraft.of(saved).copy(current = ""), saved, hasPointToday = false))
+    }
+
+    @Test fun theSettingGoesThroughTheDraft() {
+        val saved = ProfileValues(severalWeights = true)
+        assertTrue(ProfileDraft.of(saved).severalWeights)
+        assertEquals(saved, profileOf(ProfileDraft.of(saved), ProfileValues()))
+        assertEquals(ProfileValues(), profileOf(ProfileDraft(severalWeights = false), saved))
+    }
+
+    private val utc = java.time.ZoneOffset.UTC
+    private fun ms(text: String) = java.time.LocalDateTime.parse(text).toInstant(utc).toEpochMilli()
+
+    @Test fun aPointSitsAtItsMinuteOfItsDay() {
+        val start = dayStartMinute("2026-10-03")!!
+        assertEquals(start + 7 * 60 + 52, curveMinute(WeightPoint("2026-10-03", 80.0, ms("2026-10-03T07:52:30")), utc))
+    }
+
+    @Test fun beforeADayStartAfterMidnightAPointStaysAtItsRealTime() {
+        val start = dayStartMinute("2026-10-03")!!
+        assertEquals(start + 25 * 60, curveMinute(WeightPoint("2026-10-03", 80.0, ms("2026-10-04T01:00:00")), utc))
+    }
+
+    /** Imported or seeded: its time says nothing about the day, so it sits at the day's start. */
+    @Test fun aTimeOffItsDaySitsAtTheStartOfTheDay() {
+        val start = dayStartMinute("2026-10-03")!!
+        assertEquals(start, curveMinute(WeightPoint("2026-10-03", 80.0, 0L), utc))
+        assertEquals(start, curveMinute(WeightPoint("2026-10-03", 80.0, Long.MAX_VALUE), utc))
+    }
+
+    @Test fun aKeyThatIsNoDateHasNoPlace() {
+        assertNull(curveMinute(WeightPoint("not a day", 80.0, 1L), utc))
+        assertNull(dayStartMinute("not a day"))
     }
 
     @Test fun aKcalTargetIsEmptyOrFrom1To20000() {

@@ -3,6 +3,7 @@ package com.iron.breakfast.app
 import com.iron.breakfast.profile.WeightStore
 import com.iron.breakfast.profile.ProfilePrefs
 import com.iron.breakfast.domain.WeightPoint
+import com.iron.breakfast.domain.newestFirst
 import androidx.lifecycle.SavedStateHandle
 import com.iron.breakfast.QueueDispatcher
 import com.iron.breakfast.contribution.OffContributions
@@ -179,8 +180,14 @@ internal class AppKit(
             offSearch = object : OffSearchService { override suspend fun search(query: String): OffSearchResult { offSearched += query; return OffSearchResult.Success(emptyList()) } },
             licence = { "SIL Open Font License" },
             weights = object : WeightStore {
-                override suspend fun save(point: WeightPoint) { diary.weights = diary.weights.filterNot { it.dayKey == point.dayKey } + point }
-                override suspend fun delete(dayKey: String) { diary.weights = diary.weights.filterNot { it.dayKey == dayKey } }
+                private var nextId = 1L
+                private fun stored(point: WeightPoint) = point.copy(id = nextId++)
+                override suspend fun add(point: WeightPoint) { diary.weights = diary.weights + stored(point) }
+                override suspend fun replaceLatest(point: WeightPoint) {
+                    val latest = newestFirst(diary.weights).firstOrNull { it.dayKey == point.dayKey }
+                    diary.weights = diary.weights.filterNot { it == latest } + stored(point)
+                }
+                override suspend fun delete(id: Long) { diary.weights = diary.weights.filterNot { it.id == id } }
             },
             profilePrefs = ProfilePrefs(profileStore),
             recipes = object : RecipeStore {
