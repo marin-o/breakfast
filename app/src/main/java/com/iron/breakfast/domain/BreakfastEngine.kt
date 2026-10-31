@@ -506,12 +506,14 @@ private fun MealEntry.withScaled(amount: Double, scaled: Calculation) =
     copy(enteredAmount = amount, resolvedBaseAmount = scaled.resolvedBaseAmount, nutritionSnapshot = scaled.nutrition)
 
 /**
- * The food a picked or scanned [candidate] is stored and logged as: a stored personal edit of it wins; else the
- * candidate, which replaces a stored copy [byId] but keeps the named servings that copy has and it lacks (a search
- * result has none of its own, so re-picking one never strips a serving its earlier pick brought).
+ * The food a picked or scanned [candidate] is stored and logged as: a stored personal edit of it wins, and so does any
+ * stored copy of a USDA food, which the catalogue is never written back to; else the candidate, which replaces a stored
+ * copy [byId] but keeps the named servings that copy has and it lacks (a search result has none of its own, so
+ * re-picking one never strips a serving its earlier pick brought).
  */
 internal fun cachedFoodForLogging(candidate: FoodRecord, byId: FoodRecord?, byBarcode: FoodRecord?): FoodRecord {
     listOfNotNull(byId, byBarcode).firstOrNull { it.personalOverride }?.let { return it }
+    if (isUsdaFoodId(candidate.id) && byId != null) return byId
     val kept = byId?.conversions.orEmpty().filter { stored ->
         val name = stored.name ?: return@filter false
         candidate.conversions.none { it.name?.equals(name, ignoreCase = true) == true }

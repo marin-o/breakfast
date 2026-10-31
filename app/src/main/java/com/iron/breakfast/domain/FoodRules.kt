@@ -20,6 +20,11 @@ internal fun isOpenFoodFactsSource(food: FoodRecord): Boolean =
     food.sourceName?.contains("open food facts", ignoreCase = true) == true ||
         food.sourceId?.startsWith("off", ignoreCase = true) == true
 
+/** The start of the id of a food that came from the USDA catalogue, before its FDC ID. */
+internal const val USDA_FOOD_ID_PREFIX = "fndds_"
+
+internal fun isUsdaFoodId(id: String): Boolean = id.startsWith(USDA_FOOD_ID_PREFIX)
+
 /** The entry [foodId] was last logged as: what a repeat of it starts from. */
 internal fun lastLoggedEntry(entries: List<MealEntry>, foodId: String): MealEntry? =
     entries.asSequence().filter { it.foodId == foodId }.maxByOrNull { it.savedAtEpochMs }

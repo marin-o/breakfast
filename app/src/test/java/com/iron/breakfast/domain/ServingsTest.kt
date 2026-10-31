@@ -48,6 +48,24 @@ class ServingsTest {
         assertEquals("кутија", servingNameFor("кутија", 2.0))
     }
 
+    @Test fun onlyTheServingItselfTurnsPluralNotWhatDescribesIt() {
+        assertEquals("cups, cooked, diced", servingNameFor("cup, cooked, diced", 2.0))
+        assertEquals("cup, cooked, diced", servingNameFor("cup, cooked, diced", 1.0))
+        assertEquals("bottles (8 fl oz)", servingNameFor("bottle (8 fl oz)", 2.0))
+        assertEquals("small breasts", servingNameFor("small breast", 2.0))
+        assertEquals("large pizzas (13-15\" diameter)", servingNameFor("large pizza (13-15\" diameter)", 2.0))
+        assertEquals("patties, cooked", servingNameFor("patty, cooked", 2.0))
+        assertEquals("10 sticks, thin", servingNameFor("10 sticks, thin", 2.0))
+    }
+
+    /** The USDA catalogue is read, never written back: a stored copy stays what it was when it was added. */
+    @Test fun aRepickedCatalogueFoodIsTheStoredOne() {
+        val picked = testFood("fndds_2705975", "Chicken breast", values = NutritionValues(219.0, 24.6, 6.01, 9.99))
+        val stored = picked.copy(nutrition = picked.nutrition.copy(values = NutritionValues(200.0, 20.0, 5.0, 9.0)))
+        assertEquals(stored, cachedFoodForLogging(picked, stored, null))
+        assertEquals(picked, cachedFoodForLogging(picked, null, null))
+    }
+
     @Test fun aServingIsNamedByItsLabelOrByItsUnit() {
         assertEquals("piece", ServingConversion(MeasureUnit.PIECE, 118.0, "USDA").name)
         assertEquals("tbsp", ServingConversion(MeasureUnit.TABLESPOON, 16.0, "standard").name)

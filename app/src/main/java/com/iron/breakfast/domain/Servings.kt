@@ -49,7 +49,7 @@ fun servingNameMatches(typed: String, name: String): Boolean {
 }
 
 /** A word and the singular forms it may be: "slices" is "slice", "berries" "berry", "glasses" "glass". Latin only. */
-private fun singularForms(word: String): Set<String> {
+internal fun singularForms(word: String): Set<String> {
     if (scriptOf(word) != TextScript.LATIN) return setOf(word)
     return buildSet {
         add(word)
@@ -90,15 +90,21 @@ private const val VOWELS = "aeiou"
 /** Singulars that end in "ie", whose plural a rule cannot tell from a "-y" word's. */
 private val IE_WORDS = setOf("cookie", "pie", "brownie", "smoothie", "veggie", "hoagie", "rotie", "tie", "pastie")
 
-/** [name] for [amount] of it: "slice", "2 slices", "1.5 cans"; a Cyrillic or already plural name is kept as it is. */
+/**
+ * [name] for [amount] of it: "slice", "2 slices", "1.5 cans"; a Cyrillic or already plural name is kept as it is. What
+ * follows a comma or bracket only describes it and stays: "2 cups, cooked, diced", "2 bottles (8 fl oz)".
+ */
 fun servingNameFor(name: String, amount: Double): String {
     if (amount == 1.0 || scriptOf(name) != TextScript.LATIN) return name
-    val lower = name.lowercase(Locale.ROOT)
-    return when {
-        lower.endsWith("s") || lower.endsWith("x") || lower.endsWith("sh") || lower.endsWith("ch") -> if (lower.endsWith("s")) name else name + "es"
-        lower.endsWith("y") && lower.length > 1 && lower[lower.length - 2] !in "aeiou" -> name.dropLast(1) + "ies"
-        else -> name + "s"
+    val head = name.takeWhile { it != ',' && it != '(' }.trimEnd()
+    val description = name.removePrefix(head)
+    val lower = head.lowercase(Locale.ROOT)
+    val plural = when {
+        lower.endsWith("s") || lower.endsWith("x") || lower.endsWith("sh") || lower.endsWith("ch") -> if (lower.endsWith("s")) head else head + "es"
+        lower.endsWith("y") && lower.length > 1 && lower[lower.length - 2] !in "aeiou" -> head.dropLast(1) + "ies"
+        else -> head + "s"
     }
+    return plural + description
 }
 
 /** The serving of [food] that [typed] names ([servingNameMatches]); null when it has none by that name. */
