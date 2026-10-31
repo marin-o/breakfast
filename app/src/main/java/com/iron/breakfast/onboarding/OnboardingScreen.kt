@@ -9,8 +9,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -67,11 +71,21 @@ private fun OnboardingPageContent(page: Int) {
     val colors = LocalBreakfastColors.current
     val words = ONBOARDING_PAGES[page]
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 16.dp)) {
-        Text(words.title, color = colors.ink, style = BreakfastType.Section, modifier = Modifier.semantics { heading() })
-        Text(words.body, color = colors.soft, style = BreakfastType.Body, modifier = Modifier.padding(top = 8.dp))
+        if (!words.pointsAtExample) PageWords(words)
         // Real components showing fixed values: it takes no tap, while a swipe that starts on it still turns the page.
-        Box(Modifier.fillMaxWidth().padding(top = 24.dp).inert()) { OnboardingExample(page) }
+        Box(Modifier.fillMaxWidth().padding(top = if (words.pointsAtExample) 0.dp else 24.dp).inert()) { OnboardingExample(page) }
+        if (words.pointsAtExample) {
+            Icon(Icons.Outlined.ArrowUpward, contentDescription = null, tint = colors.ink, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp).size(22.dp))
+            PageWords(words)
+        }
     }
+}
+
+@Composable
+private fun PageWords(words: OnboardingPage) {
+    val colors = LocalBreakfastColors.current
+    Text(words.title, color = colors.ink, style = BreakfastType.Section, modifier = Modifier.semantics { heading() })
+    Text(words.body, color = colors.soft, style = BreakfastType.Body, modifier = Modifier.padding(top = 8.dp))
 }
 
 /** Each page's example, in the components the app draws them with. */
@@ -91,7 +105,7 @@ private fun OnboardingExample(page: Int) {
             PrimaryButton("Find matches", {}, Modifier.padding(top = 16.dp))
         }
         3 -> Column {
-            FoodRow("Ajvar", previewQuantityLine(100.0, MeasureUnit.GRAM), formatKcal(130.0))
+            FoodRow("Chicken breast raw", previewQuantityLine(100.0, MeasureUnit.GRAM), formatKcal(106.0))
             FoodRow("Chili", previewQuantityLine(1.0, MeasureUnit.PORTION), formatKcal(412.0))
         }
         else -> DayTotal(formatKcal(SAMPLE_DAY_KCAL), sampleMacroStats())

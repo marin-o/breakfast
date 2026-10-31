@@ -12,13 +12,13 @@ Owner's request, 2026-10-31: the app is opinionated and unconventional, so it ne
 ## Pages
 Each page: a short title, one or two short sentences, and a live example drawn with the app's real components and sample data. Nothing on these pages writes to the diary.
 
-1. **Type what you ate.** "One line, like a text. Commas split foods." Example: "2 eggs, 100 g oats" with its rows and kcal.
-2. **The green one gets logged.** "Half a word is enough. Add logs the green match, no extra tap." Example: "ban" with a green Banana chip.
-3. **Not in your foods?** "Find matches looks it up on Open Food Facts. Tap a result and carry on." Example: a "Not in your foods" row with the "Find matches" button.
-4. **Your foods learn.** "Scan a barcode once and it's yours. Build recipes in Recipes and log them the same way." Example: a food row and a recipe row.
-5. **Make it yours.** "Set a name, macro targets and your weight, or don't." Buttons: "Open Profile" and "Start logging". Example: macro stats with targets.
+1. **Type what you ate.** "Comma separated plain text." Example: "2 eggs, 100g oats" with its rows and kcal.
+2. **The green one is what the app would log.** "Partial searches also work." Example: "ban" with a green Banana chip; the words sit under it, with an arrow up to the chip.
+3. **Not in your foods?** "Look it up on Open Food Facts." Example: a "Not in your foods" row with the "Find matches" button.
+4. **We remember what you pick.** "You can also scan barcodes." Example: a food row and a recipe row.
+5. **Your goals.** "Set up your goals in Profile." Buttons: "Open Profile" and "Start logging". Example: macro stats with targets.
 
-The wording above is a proposal for the owner to judge on the device.
+Line by line: `docs/onboarding-copy.csv`, the owner's edits.
 
 ## Rules
 - Follows `docs/standards/maintainable_mobile_app_development_guide.md`, `AGENTS.md` and `DESIGN.md`; onboarding is the one place explanatory sentences are allowed.

@@ -13,15 +13,15 @@ import com.iron.breakfast.domain.macroTotalsOf
 import com.iron.breakfast.ui.components.MacroStat
 import com.iron.breakfast.ui.screens.macroStats
 
-/** A page's words; its example is drawn by [OnboardingExample]. */
-internal data class OnboardingPage(val title: String, val body: String)
+/** A page's words; its example is drawn by [OnboardingExample]. With [pointsAtExample] the words sit under the example, an arrow from them to it. */
+internal data class OnboardingPage(val title: String, val body: String, val pointsAtExample: Boolean = false)
 
 internal val ONBOARDING_PAGES = listOf(
-    OnboardingPage("Type what you ate.", "One line, like a text. Commas split foods."),
-    OnboardingPage("The green one gets logged.", "Half a word is enough. Add logs the green match, no extra tap."),
-    OnboardingPage("Not in your foods?", "Find matches looks it up on Open Food Facts. Tap a result and carry on."),
-    OnboardingPage("Your foods learn.", "Scan a barcode once and it's yours. Build recipes in Recipes and log them the same way."),
-    OnboardingPage("Make it yours.", "Set a name, macro targets and your weight, or don't."),
+    OnboardingPage("Type what you ate.", "Comma separated plain text."),
+    OnboardingPage("The green one is what the app would log.", "Partial searches also work.", pointsAtExample = true),
+    OnboardingPage("Not in your foods?", "Look it up on Open Food Facts."),
+    OnboardingPage("We remember what you pick.", "You can also scan barcodes."),
+    OnboardingPage("Your goals.", "Set up your goals in Profile."),
 )
 
 private val SAMPLE_DAY = NutritionValues(1240.0, 86.0, 140.0, 38.0)
@@ -34,7 +34,7 @@ internal fun sampleMacroStats(): List<MacroStat> = macroStats(
     SAMPLE_DAY.calories, macroTotalsOf(listOf(SAMPLE_DAY)), ProfileValues(proteinTarget = 120.0, carbsTarget = 180.0, fatTarget = 60.0),
 )
 
-internal const val SAMPLE_LINE = "2 eggs, 100 g oats"
+internal const val SAMPLE_LINE = "2 eggs, 100g oats"
 internal const val SAMPLE_PARTIAL = "ban"
 internal const val SAMPLE_UNKNOWN = "100 g kefyr"
 
@@ -51,7 +51,7 @@ private fun viewOf(rows: List<DraftRow>) = LogDraftView(rows, emptyList(), choic
 
 /** The rows for [SAMPLE_LINE]. */
 internal fun sampleLineView(): LogDraftView = viewOf(
-    listOf(sampleEntry("2 eggs", "egg", 2.0, MeasureUnit.PIECE), sampleEntry("100 g oats", "rolled_oats", 100.0, MeasureUnit.GRAM)),
+    listOf(sampleEntry("2 eggs", "egg", 2.0, MeasureUnit.PIECE), sampleEntry("100g oats", "rolled_oats", 100.0, MeasureUnit.GRAM)),
 )
 
 /** The green chip for [SAMPLE_PARTIAL]. */
