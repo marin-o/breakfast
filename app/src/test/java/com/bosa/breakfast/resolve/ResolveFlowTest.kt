@@ -81,12 +81,28 @@ class ResolveFlowTest {
         assertEquals("ayran", flow.currentName())
     }
 
-    /**
-     * Why product review and the food form share one queue rule ([com.bosa.breakfast.queueLogPlan]) with no "queue
-     * without a meal" case to settle: the queue gets its meal with its parts, keeps it while parts are left, and loses
-     * it only when it ends, also through children opened from the resolver.
-     */
-    @Test fun anActiveQueueAlwaysHasItsMeal() {
+    /** The Log's Find matches with no meal known: a pick goes back to the source, nothing is logged, and a meal given later holds. */
+    @Test fun aQueueWithNoMealLogsNothingAndHandsItsPickToTheSource() {
+        val picks = mutableListOf<String>()
+        val draft = object : ResolveSource {
+            override var text = "ayran"
+            override fun putBack(left: String) { text = left }
+            override val showsItsParts get() = true
+            override fun pickWithNoMeal(raw: String, food: FoodRecord) { picks += "$raw ${food.id}" }
+        }
+        flow.afterSave(listOf("ayran"), null, draft, "ayran")
+        assertTrue(flow.queueActive)
+        assertNull(flow.queueView()?.meal)
+        flow.resolve(ayran)
+        assertEquals(listOf("ayran ayran"), picks)
+        assertTrue(store.calls.isEmpty())
+        assertEquals("the source decides when the part leaves", listOf("ayran"), flow.parts)
+        flow.changeMeal(draft, MealSlot.LUNCH)
+        assertEquals(MealSlot.LUNCH, flow.queueView()?.meal)
+    }
+
+    /** A queue that was given a meal keeps it while parts are left and loses it only when it ends, also through children opened from the resolver. */
+    @Test fun aQueueWithItsMealKeepsItUntilItEnds() {
         val draft = TypedText("ayran, kefir, boza")
         flow.afterSave(listOf("ayran", "kefir", "boza"), MealSlot.DINNER, draft, "ayran, kefir, boza")
         assertEquals(MealSlot.DINNER, flow.queueView()?.meal)
@@ -179,6 +195,40 @@ class ResolveFlowTest {
         flow.afterSave(listOf("ayran"), MealSlot.DINNER, draft, "ayran")
         flow.close()
         assertEquals(2, draft.allMatched)
+    }
+
+    @Test fun aQueueWithNoMealFollowsTheTextUntilOneIsChosen() {
+        val draft = TypedText("ayran")
+        flow.afterSave(listOf("ayran"), null, draft, "ayran")
+        flow.textMealChanged(draft, MealSlot.SNACKS)
+        assertEquals(MealSlot.SNACKS, flow.queueMeal)
+        flow.textMealChanged(draft, null)
+        assertNull(flow.queueMeal)
+        flow.changeMeal(draft, MealSlot.LUNCH)
+        flow.textMealChanged(draft, null)
+        assertEquals(MealSlot.LUNCH, flow.queueMeal)
+    }
+
+    @Test fun aQueueThatStartedWithAMealDoesNotFollowTheText() {
+        val draft = TypedText("ayran")
+        flow.afterSave(listOf("ayran"), MealSlot.DINNER, draft, "ayran")
+        flow.textMealChanged(draft, null)
+        assertEquals(MealSlot.DINNER, flow.queueMeal)
+    }
+
+    @Test fun aPlacedPickRemovesOneOccurrenceAndAnEmptyQueueEnds() {
+        val draft = TypedText("ayran, ayran")
+        flow.afterSave(listOf("ayran", "ayran"), null, draft, "ayran, ayran")
+        flow.pickPlaced(TypedText(), "ayran")
+        assertEquals("another source's pick", listOf("ayran", "ayran"), flow.parts)
+        flow.pickPlaced(draft, "kefir")
+        assertEquals(listOf("ayran", "ayran"), flow.parts)
+        flow.pickPlaced(draft, "ayran")
+        assertEquals(listOf("ayran"), flow.parts)
+        flow.pickPlaced(draft, "ayran")
+        assertEquals(emptyList<String>(), flow.parts)
+        assertFalse(flow.queueActive)
+        assertFalse(flow.continuation)
     }
 
     @Test fun skipMovesOnWithoutAWrite() {

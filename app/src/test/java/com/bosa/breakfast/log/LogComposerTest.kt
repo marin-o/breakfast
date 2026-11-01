@@ -40,7 +40,7 @@ class LogComposerTest {
         }
     }
 
-    private class AfterSave(val unresolved: List<String>, val meal: MealSlot, val source: ResolveSource, val typedAtSave: String)
+    private class AfterSave(val unresolved: List<String>, val meal: MealSlot?, val source: ResolveSource, val typedAtSave: String)
 
     private val diary = OpenDiary()
     private val store = FakeStore()

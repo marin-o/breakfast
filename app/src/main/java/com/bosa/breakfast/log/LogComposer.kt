@@ -50,7 +50,9 @@ internal interface LogStore {
  *   [targetMeal] by [logTargetMealOf]. [error] is the Log's own (Add's refusals and failures, "Some foods need a
  *   match."), shown on the Log page and on Daily; other features clear it through [clearError].
  * - **Submit:** Add saves the draft through [session]; what it could not match goes to the post-save handling
- *   ([afterSave], the resolve queue), with the draft as the queue's [ResolveSource].
+ *   ([afterSave], the resolve queue), with the draft as the queue's [ResolveSource]. With no meal known and nothing
+ *   that would log, it is Find matches: the queue starts without a meal, and a pick that would log there goes into the
+ *   draft, pinned, and the meal menu asks ([pickWithNoMeal]); left unanswered, nothing is logged and the pick stays.
  * - **Resolve:** a "Not in your foods" part goes to the Library through [resolvePart]; [resume] brings the Log back.
  */
 internal class LogComposer(
@@ -63,8 +65,8 @@ internal class LogComposer(
     private val openMeal: () -> MealSlot?,
     /** An entry edit is open: the Log does not open over it. */
     private val editing: () -> Boolean,
-    /** Post-save handling: the parts a save could not match, for [meal] (see `ResolveFlow.afterSave`). */
-    private val afterSave: (unresolved: List<String>, meal: MealSlot, source: ResolveSource, typedAtSave: String) -> Unit,
+    /** Post-save handling: the parts a save could not match, for [meal], null while none is known (see `ResolveFlow.afterSave`). */
+    private val afterSave: (unresolved: List<String>, meal: MealSlot?, source: ResolveSource, typedAtSave: String) -> Unit,
     /** A part sent to the Library, opened on [meal] and searching [query] (see `ResolveFlow.beginPart`). */
     private val resolvePart: (request: LogResolveRequest, meal: MealSlot, query: String) -> Unit,
     /** Where the Log page's draft is planned ([computeDraftView]): off the main thread in the app. */
@@ -75,8 +77,14 @@ internal class LogComposer(
     private val onDraftEdited: (source: ResolveSource, parts: List<String>) -> Unit = { _, _ -> },
     /** The meal menu chose this: what is queued logs there. */
     private val onMealChosen: (source: ResolveSource, meal: MealSlot) -> Unit = { _, _ -> },
+    /** The draft changed and the Log's target meal is now this, null for none: a queue with no meal chosen follows it. */
+    private val onTextMeal: (source: ResolveSource, meal: MealSlot?) -> Unit = { _, _ -> },
+    /** A pick with no meal known took the place of queued part [raw]: it leaves the queue. */
+    private val onPickPlaced: (source: ResolveSource, raw: String) -> Unit = { _, _ -> },
     /** The parts the queue holds now. */
     private val queuedParts: () -> List<String> = { emptyList() },
+    /** A queue is running with no meal yet: Find matches started it, and the first pick that would log asks for one. */
+    private val queueWaitsForMeal: () -> Boolean = { false },
     /** A pinned food's rename rewrote the draft: [follow] gives a part of the draft before it as it reads now. */
     private val onRenamed: (follow: (SegmentSpan) -> SegmentSpan) -> Unit = {},
     initial: SavedLogDraft = SavedLogDraft("", false),
@@ -175,6 +183,8 @@ internal class LogComposer(
         if (value.isBlank()) pins.clear()
         val parts = queuedParts().takeIf { it.isNotEmpty() }?.let { store.planner(pinsSnapshot()).segments(value).map { span -> span.text } }
         if (parts != null) onDraftEdited(this, parts)
+        // A meal word logs a queue's parts only while the draft still reads as one: "snack" on its way to "snack bar" does not stay.
+        onTextMeal(this, targetMeal())
         // A queued part left last is finished, not being typed: it keeps its row.
         committed = committed && parts?.lastOrNull()?.let { it in queuedParts() } == true
     }
@@ -225,10 +235,15 @@ internal class LogComposer(
     fun addScannedPart(food: FoodRecord, amount: Double, measure: Measure, replaces: SegmentSpan? = null) {
         val planner = store.planner(pinsSnapshot())
         val part = planner.partText(food, amount, measure)
+        val pickWaitingForMeal = replaces != null && queueWaitsForMeal() && replaces.text in queuedParts()
         if (replaces != null && replaces.end <= draft.length && draft.substring(replaces.start, replaces.end) == replaces.text) {
             val next = replaceDraftPart(draft, replaces.start, replaces.end, part)
             applyDraft(next)
             pins.add(next, part, food, replaces.start)
+            if (pickWaitingForMeal) {
+                onPickPlaced(this, replaces.text)
+                askMealForPick()
+            }
             return
         }
         val next = planner.withPartAdded(draft, part)
@@ -261,13 +276,46 @@ internal class LogComposer(
         when (val plan = logSubmitPlan(session.canWrite, draft, mealMarkerSlots(draft), chosen, preset, automaticMeal())) {
             LogSubmitPlan.Ignore -> Unit
             is LogSubmitPlan.Error -> error = plan.message
-            LogSubmitPlan.OpenMenu -> {
+            LogSubmitPlan.OpenMenu -> if (findsMatches()) findMatches() else {
                 error = null
-                submitPending = true
-                mealMenuOpen = true
+                askMealThenSubmit()
             }
             is LogSubmitPlan.Save -> save(plan.target)
         }
+    }
+
+    /** The finished draft reads as the bar's Find matches ([logBarOf]): nothing would log, so no meal is needed yet. */
+    private fun findsMatches(): Boolean = draftView(committed = true).let { logBarOf(it.addLogs, it.needsMatch, it.hasNoValue, queueActive = false) } == LogBar.FIND_MATCHES
+
+    /** Find matches with no meal known: what a save would leave, with nothing written, goes to the queue with no meal. */
+    private fun findMatches() {
+        val captured = draft
+        val planner = store.planner(pinsSnapshot())
+        afterSave(leaveUnmatched(captured, planner.plan(captured).unresolved, planner), null, this, captured)
+    }
+
+    /** The meal menu opens, and choosing a meal submits. */
+    private fun askMealThenSubmit() {
+        submitPending = true
+        mealMenuOpen = true
+    }
+
+    /** A pick of a queued part is in the draft with no meal known: when it would log, the menu asks where. */
+    private fun askMealForPick() {
+        committed = true
+        if (queuedParts().isEmpty()) error = null
+        if (store.planner(pinsSnapshot()).plan(draft).entries.isNotEmpty()) askMealThenSubmit()
+    }
+
+    /** [unmatched], what is left of [captured], shows in the draft unless it changed meanwhile, with the Log's error; the parts that need the user. */
+    private fun leaveUnmatched(captured: String, unmatched: List<String>, planner: LogPlanner): List<String> {
+        if (draft == captured) {
+            pins.edited(draft, unmatched.joinToString(", "))
+            draft = unmatched.joinToString(", ")
+        }
+        val attention = unmatched.filter(planner::needsAttention)
+        error = if (attention.isNotEmpty()) NEEDS_A_MATCH else null
+        return attention
     }
 
     private fun save(target: MealSlot) {
@@ -292,12 +340,7 @@ internal class LogComposer(
                 pins.forget(usedPins)
                 val unmatched = saved.unresolvedSegments
                 val planner = store.planner(pinsSnapshot())
-                if (draft == captured) {
-                    pins.edited(draft, unmatched.joinToString(", "))
-                    draft = unmatched.joinToString(", ")
-                }
-                val attention = unmatched.filter(planner::needsAttention)
-                error = if (attention.isNotEmpty()) NEEDS_A_MATCH else null
+                val attention = leaveUnmatched(captured, unmatched, planner)
                 // Back during the write: what is left stays as text, and no queue runs behind a closed Log.
                 if (!open) return@write
                 if (unmatched.isEmpty()) close() else chosen = target
@@ -339,10 +382,7 @@ internal class LogComposer(
         if (pick == null) {
             applyDraft(base)
         } else {
-            val text = store.planner(pinsSnapshot()).pickedText(request.part, pick)
-            val next = replaceDraftPart(base, start, end, text)
-            applyDraft(next)
-            pins.add(next, text, pick, start)
+            placePick(base, start, end, request.part, pick)
         }
         // Back with its rows in place, as Add left them, when a queue is still waiting.
         committed = queuedParts().isNotEmpty()
@@ -352,10 +392,21 @@ internal class LogComposer(
         open = true
     }
 
+    /** [pick] in place of [part], which [base] holds from [start] to [end], pinned so the part resolves to it. */
+    private fun placePick(base: String, start: Int, end: Int, part: String, pick: FoodRecord) {
+        val text = store.planner(pinsSnapshot()).pickedText(part, pick)
+        val next = replaceDraftPart(base, start, end, text)
+        applyDraft(next)
+        pins.add(next, text, pick, start)
+    }
+
+    /** Where queued part [raw] is in the draft now. */
+    fun partInDraft(raw: String): SegmentSpan? = store.planner(pinsSnapshot()).segments(draft).firstOrNull { it.text == raw }
+
     /** The draft as the resolve queue's source: what is left of its parts is written back here. */
     override val text: String get() = draft
     override fun putBack(left: String) { pins.edited(draft, left); draft = left }
-    /** Every part Add left was matched in the resolver: "Some foods need a match." no longer applies. A skipped part keeps it. */
+    /** Every part Add left was matched in the resolver: "Some foods need a match." no longer applies. A skipped part keeps it, unless nothing in a draft that stays needs one ([queueEnded]). */
     override fun allMatched() { if (error == NEEDS_A_MATCH) error = null }
     override val showsItsParts: Boolean get() = true
     override fun removePart(raw: String) {
@@ -364,7 +415,19 @@ internal class LogComposer(
         draft = next
     }
     // Whatever else is in the draft (a scanned part, a local choice) is still the Log's to add.
-    override fun queueEnded() { if (draft.isBlank()) close() }
+    override fun queueEnded() {
+        if (draft.isBlank()) { close(); return }
+        // What stays is the Log's to add: the error goes with the last part that needed a match.
+        val planner = store.planner(pinsSnapshot())
+        if (error == NEEDS_A_MATCH && planner.plan(draft).unresolved.none(planner::needsAttention)) error = null
+    }
+    override fun pickWithNoMeal(raw: String, food: FoodRecord) {
+        if (!session.canWrite) return
+        val part = partInDraft(raw) ?: return
+        placePick(draft, part.start, part.end, raw, food)
+        onPickPlaced(this, raw)
+        askMealForPick()
+    }
 }
 
 /** One local food offered for a part: the amount the part would log of it, and its kcal. */

@@ -25,7 +25,7 @@ internal sealed interface LogSubmitPlan {
     /** Nothing to do: the session cannot start a write (storage closed or a save running, `DiarySession.canWrite`). */
     data object Ignore : LogSubmitPlan
     data class Error(val message: String) : LogSubmitPlan
-    /** No meal is known: open the Log's meal menu; choosing a meal submits. */
+    /** No meal is known: the Log's meal menu opens and choosing a meal submits, unless the draft only finds matches. */
     data object OpenMenu : LogSubmitPlan
     data class Save(val target: MealSlot) : LogSubmitPlan
 }
@@ -39,6 +39,23 @@ internal fun logSubmitPlan(
     if (typedMarkers.size > 1) return LogSubmitPlan.Error("Choose one meal marker, or remove the extra markers.")
     val target = logTargetMealOf(chosen, typedMarkers, preset, automatic) ?: return LogSubmitPlan.OpenMenu
     return LogSubmitPlan.Save(target)
+}
+
+/** What the Log page does with its text field when the queue or the meal menu changes. */
+internal enum class LogFieldFocus {
+    /** No focus and no keyboard: it would cover the rows of the foods being matched. */
+    KEYBOARD_DOWN,
+    /** The field takes focus, and the keyboard comes with it. */
+    FOCUS,
+    /** As it is: focus now would dismiss the menu or bring the keyboard up over it, or over a write that may close the page. */
+    LEAVE,
+}
+
+/** The Log field's focus: down while foods are [matching]; otherwise it waits for an open menu ([menuOpen]) and a save ([writing]). */
+internal fun logFieldFocusOf(matching: Boolean, menuOpen: Boolean, writing: Boolean): LogFieldFocus = when {
+    matching -> LogFieldFocus.KEYBOARD_DOWN
+    menuOpen || writing -> LogFieldFocus.LEAVE
+    else -> LogFieldFocus.FOCUS
 }
 
 /** What the Log's bar offers. */

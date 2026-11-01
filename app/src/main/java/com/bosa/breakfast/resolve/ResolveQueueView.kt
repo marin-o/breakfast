@@ -5,7 +5,7 @@ import com.bosa.breakfast.domain.TypedPart
 
 /**
  * The "Not in your foods" queue while it is being resolved, as the screens opened from it (product review, the food
- * form) see it: the meal its parts go to, the parts left as typed (the first is the one being resolved), how many
+ * form) see it: the meal its parts go to (null: none is known yet), the parts left as typed (the first is the one being resolved), how many
  * there were, and the current part as the Log read it ([current]: "mleko200g" is mleko, 200 g). Built by
  * [ResolveFlow.queueView]; null when no queue is being resolved.
  */

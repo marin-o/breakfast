@@ -48,6 +48,8 @@ internal interface ResolveSource {
     fun removePart(raw: String) {}
     /** The last part of its queue was resolved or skipped. */
     fun queueEnded() {}
+    /** [food] was picked for queued part [raw] with no meal to log it to: only a source that can start a queue with none has this. */
+    fun pickWithNoMeal(raw: String, food: FoodRecord) {}
 }
 
 /**
@@ -58,7 +60,8 @@ internal interface ResolveSource {
  *   ([finishPart]); leaving the Library without one goes back to the Log as it was ([cancelPart]). Both end through
  *   [returnToLog], the one way back.
  * - **The unknown queue:** the parts a save could not match ([afterSave], the post-save handling of every save that
- *   logs typed text), resolved one at a time for the queue's [queueMeal]: on the Log page under their rows, or, for
+ *   logs typed text, and the Log's Find matches, which writes nothing and may not know a meal yet: [queueMeal] null
+ *   until it is chosen), resolved one at a time for the queue's [queueMeal]: on the Log page under their rows, or, for
  *   another source (the Library's mixed batch), in the resolver ([resolverOpen]). A screen
  *   opened from the resolver (the Open Food Facts search, the food form, product review) sees the queue as a
  *   [ResolveQueueView] ([queueView]), reports how it ended ([childLogged], [childClosed]) and comes back to the
@@ -98,6 +101,8 @@ internal class ResolveFlow(
     private var source: ResolveSource? = null
     /** A part of this queue was skipped, so it does not end with every part matched. */
     private var skipped = false
+    /** The queue started with no meal and none was chosen since: its meal is whatever the source's text says now. */
+    private var mealFollowsText = false
 
     var query by mutableStateOf(""); private set
     var searchOpen by mutableStateOf(false); private set
@@ -133,6 +138,9 @@ internal class ResolveFlow(
 
     val queueActive: Boolean get() = continuation && parts.isNotEmpty()
 
+    /** A queue is running and knows where its parts log; a Find matches with no meal yet has logged nothing. */
+    val queueHasMeal: Boolean get() = queueActive && queueMeal != null
+
     /** The queue while it is being resolved, for the screens opened from it; its current part as the Log read it. */
     fun queueView(): ResolveQueueView? =
         if (queueActive) ResolveQueueView(queueMeal, parts, queueTotal, store.typed(parts.first())) else null
@@ -140,14 +148,16 @@ internal class ResolveFlow(
     /**
      * Post-save handling, for every save that logs typed text (Add on the Log, the Library's mixed batch): the parts it
      * could not match ([unresolved]) are shown where they were typed, unless that text changed since the save started
-     * ([typedAtSave]), and become the queue for [meal], which the resolver opens on. Nothing left ends any queue.
+     * ([typedAtSave]), and become the queue for [meal], which the resolver opens on. Nothing left ends any queue. A null
+     * [meal] is a queue the Log started before any meal was known; [changeMeal] gives it one.
      */
-    fun afterSave(unresolved: List<String>, meal: MealSlot, source: ResolveSource, typedAtSave: String) {
+    fun afterSave(unresolved: List<String>, meal: MealSlot?, source: ResolveSource, typedAtSave: String) {
         if (!source.showsItsParts && source.text == typedAtSave) source.putBack(unresolved.joinToString(", "))
         val left = unresolved.isNotEmpty()
         parts = unresolved
         queueTotal = unresolved.size
         queueMeal = meal.takeIf { left }
+        mealFollowsText = left && meal == null
         continuation = left
         resolverOpen = left && !source.showsItsParts
         this.source = source.takeIf { left }
@@ -158,6 +168,7 @@ internal class ResolveFlow(
     fun abandon() {
         parts = emptyList()
         queueMeal = null
+        mealFollowsText = false
         queueTotal = 0
         continuation = false
         resolverOpen = false
@@ -176,7 +187,26 @@ internal class ResolveFlow(
     }
 
     /** The meal was changed where the parts were typed: what is left logs there. */
-    fun changeMeal(from: ResolveSource, meal: MealSlot) { if (source === from && parts.isNotEmpty()) queueMeal = meal }
+    fun changeMeal(from: ResolveSource, meal: MealSlot) {
+        if (source !== from || parts.isEmpty()) return
+        queueMeal = meal
+        mealFollowsText = false
+    }
+
+    /** [from]'s text now reads as [meal], null for none: a queue with no meal chosen goes with it. A chosen meal stays. */
+    fun textMealChanged(from: ResolveSource, meal: MealSlot?) { if (source === from && mealFollowsText) queueMeal = meal }
+
+    /**
+     * A pick took the place of part [raw] in [from]'s text: one occurrence of it leaves the queue, whatever the text reads
+     * now. Another part typed the same stays, and a pick that reads as its part did still leaves.
+     */
+    fun pickPlaced(from: ResolveSource, raw: String) {
+        if (source !== from) return
+        val at = parts.indexOf(raw)
+        if (at < 0) return
+        val left = parts.filterIndexed { index, _ -> index != at }
+        if (left.isEmpty()) abandon() else parts = left
+    }
 
     /** [raw] is the part acted on next, whichever was first: its result was tapped, or its way on. */
     fun focus(raw: String) {
@@ -239,10 +269,11 @@ internal class ResolveFlow(
         }
     }
 
-    /** A local match tapped in the resolver: the part is logged with its typed amount, and the queue moves on. */
+    /** A local match tapped in the resolver: the part is logged with its typed amount, and the queue moves on. With no meal yet, its source takes the pick. */
     fun resolve(food: FoodRecord) {
         val raw = parts.firstOrNull() ?: return
-        val meal = queueMeal.takeIf { queueActive } ?: return
+        if (!queueActive) return
+        val meal = queueMeal ?: run { source?.pickWithNoMeal(raw, food); return }
         // A serving of the picked food typed where a unit goes ("2 cans") is that serving; else the part as typed.
         val (amount, measure) = store.quantityOf(raw, food)
         val day = selectedDay()
@@ -283,6 +314,7 @@ internal class ResolveFlow(
         resolverOpen = parts.isNotEmpty() && source?.showsItsParts != true
         if (parts.isEmpty()) {
             queueMeal = null
+            mealFollowsText = false
             continuation = false
             if (!skipped) source?.allMatched()
             source?.queueEnded()

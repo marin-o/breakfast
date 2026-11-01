@@ -241,7 +241,13 @@ internal class AppOwners<D>(
             offParts.retain(resolve.parts.map(resolve::nameOf))
         },
         onMealChosen = resolve::changeMeal,
+        onTextMeal = resolve::textMealChanged,
+        onPickPlaced = { source, raw ->
+            resolve.pickPlaced(source, raw)
+            offParts.retain(resolve.parts.map(resolve::nameOf))
+        },
         queuedParts = { resolve.parts },
+        queueWaitsForMeal = { resolve.queueActive && resolve.queueMeal == null },
         onRenamed = { follow -> review.draftRenamed(follow) },
         resolvePart = resolve::beginPart,
         // Typed work comes back after the process was killed: the log draft (and an open food form, in [init]).
@@ -346,6 +352,7 @@ internal class AppOwners<D>(
         onCataloguePicked = { log.learnPick(it) },
         correctingEntry = feedback::correctingEntry,
         correct = feedback::correct,
+        partInDraft = log::partInDraft,
     )
     /** The Recipes tab: the list, the recipe page, logging one and Delete recipe (see [RecipeBook]). */
     val recipes: RecipeBook = RecipeBook(

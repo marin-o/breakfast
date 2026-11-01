@@ -84,6 +84,21 @@ class LogRulesTest {
         assertEquals(LogSubmitPlan.Error("Add at least one food."), logSubmitPlan(true, "  ", emptyList(), null, null))
     }
 
+    @Test fun theLogFieldStaysDownWhileFoodsAreBeingMatched() {
+        assertEquals(LogFieldFocus.KEYBOARD_DOWN, logFieldFocusOf(matching = true, menuOpen = false, writing = false))
+        assertEquals(LogFieldFocus.KEYBOARD_DOWN, logFieldFocusOf(matching = true, menuOpen = true, writing = false))
+        assertEquals(LogFieldFocus.KEYBOARD_DOWN, logFieldFocusOf(matching = true, menuOpen = false, writing = true))
+    }
+
+    @Test fun theLogFieldWaitsForTheMenuAndAWrite() {
+        assertEquals(LogFieldFocus.LEAVE, logFieldFocusOf(matching = false, menuOpen = true, writing = false))
+        assertEquals(LogFieldFocus.LEAVE, logFieldFocusOf(matching = false, menuOpen = false, writing = true))
+    }
+
+    @Test fun theLogFieldTakesFocusOtherwise() {
+        assertEquals(LogFieldFocus.FOCUS, logFieldFocusOf(matching = false, menuOpen = false, writing = false))
+    }
+
     @Test fun removeAllMealMarkerTokensDropsMealWordsOnly() {
         assertEquals("2 eggs, 1 banana", removeAllMealMarkerTokens("lunch, 2 eggs, dinner, 1 banana"))
     }

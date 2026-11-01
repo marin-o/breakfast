@@ -131,14 +131,17 @@ class FoodFormTest {
         assertEquals("saved Ayran new=true advances=true", events.last())
     }
 
-    @Test fun aQueueWithoutAMealRefusesTheSave() {
+    @Test fun aQueueWithoutAMealYetStoresTheFoodAloneAndGoesToTheReview() {
         queue = ResolveQueueView(null, listOf("ayran"), 1, TypedPart("ayran", null, null))
         form.open(fromResolver = true)
         typeFood()
+        events.clear()
         form.save()
-        assertEquals("Choose a meal before saving this food.", notices.message)
-        assertTrue(store.calls.isEmpty())
-        assertTrue(form.open)
+        assertEquals("nothing logged", listOf("save Ayran"), store.calls)
+        assertEquals(0, confirmed)
+        assertNull(notices.message)
+        assertFalse(form.open)
+        assertEquals(listOf("saved Ayran new=true advances=false", "review Ayran QUEUE"), events)
     }
 
     @Test fun anEditUpdatesTheFoodAndNeverLogs() {

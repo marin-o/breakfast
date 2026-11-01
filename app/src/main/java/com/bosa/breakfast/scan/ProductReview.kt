@@ -72,6 +72,9 @@ internal interface ProductStore {
  *   are added, quietly ([servingsToAdd]): to the product while it is reviewed, or, once it was saved or logged, to the
  *   stored food, unless that was edited since. Its nutrition is never taken. Leaving the review cancels it.
  *
+ * - **A queue with no meal yet** (the Log's Find matches): a queued part's review is a [ProductReviewOrigin.LOG_PART]
+ *   one for that part: Add stores the food and hands it to the Log's draft, and the Log asks for the meal.
+ *
  * Inputs from the screens around it are explicit: the day ([selectedDay]), the meal open beneath ([openMeal]) and the
  * resolve queue ([queue], with its current part as the Log read it). Closing tells the coordinator ([onClosed]); a log reports
  * whether it advanced the queue ([onLogged]); [findBetterMatch] and [rescan] leave through [openSearch] and [startScan].
@@ -107,6 +110,8 @@ internal class ProductReview(
     private val correctingEntry: () -> MealEntry? = { null },
     /** A correction's one write: it runs [store], the entry becomes that amount of the food stored, and [onStored] gets that food; with no entry left, [onGone] runs instead. */
     private val correct: (store: suspend () -> FoodRecord, amount: Double, measure: Measure, onGone: () -> Unit, onStored: (FoodRecord) -> Unit) -> Unit = { _, _, _, _, _ -> },
+    /** Where queued part [raw] is in the Log's draft. */
+    private val partInDraft: (raw: String) -> SegmentSpan? = { null },
 ) {
     var product by mutableStateOf<FoodRecord?>(null); private set
     var fromScan by mutableStateOf(false); private set
@@ -156,15 +161,18 @@ internal class ProductReview(
         val food = storedFood(picked.id)?.takeIf { isUsdaFoodId(picked.id) } ?: picked
         product = food
         this.fromScan = fromScan
-        this.origin = origin ?: productReviewOrigin(libraryTab = openMeal() == null, queueActive = resolveQueue != null)
+        val opened = origin ?: productReviewOrigin(libraryTab = openMeal() == null, queueActive = resolveQueue != null)
+        // No meal to log a queued part to yet: the pick goes to the draft in that part's place.
+        val waiting = resolveQueue?.takeIf { it.meal == null && !opened.takesNoMeal }
+        this.origin = if (waiting != null) ProductReviewOrigin.LOG_PART else opened
         val left = partLeft?.takeIf { it.origin == this.origin }
         partLeft = null
-        this.typed = typed ?: left?.typed
+        this.typed = typed ?: left?.typed ?: waiting?.current
         // A queued part's typed amount, or what the tap brought: a scanned part of the Log's draft starts plain, whatever is queued.
         val prefill = correctionPrefill(food)
             ?: (this.typed ?: resolveQueue?.takeIf { this.origin == ProductReviewOrigin.QUEUE }?.current)?.let { productPrefill(food, it) }
             ?: ProductPrefill(100.0, food.nutrition.unit)
-        this.replaces = replaces ?: left?.replaces
+        this.replaces = replaces ?: left?.replaces ?: waiting?.let { partInDraft(it.parts.first()) }
         filledAmount = prefill.amount
         amount = editableNumber(prefill.amount)
         servingName = prefill.servingName
@@ -325,7 +333,7 @@ internal class ProductReview(
             return
         }
         val resolveQueue = queue()
-        // Never null: [chosen] is a meal, and an active queue has its own ([queueLogPlan]). If that ever breaks, crash
+        // Never null: [chosen] is a meal, and a queue with none reviews as a part of the draft ([choose]). If that ever breaks, crash
         // loudly rather than ignore the tap.
         val plan = queueLogPlan(queueActive = resolveQueue != null, resolveQueue?.meal, chosen)
             ?: error("Resolve queue is active but has no meal")

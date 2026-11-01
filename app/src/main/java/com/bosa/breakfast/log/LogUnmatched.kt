@@ -126,7 +126,7 @@ private fun UnmatchedRow(row: DraftRow.Unresolved, parts: UnmatchedParts, open: 
         AnimatedVisibility(open, enter = motion.rowIn(), exit = motion.rowOut()) {
             Column(Modifier.fillMaxWidth().padding(start = PartInset, top = 4.dp).semantics { isTraversalGroup = true }) {
                 choices.forEach { choice ->
-                    // One tap: this part, with its amount, logs to the queue's meal and leaves the draft.
+                    // One tap: this part, with its amount, logs to the queue's meal and leaves the draft; with no meal yet, the Log asks.
                     PartFoodRow(name, choice.food.name, choice.quantityLine, choice.kcal) { onFocus(); parts.resolve.resolve(choice.food) }
                 }
                 catalogue.forEach { food ->

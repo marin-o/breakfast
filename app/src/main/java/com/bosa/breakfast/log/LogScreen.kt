@@ -60,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
@@ -98,8 +99,16 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
     val requester = remember { FocusRequester() }
     // The keyboard stays down while unmatched foods show their results, so it never covers them; a tap on the text brings it back.
     val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
     val matching = unmatched.resolve.queueActive
-    LaunchedEffect(matching) { if (matching) keyboard?.hide() else requester.requestFocus() }
+    // The field gives up focus, not only the keyboard: a focused field brings it back when a closing menu returns the window's focus.
+    LaunchedEffect(matching, log.mealMenuOpen) {
+        when (logFieldFocusOf(matching, log.mealMenuOpen, session.busy)) {
+            LogFieldFocus.KEYBOARD_DOWN -> { focusManager.clearFocus(); keyboard?.hide() }
+            LogFieldFocus.FOCUS -> requester.requestFocus()
+            LogFieldFocus.LEAVE -> Unit
+        }
+    }
     val tick = rememberTick()
 
     Column(
@@ -155,7 +164,7 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
         }
         // While its unmatched foods are worked through, the batch that just logged and each part say so here.
         Column(Modifier.fillMaxWidth().padding(horizontal = SnackbarGutter)) {
-            UndoSnackbars(undo, shown = queueActive)
+            UndoSnackbars(undo, shown = unmatched.resolve.queueHasMeal)
             ConfirmationSnackbar(confirmations.message)
         }
         // The add bar sits above whichever is taller: the keyboard or the navigation bar.

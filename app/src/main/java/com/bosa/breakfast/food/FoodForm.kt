@@ -61,7 +61,7 @@ internal data class NewFood(
  *   resolve queue's while one is being resolved, else the meal open beneath), and is saved alone otherwise, and always
  *   while a part is being resolved ([resolvingPart]: of the Log's draft, which logs it, or of a recipe's ingredients; the
  *   food becomes that part's pick, with no notice, so nothing covers the next step). A queue
- *   without a meal refuses the save.
+ *   without a meal yet takes it through its review, which hands it to the Log's draft.
  * - **Process death:** [savedForm] is what the coordinator mirrors into `SavedStateHandle` and [restore] puts back; not
  *   while a part or a queue is being resolved, since what Save does there would not come back.
  *
@@ -206,7 +206,9 @@ internal class FoodForm(
         val basisUnit = resolved.basisUnit
         val nutrition = NutritionValues(kcal, resolved.protein, resolved.carbohydrates, resolved.fat)
         val resolveQueue = queue()
-        val thenReview = reviewAfterSave.takeIf { editingId == null && !resolvingPart() && (resolveQueue == null || it?.takesNoMeal == true) }
+        val waitsForMeal = resolveQueue != null && resolveQueue.meal == null
+        val thenReview = (reviewAfterSave ?: ProductReviewOrigin.QUEUE.takeIf { waitsForMeal })
+            .takeIf { editingId == null && !resolvingPart() && (resolveQueue == null || waitsForMeal || it?.takesNoMeal == true) }
         val plan = if (thenReview != null) null else foodSaveTarget(resolvingPart(), resolveQueue, openMeal())
         val saveTarget = plan?.meal
         val resolvesQueue = plan?.advancesQueue == true
