@@ -4,6 +4,7 @@ import com.iron.breakfast.ui.components.SubScreen
 import com.iron.breakfast.ui.components.inert
 import com.iron.breakfast.ui.components.rememberMotion
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -56,6 +58,8 @@ internal fun SettingsScreen(settings: SettingsState, surfaces: Surfaces, transfe
     // way out takes no tap and is not read. Each page starts at its top.
     AnimatedContent(
         targetState = settings.page,
+        // Both pages are part faded mid-change: this keeps the screen beneath from showing through them.
+        modifier = Modifier.fillMaxSize().background(colors.bg),
         transitionSpec = { motion.pageChange(deeper = pageDepth(targetState) > pageDepth(initialState)) },
         label = "settings page",
     ) { page ->
