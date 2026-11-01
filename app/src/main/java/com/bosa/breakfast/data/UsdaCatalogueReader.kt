@@ -17,7 +17,7 @@ import java.io.IOException
 import java.io.InputStream
 
 /** The file's version: raise it whenever the file's content changes, with `CATALOGUE_VERSION` in `tools/build_usda_catalogue.py`. */
-internal const val USDA_CATALOGUE_VERSION = 5
+internal const val USDA_CATALOGUE_VERSION = 6
 
 private const val USDA_FILE_NAME = "fndds-2021-2023-v$USDA_CATALOGUE_VERSION.sqlite"
 

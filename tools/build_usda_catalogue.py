@@ -28,7 +28,7 @@ ARCHIVE_SHA256 = "dfb06ae7ddc397ccd570b91c14b75438ab2ba39f64f22d321f61d4a52a77f3
 ARCHIVE_MEMBER = "surveyDownload.json"
 
 # Raise it whenever the file's content changes, with USDA_CATALOGUE_VERSION in UsdaCatalogueReader.kt.
-CATALOGUE_VERSION = 5
+CATALOGUE_VERSION = 6
 # Not ".gz": the Android Gradle plugin unpacks a .gz asset when it merges assets and drops the extension.
 DEFAULT_OUTPUT = (
     Path(__file__).resolve().parent.parent / "app/src/main/assets/usda" / f"fndds-2021-2023-v{CATALOGUE_VERSION}.sqlite.gzip"
@@ -54,7 +54,7 @@ ALIASES = (("breaded", "coated"),)
 COMMON_BUMP = 1
 COMMON_FOODS = (
     "Chicken breast, grilled without sauce, skin not eaten", "Rice, cooked, NFS", "Bread, white", "Potato, boiled, NFS",
-    "Beans, NFS", "Lentils, NFS", "Water, tap", "Shrimp, NFS", "Sausage, NFS", "Corn, raw",
+    "Beans, NFS", "Lentils, NFS", "Water, tap", "Shrimp, NFS", "Sausage, NFS", "Corn, raw", "Peppers, raw, NFS",
     "Egg, whole, raw", "Milk, NFS", "Yogurt, NFS", "Cheese, NFS", "Butter, NFS", "Olive oil", "Sunflower oil",
     "Banana, raw", "Apple, raw", "Orange, raw", "Lemon, raw", "Pear, raw", "Peach, raw", "Plum, raw", "Cherries, raw",
     "Strawberries, raw", "Grapes, raw", "Watermelon, raw", "Pineapple, raw", "Avocado, raw", "Tomatoes, raw",

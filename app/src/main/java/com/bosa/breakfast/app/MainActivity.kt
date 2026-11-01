@@ -66,7 +66,7 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(vm.settings.theme) { applyTheme(vm.settings.theme) }
             LaunchedEffect(vm.settings.textSize) { applyTextSize(vm.settings.textSize) }
             CompositionLocalProvider(LocalMotionForcedReduced provides (vm.settings.motion == MotionChoice.REDUCED), LocalHaptics provides vm.settings.haptics) {
-                BreakfastTheme(dark = darkThemeOf(vm.settings.theme, isSystemInDarkTheme())) { BreakfastApp(vm) }
+                BreakfastTheme(dark = darkThemeOf(vm.settings.theme, isSystemInDarkTheme()), macroPalette = vm.settings.macroColors) { BreakfastApp(vm) }
             }
         }
     }

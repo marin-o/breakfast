@@ -58,6 +58,12 @@ class UsdaSearchTest {
         assertEquals("\"beans\" \"peas\" \"oats\" \"rolls\" \"buns\" \"chips\" \"nuts\" \"dates*\"", asked.first())
     }
 
+    @Test fun `a singular counts its plural in the name as whole`() {
+        assertEquals(listOf("Tomatoes, raw", "Tomatoish"), ranked("tomato", "Tomatoish", "Tomatoes, raw"))
+        assertEquals(listOf("\"cherry*\"", "\"cherries\""), expressions("cherry"))
+        assertEquals(listOf("\"turkey*\""), expressions("turkey"))
+    }
+
     @Test fun `a plural counts its singular in the name as whole`() {
         assertEquals(
             listOf("Chicken breast, fried, coated", "Chicken"),

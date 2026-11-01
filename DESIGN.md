@@ -60,8 +60,17 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 
 ## Rules
 
-- Colours are only the tokens above. Interactive elements are ink. Green (`ok`) is only for constructive actions (add, save, log). Red (`bad`) is only for delete and error. Green and red are the only colours of actions; besides them, only the macro marks are coloured.
+- Colours are only the tokens above and the macro palettes below. Interactive elements are ink. Green (`ok`) is only for constructive actions (add, save, log). Red (`bad`) is only for delete and error. Green and red are the only colours of actions; besides them, only the macro marks are coloured.
 - Macro colours (`protein`, `carbs`, `fat`) mark protein, carbs and fat and nothing else, on small marks only: bars and dots (8dp, 5dp before the label, on its first line). Numbers and text stay ink or soft. They appear on the DayTotal bars (Daily, entry detail, the tutorial's sample), as dots in a text line of macros (the scan review's line, the amount sheet, Edit entry), before the macro lines of a food's or recipe's page (`NutritionFacts`; Contribute's "Will send" stays monochrome) and before the macro field labels (Profile, New food, Edit food, the scan review's details). They stay out of the big kcal figure, food rows and lists, tabs, buttons, chips, the Log and the charts, and no meal has a line of its own. The light `fat` mustard's low contrast on `bg` (about 2.25:1) is the owner's choice. `macroColor` in `ui/theme/Color.kt` is the one map and `MacroLabel` in `Components.kt` the one dot and label.
+- Settings, Accessibility, "Macro colours" picks the macro colours, Standard by default, and a change shows at once on every screen. Only the three macro colours change: `ok`, `bad` and every other token stay as they are in every palette, so green and red keep their meaning. Protanopia and Deuteranopia are one palette; Monochrome is the theme's `ink` for all three. `breakfastColors` in `ui/theme/Color.kt` is the one table.
+
+  | Palette, as protein, carbs, fat | Light | Dark |
+  | --- | --- | --- |
+  | Standard | `#2A63B8`, `#AB1F7F`, `#B08600` | `#6AA5F0`, `#F36BC4`, `#E3B52E` |
+  | Protanopia, Deuteranopia | `#2F6FD0`, `#2A1A3E`, `#B8890A` | `#5C9CF5`, `#F2F0FA`, `#E0AE20` |
+  | Tritanopia | `#0F7C8C`, `#D23A3A`, `#3B2A20` | `#3FC1D0`, `#F2736E`, `#E8DDD0` |
+  | Monochrome | `ink` (`#111214`) | `ink` (`#F2F3F5`) |
+
 - One big figure per screen at most (the 72sp day total or entry kcal). Everything else is calm.
 - No cards, no shadows, no gradients (the composer's `bg` fade is the only one), no chips or pills, no fills behind content.
 - Sentence case everywhere. No all-caps labels, no middle dots, no emoji, no decimal commas. Decimals use a dot; numbers are tabular with no thousands separators.

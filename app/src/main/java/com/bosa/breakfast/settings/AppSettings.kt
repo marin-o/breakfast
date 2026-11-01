@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.bosa.breakfast.ui.components.LongDraft
+import com.bosa.breakfast.ui.theme.MacroPalette
 
 /** The few reads and writes [AppSettings] makes; SharedPreferences in the app ([SharedPreferencesStore]), a map in tests. */
 internal interface SettingsStore {
@@ -133,6 +134,11 @@ internal class AppSettings(private val prefs: SettingsStore) {
         get() = prefs.getBoolean(HAPTICS_KEY, false)
         set(value) = prefs.edit { putBoolean(HAPTICS_KEY, value) }
 
+    /** "Macro colours": Standard by default. */
+    var macroColors: MacroPalette
+        get() = enumOf(prefs.getString(MACRO_COLORS_KEY, null), MacroPalette.STANDARD)
+        set(value) = prefs.edit { putString(MACRO_COLORS_KEY, value.name) }
+
     /** "Flashlight at start": the scanner opens with the torch on; off by default. */
     var flashlightAtStart: Boolean
         get() = prefs.getBoolean(FLASHLIGHT_AT_START_KEY, false)
@@ -203,6 +209,7 @@ internal class AppSettings(private val prefs: SettingsStore) {
         const val MOTION_KEY = "motion"
         const val TEXT_SIZE_KEY = "text_size"
         const val HAPTICS_KEY = "haptics"
+        const val MACRO_COLORS_KEY = "macro_colors"
         const val THEME_KEY = "theme"
         const val SHOW_MACROS_KEY = "show_macros"
         const val SHOW_MISSING_NOTE_KEY = "show_missing_note"

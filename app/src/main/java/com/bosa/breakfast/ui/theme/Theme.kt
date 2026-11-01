@@ -29,8 +29,8 @@ private fun BreakfastColors.toMaterial(dark: Boolean): ColorScheme {
 }
 
 @Composable
-fun BreakfastTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    val colors = if (dark) DarkBreakfastColors else LightBreakfastColors
+fun BreakfastTheme(dark: Boolean = isSystemInDarkTheme(), macroPalette: MacroPalette = MacroPalette.STANDARD, content: @Composable () -> Unit) {
+    val colors = breakfastColors(dark, macroPalette)
     CompositionLocalProvider(LocalBreakfastColors provides colors) {
         MaterialTheme(colorScheme = colors.toMaterial(dark), typography = BreakfastTypography, shapes = BreakfastShapes) {
             // Tabular numbers and the Macedonian shaping locale apply to every text that does not set its own.

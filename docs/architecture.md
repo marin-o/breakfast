@@ -147,6 +147,7 @@ Settings opens from the gear icon at the right end of the bottom bar (Meals, Lib
 | Accessibility | Motion (`motion`) | System | Reduced makes `rememberMotionReduced` true, as "Remove animations" does, which turns all motion off (see Motion). |
 | Accessibility | Text size (`text_size`) | System | Larger overrides the activity's font scale with 1.15 × the phone's (`attachBaseContext`, recreated on a change), so `LocalDensity`, dialogs and sheets follow and `isLargeFont` applies as before. |
 | Accessibility | Haptics (`haptics`) | Off | On: the standard CONFIRM (VIRTUAL_KEY below API 30) on Add and Undo; no permission. |
+| Accessibility | Macro colours (`macro_colors`) | Standard | `BreakfastTheme` takes the palette and `breakfastColors` (`ui/theme/Color.kt`) gives the tokens with its macro colours, so every macro mark follows at once, without a recreation. |
 | Scanner | Flashlight at start (`flashlight_at_start`) | Off | On: the torch starts on when the camera has a flash unit. |
 | Scanner | Look up unknown barcodes (`look_up_barcodes`) | On | Off: a barcode not in the Library opens New food with it; no network request. |
 | Scanner | Contribute (`show_contribute`) | Show | Hide: no Contribute to Open Food Facts on food detail or after a scanned product. |

@@ -5,7 +5,7 @@ import androidx.compose.ui.graphics.Color
 
 /**
  * Monochrome tokens. Green (`ok`) and red (`bad`) are the only colours of actions; `protein`, `carbs` and `fat` mark
- * those macros and nothing else, on small marks only (bars and dots).
+ * those macros and nothing else, on small marks only (bars and dots), and only they follow the [MacroPalette].
  */
 data class BreakfastColors(
     val bg: Color, val ink: Color, val soft: Color, val line: Color,
@@ -41,6 +41,24 @@ val DarkBreakfastColors = BreakfastColors(
  * The text on a `bad` fill (the swipe Delete): white (`cameraMark`) in light mode, 7.26:1; `bg` in dark mode, 6.07:1,
  * where white on the lighter dark `bad` is only 3.09:1.
  */
-internal fun swipeLabelOnBad(colors: BreakfastColors): Color = if (colors == DarkBreakfastColors) colors.bg else colors.cameraMark
+internal fun swipeLabelOnBad(colors: BreakfastColors): Color = if (colors.bg == DarkBreakfastColors.bg) colors.bg else colors.cameraMark
+
+/** The "Macro colours" choice. Protanopia and Deuteranopia are one palette under two names. */
+enum class MacroPalette { STANDARD, PROTANOPIA, DEUTERANOPIA, TRITANOPIA, MONOCHROME }
+
+/** The tokens of a theme with [palette]'s macro colours: the one place a palette meets its colours, read through [macroColor]. */
+internal fun breakfastColors(dark: Boolean, palette: MacroPalette): BreakfastColors {
+    val base = if (dark) DarkBreakfastColors else LightBreakfastColors
+    return when (palette) {
+        MacroPalette.STANDARD -> base
+        MacroPalette.PROTANOPIA, MacroPalette.DEUTERANOPIA ->
+            if (dark) base.copy(protein = Color(0xFF5C9CF5), carbs = Color(0xFFF2F0FA), fat = Color(0xFFE0AE20))
+            else base.copy(protein = Color(0xFF2F6FD0), carbs = Color(0xFF2A1A3E), fat = Color(0xFFB8890A))
+        MacroPalette.TRITANOPIA ->
+            if (dark) base.copy(protein = Color(0xFF3FC1D0), carbs = Color(0xFFF2736E), fat = Color(0xFFE8DDD0))
+            else base.copy(protein = Color(0xFF0F7C8C), carbs = Color(0xFFD23A3A), fat = Color(0xFF3B2A20))
+        MacroPalette.MONOCHROME -> base.copy(protein = base.ink, carbs = base.ink, fat = base.ink)
+    }
+}
 
 val LocalBreakfastColors = staticCompositionLocalOf { LightBreakfastColors }

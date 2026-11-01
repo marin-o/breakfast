@@ -2,6 +2,7 @@ package com.bosa.breakfast.settings
 
 import com.bosa.breakfast.domain.MealSlot
 import com.bosa.breakfast.ui.components.LongDraft
+import com.bosa.breakfast.ui.theme.MacroPalette
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -156,6 +157,7 @@ class SettingsStateTest {
         state.chooseMotion(MotionChoice.REDUCED); assertEquals(MotionChoice.REDUCED, state.motion)
         state.chooseTextSize(TextSizeChoice.LARGER); assertEquals(TextSizeChoice.LARGER, state.textSize)
         state.chooseHaptics(true); assertTrue(state.haptics)
+        state.chooseMacroColors(MacroPalette.TRITANOPIA); assertEquals(MacroPalette.TRITANOPIA, state.macroColors)
         state.chooseFlashlightAtStart(true); assertTrue(state.flashlightAtStart)
         state.chooseLookUpBarcodes(false); assertFalse(state.lookUpBarcodes)
         state.chooseShowContribute(false); assertFalse(state.showContribute)
@@ -173,13 +175,40 @@ class SettingsStateTest {
             setOf(
                 "day_start_hour", "undo_window", "meal_mode", "breakfast_until", "lunch_until", "dinner_until", "before_day_start",
                 "count_typing", "learn_from_picks", "theme", "long_draft", "show_macros", "show_missing_note", "decimal_mark",
-                "motion", "text_size", "haptics", "flashlight_at_start", "look_up_barcodes", "show_contribute", "export_reminder",
+                "motion", "text_size", "haptics", "macro_colors", "flashlight_at_start", "look_up_barcodes", "show_contribute", "export_reminder",
                 "keep_safety_copy", "last_export_ms", "export_reminder_shown_ms", "export_reminder_enabled_ms",
             ),
             store.values.keys,
         )
         assertEquals("FIVE_SECONDS", store.values["undo_window"])
         assertEquals(5, store.values["day_start_hour"])
+    }
+
+    @Test fun macroColorsAreStandardUntilChosen() {
+        assertEquals(MacroPalette.STANDARD, state.macroColors)
+        assertNull(store.values["macro_colors"])
+    }
+
+    @Test fun everyMacroPaletteIsStoredByNameAndReadBack() {
+        MacroPalette.entries.forEach { palette ->
+            state.chooseMacroColors(palette)
+            assertEquals(palette.name, store.values["macro_colors"])
+            assertEquals(palette, AppSettings(store).macroColors)
+            assertEquals(palette, SettingsState(AppSettings(store)) { now }.macroColors)
+        }
+    }
+
+    @Test fun anUnknownStoredMacroPaletteReadsAsStandard() {
+        store.values["macro_colors"] = "SEPIA"
+        assertEquals(MacroPalette.STANDARD, AppSettings(store).macroColors)
+        assertEquals(MacroPalette.STANDARD, SettingsState(AppSettings(store)) { now }.macroColors)
+    }
+
+    @Test fun aResetPutsTheMacroColorsBackToStandard() {
+        state.chooseMacroColors(MacroPalette.MONOCHROME)
+        state.resetToDefaults()
+        assertEquals(MacroPalette.STANDARD, state.macroColors)
+        assertNull(store.values["macro_colors"])
     }
 
     @Test fun anObserverRunsAfterEachChangeWithTheNewValue() {

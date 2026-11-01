@@ -48,8 +48,8 @@ internal data class UsdaQuery(val words: List<String>, val aliases: Map<String, 
         expressions.flatMap { expression -> tries.map { expression + it } }.take(MAX_EXPRESSIONS)
     }.map { it.joinToString(" ") }
 
-    /** The whole words that also count as [word]: its aliases and its singular forms ([singularForms]), "breasts" as "breast". */
-    private fun otherForms(word: String): List<String> = aliases[word].orEmpty() + (singularForms(word) - word)
+    /** The whole words that also count as [word]: its aliases, its singular forms ("breasts" as "breast") and an "-ies" plural a prefix can't reach ("cherry" as "cherries"). */
+    private fun otherForms(word: String): List<String> = aliases[word].orEmpty() + (singularForms(word) - word) + listOfNotNull(iesPlural(word))
 
     /**
      * The order of the answers: more words whole in the name, then more words in the name at all (the rest are only in
@@ -65,11 +65,11 @@ internal data class UsdaQuery(val words: List<String>, val aliases: Map<String, 
     )
 
     private fun wholeInName(name: Set<String>): Int =
-        words.count { word -> word in name || otherForms(word).any { it in name } }
+        words.count { word -> word in name || otherForms(word).any { it in name } || name.any { word in singularForms(it) } }
 
     /** 1 when only the last word's prefix is in the name; a whole last word is counted by [wholeInName]. */
     private fun prefixInName(name: Set<String>): Int {
-        val whole = lastWord in name || otherForms(lastWord).any { it in name }
+        val whole = lastWord in name || otherForms(lastWord).any { it in name } || name.any { lastWord in singularForms(it) }
         return if (lastIsPrefix && !whole && name.any { it.startsWith(lastWord) }) 1 else 0
     }
 }
@@ -100,6 +100,10 @@ internal fun usdaQuery(text: String, aliases: Map<String, List<String>>, transla
     val others = english.filter { it.size > 1 }.associate { it.first() to it.drop(1) + aliases[it.first()].orEmpty() }
     return UsdaQuery(words, aliases + others)
 }
+
+/** "cherry" as "cherries"; null for any word not ending in a consonant and "y" ("turkey"). */
+private fun iesPlural(word: String): String? =
+    if (word.length > 2 && word.endsWith("y") && word[word.length - 2] !in "aeiou") word.dropLast(1) + "ies" else null
 
 /** The words of [text] as the index holds them: [matchWords], with the `.` and `%` it keeps as breaks ("2.8%" is 2, 8). */
 private fun usdaWords(text: String): List<String> =

@@ -57,7 +57,7 @@ class UsdaCatalogueReaderTest {
         assertEquals(0, count("SELECT count(*) FROM portion WHERE grams <= 0"))
         assertEquals(1, count("SELECT count(*) FROM alias"))
         assertEquals(153, count("SELECT count(*) FROM translation"))
-        assertEquals(60, count("SELECT count(*) FROM food WHERE bump > 0"))
+        assertEquals(61, count("SELECT count(*) FROM food WHERE bump > 0"))
         db.rawQuery("PRAGMA integrity_check", null).use {
             it.moveToFirst()
             assertEquals("ok", it.getString(0))
@@ -119,6 +119,13 @@ class UsdaCatalogueReaderTest {
         assertEquals(emptyList<Any>(), search("чорба"))
         assertEquals(emptyList<Any>(), search("egg чорба"))
         assertEquals(emptyList<Any>(), search("eгg"))
+    }
+
+    @Test fun aSingularFindsThePlainFoodPrintedInThePlural() {
+        assertEquals("Tomatoes, raw", search("tomato").first().name)
+        assertEquals("Peppers, raw, NFS", search("pepper").first().name)
+        assertTrue(search("strawberry").any { it.name == "Strawberries, raw" })
+        assertTrue(search("cherry").any { it.name == "Cherries, raw" })
     }
 
     @Test fun aBumpPutsTheCommonFoodFirst() {

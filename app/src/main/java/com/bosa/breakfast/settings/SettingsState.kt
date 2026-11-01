@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.bosa.breakfast.domain.MealSlot
 import com.bosa.breakfast.ui.components.LongDraft
+import com.bosa.breakfast.ui.theme.MacroPalette
 import kotlin.reflect.KMutableProperty1
 
 /**
@@ -73,6 +74,7 @@ internal class SettingsState(private val prefs: AppSettings, private val clock: 
     val motionSetting = setting(AppSettings::motion)
     val textSizeSetting = setting(AppSettings::textSize)
     val hapticsSetting = setting(AppSettings::haptics)
+    val macroColorsSetting = setting(AppSettings::macroColors)
     val flashlightAtStartSetting = setting(AppSettings::flashlightAtStart)
     val lookUpBarcodesSetting = setting(AppSettings::lookUpBarcodes)
     val showContributeSetting = setting(AppSettings::showContribute)
@@ -126,9 +128,11 @@ internal class SettingsState(private val prefs: AppSettings, private val clock: 
     val motion: MotionChoice get() = motionSetting.value
     val textSize: TextSizeChoice get() = textSizeSetting.value
     val haptics: Boolean get() = hapticsSetting.value
+    val macroColors: MacroPalette get() = macroColorsSetting.value
     fun chooseMotion(choice: MotionChoice) = motionSetting.set(choice)
     fun chooseTextSize(choice: TextSizeChoice) = textSizeSetting.set(choice)
     fun chooseHaptics(on: Boolean) = hapticsSetting.set(on)
+    fun chooseMacroColors(palette: MacroPalette) = macroColorsSetting.set(palette)
 
     // Scanner
     val flashlightAtStart: Boolean get() = flashlightAtStartSetting.value

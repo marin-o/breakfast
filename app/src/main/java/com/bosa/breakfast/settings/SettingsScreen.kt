@@ -45,6 +45,7 @@ import com.bosa.breakfast.ui.components.Hairline
 import com.bosa.breakfast.ui.components.LongDraft
 import com.bosa.breakfast.ui.theme.BreakfastType
 import com.bosa.breakfast.ui.theme.LocalBreakfastColors
+import com.bosa.breakfast.ui.theme.MacroPalette
 
 /**
  * Settings, opened from the bottom bar's gear over Daily or the Library: the list of groups, each a row that opens the
@@ -129,6 +130,8 @@ private fun ColumnScope.AccessibilityPage(settings: SettingsState) {
     ChoiceRow("Text size", TEXT_SIZE_CHOICES, settings.textSize, settings::chooseTextSize)
     Hairline()
     ChoiceRow("Haptics", ON_OFF, settings.haptics, settings::chooseHaptics)
+    Hairline()
+    ChoiceRow("Macro colours", MACRO_COLOR_CHOICES, settings.macroColors, settings::chooseMacroColors)
     Hairline()
 }
 
@@ -244,6 +247,10 @@ private val EXPORT_REMINDER_CHOICES = listOf(ExportReminder.NEVER to "Never", Ex
 private val SAFETY_COPY_CHOICES = listOf(true to "Keep", false to "Don't keep")
 private val MOTION_CHOICES = listOf(MotionChoice.SYSTEM to "System", MotionChoice.REDUCED to "Reduced")
 private val TEXT_SIZE_CHOICES = listOf(TextSizeChoice.SYSTEM to "System", TextSizeChoice.LARGER to "Larger")
+private val MACRO_COLOR_CHOICES = listOf(
+    MacroPalette.STANDARD to "Standard", MacroPalette.PROTANOPIA to "Protanopia", MacroPalette.DEUTERANOPIA to "Deuteranopia",
+    MacroPalette.TRITANOPIA to "Tritanopia", MacroPalette.MONOCHROME to "Monochrome",
+)
 private val THEME_CHOICES = listOf(ThemeChoice.SYSTEM to "System", ThemeChoice.LIGHT to "Light", ThemeChoice.DARK to "Dark")
 private val DECIMAL_MARK_CHOICES = listOf(DecimalMark.POINT to "Point", DecimalMark.COMMA to "Comma")
 private val LONG_DRAFT_CHOICES = listOf(LongDraft.END to "End", LongDraft.START to "Start", LongDraft.TWO_LINES to "Two lines")
