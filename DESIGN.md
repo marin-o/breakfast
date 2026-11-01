@@ -1,6 +1,6 @@
 ---
 name: Breakfast
-description: Monochrome. Soft grey ground, ink type, one big figure per screen, green and red only for actions.
+description: Monochrome. Soft grey ground, ink type, one big figure per screen, green and red only for actions, three small macro marks.
 colors:
   bg: "#D0D4D8"
   ink: "#111214"
@@ -12,6 +12,9 @@ colors:
   scrim: "rgba(17,18,20,0.32)"
   camera-ground: "#0B0C0E"
   camera-mark: "#FFFFFF"
+  protein: "#2A63B8"
+  carbs: "#AB1F7F"
+  fat: "#B08600"
 dark-colors:
   bg: "#111214"
   ink: "#F2F3F5"
@@ -23,6 +26,9 @@ dark-colors:
   scrim: "rgba(0,0,0,0.6)"
   camera-ground: "#0B0C0E"
   camera-mark: "#FFFFFF"
+  protein: "#6AA5F0"
+  carbs: "#F36BC4"
+  fat: "#E3B52E"
 typography:
   family: "Geologica (300, 400, 500, 600), tabular numbers, mk locale on the root style"
   hero: "72sp/76sp 300, tracking -0.04em, one per screen"
@@ -54,7 +60,8 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 
 ## Rules
 
-- Colours are only the tokens above. Interactive elements are ink. Green (`ok`) is only for constructive actions (add, save, log). Red (`bad`) is only for delete and error. Nothing else is coloured.
+- Colours are only the tokens above. Interactive elements are ink. Green (`ok`) is only for constructive actions (add, save, log). Red (`bad`) is only for delete and error. Green and red are the only colours of actions; besides them, only the macro marks are coloured.
+- Macro colours (`protein`, `carbs`, `fat`) mark protein, carbs and fat and nothing else, on small marks only: bars and dots (8dp, 5dp before the label, on its first line). Numbers and text stay ink or soft. They appear on the DayTotal bars (Daily, entry detail, the tutorial's sample), as dots in a text line of macros (the scan review's line, the amount sheet, Edit entry), before the macro lines of a food's or recipe's page (`NutritionFacts`; Contribute's "Will send" stays monochrome) and before the macro field labels (Profile, New food, Edit food, the scan review's details). They stay out of the big kcal figure, food rows and lists, tabs, buttons, chips, the Log and the charts, and no meal has a line of its own. The light `fat` mustard's low contrast on `bg` (about 2.25:1) is the owner's choice. `macroColor` in `ui/theme/Color.kt` is the one map and `MacroLabel` in `Components.kt` the one dot and label.
 - One big figure per screen at most (the 72sp day total or entry kcal). Everything else is calm.
 - No cards, no shadows, no gradients (the composer's `bg` fade is the only one), no chips or pills, no fills behind content.
 - Sentence case everywhere. No all-caps labels, no middle dots, no emoji, no decimal commas. Decimals use a dot; numbers are tabular with no thousands separators.
@@ -82,8 +89,8 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 
 - A personal food's page and Edit food end with **Delete food** (DestructiveButton, outlined). It asks first in a dialog: "Past entries keep their numbers." with **Delete food** and **Cancel**. Deleting is for good (no Undo); past entries keep their own name and numbers. There is no Archived list and no Restore.
 - The Library header on the Library tab is the title (17sp/500, at Daily's height, as every header), its count line and **New food**; there is no menu. A meal's Library has the back arrow and "Wed 14 Oct", the one way a day is written.
-- Numbers: a macro nothing knows reads "—", never 0. Under a kcal figure the macros read "Protein 8 g, carbs 40 g, fat 4 g"; inside the scan review's line, "P 2, C 9, F 8". A field shows at most three decimals, and that is display only: left as it was, it keeps the exact stored value.
-- The nutrient fields are two by two, 12dp apart on New food and 16dp on Edit food; the scan review has them in one row, 8dp apart, while a label and a number with its padding fit a quarter.
+- Numbers: a macro nothing knows reads "—", never 0. Under a kcal figure the macros read "Protein 8 g, carbs 40 g, fat 4 g"; inside the scan review's line, "P 2, C 9, F 8". That is how TalkBack says them; on screen each macro has its dot before it and no comma, the parts 10dp apart, and the scan review's "Per 100 g: 143 kcal" ends without one. A field shows at most three decimals, and that is display only: left as it was, it keeps the exact stored value.
+- The nutrient fields are two by two, 12dp apart on New food and 16dp on Edit food; the scan review has them in one row, 8dp apart, while a label and a number with its padding fit a quarter. Profile's macro targets are three across, one per row when a label and its dot wouldn't fit a column.
 - A scan's review is for where it started: the Library tab saves to the Library; Daily, a meal or a meal's Library logs, with the amount and the meal (starting on the automatic meal); the Log page adds a part to its draft, with the amount and "Add", no meal. An unknown barcode goes through New food to the same step.
 - Foods Add could not match stay on the Log, for the same meal: each "Not in your foods" row opens and closes (Quiet motion, 200ms; a chevron turns), the first starts open, and under it, inset 16dp (`PartInset`), are its Open Food Facts results as FoodRows, then its ways on: Search Open Food Facts, Create personal food, Search your foods, Skip. While searching it shows the search's progress line; offline, on an error or with no results it says so in the search screen's words. A tapped result opens the review for that part; a resolved one leaves the list, the next opens, and the last closes the Log. Open Food Facts is searched only on Add, one food at a time, for foods with no local match. A part with several local matches reads "which one?" and opens and closes the same way, with those foods inset under it (the amount it would log, and kcal); one tap logs that food to the meal and takes the part out of the draft. A result is shown only with a name word in the script typed, on the search screen too. While rows remain, the Log shows the Undo snackbar of the batch that logged, "Not right?" waits until the Log closes, and the meal button changes where they log.
 - The amount never chooses the food. A part whose food has no number for the unit typed shows that food with "No value for tbsp" and does not log. The chip Add would log has an `ok` green border and an ink label. When nothing would log and a part needs a match (one being typed only once it has nothing to show), the bar is one full-width "Find matches" with no sum, at the same height; while all of those are being matched the bar goes, unless something else would log; when only what cannot log is left, Add is full width, disabled, with no sum.
@@ -94,13 +101,13 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 - **FoodRow**: name 16sp ink, quantity line 14sp soft beneath, kcal right-aligned in soft (ink 500 for totals). 9dp top padding, no separators.
 - **MealHeader**: a 30dp gap, a 1dp hairline, then 16dp, then the heading (20sp/500), the time (13sp soft), the total (17sp/500) and an AddCircle. At large font the time drops under the heading. "Nothing yet" in soft for an empty meal.
 - **DayHeader**: date title 17sp/500 on the left, a "Go To Today" text button when not on today, previous and next arrows on the right.
-- **DayTotal**: 72sp/300 kcal, "kilocalories today" in soft 14sp (with a kcal target, "/ 2000 kcal" in soft 14sp between them), then three macro columns: a 2dp `line` track with a 2dp `ink` fill (the macro's share of kcal), the value 20sp/500 with its unit in soft 14sp, and a soft 13sp label. At large font (2.0) the macros stack one per row, with the value, unit and label on one line under each bar. A macro no entry has reads "—" (as in the Library); a sum that leaves out entries without the macro reads "12 g ?", the "?" in the unit's soft style, and one soft 13sp line "? some foods have no value" follows the macros.
+- **DayTotal**: 72sp/300 kcal, "kilocalories today" in soft 14sp (with a kcal target, "/ 2000 kcal" in soft 14sp between them), then three macro columns: a 4dp `line` track with 2dp corners and a fill in the macro's colour, clipped to it (the macro's share of kcal), the value 20sp/500 with its unit in soft 14sp, and a soft 13sp label. At large font (2.0) the macros stack one per row, with the value, unit and label on one line under each bar. A macro no entry has reads "—" (as in the Library); a sum that leaves out entries without the macro reads "12 g ?", the "?" in the unit's soft style, and one soft 13sp line "? some foods have no value" follows the macros.
 
 ## Profile
 
 - A page from the bar's left icon: Name, Daily kcal (1 to 20000), the macro presets as action chips that fill the fields and save nothing, macro targets (1 to 5000 g), current and target weight (1 to 500 kg); empty is not set. With a weight typed that changed, or with no point yet today, the "Add to curve" checkbox shows, on by default; a second point on a diary day replaces that day's latest. With the "Several weights a day" checkbox on, it shows for any valid weight and every save with it on adds a point. Back with changes asks Discard or Keep editing.
 - The curve is a Vico chart behind `ui/components/WeightChart.kt`: an ink line with dots, dates along the bottom spaced by real time, kg up the side in Geologica, `line` guidelines, the target weight a soft line across, no scroll or zoom of its own; one point is one dot, none is no chart. Points sit at their real time, the labels stay dates. They are listed newest first, a day with several showing the time on each row, and deleting one asks first.
-- With a macro target the bar on Meals fills toward it, full at most, never coloured, and "/ 120 g" is its own soft line between the amount and the label; any target gives all three columns that line.
+- With a macro target the bar on Meals fills toward it, full at most, its colour the same over the target as under it, and "/ 120 g" is its own soft line between the amount and the label; any target gives all three columns that line.
 
 ## Onboarding
 

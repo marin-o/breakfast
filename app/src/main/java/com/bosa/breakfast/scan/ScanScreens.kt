@@ -1,6 +1,8 @@
 package com.bosa.breakfast.scan
 
-import com.bosa.breakfast.ui.macroText
+import com.bosa.breakfast.ui.MacroPart
+import com.bosa.breakfast.ui.macroLetterParts
+import com.bosa.breakfast.ui.components.MacroLine
 import com.bosa.breakfast.ui.components.MealField
 import com.bosa.breakfast.ui.components.NutrientFields
 import com.bosa.breakfast.ui.components.NutrientField
@@ -408,7 +410,7 @@ private fun amountFieldText(review: ProductReview): String =
         parseDecimal(review.carbs),
         parseDecimal(review.fat),
     )
-    val per100 = "${basisLabel(basis.amount, basis.unit)}: ${kcalLabel(values.calories)}, P ${macroText(values.protein)}, C ${macroText(values.carbohydrates)}, F ${macroText(values.fat)}"
+    val per100 = listOf(MacroPart("${basisLabel(basis.amount, basis.unit)}: ${kcalLabel(values.calories)}")) + macroLetterParts(values)
     Sheet(onDismissRequest = review::close, skipPartiallyExpanded = true) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState())) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -417,7 +419,7 @@ private fun amountFieldText(review: ProductReview): String =
             }
             if (!food.brand.isNullOrBlank()) Text(food.brand.orEmpty(), color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 2.dp))
             Text(sourceLabel(letter), color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 2.dp))
-            if (!editing) Text(per100, color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 10.dp))
+            if (!editing) MacroLine(per100, BreakfastType.Meta, Modifier.padding(top = 10.dp))
             Hairline(Modifier.padding(top = 16.dp))
             if (editing) Column(Modifier.fillMaxWidth().padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Field("Name", review.name, review::onName)
@@ -426,9 +428,9 @@ private fun amountFieldText(review: ProductReview): String =
                     NutrientFields(
                         listOf(
                             NutrientField("kcal", review.calories, review::onCalories),
-                            NutrientField("Protein, g", review.protein, review::onProtein),
-                            NutrientField("Carbs, g", review.carbs, review::onCarbs),
-                            NutrientField("Fat, g", review.fat, review::onFat),
+                            NutrientField("Protein, g", review.protein, review::onProtein, macro = Macro.PROTEIN),
+                            NutrientField("Carbs, g", review.carbs, review::onCarbs, macro = Macro.CARBS),
+                            NutrientField("Fat, g", review.fat, review::onFat, macro = Macro.FAT),
                         ),
                         gap = 8.dp,
                         oneRowWhenItFits = true,

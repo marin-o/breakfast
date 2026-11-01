@@ -22,7 +22,8 @@ import com.bosa.breakfast.ui.screens.kcalLabel
 import com.bosa.breakfast.domain.editableNumber
 import com.bosa.breakfast.ui.components.DayTotal
 import com.bosa.breakfast.ui.shortDateLabel
-import com.bosa.breakfast.ui.macroLine
+import com.bosa.breakfast.ui.components.MacroLine
+import com.bosa.breakfast.ui.macroLineParts
 import com.bosa.breakfast.ui.clockLabel
 import com.bosa.breakfast.ui.theme.*
 import androidx.compose.foundation.layout.Arrangement
@@ -211,7 +212,7 @@ internal fun EntryFullEditScreen(entryEdit: EntryEdit, session: DiarySession, da
         val shown = preview?.nutrition ?: entry.nutritionSnapshot
         Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.End) {
             Text(kcalLabel(shown.calories), style = BreakfastType.Section, color = colors.ink)
-            Text(macroLine(shown), color = colors.soft, style = BreakfastType.Secondary)
+            MacroLine(macroLineParts(shown), BreakfastType.Secondary, alignment = Alignment.End)
         }
         PrimaryButton("Save", { entryEdit.saveFull(foodId, fieldText(amount, entry.enteredAmount), unit, meal, dayKey, servingName) }, enabled = !session.busy)
         entryEdit.error?.let { Text(it, Modifier.padding(top = 12.dp), color = colors.bad, style = BreakfastType.Meta) }

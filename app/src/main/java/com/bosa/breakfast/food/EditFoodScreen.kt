@@ -56,9 +56,9 @@ internal fun EditFoodScreen(form: FoodForm, session: DiarySession, library: Libr
             NutrientFields(
                 listOf(
                     NutrientField("kcal", draft.calories, { draft.calories = it }, required = true),
-                    NutrientField("Protein, g", draft.protein, { draft.protein = it }),
-                    NutrientField("Carbs, g", draft.carbs, { draft.carbs = it }),
-                    NutrientField("Fat, g", draft.fat, { draft.fat = it }),
+                    NutrientField("Protein, g", draft.protein, { draft.protein = it }, macro = Macro.PROTEIN),
+                    NutrientField("Carbs, g", draft.carbs, { draft.carbs = it }, macro = Macro.CARBS),
+                    NutrientField("Fat, g", draft.fat, { draft.fat = it }, macro = Macro.FAT),
                 ),
                 gap = 16.dp,
             )

@@ -13,6 +13,11 @@ class QuarterFitTest {
         assertFalse(fitsQuarter(number, 312.dp, 8.dp))
     }
 
+    @Test fun aLabelAndItsDotFitAThirdOnlyWhenTheColumnHoldsThem() {
+        assertTrue(fitsColumn(100.dp, 324.dp, 12.dp, 3))
+        assertFalse(fitsColumn(100.1.dp, 324.dp, 12.dp, 3))
+    }
+
     @Test fun mealChoicesFollowTheirGap() {
         val breakfast = 66.dp + 26.dp
         assertFalse(fitsQuarter(breakfast, 342.dp, 6.dp))

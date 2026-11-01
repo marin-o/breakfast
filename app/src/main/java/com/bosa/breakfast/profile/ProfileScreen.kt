@@ -37,6 +37,7 @@ import com.bosa.breakfast.ui.components.FactRow
 import com.bosa.breakfast.ui.components.Field
 import com.bosa.breakfast.ui.components.Hairline
 import com.bosa.breakfast.ui.components.NutrientField
+import com.bosa.breakfast.ui.theme.Macro
 import com.bosa.breakfast.ui.components.NutrientFields
 import com.bosa.breakfast.ui.components.SubScreen
 import com.bosa.breakfast.ui.components.WeightChart
@@ -80,12 +81,13 @@ private fun ProfileFields(profile: ProfileState) {
             }
             NutrientFields(
                 listOf(
-                    targetField("Protein, g", draft.protein) { profile.edit(draft.copy(protein = it)) },
-                    targetField("Carbs, g", draft.carbs) { profile.edit(draft.copy(carbs = it)) },
-                    targetField("Fat, g", draft.fat) { profile.edit(draft.copy(fat = it)) },
+                    targetField("Protein, g", Macro.PROTEIN, draft.protein) { profile.edit(draft.copy(protein = it)) },
+                    targetField("Carbs, g", Macro.CARBS, draft.carbs) { profile.edit(draft.copy(carbs = it)) },
+                    targetField("Fat, g", Macro.FAT, draft.fat) { profile.edit(draft.copy(fat = it)) },
                 ),
                 gap = 12.dp,
                 columns = if (isLargeFont(LocalDensity.current.fontScale)) 1 else 3,
+                oneColumnWhenLabelsWrap = true,
             )
             WeightField("Current weight, kg", draft.current) { profile.edit(draft.copy(current = it)) }
             if (profile.curveOffered) CheckboxRow("Add to curve", profile.addToCurve, profile::toggleAddToCurve)
@@ -107,9 +109,9 @@ private fun KcalField(profile: ProfileState) {
     )
 }
 
-private fun targetField(label: String, value: String, onValue: (String) -> Unit): NutrientField {
+private fun targetField(label: String, macro: Macro, value: String, onValue: (String) -> Unit): NutrientField {
     val valid = macroTargetTextValid(value)
-    return NutrientField(label, value, onValue, error = !valid, errorMessage = MACRO_TARGET_RANGE_MESSAGE.takeUnless { valid })
+    return NutrientField(label, value, onValue, error = !valid, errorMessage = MACRO_TARGET_RANGE_MESSAGE.takeUnless { valid }, macro = macro)
 }
 
 @Composable

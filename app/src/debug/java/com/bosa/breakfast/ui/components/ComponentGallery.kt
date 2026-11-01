@@ -20,6 +20,7 @@ import com.bosa.breakfast.domain.MealSlot
 import com.bosa.breakfast.ui.theme.BreakfastTheme
 import com.bosa.breakfast.ui.theme.BreakfastType
 import com.bosa.breakfast.ui.theme.LocalBreakfastColors
+import com.bosa.breakfast.ui.theme.Macro
 
 /** Preview board showing every Monochrome shared component at least once. */
 @Composable
@@ -38,7 +39,7 @@ private fun ComponentGallery() {
         ) {
             TopBar("Entry", {}, subtitle = "Wed 14.10.2026")
             DayHeader("Wednesday 14.10.2026", {}, {}, showToday = true, onToday = {}, onTitleClick = {})
-            DayTotal("1424", listOf(MacroStat("Protein", "95", "g", 0.27f), MacroStat("Carbs", "193", "g", 0.54f), MacroStat("Fat", "32", "g", 0.2f)))
+            DayTotal("1424", listOf(MacroStat(Macro.PROTEIN, "Protein", "95", "g", 0.27f), MacroStat(Macro.CARBS, "Carbs", "193", "g", 0.54f), MacroStat(Macro.FAT, "Fat", "32", "g", 0.2f)))
             DayTotal("1424", emptyList(), target = "/ 2000 kcal")
             MealHeader("Breakfast", "546", onAdd = {}, addDescription = "Add food to Breakfast", time = "07:52")
             MealHeader("Dinner", "0", onAdd = {}, addDescription = "Add food to Dinner", emptyText = "Nothing yet")

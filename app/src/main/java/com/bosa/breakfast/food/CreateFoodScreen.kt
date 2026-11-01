@@ -85,9 +85,9 @@ import com.bosa.breakfast.domain.editableNumber
                         required = true,
                         fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.KCAL)),
                     ),
-                    NutrientField("Protein, g", protein, { draft.proteinEdited = true; draft.protein = it }, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.PROTEIN))),
-                    NutrientField("Carbs, g", carbs, { draft.carbsEdited = true; draft.carbs = it }, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.CARBS))),
-                    NutrientField("Fat, g", fat, { draft.fatEdited = true; draft.fat = it }, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.FAT))),
+                    NutrientField("Protein, g", protein, { draft.proteinEdited = true; draft.protein = it }, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.PROTEIN)), macro = Macro.PROTEIN),
+                    NutrientField("Carbs, g", carbs, { draft.carbsEdited = true; draft.carbs = it }, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.CARBS)), macro = Macro.CARBS),
+                    NutrientField("Fat, g", fat, { draft.fatEdited = true; draft.fat = it }, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.FAT)), macro = Macro.FAT),
                 ),
                 gap = 12.dp,
             )

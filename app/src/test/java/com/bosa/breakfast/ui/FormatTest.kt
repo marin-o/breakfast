@@ -7,6 +7,7 @@ import com.bosa.breakfast.ui.screens.basisLabel
 import com.bosa.breakfast.domain.editableNumber
 import com.bosa.breakfast.ui.screens.macroStats
 import com.bosa.breakfast.ui.screens.previewQuantityLine
+import com.bosa.breakfast.ui.theme.Macro
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.time.ZoneOffset
@@ -17,7 +18,21 @@ class FormatTest {
 
     @Test fun anUnknownMacroIsADashEverywhere() {
         assertEquals("—", macroText(null))
-        assertEquals("Protein 8 g, carbs — g, fat 4.5 g", macroLine(partly))
+    }
+
+    @Test fun aMacroLineReadsAsOneStringWithADotOnEachMacro() {
+        val words = macroLineParts(partly)
+        assertEquals(listOf("Protein 8 g", "carbs — g", "fat 4.5 g"), words.map { it.text })
+        assertEquals("Protein 8 g, carbs — g, fat 4.5 g", words.lineText())
+        assertEquals(listOf(Macro.PROTEIN, Macro.CARBS, Macro.FAT), words.map { it.macro })
+        val letters = listOf(MacroPart("Per 100 g: 233 kcal")) + macroLetterParts(partly)
+        assertEquals(listOf("Per 100 g: 233 kcal", "P 8", "C —", "F 4.5"), letters.map { it.text })
+        assertEquals("Per 100 g: 233 kcal, P 8, C —, F 4.5", letters.lineText())
+        assertEquals(listOf(null, Macro.PROTEIN, Macro.CARBS, Macro.FAT), letters.map { it.macro })
+    }
+
+    @Test fun eachMacroColumnKnowsItsMacro() {
+        assertEquals(listOf(Macro.PROTEIN, Macro.CARBS, Macro.FAT), macroStats(233.0, macroTotalsOf(listOf(partly))).map { it.kind })
     }
 
     @Test fun oneEntrysMacrosReadAsADaysDo() {

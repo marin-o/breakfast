@@ -46,6 +46,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -112,7 +113,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.bosa.breakfast.domain.MealSlot
 import com.bosa.breakfast.domain.decimalInput
+import com.bosa.breakfast.ui.MacroPart
 import com.bosa.breakfast.ui.label
+import com.bosa.breakfast.ui.lineText
+import com.bosa.breakfast.ui.theme.Macro
+import com.bosa.breakfast.ui.theme.macroColor
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import com.bosa.breakfast.ui.theme.AddCircleSize
 import com.bosa.breakfast.ui.theme.BreakfastType
 import com.bosa.breakfast.ui.theme.ChoiceMinHeight
@@ -365,9 +372,11 @@ fun Field(
     required: Boolean = false,
     /** What TalkBack says for an [error] that shows only the red ring; a visible [errorMessage] is said instead. */
     errorDescription: String? = null,
+    /** The macro this field holds: its dot goes before the label. */
+    labelMacro: Macro? = null,
 ) {
     val colors = LocalBreakfastColors.current
-    LabelledField(label, modifier, labelVisible, error, errorMessage, hint, fieldModifier, trailing, required, errorDescription) { textModifier ->
+    LabelledField(label, modifier, labelVisible, error, errorMessage, hint, fieldModifier, trailing, required, errorDescription, labelMacro) { textModifier ->
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
@@ -403,7 +412,7 @@ fun Field(
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val colors = LocalBreakfastColors.current
-    LabelledField(label, modifier, labelVisible = true, error = false, errorMessage = null, hint = null, fieldModifier, trailing, required = false, errorDescription = null) { textModifier ->
+    LabelledField(label, modifier, labelVisible = true, error = false, errorMessage = null, hint = null, fieldModifier, trailing, required = false, errorDescription = null, labelMacro = null) { textModifier ->
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
@@ -432,13 +441,14 @@ private fun LabelledField(
     trailing: (@Composable () -> Unit)?,
     required: Boolean,
     errorDescription: String?,
+    labelMacro: Macro?,
     input: @Composable (textModifier: Modifier) -> Unit,
 ) {
     val colors = LocalBreakfastColors.current
     val spokenError = errorMessage ?: errorDescription?.takeIf { error }
     Column(modifier.fillMaxWidth()) {
         if (labelVisible) Row(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
-            Text(label, color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.weight(1f))
+            MacroLabel(label, labelMacro, colors.soft, BreakfastType.Meta, Modifier.weight(1f))
             if (required) Text("required", color = colors.soft, style = BreakfastType.Meta)
         }
         FieldFrame(error = error, modifier = Modifier.fillMaxWidth()) { onFocus ->
@@ -491,15 +501,18 @@ fun DecimalField(
     amountStyle: Boolean = false,
     imeAction: ImeAction = ImeAction.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
+    /** The macro this field holds: its dot goes before the label. */
+    labelMacro: Macro? = null,
 ) = Field(
     label, value, { onValueChange(it.decimalInput()) }, modifier,
     labelVisible = labelVisible, error = error, errorMessage = errorMessage, required = required, hint = hint, amountStyle = amountStyle,
     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = imeAction),
     keyboardActions = keyboardActions,
     fieldModifier = fieldModifier,
+    labelMacro = labelMacro,
 )
 
-/** One of [NutrientFields]: a [DecimalField]'s label, value and, when it has them, error and focus. */
+/** One of [NutrientFields]: a [DecimalField]'s label, value and, when it has them, error, focus and macro dot. */
 internal class NutrientField(
     val label: String,
     val value: String,
@@ -508,28 +521,32 @@ internal class NutrientField(
     val errorMessage: String? = null,
     val required: Boolean = false,
     val fieldModifier: Modifier = Modifier,
+    val macro: Macro? = null,
 )
 
 /**
  * Number fields in [columns] per row (a food's four, two by two), [gap] apart as each mock draws them; with
- * [oneRowWhenItFits], one row while a label and a number with the field's padding fit a quarter (the scan review).
+ * [oneRowWhenItFits], one row while a label and a number with the field's padding fit a quarter (the scan review);
+ * with [oneColumnWhenLabelsWrap], one per row when a label and its dot wouldn't fit a column (Profile).
  */
 @Composable
-internal fun NutrientFields(fields: List<NutrientField>, gap: Dp, oneRowWhenItFits: Boolean = false, columns: Int = 2) {
+internal fun NutrientFields(fields: List<NutrientField>, gap: Dp, oneRowWhenItFits: Boolean = false, columns: Int = 2, oneColumnWhenLabelsWrap: Boolean = false) {
     val cell: @Composable (NutrientField, Modifier) -> Unit = { field, modifier ->
-        DecimalField(field.label, field.value, field.onValueChange, modifier, error = field.error, errorMessage = field.errorMessage, required = field.required, fieldModifier = field.fieldModifier)
+        DecimalField(field.label, field.value, field.onValueChange, modifier, error = field.error, errorMessage = field.errorMessage, required = field.required, fieldModifier = field.fieldModifier, labelMacro = field.macro)
     }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         // The label sits above the box; the number inside it, within its 16dp padding.
-        val fits = oneRowWhenItFits && fitsAQuarter(fields.map { it.label }, BreakfastType.Meta, 0.dp, maxWidth, gap) &&
+        val labelMark = if (fields.any { it.macro != null }) MacroDotSize + MacroDotGap else 0.dp
+        val fits = oneRowWhenItFits && fitsAQuarter(fields.map { it.label }, BreakfastType.Meta, labelMark, maxWidth, gap) &&
             fitsAQuarter(listOf(NUTRIENT_SAMPLE), BreakfastType.Body, 32.dp, maxWidth, gap)
+        val labelsFit = !oneColumnWhenLabelsWrap || fitsAColumn(fields.map { it.label }, BreakfastType.Meta, labelMark, maxWidth, gap, columns)
         if (fits) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                 fields.forEach { cell(it, Modifier.weight(1f)) }
             }
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-                fields.chunked(columns).forEach { pair ->
+                fields.chunked(if (labelsFit) columns else 1).forEach { pair ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                         pair.forEach { cell(it, Modifier.weight(1f)) }
                     }
@@ -543,15 +560,23 @@ internal fun NutrientFields(fields: List<NutrientField>, gap: Dp, oneRowWhenItFi
 private const val NUTRIENT_SAMPLE = "000.0"
 
 /** Whether [content] fits a quarter of [width] with [gap] between the four. */
-internal fun fitsQuarter(content: Dp, width: Dp, gap: Dp): Boolean = content <= (width - gap * 3) / 4
+internal fun fitsQuarter(content: Dp, width: Dp, gap: Dp): Boolean = fitsColumn(content, width, gap, 4)
+
+/** Whether [content] fits one of [columns] across [width] with [gap] between them. */
+internal fun fitsColumn(content: Dp, width: Dp, gap: Dp, columns: Int): Boolean = content <= (width - gap * (columns - 1)) / columns
 
 /** Whether the widest of [labels] in [style], with [padding], fits a quarter of [width] with [gap] between the four. */
 @Composable
-private fun fitsAQuarter(labels: List<String>, style: TextStyle, padding: Dp, width: Dp, gap: Dp): Boolean {
+private fun fitsAQuarter(labels: List<String>, style: TextStyle, padding: Dp, width: Dp, gap: Dp): Boolean =
+    fitsAColumn(labels, style, padding, width, gap, 4)
+
+/** Whether the widest of [labels] in [style], with [padding], fits one of [columns] across [width] with [gap] between them. */
+@Composable
+private fun fitsAColumn(labels: List<String>, style: TextStyle, padding: Dp, width: Dp, gap: Dp, columns: Int): Boolean {
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val widest = labels.maxOf { measurer.measure(it, style).size.width }
-    return fitsQuarter(with(density) { widest.toDp() } + padding, width, gap)
+    return fitsColumn(with(density) { widest.toDp() } + padding, width, gap, columns)
 }
 
 /** The g and ml of a basis or a serving, in the row they sit in; each takes [itemModifier]. */
@@ -770,8 +795,8 @@ fun DayHeader(
     }
 }
 
-/** One macro column: [share] is its fraction of the 2dp track; [value] is ink and [unit] soft. */
-data class MacroStat(val label: String, val value: String, val unit: String, val share: Float, val target: String? = null)
+/** One macro column: [share] is its fraction of the 4dp track, in [kind]'s colour; [value] is ink and [unit] soft. */
+data class MacroStat(val kind: Macro, val label: String, val value: String, val unit: String, val share: Float, val target: String? = null)
 
 /** The one big figure of a screen: 72sp kcal, its caption, and three macro columns (none when [macros] is empty). */
 @Composable
@@ -800,7 +825,7 @@ fun DayTotal(
             Column(Modifier.fillMaxWidth().padding(top = 22.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 macros.forEach { macro ->
                     Column(Modifier.fillMaxWidth()) {
-                        MacroTrack(macro.share)
+                        MacroTrack(macro.share, macro.kind)
                         Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.Bottom) {
                             Text(macro.value, color = colors.ink, style = BreakfastType.MacroValue)
                             Text(" ${macro.unit}", color = colors.soft, style = BreakfastType.Secondary)
@@ -814,7 +839,7 @@ fun DayTotal(
             Row(Modifier.fillMaxWidth().padding(top = 22.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 macros.forEach { macro ->
                     Column(Modifier.weight(1f)) {
-                        MacroTrack(macro.share)
+                        MacroTrack(macro.share, macro.kind)
                         Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.Bottom) {
                             Text(macro.value, color = colors.ink, style = BreakfastType.MacroValue)
                             Text(" ${macro.unit}", color = colors.soft, style = BreakfastType.Secondary)
@@ -829,12 +854,46 @@ fun DayTotal(
     }
 }
 
-/** 2dp `line` track with the macro's share as a 2dp ink fill. */
+/** 4dp `line` track, its corners 2dp, with the macro's share as a fill in its colour, clipped to the track. */
 @Composable
-internal fun MacroTrack(share: Float) {
+internal fun MacroTrack(share: Float, macro: Macro) {
     val colors = LocalBreakfastColors.current
-    Box(Modifier.fillMaxWidth().height(2.dp).background(colors.line)) {
-        Box(Modifier.fillMaxWidth(share.coerceIn(0f, 1f)).height(2.dp).background(colors.ink))
+    Box(Modifier.fillMaxWidth().height(MacroTrackHeight).clip(MacroTrackShape).background(colors.line)) {
+        Box(Modifier.fillMaxWidth(share.coerceIn(0f, 1f)).height(MacroTrackHeight).background(colors.macroColor(macro)))
+    }
+}
+
+private val MacroTrackHeight = 4.dp
+private val MacroTrackShape = RoundedCornerShape(2.dp)
+private val MacroDotSize = 8.dp
+private val MacroDotGap = 5.dp
+private val MacroLinePartGap = 10.dp
+
+/** A label with the [macro]'s dot centred on its first line, or the label alone with none. The dot says nothing to TalkBack. */
+@Composable
+internal fun MacroLabel(text: String, macro: Macro?, color: Color, style: TextStyle, modifier: Modifier = Modifier) {
+    Row(modifier) {
+        if (macro != null) {
+            val measurer = rememberTextMeasurer()
+            val firstLine = remember(measurer, style) { measurer.measure("0", style).size.height }
+            Box(Modifier.padding(end = MacroDotGap).height(with(LocalDensity.current) { firstLine.toDp() }), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(MacroDotSize).background(LocalBreakfastColors.current.macroColor(macro), CircleShape))
+            }
+        }
+        Text(text, color = color, style = style)
+    }
+}
+
+/**
+ * A soft line of [parts], each macro's with its dot; it wraps between parts, each row placed by [alignment].
+ * No commas on screen; TalkBack hears the one line with them.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun MacroLine(parts: List<MacroPart>, style: TextStyle, modifier: Modifier = Modifier, alignment: Alignment.Horizontal = Alignment.Start) {
+    val spoken = parts.lineText()
+    FlowRow(modifier.clearAndSetSemantics { text = AnnotatedString(spoken) }, horizontalArrangement = Arrangement.spacedBy(MacroLinePartGap, alignment)) {
+        parts.forEach { MacroLabel(it.text, it.macro, LocalBreakfastColors.current.soft, style) }
     }
 }
 
@@ -1265,9 +1324,9 @@ internal fun ItemPage(title: String, onBack: () -> Unit, name: String, onEdit: (
     }
 }
 
-/** One line of facts: the label, then the value in ink with its [unit] in soft, or, with no unit, the value in soft. */
+/** One line of facts: the label, with its [macro]'s dot if any, then the value in ink with its [unit] in soft, or, with no unit, the value in soft. */
 @Composable
-internal fun FactRow(label: String, value: String, unit: String? = null) {
+internal fun FactRow(label: String, value: String, unit: String? = null, macro: Macro? = null) {
     val colors = LocalBreakfastColors.current
     val shownValue: @Composable () -> Unit = {
         Row(verticalAlignment = Alignment.Bottom) {
@@ -1277,23 +1336,23 @@ internal fun FactRow(label: String, value: String, unit: String? = null) {
     }
     if (unit != null && isLargeFont(LocalDensity.current.fontScale.coerceAtLeast(1f))) {
         Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            Text(label, color = colors.ink, style = BreakfastType.Body)
+            MacroLabel(label, macro, colors.ink, BreakfastType.Body)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { shownValue() }
         }
     } else {
         Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
-            Text(label, color = colors.ink, style = BreakfastType.Body, modifier = Modifier.weight(1f))
+            MacroLabel(label, macro, colors.ink, BreakfastType.Body, Modifier.weight(1f))
             shownValue()
         }
     }
 }
 
-/** The nutrition lines of a page, in the design's order: Energy, then the macros when there are any, each a value and unit. */
+/** The nutrition lines of a page, in the design's order: Energy, then the macros when there are any, each a value and unit; [marked] gives the macros their dots. */
 @Composable
-internal fun NutritionFacts(energy: String, fat: Pair<String, String>? = null, carbs: Pair<String, String>? = null, protein: Pair<String, String>? = null) {
+internal fun NutritionFacts(energy: String, fat: Pair<String, String>? = null, carbs: Pair<String, String>? = null, protein: Pair<String, String>? = null, marked: Boolean = true) {
     FactRow("Energy", energy, "kcal")
-    listOf("Fat" to fat, "Carbohydrate" to carbs, "Protein" to protein).forEach { (label, fact) ->
-        if (fact != null) FactRow(label, fact.first, fact.second)
+    listOf(Triple("Fat", Macro.FAT, fat), Triple("Carbohydrate", Macro.CARBS, carbs), Triple("Protein", Macro.PROTEIN, protein)).forEach { (label, macro, fact) ->
+        if (fact != null) FactRow(label, fact.first, fact.second, macro.takeIf { marked })
     }
 }
 

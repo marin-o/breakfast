@@ -9,6 +9,7 @@ import com.bosa.breakfast.domain.MealSlot
 import com.bosa.breakfast.domain.NutritionValues
 import com.bosa.breakfast.settings.markDecimals
 import com.bosa.breakfast.settings.DisplayDecimal
+import com.bosa.breakfast.ui.theme.Macro
 
 internal fun MealSlot.label() = name.lowercase().replaceFirstChar { it.titlecase() }
 /** A number as a row reads it: whole without ".0", else one decimal, with a point; [pretty] marks it. A field pre-fills with `domain/editableNumber`. */
@@ -34,6 +35,20 @@ internal fun countLabel(count: Int, one: String, many: String): String = if (cou
 /** A macro's amount as shown: "—" when it is not known, never 0. */
 internal fun macroText(grams: Double?): String = grams?.pretty() ?: "—"
 
-/** "Protein 8 g, carbs 40 g, fat 4 g", under a kcal figure (M-Library-AmountSheet, M-Entry-FullEdit). */
-internal fun macroLine(values: NutritionValues): String =
-    "Protein ${macroText(values.protein)} g, carbs ${macroText(values.carbohydrates)} g, fat ${macroText(values.fat)} g"
+/** One piece of a line of macros: its [text] and the [macro] its dot marks, if it has one. */
+internal data class MacroPart(val text: String, val macro: Macro? = null)
+
+/** The parts as one string, as TalkBack says them; on screen they have no commas. */
+internal fun List<MacroPart>.lineText(): String = joinToString(", ") { it.text }
+
+/** "Protein 8 g", "carbs 40 g", "fat 4 g", under a kcal figure (M-Library-AmountSheet, M-Entry-FullEdit). */
+internal fun macroLineParts(values: NutritionValues): List<MacroPart> = macroParts(values, "Protein", "carbs", "fat", " g")
+
+/** "P 2", "C 9", "F 8", inside the scan review's line. */
+internal fun macroLetterParts(values: NutritionValues): List<MacroPart> = macroParts(values, "P", "C", "F", "")
+
+private fun macroParts(values: NutritionValues, protein: String, carbs: String, fat: String, unit: String): List<MacroPart> = listOf(
+    MacroPart("$protein ${macroText(values.protein)}$unit", Macro.PROTEIN),
+    MacroPart("$carbs ${macroText(values.carbohydrates)}$unit", Macro.CARBS),
+    MacroPart("$fat ${macroText(values.fat)}$unit", Macro.FAT),
+)

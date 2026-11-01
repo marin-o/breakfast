@@ -27,7 +27,7 @@ import com.bosa.breakfast.domain.NutritionCalculator
 import com.bosa.breakfast.domain.POSITIVE_AMOUNT_MESSAGE
 import com.bosa.breakfast.domain.measures
 import com.bosa.breakfast.ui.label
-import com.bosa.breakfast.ui.macroLine
+import com.bosa.breakfast.ui.macroLineParts
 import com.bosa.breakfast.domain.editableNumber
 import com.bosa.breakfast.ui.screens.entrySourceLabel
 import com.bosa.breakfast.ui.screens.kcalLabel
@@ -79,7 +79,8 @@ internal fun FoodAmountSheet(
             chosenMeal?.let { meal -> MealField(meal, { chosenMeal = it }) }
             Hairline()
             Text(calc?.let { kcalLabel(it.nutrition.calories) } ?: POSITIVE_AMOUNT_MESSAGE, color = colors.ink, style = BreakfastType.Section)
-            Text(calc?.let { macroLine(it.nutrition) } ?: "", color = colors.soft, style = BreakfastType.Secondary)
+            // No amount, no macros: the empty line keeps the sheet's height.
+            if (calc != null) MacroLine(macroLineParts(calc.nutrition), BreakfastType.Secondary) else Text("", style = BreakfastType.Secondary)
             PrimaryButton(
                 chosenMeal?.let { "Add to ${it.label()}" } ?: "Add",
                 onClick = { exactAmount?.let { onAdd(it, measure, chosenMeal) } },

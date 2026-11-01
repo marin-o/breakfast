@@ -47,6 +47,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -99,6 +100,7 @@ internal fun LibraryScreen(
     /** The meal it adds to: the Library's own, or, while it glides out, the one it added to as it showed. */
     target: MealSlot? = library.target,
 ) {
+    val focus = LocalFocusManager.current
     val motion = rememberMotion()
     val usdaRows = rememberUsdaRows(usda, library.query, except = library.foods)
     val root = target == null
@@ -116,7 +118,8 @@ internal fun LibraryScreen(
         items(library.foods, key = { it.id }) { food ->
             LibraryFoodRow(library, automaticMeal, food, root, listRowMotion(motion))
         }
-        item { UsdaRows(usdaRows, library.query) { review.choose(it, typed = library.typedPart()) } }
+        // The search's keyboard goes first: a sheet opened while it closes is left misplaced, with no scrim.
+        item { UsdaRows(usdaRows, library.query) { focus.clearFocus(); review.choose(it, typed = library.typedPart()) } }
     }
 }
 

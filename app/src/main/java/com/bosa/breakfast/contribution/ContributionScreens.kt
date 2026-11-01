@@ -76,6 +76,7 @@ import com.bosa.breakfast.ui.components.TertiaryButton
                     fat = macroText(normalized.fat) to "g",
                     carbs = macroText(normalized.carbohydrates) to "g",
                     protein = macroText(normalized.protein) to "g",
+                    marked = false,
                 )
                 if (!draft.createNewProduct) Text("Existing product: only nutrition changes.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 16.dp))
             }

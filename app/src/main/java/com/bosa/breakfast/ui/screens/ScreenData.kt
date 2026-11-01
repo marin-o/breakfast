@@ -13,6 +13,7 @@ import com.bosa.breakfast.domain.yields
 import com.bosa.breakfast.domain.sourceLetter
 import com.bosa.breakfast.ui.clockLabel
 import com.bosa.breakfast.ui.components.MacroStat
+import com.bosa.breakfast.ui.theme.Macro
 import com.bosa.breakfast.domain.FoodRecord
 import com.bosa.breakfast.domain.MealEntry
 import com.bosa.breakfast.domain.Measure
@@ -250,16 +251,16 @@ internal fun macroFact(total: MacroTotal, noneIsUnknown: Boolean = false): Pair<
  * and one entry's. A macro nothing has reads "—"; a sum that leaves some out reads "12 g ?".
  */
 internal fun macroStats(kcal: Double, macros: MacroTotals, targets: ProfileValues = ProfileValues()): List<MacroStat> {
-    fun stat(label: String, total: MacroTotal, kcalPerGram: Double, target: Double?): MacroStat {
+    fun stat(kind: Macro, label: String, total: MacroTotal, kcalPerGram: Double, target: Double?): MacroStat {
         val (value, unit) = macroFact(total)
-        // With a target the bar fills toward it, full at most: going over is neither coloured nor scolded.
-        if (target != null) return MacroStat(label, value, unit, (total.sum / target).toFloat().coerceIn(0f, 1f), "/ ${target.pretty()} g")
-        return MacroStat(label, value, unit, if (kcal > 0.0) (total.sum * kcalPerGram / kcal).toFloat() else 0f)
+        // With a target the bar fills toward it, full at most: going over changes no colour and scolds nothing.
+        if (target != null) return MacroStat(kind, label, value, unit, (total.sum / target).toFloat().coerceIn(0f, 1f), "/ ${target.pretty()} g")
+        return MacroStat(kind, label, value, unit, if (kcal > 0.0) (total.sum * kcalPerGram / kcal).toFloat() else 0f)
     }
     return listOf(
-        stat("Protein", macros.protein, KCAL_PER_GRAM_PROTEIN, targets.proteinTarget),
-        stat("Carbs", macros.carbohydrates, KCAL_PER_GRAM_CARBS, targets.carbsTarget),
-        stat("Fat", macros.fat, KCAL_PER_GRAM_FAT, targets.fatTarget),
+        stat(Macro.PROTEIN, "Protein", macros.protein, KCAL_PER_GRAM_PROTEIN, targets.proteinTarget),
+        stat(Macro.CARBS, "Carbs", macros.carbohydrates, KCAL_PER_GRAM_CARBS, targets.carbsTarget),
+        stat(Macro.FAT, "Fat", macros.fat, KCAL_PER_GRAM_FAT, targets.fatTarget),
     )
 }
 
