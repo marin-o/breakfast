@@ -57,7 +57,7 @@ class UsdaCatalogueReaderTest {
         assertEquals(0, count("SELECT count(*) FROM portion WHERE grams <= 0"))
         assertEquals(1, count("SELECT count(*) FROM alias"))
         assertEquals(153, count("SELECT count(*) FROM translation"))
-        assertEquals(50, count("SELECT count(*) FROM food WHERE bump > 0"))
+        assertEquals(60, count("SELECT count(*) FROM food WHERE bump > 0"))
         db.rawQuery("PRAGMA integrity_check", null).use {
             it.moveToFirst()
             assertEquals("ok", it.getString(0))
@@ -122,6 +122,7 @@ class UsdaCatalogueReaderTest {
     }
 
     @Test fun aBumpPutsTheCommonFoodFirst() {
+        assertEquals("Chicken breast, grilled without sauce, skin not eaten", search("chicken").first().name)
         assertEquals("Egg, whole, raw", search("egg").first().name)
     }
 

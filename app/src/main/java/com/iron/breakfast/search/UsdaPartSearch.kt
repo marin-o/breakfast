@@ -29,7 +29,8 @@ internal class UsdaPartSearch(
     private val sleep: suspend (Long) -> Unit,
 ) {
     var rows by mutableStateOf(emptyList<FoodRecord>()); private set
-    private var asked = ""
+    // State, as [rowsFor] reads it first: a screen that read only this must still draw when it changes, and then read [rows].
+    private var asked by mutableStateOf("")
     private val latest = LatestSearch<List<FoodRecord>>(scope, io, main)
 
     /** The part being typed reads [phrase] now; blank for none. */
