@@ -88,6 +88,48 @@ class RecipeFormTest {
         assertTrue(form.searchOpen)
     }
 
+    // ---- A food renamed while the form is open ----
+
+    /** Ingredients `40 g Kefir, 2 eggs`, Kefir pinned by its sheet. */
+    private fun kefirPicked() {
+        form.openNew()
+        form.addIngredient(kefir, 40.0, Measure(MeasureUnit.GRAM))
+        form.onIngredients("${form.fields.ingredients}, 2 eggs")
+        form.commitIngredients()
+    }
+
+    @Test fun aRenamedPickChangesItsPartAndStaysThatFood() {
+        kefirPicked()
+        val renamed = kefir.copy(name = "Goat kefir")
+        store.foods = TestFoods.fixtures + renamed
+        form.refreshPins(store.foods)
+        assertEquals("40 g Goat kefir, 2 eggs", form.fields.ingredients)
+        assertEquals(renamed, form.pinsSnapshot()["40 g Goat kefir"])
+        val rows = form.ingredientsView().draft.rows.filterIsInstance<DraftRow.Entry>()
+        assertEquals(listOf(kefir.id, "egg"), rows.map { it.resolution.food.id })
+        assertEquals("Goat kefir", rows.first().resolution.food.name)
+    }
+
+    @Test fun aRefreshWithNoRenameLeavesTheTextAndTakesTheFoodAsItIsNow() {
+        kefirPicked()
+        val before = form.fields.ingredients
+        val edited = kefir.copy(aliases = listOf("ayran"))
+        form.refreshPins(TestFoods.fixtures + edited)
+        assertEquals(before, form.fields.ingredients)
+        assertEquals(edited, form.pinsSnapshot()["40 g Kefir"])
+    }
+
+    @Test fun aRenamedPickIsWhatSaveStores() {
+        kefirPicked()
+        form.onName("Bowl")
+        form.onPortions("2")
+        val renamed = kefir.copy(name = "Goat kefir")
+        store.foods = TestFoods.fixtures + renamed
+        form.refreshPins(store.foods)
+        form.save()
+        assertEquals("Goat kefir", saved.single().ingredients.first().foodName)
+    }
+
     @Test fun ingredientsReadAsTheLogReadsThem() {
         typed(ingredients = "2 eggs, 40 g oats, ayranxyz")
         val view = form.ingredientsView()

@@ -107,7 +107,7 @@ class AppOwnersTest {
         assertTrue(app.log.draft, app.log.draft.endsWith("Ajvar"))
     }
 
-    @Test fun notRightSearchOnDailyStillSavesToTheLibrary() {
+    @Test fun aSearchForNothingInParticularOnDailySavesToTheLibrary() {
         val coke = food("coke", "Coke Zero")
         val app = AppKit()
         app.owners.search.open("coke")

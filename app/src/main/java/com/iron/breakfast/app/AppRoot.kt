@@ -251,11 +251,11 @@ private fun BaseScreenContent(vm: BreakfastViewModel, surface: Surface, meal: Me
         Surface.RECIPES -> RecipesScreen(vm.recipes, onNew = vm.recipeForm::openNew, modifier)
         Surface.DAILY -> DailyScreen(
             vm.session, vm.day, vm.settings, vm.log, vm.contribution, vm.entryEdit, vm.surfaces, vm.undo, vm.feedback,
-            vm.search, vm.profile.values, modifier,
+            vm.profile.values, modifier,
         )
         else -> MealScreen(
             vm.session, vm.day, vm.settings, vm.log, vm.contribution, vm.entryEdit, vm.surfaces, vm.undo, vm.feedback,
-            vm.search, vm.scan, modifier,
+            vm.scan, modifier,
             meal = meal,
         )
     }

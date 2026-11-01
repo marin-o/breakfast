@@ -8,6 +8,8 @@ import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.LogPlanner
 import com.iron.breakfast.domain.MealSlot
+import com.iron.breakfast.domain.Measure
+import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.SavedMeal
 import com.iron.breakfast.resolve.LogResolveRequest
@@ -225,6 +227,38 @@ class LogComposerTest {
         log.resume(sentRequest!!, null)
         assertEquals("ayran", log.draft)
         assertTrue(log.open)
+    }
+
+    private val pesto = food("pesto", "Pesto")
+    private val greenPesto = pesto.copy(name = "Green pesto")
+
+    @Test fun renamingAPickedFoodChangesTheDraftAndKeepsThePick() {
+        log.open(MealSlot.LUNCH)
+        log.onDraft("ayran")
+        log.addScannedPart(pesto, 200.0, Measure(MeasureUnit.GRAM))
+        log.refreshPins(listOf(greenPesto))
+        assertEquals("the part never picked stays as typed", "ayran, 200 g Green pesto", log.draft)
+        assertEquals(mapOf("200 g Green pesto" to greenPesto), log.pinsSnapshot())
+        log.submit()
+        assertEquals(listOf("save \"ayran, 200 g Green pesto\" LUNCH 2026-10-28 pins=[200 g Green pesto]"), store.saves)
+    }
+
+    @Test fun aRenameInTheLibraryIsKeptWhenThePartSentThereComesBack() {
+        log.open(MealSlot.LUNCH)
+        log.addScannedPart(pesto, 200.0, Measure(MeasureUnit.GRAM))
+        log.onDraft("200 g Pesto, ayran")
+        log.resolveNotInFoods(DraftRow.Unresolved("ayran", 13, 18))
+        log.refreshPins(listOf(greenPesto))
+        log.resume(sentRequest!!, null)
+        assertEquals("200 g Green pesto, ayran", log.draft)
+        assertEquals(mapOf("200 g Green pesto" to greenPesto), log.pinsSnapshot())
+
+        log.resolveNotInFoods(DraftRow.Unresolved("ayran", 19, 24))
+        log.refreshPins(listOf(pesto))
+        val kefir = food("kefir", "Kefir")
+        log.resume(sentRequest!!, kefir)
+        assertEquals("200 g Pesto, Kefir", log.draft)
+        assertEquals(mapOf("200 g Pesto" to pesto, "Kefir" to kefir), log.pinsSnapshot())
     }
 
     @Test fun aRowFromAnOlderDraftDoesNothing() {

@@ -29,6 +29,8 @@ class MatchFeedbackTest {
             replaced += entryId to foodId
             return replacement(null)
         }
+        override suspend fun replaceEntryWith(entryId: String, foodId: String, amount: Double, unit: MeasureUnit, servingName: String?, meal: com.iron.breakfast.domain.MealSlot, dayKey: String): ReplacementResult =
+            replaceEntry(entryId, foodId)
         override suspend fun reinforce(foodId: String) { reinforceFailure?.let { throw it }; reinforced += foodId }
     }
 

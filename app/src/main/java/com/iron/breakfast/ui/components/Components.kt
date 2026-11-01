@@ -995,11 +995,11 @@ fun BottomNav(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         fun Modifier.span(item: Int) = onGloballyPositioned { spans.items[item] = it; spans.measure() }
-        // Equal sides keep the tabs centred; each side is at least the icon's width.
-        NavIconItem(Icons.Outlined.Person, "Profile", active == PROFILE, motion, Alignment.CenterStart, Modifier.span(PROFILE), onProfile)
-        Row(Modifier.selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
+        // Equal sides keep the tabs centred. The icons keep their size: at a large font it is the gaps between the tabs that give.
+        NavIconItem(Icons.Outlined.Person, "Profile", active == PROFILE, motion, Modifier.span(PROFILE), onProfile)
+        Row(Modifier.weight(1f).selectableGroup(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             NavTab.entries.forEachIndexed { index, tab ->
-                if (index > 0) Spacer(Modifier.width(40.dp))
+                if (index > 0) Spacer(Modifier.weight(1f, fill = false).widthIn(max = 40.dp).fillMaxWidth())
                 NavTabButton(tab.label, selected = index == active, motion = motion, labelModifier = Modifier.span(index), onClick = when (tab) {
                     NavTab.MEALS -> onMeals
                     NavTab.LIBRARY -> onLibrary
@@ -1007,19 +1007,17 @@ fun BottomNav(
                 })
             }
         }
-        NavIconItem(Icons.Outlined.Settings, "Settings", active == GEAR, motion, Alignment.CenterEnd, Modifier.span(GEAR), onSettings)
+        NavIconItem(Icons.Outlined.Settings, "Settings", active == GEAR, motion, Modifier.span(GEAR), onSettings)
     }
 }
 
-/** One end of the bar: an icon, ink while active and soft otherwise, in a side that keeps the tabs centred. */
+/** One end of the bar: an icon, ink while active and soft otherwise. */
 @Composable
-private fun RowScope.NavIconItem(icon: ImageVector, description: String, active: Boolean, motion: Motion, side: Alignment, iconModifier: Modifier, onClick: () -> Unit) {
+private fun NavIconItem(icon: ImageVector, description: String, active: Boolean, motion: Motion, iconModifier: Modifier, onClick: () -> Unit) {
     val colors = LocalBreakfastColors.current
-    Box(Modifier.weight(1f).widthIn(min = IconTarget), contentAlignment = side) {
-        val tint by animateColorAsState(if (active) colors.ink else colors.soft, motion.nav(), label = description)
-        IconButton(onClick = onClick, modifier = Modifier.size(IconTarget)) {
-            Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(22.dp).then(iconModifier))
-        }
+    val tint by animateColorAsState(if (active) colors.ink else colors.soft, motion.nav(), label = description)
+    IconButton(onClick = onClick, modifier = Modifier.size(IconTarget)) {
+        Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(22.dp).then(iconModifier))
     }
 }
 

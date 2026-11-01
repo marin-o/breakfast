@@ -15,6 +15,7 @@ import com.iron.breakfast.contribution.contributionDraftAfterLocalSave
 import com.iron.breakfast.data.OffContributionDraft
 import com.iron.breakfast.domain.Calculation
 import com.iron.breakfast.domain.FoodRecord
+import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.Measure
 import com.iron.breakfast.domain.MeasureUnit
@@ -61,7 +62,9 @@ internal interface ProductStore {
  *   and the nutrition values), which [calculation] reads.
  * - **Writes:** [add] logs it to the chosen meal (the queue's own while a queue is being resolved, which then
  *   advances); [saveToLibrary] stores it, from the Library only. While a Log part is being resolved ([resolvingPart]),
- *   either stores it and hands the stored food to [onPartResolved] instead.
+ *   either stores it and hands the stored food to [onPartResolved] instead. A review on the way from "Not right?"
+ *   ([ProductReviewOrigin.CORRECTION]) has one write whichever is tapped: [correct] stores it and replaces that entry's
+ *   food, so no way from there writes a second entry.
  *
  * - **Servings of a search result:** an Open Food Facts search result has no serving size, so a reviewed one with a
  *   barcode also fetches its full product in [scope] on [io] ([ProductStore.fullProduct]). The review opens at once from
@@ -92,14 +95,18 @@ internal class ProductReview(
     private val onClosed: () -> Unit,
     /** The search for "Find better match"; [origin] goes on to what it picks, when this review was logging. */
     private val openSearch: (fromResolver: Boolean, origin: ProductReviewOrigin?) -> Unit,
-    /** The scanner again; [forLog] when this review was for a new part of the Log's draft. */
-    private val startScan: (forLog: Boolean) -> Unit,
+    /** The scanner again, for what this review was for. */
+    private val startScan: (from: ProductReviewOrigin) -> Unit,
     /** Add logged the product to the meal the user chose: "Logged!" (see `Confirmations`). */
     private val confirmLogged: () -> Unit,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
     /** A USDA row tapped and added: that tap counts as a pick (nothing is written before Add). */
     private val onCataloguePicked: (foodId: String) -> Unit = {},
+    /** The entry a correction is for, whose amount it starts on. */
+    private val correctingEntry: () -> MealEntry? = { null },
+    /** A correction's one write: it runs [store], the entry becomes that amount of the food stored, and [onStored] gets that food; with no entry left, [onGone] runs instead. */
+    private val correct: (store: suspend () -> FoodRecord, amount: Double, measure: Measure, onGone: () -> Unit, onStored: (FoodRecord) -> Unit) -> Unit = { _, _, _, _, _ -> },
 ) {
     var product by mutableStateOf<FoodRecord?>(null); private set
     var fromScan by mutableStateOf(false); private set
@@ -138,8 +145,8 @@ internal class ProductReview(
 
     /**
      * Reviews [food]. [origin] is what the entry point opened it for (a scan, or the search reached from one); without
-     * one, the queue's part while there is a queue, a meal's while one is open, else Save to Library, so a search from
-     * Daily's "Not right?" never writes a second entry. A queued part prefills its typed amount. [fetchServings] false
+     * one, the queue's part while there is a queue, a meal's while one is open, else Save to Library. A queued part
+     * prefills its typed amount, a correction its entry's amount while [food] can count it. [fetchServings] false
      * goes to no network: a food just made by hand has no product to fetch. A new part of the Log's draft may bring its
      * [typed] amount, and the part it [replaces]; one reached through "Find better match" or "Rescan" takes those on from
      * the review it follows. A USDA food already stored is reviewed as stored, so what shows is what Add logs.
@@ -154,7 +161,9 @@ internal class ProductReview(
         partLeft = null
         this.typed = typed ?: left?.typed
         // A queued part's typed amount, or what the tap brought: a scanned part of the Log's draft starts plain, whatever is queued.
-        val prefill = (this.typed ?: resolveQueue?.takeIf { this.origin == ProductReviewOrigin.QUEUE }?.current)?.let { productPrefill(food, it) } ?: ProductPrefill(100.0, food.nutrition.unit)
+        val prefill = correctionPrefill(food)
+            ?: (this.typed ?: resolveQueue?.takeIf { this.origin == ProductReviewOrigin.QUEUE }?.current)?.let { productPrefill(food, it) }
+            ?: ProductPrefill(100.0, food.nutrition.unit)
         this.replaces = replaces ?: left?.replaces
         filledAmount = prefill.amount
         amount = editableNumber(prefill.amount)
@@ -168,6 +177,14 @@ internal class ProductReview(
         leaveFetch()
         // A scanned product is already the full one; a search result is fetched by its barcode for its servings.
         food.barcode?.takeIf { !fromScan && fetchServings }?.let { startFetch(food, it) }
+    }
+
+    /** The amount of the entry being corrected, when [food] has a number for it. */
+    private fun correctionPrefill(food: FoodRecord): ProductPrefill? {
+        val entry = correctingEntry().takeIf { origin == ProductReviewOrigin.CORRECTION } ?: return null
+        val serving = entry.enteredUnitLabel.takeIf { entry.enteredUnit == MeasureUnit.SERVING }
+        if (!calculator.calculate(food, entry.enteredAmount, entry.enteredUnit, serving).supported) return null
+        return ProductPrefill(entry.enteredAmount, entry.enteredUnit, serving)
     }
 
     private fun startFetch(food: FoodRecord, barcode: String) {
@@ -231,6 +248,12 @@ internal class ProductReview(
     /** A food was deleted: a review still showing it closes, so it cannot store that food again. */
     fun foodDeleted(foodId: String) { if (product?.id == foodId) close() }
 
+    /** A rename rewrote the Log's draft: the part this review, or the one it left, takes the place of reads as [follow] says. */
+    fun draftRenamed(follow: (SegmentSpan) -> SegmentSpan) {
+        replaces = replaces?.let(follow)
+        partLeft = partLeft?.let { PartLeft(it.origin, it.typed, it.replaces?.let(follow)) }
+    }
+
     /** "Find better match": the search, which returns to the resolver when the review came from a queue. */
     fun findBetterMatch() {
         val logging = origin.takeIf { it.logs }
@@ -242,11 +265,11 @@ internal class ProductReview(
 
     /** "Rescan": the scanner again. */
     fun rescan() {
-        val forLog = origin == ProductReviewOrigin.LOG_PART
+        val from = origin
         val left = leavingPart()
         close()
         partLeft = left
-        startScan(forLog)
+        startScan(from)
     }
 
     /** What the next review takes on, when this one is left for another way to find its food. */
@@ -295,6 +318,7 @@ internal class ProductReview(
     fun add(chosen: MealSlot) {
         val food = product ?: return
         if (!session.canWrite) return
+        if (origin == ProductReviewOrigin.CORRECTION) { addToLog(); return }
         if (resolvingPart()) { resolvePart(); return }
         val draft = draft(food) ?: run {
             notices.show("Enter a positive amount, a supported unit, and valid calories.")
@@ -361,19 +385,35 @@ internal class ProductReview(
             return
         }
         val scanned = fromScan
+        val measure = Measure(draft.unit, draft.servingName)
+        if (origin == ProductReviewOrigin.CORRECTION) {
+            correct({ storeIt(draft.food) }, draft.amount, measure, ::close) { stored -> finish(stored, draft.food, scanned) {} }
+            return
+        }
         session.write(
             change = DiaryChange.FoodsChanged,
-            onSuccess = { stored ->
-                fetchSaved(storedFood(stored.id))
-                product = null
-                offerContribution(contributionDraftAfterLocalSave(draft.food, scanned))
-                fromScan = false
-                origin = ProductReviewOrigin.LIBRARY
-                onLogPart(stored, draft.amount, Measure(draft.unit, draft.servingName), replaces)
-                if (isUsdaFoodId(draft.food.id)) onCataloguePicked(stored.id)
-            },
+            onSuccess = { stored -> finish(stored, draft.food, scanned) { onLogPart(stored, draft.amount, measure, replaces) } },
             onFailure = { notices.show(it.message ?: "Could not save this food.") },
-        ) { keepEditsOfStored(draft.food); store.cacheFood(draft.food) }
+        ) { storeIt(draft.food) }
+    }
+
+    /** [food] as the store keeps it, with an edit of a stored one kept. */
+    private suspend fun storeIt(food: FoodRecord): FoodRecord { keepEditsOfStored(food); return store.cacheFood(food) }
+
+    /**
+     * [food] was stored as [stored]: the review is over, unless [keepsProduct] leaves it on screen for what comes next,
+     * and what comes next is the caller's.
+     */
+    private fun finish(stored: FoodRecord, food: FoodRecord, scanned: Boolean, keepsProduct: Boolean = false, next: () -> Unit) {
+        fetchSaved(storedFood(stored.id))
+        if (!keepsProduct) {
+            product = null
+            origin = ProductReviewOrigin.LIBRARY
+        }
+        offerContribution(contributionDraftAfterLocalSave(food, scanned))
+        fromScan = false
+        next()
+        if (isUsdaFoodId(food.id)) onCataloguePicked(stored.id)
     }
 
     /** A product picked while a part is being resolved (of the Log's draft or a recipe's ingredients): stored as the food it is, then picked for the part. */
@@ -387,15 +427,9 @@ internal class ProductReview(
         val scanned = fromScan
         session.write(
             change = DiaryChange.FoodsChanged,
-            onSuccess = { stored ->
-                fetchSaved(storedFood(stored.id))
-                offerContribution(contributionDraftAfterLocalSave(draft.food, scanned))
-                fromScan = false
-                onPartResolved(stored)
-                if (isUsdaFoodId(draft.food.id)) onCataloguePicked(stored.id)
-            },
+            onSuccess = { stored -> finish(stored, draft.food, scanned, keepsProduct = true) { onPartResolved(stored) } },
             onFailure = { notices.show(it.message ?: "Could not save this food.") },
-        ) { keepEditsOfStored(draft.food); store.cacheFood(draft.food) }
+        ) { storeIt(draft.food) }
     }
 
     /** [filled] when the amount comes to something. */
@@ -424,10 +458,16 @@ internal class ProductReview(
 
 @Serializable
 enum class ProductReviewOrigin {
-    MEAL, LIBRARY, QUEUE, LOG_PART;
+    MEAL, LIBRARY, QUEUE, LOG_PART,
 
-    /** What is made or found for it goes on to its review: a meal's log, or a part of the Log's draft. */
-    val logs: Boolean get() = this == MEAL || this == LOG_PART
+    /** For an entry's "Not right?": what is found replaces that entry's food. */
+    CORRECTION;
+
+    /** What is made or found for it goes on to its review: a meal's log, a part of the Log's draft, or a correction. */
+    val logs: Boolean get() = this == MEAL || this == LOG_PART || this == CORRECTION
+
+    /** Its review has no meal to choose: the food goes to what is already there, and a queue under it waits. */
+    val takesNoMeal: Boolean get() = this == LOG_PART || this == CORRECTION
 }
 
 /**

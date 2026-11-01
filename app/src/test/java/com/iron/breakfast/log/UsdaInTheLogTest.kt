@@ -14,6 +14,7 @@ import com.iron.breakfast.domain.NutritionValues
 import com.iron.breakfast.domain.Preference
 import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.logDraftViewOf
+import com.iron.breakfast.scan.ProductReviewOrigin
 import com.iron.breakfast.ui.screens.noValueLine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -224,6 +225,71 @@ class UsdaInTheLogTest {
         kit.log.onDraft("milk")
         kit.log.addScannedPart(chicken, 100.0, Measure(MeasureUnit.GRAM), replaces = part)
         assertEquals("milk, 100 g Chicken, breast, coated", kit.log.draft)
+    }
+
+    // ---- A rename in the review of the part it replaces ----
+
+    private val apple = food("fndds_3", "Apple")
+
+    /** Draft `100 g Apple, appl`, Apple pinned to the first part, its USDA row's review open under `appl`. */
+    private fun reviewingAppleUnderItsOwnPart() = AppKit(foods = listOf(apple)).apply {
+        plannerFoods = listOf(apple)
+        log.open(null)
+        log.addScannedPart(apple, 100.0, Measure(MeasureUnit.GRAM))
+        log.onDraft("100 g Apple, appl")
+        val part = log.partBeingTyped()!!
+        assertEquals("appl", part.text)
+        review.choose(apple, origin = ProductReviewOrigin.LOG_PART, typed = log.typedOf(part), replaces = part)
+    }
+
+    @Test fun `a rename in the review still replaces the part it was opened for`() {
+        val kit = reviewingAppleUnderItsOwnPart()
+        kit.review.onName("Green apple")
+        kit.review.onAmount("50")
+        kit.review.addToLog()
+        assertEquals("100 g Green apple, 50 g Green apple", kit.log.draft)
+        assertEquals(setOf("100 g Green apple", "50 g Green apple"), kit.log.pinsSnapshot().keys)
+        assertEquals(setOf("Green apple"), kit.log.pinsSnapshot().values.map { it.name }.toSet())
+    }
+
+    @Test fun `a rename at the amount the part started on leaves no third part`() {
+        val kit = reviewingAppleUnderItsOwnPart()
+        kit.review.onName("Green apple")
+        kit.review.addToLog()
+        assertEquals("100 g Green apple, 100 g Green apple", kit.log.draft)
+    }
+
+    @Test fun `a rename to a name with a comma still replaces the part it was opened for`() {
+        val kit = reviewingAppleUnderItsOwnPart()
+        kit.review.onName("Apple, green")
+        kit.review.onAmount("50")
+        kit.review.addToLog()
+        assertEquals("100 g Apple, green, 50 g Apple, green", kit.log.draft)
+    }
+
+    @Test fun `a rename follows the part a review left for a better match`() {
+        val kit = reviewingAppleUnderItsOwnPart()
+        kit.review.findBetterMatch()
+        kit.diary.foods = listOf(apple.copy(name = "Green apple"))
+        kit.owners.session.refresh()
+        kit.log.refreshPins(kit.owners.session.foods)
+        kit.review.choose(egg, origin = ProductReviewOrigin.LOG_PART)
+        kit.review.addToLog()
+        assertEquals("100 g Green apple, 100 g Egg, whole, raw", kit.log.draft)
+    }
+
+    @Test fun `a rename inside the part being replaced still replaces it`() {
+        val kit = AppKit(foods = listOf(apple))
+        kit.plannerFoods = listOf(apple)
+        kit.log.open(null)
+        kit.log.addScannedPart(apple, 100.0, Measure(MeasureUnit.GRAM))
+        val part = kit.log.partBeingTyped()!!
+        assertEquals("100 g Apple", part.text)
+        kit.review.choose(apple, origin = ProductReviewOrigin.LOG_PART, replaces = part)
+        kit.review.onName("Green apple")
+        kit.review.onAmount("50")
+        kit.review.addToLog()
+        assertEquals("50 g Green apple", kit.log.draft)
     }
 
     @Test fun `the part being typed is null after a separator`() {

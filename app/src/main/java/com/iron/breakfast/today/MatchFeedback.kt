@@ -8,6 +8,9 @@ import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.app.Notices
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
+import com.iron.breakfast.domain.MealSlot
+import com.iron.breakfast.domain.Measure
+import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.RankedFood
 import com.iron.breakfast.domain.ReplacementResult
 import com.iron.breakfast.suspendRunCatching
@@ -21,6 +24,8 @@ internal interface MatchStore {
     /** Other foods [entry]'s typed text could have meant, best first. */
     fun alternativesFor(entry: MealEntry): List<RankedFood>
     suspend fun replaceEntry(entryId: String, foodId: String): ReplacementResult
+    /** The entry becomes [amount] of [unit] of [foodId], in the same meal and day. */
+    suspend fun replaceEntryWith(entryId: String, foodId: String, amount: Double, unit: MeasureUnit, servingName: String?, meal: MealSlot, dayKey: String): ReplacementResult
     /** Learns that [foodId] was the right food (a no-op while Learn from my picks is off). */
     suspend fun reinforce(foodId: String)
 }
@@ -35,6 +40,10 @@ internal interface MatchStore {
  *   started before a resolve is still there after it; otherwise it expires. The timer checks once a [TICK_MS].
  * - [confirm] and [chooseAlternative] write through [session]. A pick keeps the batch Undo (B4: it ends only at the
  *   next log, edit or delete; batch Undo then leaves the corrected entry).
+ * - [search] leaves the strip for a food found elsewhere: Open Food Facts, a scan or a new food, all as
+ *   `ProductReviewOrigin.CORRECTION`, which only this opens, so [correctingId] is read only on that way. Whatever it
+ *   finds comes back through [correct] and replaces the entry; the window has no say by then. [correctingId] comes back
+ *   after process death with the form that may be open on it.
  *
  * The timer runs in [scope] (the view model's) and waits with [sleep]; [clock] times the window.
  */
@@ -47,9 +56,14 @@ internal class MatchFeedback(
     private val clock: () -> Long,
     private val scope: CoroutineScope,
     private val sleep: suspend (Long) -> Unit = { delay(it) },
+    /** The search a correction goes to, on the entry's food name. */
+    private val openSearch: (String) -> Unit = {},
+    initialCorrectingId: String? = null,
 ) {
     /** The entries whose strip is open. */
     var ids by mutableStateOf<Set<String>>(emptySet()); private set
+    /** The entry the last [search] was for. */
+    var correctingId by mutableStateOf(initialCorrectingId); private set
     /** When the window ends; 0 when no feedback runs. */
     private var until = 0L
     private var timer: Job? = null
@@ -64,7 +78,7 @@ internal class MatchFeedback(
         when (change) {
             is DiaryChange.BatchLogged -> show(change.entries.filter { it.approximateConversion }.mapTo(mutableSetOf()) { it.id })
             // Nothing from the old diary may be confirmed into the new one.
-            DiaryChange.DiaryReplaced -> clear()
+            DiaryChange.DiaryReplaced -> { clear(); correctingId = null }
             else -> Unit
         }
     }
@@ -84,17 +98,59 @@ internal class MatchFeedback(
         if (!isOpen(entry)) return
         session.write(
             change = { pick: Pick -> DiaryChange.MatchCorrected.takeIf { pick.result is ReplacementResult.Success } },
-            onSuccess = { pick ->
-                when (val result = pick.result) {
-                    is ReplacementResult.Success -> if (pick.learned) ids = ids - entry.id
-                    is ReplacementResult.Failure -> notices.show(result.reason)
-                }
-            },
+            onSuccess = { pick -> settle(entry.id, pick) },
             onFailure = {},
+        ) { learnedPick(food.id, store.replaceEntry(entry.id, food.id)) }
+    }
+
+    /** Search on the strip: what is found from here replaces [entry]. */
+    fun search(entry: MealEntry) {
+        if (!isOpen(entry)) return
+        correctingId = entry.id
+        openSearch(entry.foodName)
+    }
+
+    /** The entry the last [search] was for, while the diary has it. */
+    fun correctingEntry(): MealEntry? = session.entries.firstOrNull { it.id == correctingId }
+
+    /**
+     * A food found from [search], reviewed: [store] stores it, and in the same write the entry becomes [amount] of
+     * [measure] of it. Stored, it goes to [onStored] whatever the replacement said; a refused one says why. Reported as a
+     * food change: the Library lists the food, a pin follows it, and the pending Undo stays as for any pick. With no entry
+     * left to correct (the diary was replaced under it), nothing is written: it says so and [onGone] runs.
+     */
+    fun correct(store: suspend () -> FoodRecord, amount: Double, measure: Measure, onGone: () -> Unit, onStored: (FoodRecord) -> Unit) {
+        val id = correctingId ?: run {
+            notices.show("That saved entry is no longer available.")
+            onGone()
+            return
+        }
+        // The entry gone, the plain replacement is what says so.
+        val entry = correctingEntry()
+        session.write(
+            change = DiaryChange.FoodsChanged,
+            onSuccess = { (food, pick) ->
+                if (pick.result is ReplacementResult.Success) correctingId = null
+                settle(id, pick)
+                onStored(food)
+            },
+            onFailure = { notices.show(it.message ?: "Could not save this food.") },
         ) {
-            val result = store.replaceEntry(entry.id, food.id)
-            val learned = result is ReplacementResult.Success && suspendRunCatching { store.reinforce(food.id) }.isSuccess
-            Pick(result, learned)
+            val food = store()
+            val result = if (entry == null) this.store.replaceEntry(id, food.id)
+            else this.store.replaceEntryWith(id, food.id, amount, measure.unit, measure.name, entry.mealSlot, entry.dayKey)
+            food to learnedPick(food.id, result)
+        }
+    }
+
+    /** [result], learned when it replaced the entry. */
+    private suspend fun learnedPick(foodId: String, result: ReplacementResult): Pick =
+        Pick(result, result is ReplacementResult.Success && suspendRunCatching { store.reinforce(foodId) }.isSuccess)
+
+    private fun settle(entryId: String, pick: Pick) {
+        when (val result = pick.result) {
+            is ReplacementResult.Success -> if (pick.learned) ids = ids - entryId
+            is ReplacementResult.Failure -> notices.show(result.reason)
         }
     }
 

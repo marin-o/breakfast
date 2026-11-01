@@ -308,8 +308,8 @@ internal class RecipeForm(
     /** Recipe [id] was deleted: an Edit of it closes, so it cannot store the recipe again. */
     fun recipeDeleted(id: String) { if (editingRecipeId == id) close() }
 
-    /** Foods changed: a pin holds the food as it was picked, so Save stores what it is now. */
-    fun refreshPins(current: List<FoodRecord>) { pins.refresh(current) }
+    /** Foods changed: a pin holds the food as it was picked, so Save stores what it is now; a new name replaces the old in the text. */
+    fun refreshPins(current: List<FoodRecord>) { fields = fields.copy(ingredients = pins.refresh(fields.ingredients, current)) }
 
     /** Food [id] was deleted: a part pinned to it is matched again, so Save cannot keep that food. */
     fun dropPinsOf(foodId: String) { pins.dropFood(foodId) }

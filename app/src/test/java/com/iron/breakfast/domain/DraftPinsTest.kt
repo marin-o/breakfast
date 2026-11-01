@@ -64,9 +64,98 @@ class DraftPinsTest {
         val draft = "Mleko"
         pins.add(draft, "Mleko", milkB)
         val used = pins.current()
-        pins.refresh(listOf(milkB.copy(aliases = milkB.aliases + "other")))
+        assertEquals(draft, pins.refresh(draft, listOf(milkB.copy(aliases = milkB.aliases + "other"))))
         pins.forget(used)
         assertTrue(pins.current().isEmpty())
+    }
+
+    @Test fun aRenameRewritesThePartAndKeepsThePick() {
+        val draft = "200 g Mleko"
+        pins.add(draft, draft, milkB)
+        val renamed = milkB.copy(name = "Sveze mleko")
+        val next = pins.refresh(draft, listOf(renamed))
+        assertEquals("200 g Sveze mleko", next)
+        val only = LogPlanner(FoodMatcher(listOf(milkA, renamed)), pins = pins.keys(next) { LogPlanner(FoodMatcher(listOf(milkA, renamed)), pins = it) }).plan(next).entries.single()
+        assertEquals("b", only.food.id)
+        assertEquals(200.0 to MeasureUnit.GRAM, only.amount to only.unit)
+    }
+
+    @Test fun otherPinsMoveWithTheTextOfARename() {
+        val draft = "Milk , 100 g Milk 3.2"
+        pins.add(draft, "Milk", milk)
+        pins.add(draft, "100 g Milk 3.2", milk32)
+        val next = pins.refresh(draft, listOf(milk.copy(name = "Whole milk"), milk32))
+        assertEquals("Whole milk , 100 g Milk 3.2", next)
+        assertEquals(listOf(0, 19), pins.current().map { it.nameStart })
+        assertEquals(listOf("milk", "milk32"), pins.current().map { it.food.id })
+    }
+
+    @Test fun twoPartsPinnedToOneFoodBothFollowARename() {
+        val draft = "Mleko , Mleko "
+        pins.add(draft, "Mleko", milkA)
+        pins.add(draft, "Mleko", milkA, 8)
+        assertEquals("Kefir , Kefir ", pins.refresh(draft, listOf(milkA.copy(name = "Kefir"))))
+        assertEquals(listOf(0, 8), pins.current().map { it.nameStart })
+    }
+
+    /** The planner over [foods] with this draft's pins: what Add would log. */
+    private fun planOver(draft: String, vararg foods: FoodRecord): List<String> {
+        val over = { keys: Map<String, FoodRecord> -> LogPlanner(FoodMatcher(foods.toList()), pins = keys) }
+        return over(pins.keys(draft, over)).plan(draft).entries.map { "${it.amount} ${it.food.id}" }
+    }
+
+    @Test fun aRenameToANameWithACommaKeepsThePickAndMovesTheRest() {
+        val draft = "200 g Mleko, 100 g Milk"
+        pins.add(draft, "200 g Mleko", milkB)
+        pins.add(draft, "100 g Milk", milk, 13)
+        val renamed = milkB.copy(name = "Mleko, sveze")
+        val next = pins.refresh(draft, listOf(renamed, milk))
+        assertEquals("200 g Mleko, sveze, 100 g Milk", next)
+        assertEquals(listOf(6, 26), pins.current().map { it.nameStart })
+        assertEquals(setOf("200 g Mleko, sveze", "100 g Milk"), pins.keys(next, ::planner).keys)
+        assertEquals(listOf("200.0 b", "100.0 milk"), planOver(next, renamed, milk))
+    }
+
+    @Test fun aRenameFromANameWithACommaKeepsThePickAndMovesTheRest() {
+        val commaMilk = milkB.copy(name = "Mleko, sveze")
+        val draft = "200 g Mleko, sveze, 100 g Milk"
+        pins.add(draft, "200 g Mleko, sveze", commaMilk)
+        pins.add(draft, "100 g Milk", milk, 20)
+        val renamed = commaMilk.copy(name = "Kefir")
+        val next = pins.refresh(draft, listOf(renamed, milk))
+        assertEquals("200 g Kefir, 100 g Milk", next)
+        assertEquals(listOf(6, 19), pins.current().map { it.nameStart })
+        assertEquals(listOf("200.0 b", "100.0 milk"), planOver(next, renamed, milk))
+    }
+
+    @Test fun aRenameBetweenNamesWithCommasIsSavedAndRestored() {
+        val commaMilk = milkB.copy(name = "Mleko, sveze")
+        val draft = "200 g Mleko, sveze"
+        pins.add(draft, draft, commaMilk)
+        val renamed = commaMilk.copy(name = "Mleko, kozje, sveze")
+        val next = pins.refresh(draft, listOf(renamed))
+        assertEquals("200 g Mleko, kozje, sveze", next)
+        val saved = pins.keys(next, ::planner)
+        assertEquals(renamed, saved[next])
+        assertEquals(saved, DraftPins().apply { restore(next, saved) }.keys(next, ::planner))
+    }
+
+    @Test fun aPartNeverPinnedStaysAsTyped() {
+        val draft = "Milk , Mleko"
+        pins.add(draft, "Mleko", milkB, 7)
+        assertEquals("Milk , Kefir", pins.refresh(draft, listOf(milk.copy(name = "Whole milk"), milkB.copy(name = "Kefir"))))
+    }
+
+    @Test fun aRenamedPinIsSavedAndRestored() {
+        val draft = "2 Mleko , Mleko"
+        pins.add(draft, "2 Mleko", milkA)
+        pins.add(draft, "Mleko", milkB, 10)
+        val renamed = milkA.copy(name = "Kefir")
+        val next = pins.refresh(draft, listOf(renamed, milkB))
+        val saved = pins.keys(next, ::planner)
+        assertEquals("a", saved["2 Kefir"]?.id)
+        val restored = DraftPins().apply { restore(next, saved) }
+        assertEquals(saved, restored.keys(next, ::planner))
     }
 
     @Test fun earlierTextMovesAPinWithIt() {

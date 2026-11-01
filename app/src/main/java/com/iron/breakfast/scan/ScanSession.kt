@@ -73,10 +73,13 @@ internal class ScanSession(
     private var originLibraryTab = false
     /** This scan came from the Log's icon: what it finds is a new part of the draft, never a queued part. */
     var forLog by mutableStateOf(false); private set
+    /** This scan is on the way from "Not right?": what it finds replaces that entry's food. */
+    var correcting by mutableStateOf(false); private set
 
-    /** Opens the scanner for the day and meal on screen now; [forLog] from the Log's own icon. */
-    fun begin(forLog: Boolean = false) {
+    /** Opens the scanner for the day and meal on screen now; [forLog] from the Log's own icon, [correcting] from a correction's review. */
+    fun begin(forLog: Boolean = false, correcting: Boolean = false) {
         this.forLog = forLog
+        this.correcting = correcting
         token++
         originDay = selectedDay()
         originMeal = targetMeal()
@@ -146,7 +149,7 @@ internal class ScanSession(
         val mine = token
         val day = originDay
         val meal = originMeal
-        val reviewOrigin = productReviewOrigin(originLibraryTab, queueActive(), forLog)
+        val reviewOrigin = productReviewOrigin(originLibraryTab, queueActive(), forLog, correcting)
         val logging = reviewOrigin.takeIf { it.logs }
         val step = unknownBarcodeStep(lookUpBarcodes())
         lookupCode = barcode

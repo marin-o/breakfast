@@ -155,7 +155,7 @@ import com.iron.breakfast.ui.screens.sourceLabel
             if (event == Lifecycle.Event.ON_RESUME) {
                 val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
                 hasPermission = granted
-                if (granted && scan.unavailableReason == ScannerUnavailableReason.PERMISSION_DENIED) scan.begin(scan.forLog)
+                if (granted && scan.unavailableReason == ScannerUnavailableReason.PERMISSION_DENIED) scan.begin(scan.forLog, scan.correcting)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -392,7 +392,7 @@ private fun amountFieldText(review: ProductReview): String =
     // While a resolve queue is active the meal is the queue's own: shown as a plain line, not a choice.
     val queueMeal = review.queueMeal()
     val fromLibrary = review.origin == ProductReviewOrigin.LIBRARY
-    val forLog = review.origin == ProductReviewOrigin.LOG_PART
+    val forLog = review.origin.takesNoMeal
     var meal by rememberSaveable(food.id) { mutableStateOf(review.initialMeal()) }
     var editing by rememberSaveable(food.id) { mutableStateOf(false) }
     // A bare number counts the chosen serving while one is chosen, else the basis unit.

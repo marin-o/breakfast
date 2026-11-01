@@ -76,6 +76,8 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
             match = object : MatchStore {
                 override fun alternativesFor(entry: MealEntry) = engine.alternativesFor(entry)
                 override suspend fun replaceEntry(entryId: String, foodId: String) = engine.replaceEntry(entryId, foodId)
+                override suspend fun replaceEntryWith(entryId: String, foodId: String, amount: Double, unit: MeasureUnit, servingName: String?, meal: MealSlot, dayKey: String) =
+                    engine.replaceEntryDraft(entryId, foodId, amount, unit, meal, dayKey, servingName)
                 override suspend fun reinforce(foodId: String) = engine.reinforce(foodId)
             },
             resolve = object : ResolveStore {

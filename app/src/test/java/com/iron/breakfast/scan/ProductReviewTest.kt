@@ -374,7 +374,6 @@ class ProductReviewTest {
     }
 
     @Test fun withNoOriginGivenAReviewWithNoMealOpenSavesToTheLibrary() {
-        // Daily's "Not right?" search: a log here would write a second entry beside the wrong one.
         review.choose(nutella)
         assertEquals(ProductReviewOrigin.LIBRARY, review.origin)
     }

@@ -78,6 +78,10 @@ internal class AppKit(
     val calls = mutableListOf<String>()
     /** What a tap taught, in order. */
     val reinforced = mutableListOf<String>()
+    /** What replacing an entry's food answers. */
+    var replacement: ReplacementResult = ReplacementResult.Failure("not in these tests")
+    /** What Open Food Facts answers, whatever it is asked. */
+    var offFoods: List<FoodRecord> = emptyList()
     /** What the USDA catalogue answers, whatever it is asked. */
     var usdaFoods: List<FoodRecord> = emptyList()
     /** What Open Food Facts was asked, in order. */
@@ -116,7 +120,11 @@ internal class AppKit(
             },
             match = object : MatchStore {
                 override fun alternativesFor(entry: MealEntry) = emptyList<RankedFood>()
-                override suspend fun replaceEntry(entryId: String, foodId: String) = ReplacementResult.Failure("not in these tests")
+                override suspend fun replaceEntry(entryId: String, foodId: String): ReplacementResult { calls += "replace $entryId with $foodId"; return replacement }
+                override suspend fun replaceEntryWith(entryId: String, foodId: String, amount: Double, unit: MeasureUnit, servingName: String?, meal: MealSlot, dayKey: String): ReplacementResult {
+                    calls += "replace $entryId with $foodId $amount ${servingName ?: unit.label} $meal $dayKey"
+                    return replacement
+                }
                 override suspend fun reinforce(foodId: String) { calls += "reinforce $foodId" }
             },
             resolve = object : ResolveStore {
@@ -167,7 +175,10 @@ internal class AppKit(
                     // As the engine stores it: over a stored food with its id.
                     diary.foods = diary.foods.map { if (it.id == food.id) food else it }
                 }
-                override suspend fun updateFood(food: FoodRecord) { calls += "review save ${food.id}" }
+                override suspend fun updateFood(food: FoodRecord) {
+                    calls += "review save ${food.id}"
+                    diary.foods = diary.foods.map { if (it.id == food.id) food else it }
+                }
                 override suspend fun cacheFood(food: FoodRecord): FoodRecord { calls += "review store ${food.id}"; return food }
                 override suspend fun fullProduct(barcode: String): FoodRecord? { calls += "fetch $barcode"; return null }
             },
@@ -182,7 +193,7 @@ internal class AppKit(
                 override fun preflight(draft: OffContributionDraft) = OffPreflightResult.Existing
                 override fun contribute(draft: OffContributionDraft, username: String, password: String) = OffContributionResult.Success
             },
-            offSearch = object : OffSearchService { override suspend fun search(query: String): OffSearchResult { offSearched += query; return OffSearchResult.Success(emptyList()) } },
+            offSearch = object : OffSearchService { override suspend fun search(query: String): OffSearchResult { offSearched += query; return OffSearchResult.Success(offFoods) } },
             usda = object : com.iron.breakfast.search.UsdaCatalogue { override suspend fun search(text: String) = usdaFoods },
             licence = { "SIL Open Font License" },
             weights = object : WeightStore {

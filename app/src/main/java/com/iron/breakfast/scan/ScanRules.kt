@@ -18,8 +18,10 @@ internal fun parseProductAmount(text: String, basisUnit: MeasureUnit): ParsedAmo
  * What a product review is for, by where it started: a new part of the draft from the Log's scan icon ([fromLogIcon],
  * even with a queue under it), the resolve queue's part while one is being resolved ([queueActive]),
  * Save to Library from the Library tab ([libraryTab]), and a log from anywhere else: Daily, a meal, a meal's Library.
+ * A scan on the way from "Not right?" ([correcting]) is for that entry, wherever it started.
  */
-internal fun productReviewOrigin(libraryTab: Boolean, queueActive: Boolean, fromLogIcon: Boolean = false): ProductReviewOrigin = when {
+internal fun productReviewOrigin(libraryTab: Boolean, queueActive: Boolean, fromLogIcon: Boolean = false, correcting: Boolean = false): ProductReviewOrigin = when {
+    correcting -> ProductReviewOrigin.CORRECTION
     fromLogIcon -> ProductReviewOrigin.LOG_PART
     queueActive -> ProductReviewOrigin.QUEUE
     libraryTab -> ProductReviewOrigin.LIBRARY

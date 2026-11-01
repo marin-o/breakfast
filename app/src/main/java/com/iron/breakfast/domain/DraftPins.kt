@@ -7,8 +7,9 @@ internal const val PIN_OCCURRENCE = '\u0001'
 
 /**
  * The foods picked for the parts of a draft. Each pin belongs to its own part, by where the food's name sits in the
- * draft: [edited] moves it with the text, and retyping the name drops it, while editing the amount around it keeps it.
- * So two parts with one name keep their own foods, and a part typed later is never taken by an earlier pin.
+ * draft: [edited] moves it with the text, and retyping the name drops it, while editing the amount around it keeps it;
+ * renaming the food changes the text with it ([refresh]). So two parts with one name keep their own foods, and a part
+ * typed later is never taken by an earlier pin.
  *
  * The planner reads them as [keys]: a part's text to its food, the plain text unless parts with that text differ.
  */
@@ -29,16 +30,41 @@ internal class DraftPins {
     fun dropFood(foodId: String) { pins.removeAll { it.food.id == foodId } }
     fun dropWhere(gone: (FoodRecord) -> Boolean) { pins.removeAll { gone(it.food) } }
 
-    /** Each pin holds its food as it is in [current]; one whose name changed goes, since its text no longer names it. */
-    fun refresh(current: List<FoodRecord>) {
+    /**
+     * Each pin holds its food as it is in [current]. A renamed food's new name takes the old one's place in [draft], for
+     * every part pinned to it, and the other pins move with the text. Returns the draft as it now reads, with [shift]
+     * given how a position in the old text moved. A pin whose name is no longer at its place goes.
+     */
+    fun refresh(draft: String, current: List<FoodRecord>, shift: ((Int) -> Int) -> Unit = {}): String {
         val byId = current.associateBy { it.id }
+        val renames = pins.mapNotNull { pin ->
+            val food = byId[pin.food.id]?.takeIf { it.name != pin.food.name && draft.startsWith(pin.food.name, pin.nameStart) }
+            food?.let { Rename(pin.nameStart, pin.food.name.length, it.name) }
+        }.distinctBy { it.start }.sortedBy { it.start }.fold(emptyList<Rename>()) { kept, rename ->
+            if (kept.lastOrNull()?.let { it.start + it.oldLength > rename.start } == true) kept else kept + rename
+        }
+        val moved = { at: Int -> at + renames.filter { it.start + it.oldLength <= at }.sumOf { it.name.length - it.oldLength } }
+        val text = buildString {
+            var copied = 0
+            renames.forEach { rename ->
+                append(draft, copied, rename.start).append(rename.name)
+                copied = rename.start + rename.oldLength
+            }
+            append(draft, copied, draft.length)
+        }
         val next = pins.mapNotNull { pin ->
-            val food = byId[pin.food.id] ?: return@mapNotNull pin
-            if (food.name == pin.food.name) Pin(pin.nameStart, food, pin.madeFor) else null
+            val food = byId[pin.food.id] ?: pin.food
+            val made = if (food.name == pin.food.name) pin.madeFor else pin.madeFor.replaceFirst(pin.food.name, food.name)
+            Pin(moved(pin.nameStart), food, made).takeIf { text.startsWith(food.name, it.nameStart) }
         }
         pins.clear()
         pins.addAll(next)
+        if (renames.isNotEmpty()) shift(moved)
+        return text
     }
+
+    /** A renamed food's name at [start] of the draft: [oldLength] long, now [name]. */
+    private class Rename(val start: Int, val oldLength: Int, val name: String)
 
     /** Back from [keys] as they were saved, or as an edit types its parts back: each part with that text in [draft]. */
     fun restore(draft: String, keys: Map<String, FoodRecord>) {

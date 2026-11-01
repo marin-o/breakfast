@@ -164,6 +164,8 @@ internal class AppOwners<D>(
         clock = clock,
         scope = threads.scope,
         sleep = threads.sleep,
+        openSearch = { name -> search.open(name, reviewOrigin = ProductReviewOrigin.CORRECTION) },
+        initialCorrectingId = savedState[CORRECTING_ID_KEY],
     )
     /** The Open Food Facts contribution flow (see [ContributionFlow]). */
     val contribution = ContributionFlow(stores.contributions, notices, threads.scope, threads.io, showContribute = { settings.showContribute })
@@ -240,6 +242,7 @@ internal class AppOwners<D>(
         },
         onMealChosen = resolve::changeMeal,
         queuedParts = { resolve.parts },
+        onRenamed = { follow -> review.draftRenamed(follow) },
         resolvePart = resolve::beginPart,
         // Typed work comes back after the process was killed: the log draft (and an open food form, in [init]).
         compute = threads.compute,
@@ -336,11 +339,13 @@ internal class AppOwners<D>(
         onLogged = resolve::childLogged,
         onClosed = resolve::childClosed,
         openSearch = { fromResolver, origin -> search.open(fromResolver = fromResolver, reviewOrigin = origin) },
-        startScan = { forLog -> scan.begin(forLog) },
+        startScan = { from -> scan.begin(forLog = from == ProductReviewOrigin.LOG_PART, correcting = from == ProductReviewOrigin.CORRECTION) },
         confirmLogged = confirmations::logged,
         scope = threads.scope,
         io = threads.io,
         onCataloguePicked = { log.learnPick(it) },
+        correctingEntry = feedback::correctingEntry,
+        correct = feedback::correct,
     )
     /** The Recipes tab: the list, the recipe page, logging one and Delete recipe (see [RecipeBook]). */
     val recipes: RecipeBook = RecipeBook(
@@ -385,6 +390,7 @@ internal class AppOwners<D>(
         restoreProfile(savedState)?.let(profile::restore)
         // Every change is mirrored, so an added or cleared draft and a closed or saved form drop their keys.
         threads.scope.launch { snapshotFlow { log.savedDraft() }.collect { saveLogDraft(savedState, it) } }
+        threads.scope.launch { snapshotFlow { feedback.correctingId }.collect { savedState[CORRECTING_ID_KEY] = it } }
         threads.scope.launch { snapshotFlow { foodForm.savedForm() }.collect { saveFoodForm(savedState, it) } }
         threads.scope.launch { snapshotFlow { recipeForm.savedForm() }.collect { saveRecipeForm(savedState, it) } }
         threads.scope.launch { snapshotFlow { profile.savedPage() }.collect { saveProfile(savedState, it) } }
@@ -457,5 +463,7 @@ internal class AppOwners<D>(
 
 /** The meal on screen in `SavedStateHandle`. */
 private const val MEAL_SLOT_KEY = "meal_slot"
+/** The entry "Not right?" is finding a food for, in `SavedStateHandle`. */
+private const val CORRECTING_ID_KEY = "correcting_id"
 /** The open entry detail in `SavedStateHandle`. */
 private const val ENTRY_ID_KEY = "entry_id"

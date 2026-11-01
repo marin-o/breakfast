@@ -236,13 +236,16 @@ class RecipeSurfacesTest {
         assertEquals(halved.asFood(), app.log.pinsSnapshot().values.single())
     }
 
-    /** F4: renamed, the pin's name is no longer in the text, so the part is matched again. */
-    @Test fun aLogPinToARecipeRenamedGoes() {
+    /** Renamed, the draft takes the new name and the part stays that recipe. */
+    @Test fun aLogPinToARecipeRenamedFollowsIt() {
         app.plannerFoods = TestFoods.fixtures + chili.asFood()
         app.log.onDraft("1 portion chil")
         app.log.chooseSuggestion(chili.asFood())
-        app.owners.session.write(DiaryChange.RecipesChanged) { app.diary.recipes = listOf(chili.copy(name = "Stew")) }
-        assertTrue(app.log.pinsSnapshot().isEmpty())
+        val named = app.log.draft
+        val stew = chili.copy(name = "Stew")
+        app.owners.session.write(DiaryChange.RecipesChanged) { app.diary.recipes = listOf(stew) }
+        assertEquals(named.replace(chili.name, "Stew"), app.log.draft)
+        assertEquals(listOf(stew.asFood()), app.log.pinsSnapshot().values.toList())
     }
 
     /** F4: the recipe form's pin to a food follows that food's edit too, so Save stores its new numbers. */

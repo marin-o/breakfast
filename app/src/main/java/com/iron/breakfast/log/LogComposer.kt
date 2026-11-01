@@ -77,6 +77,8 @@ internal class LogComposer(
     private val onMealChosen: (source: ResolveSource, meal: MealSlot) -> Unit = { _, _ -> },
     /** The parts the queue holds now. */
     private val queuedParts: () -> List<String> = { emptyList() },
+    /** A pinned food's rename rewrote the draft: [follow] gives a part of the draft before it as it reads now. */
+    private val onRenamed: (follow: (SegmentSpan) -> SegmentSpan) -> Unit = {},
     initial: SavedLogDraft = SavedLogDraft("", false),
 ) : ResolveSource {
     var draft by mutableStateOf(initial.text); private set
@@ -90,6 +92,8 @@ internal class LogComposer(
     private var submitPending = false
     // Observable, so a pin added without a text change still recomputes the Log page's draft.
     private val pins = DraftPins()
+    /** How a position in the text of the last [resolveNotInFoods] moved, when a pinned food was renamed since. */
+    private var renamedSinceRequest: ((Int) -> Int)? = null
 
     /** The draft for `SavedStateHandle`. */
     fun savedDraft(): SavedLogDraft = SavedLogDraft(draft, committed)
@@ -103,8 +107,21 @@ internal class LogComposer(
     /** A food was deleted: a part pinned to it is matched again, so Add cannot log (or bring back) that food. */
     fun dropPinsOf(foodId: String) { pins.dropFood(foodId) }
 
-    /** Foods or recipes changed: a pin holds them as they were picked, so Add logs what they are now. */
-    fun refreshPins(current: List<FoodRecord>) { pins.refresh(current) }
+    /**
+     * Foods or recipes changed: a pin holds them as they were picked, so Add logs what they are now, and a renamed one's
+     * new name takes the old one's place in the draft. The part stays the same pick, so nothing here counts as typing.
+     */
+    fun refreshPins(current: List<FoodRecord>) {
+        val before = draft
+        var renamed: ((Int) -> Int)? = null
+        val after = pins.refresh(before, current) { moved ->
+            renamed = moved
+            val earlier = renamedSinceRequest
+            renamedSinceRequest = { at -> moved(earlier?.invoke(at) ?: at) }
+        }
+        draft = after
+        renamed?.let { moved -> onRenamed { part -> partAfterRename(part, before, after, moved) } }
+    }
 
     /** A meal, the Library or an entry edit opened, or the diary was replaced: the Log's error no longer applies. */
     fun clearError() { error = null }
@@ -302,6 +319,7 @@ internal class LogComposer(
         val part = draft.substring(row.start, row.end)
         val query = store.planner(pinsSnapshot()).libraryQueryFor(part)
         val request = LogResolveRequest(draft, row.start, row.end, part, preset, chosen, openMeal())
+        renamedSinceRequest = null
         open = false
         error = null
         resolvePart(request, targetMeal() ?: MealSlot.BREAKFAST, query)
@@ -312,13 +330,19 @@ internal class LogComposer(
      * with [pick] in place of the part, pinned so the part resolves to it.
      */
     fun resume(request: LogResolveRequest, pick: FoodRecord?) {
+        // A food renamed in the Library already changed the draft: the request's copy still has the old name.
+        val moved = renamedSinceRequest
+        renamedSinceRequest = null
+        val base = if (moved != null) draft else request.draftText
+        val start = moved?.invoke(request.start) ?: request.start
+        val end = moved?.invoke(request.end) ?: request.end
         if (pick == null) {
-            applyDraft(request.draftText)
+            applyDraft(base)
         } else {
             val text = store.planner(pinsSnapshot()).pickedText(request.part, pick)
-            val next = replaceDraftPart(request.draftText, request.start, request.end, text)
+            val next = replaceDraftPart(base, start, end, text)
             applyDraft(next)
-            pins.add(next, text, pick, request.start)
+            pins.add(next, text, pick, start)
         }
         // Back with its rows in place, as Add left them, when a queue is still waiting.
         committed = queuedParts().isNotEmpty()
@@ -345,6 +369,14 @@ internal class LogComposer(
 
 /** One local food offered for a part: the amount the part would log of it, and its kcal. */
 internal data class LocalChoice(val food: FoodRecord, val quantityLine: String, val kcal: String)
+
+/** [part] of [before] as it reads in [after], where positions went as [moved] says; one [before] does not hold stays as it is. */
+private fun partAfterRename(part: SegmentSpan, before: String, after: String, moved: (Int) -> Int): SegmentSpan {
+    if (part.end > before.length || before.substring(part.start, part.end) != part.text) return part
+    val start = moved(part.start)
+    val end = moved(part.end)
+    return SegmentSpan(after.substring(start, end), start, end)
+}
 
 /** The Log's error while parts of the draft are not matched. */
 private const val NEEDS_A_MATCH = "Some foods need a match."

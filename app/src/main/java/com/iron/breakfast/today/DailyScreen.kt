@@ -45,7 +45,6 @@ import com.iron.breakfast.app.Surfaces
 import com.iron.breakfast.contribution.ContributionFlow
 import com.iron.breakfast.entry.EntryEdit
 import com.iron.breakfast.log.LogComposer
-import com.iron.breakfast.search.OffSearch
 import com.iron.breakfast.settings.SettingsState
 import com.iron.breakfast.contribution.ContributionAction
 import com.iron.breakfast.domain.MealEntry
@@ -82,7 +81,6 @@ internal fun DailyScreen(
     surfaces: Surfaces,
     undo: UndoController,
     feedback: MatchFeedback,
-    search: OffSearch,
     profile: ProfileValues,
     modifier: Modifier,
 ) {
@@ -134,7 +132,7 @@ internal fun DailyScreen(
             }
             log.error?.let { message -> item { Text(message, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(vertical = 6.dp)) } }
             items(MealSlot.entries) { slot ->
-                DailyMealSection(slot, selected.filter { it.mealSlot == slot }, log, surfaces, entryEdit, undo, feedback, search, rows = day.selectedDayKey to session.ready)
+                DailyMealSection(slot, selected.filter { it.mealSlot == slot }, log, surfaces, entryEdit, undo, feedback, rows = day.selectedDayKey to session.ready)
             }
             item {
                 if (contribution.actionShown) ContributionAction(contribution)
@@ -179,7 +177,6 @@ private fun DailyMealSection(
     entryEdit: EntryEdit,
     undo: UndoController,
     feedback: MatchFeedback,
-    search: OffSearch,
     rows: Any,
 ) {
     val total = nutritionTotalOf(entries)
@@ -201,13 +198,13 @@ private fun DailyMealSection(
             caloriesEnd = AddCircleInset,
             modifier = Modifier.entryActions(entry, entryEdit, undo) { entryEdit.openDetail(entry) },
         )
-        Reveal(entry.takeIf { feedback.isOpen(it) }, resize = true) { CorrectionStrip(feedback, search, it) }
+        Reveal(entry.takeIf { feedback.isOpen(it) }, resize = true) { CorrectionStrip(feedback, it) }
     } }
 }
 
 /** A day's correction after a doubtful match: "<food> matched. Not right?" with the alternatives and Search. */
 @Composable
-internal fun CorrectionStrip(feedback: MatchFeedback, search: OffSearch, entry: MealEntry) {
+internal fun CorrectionStrip(feedback: MatchFeedback, entry: MealEntry) {
     val colors = LocalBreakfastColors.current
     Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
         Text("${entry.foodName} matched. Not right?", color = colors.soft, style = BreakfastType.Meta)
@@ -215,7 +212,7 @@ internal fun CorrectionStrip(feedback: MatchFeedback, search: OffSearch, entry: 
             ChoiceOption(entry.foodName, true, { feedback.confirm(entry) })
             // The match shows as selected; the alternatives and Search are actions.
             feedback.alternatives(entry).forEach { alternative -> ChoiceOption(alternative.food.name, false, { feedback.chooseAlternative(entry, alternative.food) }, selectable = false) }
-            ChoiceOption("Search", false, { search.open(entry.foodName) }, selectable = false)
+            ChoiceOption("Search", false, { feedback.search(entry) }, selectable = false)
         }
     }
 }

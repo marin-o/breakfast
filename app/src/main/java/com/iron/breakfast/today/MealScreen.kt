@@ -53,7 +53,6 @@ import com.iron.breakfast.contribution.ContributionFlow
 import com.iron.breakfast.entry.EntryEdit
 import com.iron.breakfast.log.LogComposer
 import com.iron.breakfast.scan.ScanSession
-import com.iron.breakfast.search.OffSearch
 import com.iron.breakfast.settings.SettingsState
 import com.iron.breakfast.contribution.ContributionAction
 import com.iron.breakfast.domain.MealEntry
@@ -90,7 +89,6 @@ internal fun MealScreen(
     surfaces: Surfaces,
     undo: UndoController,
     feedback: MatchFeedback,
-    search: OffSearch,
     scan: ScanSession,
     modifier: Modifier,
     /** The meal shown: the Meal screen's own, or, while it glides out, the one it showed. */
@@ -128,7 +126,7 @@ internal fun MealScreen(
                 Column(Modifier.fillMaxWidth().then(listRowMotion(motion))) {
                     EntryRow(entry, undo, entryEdit, motion)
                     // Same correction block as Daily, for a doubtful match from the Log page.
-                    Reveal(entry.takeIf { feedback.isOpen(it) }, resize = true) { CorrectionStrip(feedback, search, it) }
+                    Reveal(entry.takeIf { feedback.isOpen(it) }, resize = true) { CorrectionStrip(feedback, it) }
                 }
             }
             item {
