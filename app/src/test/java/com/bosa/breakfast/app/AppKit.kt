@@ -86,6 +86,8 @@ internal class AppKit(
     var usdaFoods: List<FoodRecord> = emptyList()
     /** What Open Food Facts was asked, in order. */
     val offSearched = mutableListOf<String>()
+    /** A pause of the app's `sleep` is over at once; otherwise it never ends. */
+    var pausesEnd = false
     /** What the queue logged: amount, unit and food. */
     val queueLogged = mutableListOf<String>()
     /** What the Log's Add and the Library's mixed batch leave unmatched. */
@@ -225,7 +227,7 @@ internal class AppKit(
         ),
         settings = SettingsState(AppSettings(settingsStore)) { now },
         savedState = savedState,
-        threads = AppThreads(diary.scope, io = io, main = Dispatchers.Unconfined, compute = Dispatchers.Unconfined, sleep = { awaitCancellation() }),
+        threads = AppThreads(diary.scope, io = io, main = Dispatchers.Unconfined, compute = Dispatchers.Unconfined, sleep = { if (!pausesEnd) awaitCancellation() }),
         clock = { now },
         zone = { ZoneOffset.UTC },
         onOpenFailed = { throw it },

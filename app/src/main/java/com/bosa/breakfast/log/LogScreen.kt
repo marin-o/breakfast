@@ -18,6 +18,7 @@ import com.bosa.breakfast.ui.countLabel
 import com.bosa.breakfast.ui.theme.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -43,7 +44,11 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
@@ -60,6 +65,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.SolidColor
@@ -67,15 +75,19 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.bosa.breakfast.app.DiarySession
+import com.bosa.breakfast.search.OffPartState
 import com.bosa.breakfast.settings.SettingsState
 import com.bosa.breakfast.today.DayState
 import com.bosa.breakfast.domain.MealSlot
 import com.bosa.breakfast.ui.label
 import com.bosa.breakfast.ui.components.isLargeFont
+import com.bosa.breakfast.ui.components.ButtonsSideBySide
 import com.bosa.breakfast.ui.components.PrimaryButton
+import com.bosa.breakfast.ui.components.SecondaryButton
 import com.bosa.breakfast.ui.components.rememberTick
 import com.bosa.breakfast.ui.theme.LocalBreakfastColors
 import com.bosa.breakfast.ui.screens.formatKcal
+import kotlin.math.roundToInt
 
 
 /**
@@ -101,20 +113,43 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     val matching = unmatched.resolve.queueActive
+    // "Find more matches" put the keyboard away: it stays down until a tap on the text.
+    var keyboardKeptDown by rememberSaveable { mutableStateOf(false) }
     // The field gives up focus, not only the keyboard: a focused field brings it back when a closing menu returns the window's focus.
     LaunchedEffect(matching, log.mealMenuOpen) {
-        when (logFieldFocusOf(matching, log.mealMenuOpen, session.busy)) {
+        when (logFieldFocusOf(matching, log.mealMenuOpen, session.busy, keyboardKeptDown)) {
             LogFieldFocus.KEYBOARD_DOWN -> { focusManager.clearFocus(); keyboard?.hide() }
             LogFieldFocus.FOCUS -> requester.requestFocus()
             LogFieldFocus.LEAVE -> Unit
         }
     }
     val tick = rememberTick()
+    FollowTypedPartForOff(unmatched.results, log.draft, draft.catalogueQuery, settings.searchOffTyping)
+    // Open for each new part, and whenever the button asks for it.
+    var offRowsOpen by remember(draft.catalogueQuery) { mutableStateOf(true) }
+    val list = rememberScrollState()
+    val usdaRows = rememberUsdaRows(unmatched.usda, draft.catalogueQuery, except = session.foods)
+    // Where "From Open Food Facts" sits in the list, and the presses that asked to see it for this part.
+    var offRowTop by remember { mutableIntStateOf(0) }
+    var offRowHeight by remember { mutableIntStateOf(0) }
+    var offPresses by remember(draft.catalogueQuery) { mutableIntStateOf(0) }
+    // After a frame: the row of a first press has only just been composed.
+    suspend fun showOffRow() {
+        withFrameNanos { }
+        list.scrollTo(logScrollToShow(offRowTop, offRowHeight, list.viewportSize, list.value))
+    }
+    LaunchedEffect(offPresses) { if (offPresses > 0) showOffRow() }
+    // While the pressed search runs, USDA rows arriving above or the searching line opening must not hide it again.
+    LaunchedEffect(usdaRows.size, offRowHeight) {
+        if (offPresses > 0 && unmatched.results.stateOf(draft.catalogueQuery) == OffPartState.Searching) showOffRow()
+    }
 
     Column(
         Modifier
             .fillMaxSize()
             .background(colors.bg)
+            // The page lies over the base screen: a tap on its empty parts stops here.
+            .pointerInput(Unit) {}
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
     ) {
         Row(Modifier.fillMaxWidth().heightIn(min = HeaderHeight).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -126,7 +161,7 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
             }
             Box(Modifier.size(IconTarget))
         }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Gutter)) {
+        Column(Modifier.weight(1f).verticalScroll(list).padding(horizontal = Gutter)) {
             val field = rememberDraftField(log.draft, log::onDraft)
             DraftLine(
                 trailing = {
@@ -149,7 +184,7 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
                     }),
                     textStyle = BreakfastType.LargeInput.copy(color = colors.ink),
                     cursorBrush = SolidColor(colors.ink),
-                    modifier = line.focusRequester(requester),
+                    modifier = line.focusRequester(requester).onFocusChanged { if (it.isFocused) keyboardKeptDown = false },
                     decorationBox = { inner ->
                         Box {
                             if (log.draft.isEmpty()) Text(placeholder, color = colors.soft, style = BreakfastType.LargeInput)
@@ -160,7 +195,10 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
             }
             log.error?.let { Text(it, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(top = 8.dp)) }
             DraftParts(draft, onChoose = log::chooseSuggestion, onResolve = log::resolveNotInFoods, queued = unmatched.resolve.parts.takeIf { unmatched.resolve.queueActive }.orEmpty(), queuedRow = rememberUnmatchedRows(unmatched))
-            UsdaRows(rememberUsdaRows(unmatched.usda, draft.catalogueQuery, except = session.foods), draft.catalogueQuery, Modifier.padding(top = 8.dp)) { unmatched.pickForTypedPart(draft.catalogueQuery, it) }
+            UsdaRows(usdaRows, draft.catalogueQuery, Modifier.padding(top = 8.dp)) { unmatched.pickForTypedPart(draft.catalogueQuery, it) }
+            Box(Modifier.onGloballyPositioned { offRowTop = it.positionInParent().y.roundToInt(); offRowHeight = it.size.height }) {
+                TypedPartOffRows(unmatched.results, draft.catalogueQuery, offRowsOpen, { offRowsOpen = !offRowsOpen }) { unmatched.pickForTypedPart(draft.catalogueQuery, it) }
+            }
         }
         // While its unmatched foods are worked through, the batch that just logged and each part say so here.
         Column(Modifier.fillMaxWidth().padding(horizontal = SnackbarGutter)) {
@@ -187,6 +225,18 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
                 fillWidth = fill,
             )
         }
+        val findMoreButton: @Composable () -> Unit = {
+            SecondaryButton("Find more matches", {
+                tick()
+                offRowsOpen = true
+                keyboardKeptDown = true
+                focusManager.clearFocus()
+                keyboard?.hide()
+                unmatched.results.press(draft.catalogueQuery)
+                offPresses++
+            })
+        }
+        val offersMore = logOffersMoreMatches(bar, draft.catalogueQuery)
         val barInsets = Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
         val barModifier = barInsets.padding(horizontal = Gutter, vertical = 12.dp)
         val showsSum = bar == LogBar.ADD
@@ -194,10 +244,11 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
         val hiddenSum = Modifier.alpha(0f).clearAndSetSemantics { }
         if (bar == LogBar.HIDDEN) {
             Box(barInsets)
-        } else if (isLargeFont(LocalDensity.current.fontScale)) {
+        } else if (isLargeFont(LocalDensity.current.fontScale) || offersMore) {
             Column(barModifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 sum(if (showsSum) Modifier.fillMaxWidth() else hiddenSum.fillMaxWidth())
-                addButton(true)
+                if (offersMore) ButtonsSideBySide(stacked = isLargeFont(LocalDensity.current.fontScale), first = findMoreButton, second = { addButton(true) })
+                else addButton(true)
             }
         } else if (!showsSum) {
             Box(barModifier, contentAlignment = Alignment.Center) {

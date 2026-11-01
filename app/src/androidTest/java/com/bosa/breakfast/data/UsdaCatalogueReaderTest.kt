@@ -56,7 +56,7 @@ class UsdaCatalogueReaderTest {
         assertEquals(15777, count("SELECT count(*) FROM portion"))
         assertEquals(0, count("SELECT count(*) FROM portion WHERE grams <= 0"))
         assertEquals(1, count("SELECT count(*) FROM alias"))
-        assertEquals(153, count("SELECT count(*) FROM translation"))
+        assertEquals(155, count("SELECT count(*) FROM translation"))
         assertEquals(61, count("SELECT count(*) FROM food WHERE bump > 0"))
         db.rawQuery("PRAGMA integrity_check", null).use {
             it.moveToFirst()
@@ -119,6 +119,15 @@ class UsdaCatalogueReaderTest {
         assertEquals(emptyList<Any>(), search("чорба"))
         assertEquals(emptyList<Any>(), search("egg чорба"))
         assertEquals(emptyList<Any>(), search("eгg"))
+    }
+
+    @Test fun aLocalDishFindsItsUsdaFoodsInBothScripts() {
+        listOf("sarma", "сарма").forEach { typed ->
+            val found = search(typed).map { it.name }
+            assertTrue(found.toString(), found.any { it.startsWith("Stuffed cabbage") })
+            assertTrue(found.toString(), found.any { it.contains("grape leaves", ignoreCase = true) })
+        }
+        assertTrue(search("долма").any { it.name.contains("grape leaves", ignoreCase = true) })
     }
 
     @Test fun aSingularFindsThePlainFoodPrintedInThePlural() {

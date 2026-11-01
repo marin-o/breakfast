@@ -66,6 +66,7 @@ internal class SettingsState(private val prefs: AppSettings, private val clock: 
     val beforeDayStartSetting = setting(AppSettings::beforeDayStart)
     val countTypingSetting = setting(AppSettings::countTyping)
     val learnFromPicksSetting = setting(AppSettings::learnFromPicks)
+    val searchOffTypingSetting = setting(AppSettings::searchOffTyping)
     val themeSetting = setting(AppSettings::theme)
     val longDraftSetting = setting(AppSettings::longDraft)
     val showMacrosSetting = setting(AppSettings::showMacros)
@@ -99,6 +100,9 @@ internal class SettingsState(private val prefs: AppSettings, private val clock: 
     val beforeDayStart: BeforeDayStart get() = beforeDayStartSetting.value
     val countTyping: Boolean get() = countTypingSetting.value
     val learnFromPicks: Boolean get() = learnFromPicksSetting.value
+    val searchOffTyping: Boolean get() = searchOffTypingSetting.value
+    /** Turning on "Search Open Food Facts as I type" waits here for the warning's answer. */
+    var searchOffTypingWarning by mutableStateOf(false); private set
     /** The "Day starts at" stepper: one hour on or back, wrapping at midnight. */
     fun shiftDayStart(delta: Int) = dayStartHourSetting.set(shiftDayStartHour(dayStartHour, delta))
     fun chooseUndoWindow(window: UndoWindow) = undoWindowSetting.set(window)
@@ -108,6 +112,16 @@ internal class SettingsState(private val prefs: AppSettings, private val clock: 
     fun chooseBeforeDayStart(choice: BeforeDayStart) = beforeDayStartSetting.set(choice)
     fun chooseCountTyping(on: Boolean) = countTypingSetting.set(on)
     fun chooseLearnFromPicks(on: Boolean) = learnFromPicksSetting.set(on)
+    /** Turning it on asks first; turning it off doesn't. */
+    fun chooseSearchOffTyping(on: Boolean) {
+        if (on == searchOffTyping) return
+        if (on) searchOffTypingWarning = true else searchOffTypingSetting.set(false)
+    }
+    fun confirmSearchOffTyping() {
+        searchOffTypingWarning = false
+        searchOffTypingSetting.set(true)
+    }
+    fun cancelSearchOffTyping() { searchOffTypingWarning = false }
 
     // Display
     /** The activity applies it. */

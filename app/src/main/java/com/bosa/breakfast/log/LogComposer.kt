@@ -87,6 +87,8 @@ internal class LogComposer(
     private val queueWaitsForMeal: () -> Boolean = { false },
     /** A pinned food's rename rewrote the draft: [follow] gives a part of the draft before it as it reads now. */
     private val onRenamed: (follow: (SegmentSpan) -> SegmentSpan) -> Unit = {},
+    /** The user emptied the draft: what was found for it goes. */
+    private val onDraftCleared: () -> Unit = {},
     initial: SavedLogDraft = SavedLogDraft("", false),
 ) : ResolveSource {
     var draft by mutableStateOf(initial.text); private set
@@ -180,7 +182,7 @@ internal class LogComposer(
     private fun applyDraft(value: String) {
         pins.edited(draft, value)
         draft = value
-        if (value.isBlank()) pins.clear()
+        if (value.isBlank()) { pins.clear(); onDraftCleared() }
         val parts = queuedParts().takeIf { it.isNotEmpty() }?.let { store.planner(pinsSnapshot()).segments(value).map { span -> span.text } }
         if (parts != null) onDraftEdited(this, parts)
         // A meal word logs a queue's parts only while the draft still reads as one: "snack" on its way to "snack bar" does not stay.
@@ -312,6 +314,7 @@ internal class LogComposer(
         if (draft == captured) {
             pins.edited(draft, unmatched.joinToString(", "))
             draft = unmatched.joinToString(", ")
+            if (draft.isBlank()) onDraftCleared()
         }
         val attention = unmatched.filter(planner::needsAttention)
         error = if (attention.isNotEmpty()) NEEDS_A_MATCH else null

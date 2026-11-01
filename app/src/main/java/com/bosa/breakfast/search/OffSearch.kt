@@ -14,7 +14,14 @@ import kotlinx.coroutines.withContext
 
 /** The Open Food Facts search; `OpenFoodFactsClient` implements it. A cancel disconnects the request in flight. */
 interface OffSearchService {
+    /** Takes a slot of the search limit, waiting for one when the limit is reached. */
     suspend fun search(query: String): OffSearchResult
+
+    /** A slot of the search limit if one is free now, for [searchWithSlot]; false when the limit is reached. It never waits. */
+    fun takeSearchSlot(): Boolean = true
+
+    /** [search] with the slot [takeSearchSlot] already took. */
+    suspend fun searchWithSlot(query: String): OffSearchResult = search(query)
 }
 
 /**

@@ -18,6 +18,7 @@ Owner's request, 2026-10-31: generic foods the built-in list and Open Food Facts
 
 ### To add to the file
 - **Ranking bump:** one small number per food, above 0 for common foods ("Egg, whole, raw"), 0 for the rest. The list is short and lives in the script. It orders results and can never make a food green.
+- **Local dishes:** a small map in the importer of exact food descriptions to extra search words ("Stuffed cabbage rolls with beef and rice" to "sarma"), indexed like the additional descriptions and never shown. The build fails if a listed description doesn't exist.
 - **Macedonian to English:** a table of Macedonian words and their English search words ("јајце" to "egg", "пилешко" to "chicken"). The owner checks the starter list.
 
 ## Search
@@ -26,7 +27,7 @@ Owner's request, 2026-10-31: generic foods the built-in list and Open Food Facts
 - User text is never passed as raw FTS syntax. It runs off the main thread, and a result for an older query is dropped.
 
 ## In the Log
-- While typing: the user's own foods as chips, with the green pick as today; matching USDA foods as plain rows under them. Long names don't fit chips. No network, and no button to press. Rows arriving never change the selection. Add never logs a USDA row that wasn't tapped.
+- While typing: the user's own foods as chips, with the green pick as today; matching USDA foods as plain rows under them. Long names don't fit chips. USDA rows need no network and no button to press. Rows arriving never change the selection. Add never logs a USDA row that wasn't tapped.
 - No "USDA" on the rows. The source shows in the food's details and in Licences.
 - A part nothing local fully matches keeps Find matches for Open Food Facts, as today. Its results come after the USDA rows.
 

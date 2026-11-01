@@ -51,12 +51,31 @@ internal enum class LogFieldFocus {
     LEAVE,
 }
 
-/** The Log field's focus: down while foods are [matching]; otherwise it waits for an open menu ([menuOpen]) and a save ([writing]). */
-internal fun logFieldFocusOf(matching: Boolean, menuOpen: Boolean, writing: Boolean): LogFieldFocus = when {
-    matching -> LogFieldFocus.KEYBOARD_DOWN
+/**
+ * The Log field's focus: down while foods are [matching] or since "Find more matches" put the keyboard away until a tap on
+ * the text ([keptDown]); otherwise it waits for an open menu ([menuOpen]) and a save ([writing]).
+ */
+internal fun logFieldFocusOf(matching: Boolean, menuOpen: Boolean, writing: Boolean, keptDown: Boolean = false): LogFieldFocus = when {
+    matching || keptDown -> LogFieldFocus.KEYBOARD_DOWN
     menuOpen || writing -> LogFieldFocus.LEAVE
     else -> LogFieldFocus.FOCUS
 }
+
+/**
+ * Where the Log's list scrolls to show a row at [top] of the list's content, [height] tall, in a [viewport] scrolled to
+ * [scrolled]: nowhere if all of it shows, else as little as it takes; one too tall to fit starts at the top.
+ */
+internal fun logScrollToShow(top: Int, height: Int, viewport: Int, scrolled: Int): Int = when {
+    top < scrolled || height >= viewport -> top
+    top + height > scrolled + viewport -> top + height - viewport
+    else -> scrolled
+}
+
+/**
+ * The draft was edited since the Log composed with [openedWith], which [edited] remembers once true. Only an edit arms the
+ * Open Food Facts pause: opening the Log sends nothing, nor does a restored draft whose rows come once the diary is ready.
+ */
+internal fun logDraftEdited(edited: Boolean, text: String, openedWith: String): Boolean = edited || text != openedWith
 
 /** What the Log's bar offers. */
 internal enum class LogBar {
@@ -69,6 +88,9 @@ internal enum class LogBar {
     /** No bar: the foods left are already being matched under their rows. */
     HIDDEN,
 }
+
+/** "Find more matches" beside Add: a part is being typed ([catalogueQuery]) and Add would log. Find matches already searches. */
+internal fun logOffersMoreMatches(bar: LogBar, catalogueQuery: String): Boolean = bar == LogBar.ADD && catalogueQuery.isNotBlank()
 
 /**
  * The Log's bar. Something that would log always gets the normal bar. Otherwise a part that needs a match and is not

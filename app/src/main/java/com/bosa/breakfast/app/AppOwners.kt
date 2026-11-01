@@ -185,8 +185,8 @@ internal class AppOwners<D>(
         today = { dayKeyFor(clock(), zone(), settings.dayStartHour) },
         clock = clock,
     )
-    /** The Open Food Facts results under the Log's unmatched foods (see [OffPartSearch]). */
-    val offParts = OffPartSearch(stores.offSearch, threads.scope, threads.io, announce = announcements::say)
+    /** The Open Food Facts results under the Log's unmatched foods and the part being typed (see [OffPartSearch]). */
+    val offParts = OffPartSearch(stores.offSearch, threads.scope, threads.io, announce = announcements::say, sleep = threads.sleep)
     /** The USDA rows under the Log's parts (see [UsdaPartSearch]). */
     val usdaParts = UsdaPartSearch(stores.usda, threads.scope, threads.io, threads.main, threads.sleep)
     /** The USDA rows under the Library's search and the ingredient search, one apart from the Log's: the Log may lie over the Library. */
@@ -228,7 +228,7 @@ internal class AppOwners<D>(
         editing = { entryEdit.editing },
         afterSave = { unmatched, meal, source, typed ->
             resolve.afterSave(unmatched, meal, source, typed)
-            // Add is the only thing that searches, one food at a time, under its row; a part with local choices has them.
+            // Add searches what it left, one food at a time, under its row; a part with local choices has them.
             offParts.start(unmatched.filter { log.localChoices(it).isEmpty() }.map(resolve::nameOf))
         },
         onQueueLeft = { source ->
@@ -249,6 +249,7 @@ internal class AppOwners<D>(
         queuedParts = { resolve.parts },
         queueWaitsForMeal = { resolve.queueActive && resolve.queueMeal == null },
         onRenamed = { follow -> review.draftRenamed(follow) },
+        onDraftCleared = offParts::clearDraft,
         resolvePart = resolve::beginPart,
         // Typed work comes back after the process was killed: the log draft (and an open food form, in [init]).
         compute = threads.compute,

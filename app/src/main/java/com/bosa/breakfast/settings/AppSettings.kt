@@ -99,6 +99,11 @@ internal class AppSettings(private val prefs: SettingsStore) {
         get() = prefs.getBoolean(LEARN_FROM_PICKS_KEY, true)
         set(value) = prefs.edit { putBoolean(LEARN_FROM_PICKS_KEY, value) }
 
+    /** "Search Open Food Facts as I type": off by default, and an unknown value reads as off. */
+    var searchOffTyping: Boolean
+        get() = prefs.getString(SEARCH_OFF_TYPING_KEY, null) == SEARCH_OFF_TYPING_ON
+        set(value) = prefs.edit { putString(SEARCH_OFF_TYPING_KEY, if (value) SEARCH_OFF_TYPING_ON else "OFF") }
+
     /** Theme: System (the phone's light or dark) by default. */
     var theme: ThemeChoice
         get() = enumOf(prefs.getString(THEME_KEY, null), ThemeChoice.SYSTEM)
@@ -224,6 +229,8 @@ internal class AppSettings(private val prefs: SettingsStore) {
         const val COUNT_TYPING_KEY = "count_typing"
         const val BEFORE_DAY_START_KEY = "before_day_start"
         const val LEARN_FROM_PICKS_KEY = "learn_from_picks"
+        const val SEARCH_OFF_TYPING_KEY = "search_off_typing"
+        const val SEARCH_OFF_TYPING_ON = "ON"
     }
 }
 

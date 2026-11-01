@@ -1,5 +1,8 @@
 package com.bosa.breakfast.ui.components
 
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
+
 import androidx.compose.material.icons.outlined.Person
 import com.bosa.breakfast.ui.theme.Gutter
 import androidx.compose.foundation.layout.fillMaxSize
@@ -1438,6 +1441,41 @@ fun MealChoices(selected: MealSlot?, onSelect: (MealSlot) -> Unit, modifier: Mod
 }
 
 /** The ways on for a food not found here: Open Food Facts, or a personal food. */
+/** Whether two buttons of these natural widths go side by side in [available]. */
+internal fun buttonsFitOneLine(first: Int, second: Int, gap: Int, available: Int): Boolean = first + gap + second <= available
+
+/**
+ * Two buttons that fill their width (`fillWidth`): side by side, sharing the room left evenly, and one above the other
+ * when their labels don't fit on one line or when [stacked].
+ */
+@Composable
+internal fun ButtonsSideBySide(stacked: Boolean, first: @Composable () -> Unit, second: @Composable () -> Unit, modifier: Modifier = Modifier, gap: Dp = 12.dp) {
+    Layout(content = { first(); second() }, modifier = modifier) { measurables, constraints ->
+        val (a, b) = measurables
+        val width = constraints.maxWidth
+        val space = gap.roundToPx()
+        val aWidth = a.maxIntrinsicWidth(Constraints.Infinity)
+        val bWidth = b.maxIntrinsicWidth(Constraints.Infinity)
+        if (stacked || !buttonsFitOneLine(aWidth, bWidth, space, width)) {
+            val top = a.measure(Constraints.fixedWidth(width))
+            val bottom = b.measure(Constraints.fixedWidth(width))
+            layout(width, top.height + space + bottom.height) {
+                top.place(0, 0)
+                bottom.place(0, top.height + space)
+            }
+        } else {
+            val share = (width - aWidth - bWidth - space) / 2
+            val height = maxOf(a.maxIntrinsicHeight(aWidth + share), b.maxIntrinsicHeight(bWidth + share))
+            val left = a.measure(Constraints.fixed(aWidth + share, height))
+            val right = b.measure(Constraints.fixed(width - space - left.width, height))
+            layout(width, height) {
+                left.place(0, 0)
+                right.place(left.width + space, 0)
+            }
+        }
+    }
+}
+
 @Composable
 internal fun SearchOrCreateButtons(onSearch: () -> Unit, onCreate: () -> Unit) {
     PrimaryButton("Search Open Food Facts", onSearch, kind = ButtonKind.Neutral)

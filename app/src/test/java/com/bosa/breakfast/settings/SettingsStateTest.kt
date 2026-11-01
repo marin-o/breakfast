@@ -149,6 +149,7 @@ class SettingsStateTest {
         state.chooseBeforeDayStart(BeforeDayStart.ASK); assertEquals(BeforeDayStart.ASK, state.beforeDayStart)
         state.chooseCountTyping(false); assertFalse(state.countTyping)
         state.chooseLearnFromPicks(false); assertFalse(state.learnFromPicks)
+        state.chooseSearchOffTyping(true); state.confirmSearchOffTyping(); assertTrue(state.searchOffTyping)
         state.chooseTheme(ThemeChoice.DARK); assertEquals(ThemeChoice.DARK, state.theme)
         LongDraft.entries.first { it != LongDraft.END }.let { state.chooseLongDraft(it); assertEquals(it, state.longDraft) }
         state.chooseShowMacros(false); assertFalse(state.showMacros)
@@ -174,7 +175,7 @@ class SettingsStateTest {
         assertEquals(
             setOf(
                 "day_start_hour", "undo_window", "meal_mode", "breakfast_until", "lunch_until", "dinner_until", "before_day_start",
-                "count_typing", "learn_from_picks", "theme", "long_draft", "show_macros", "show_missing_note", "decimal_mark",
+                "count_typing", "learn_from_picks", "search_off_typing", "theme", "long_draft", "show_macros", "show_missing_note", "decimal_mark",
                 "motion", "text_size", "haptics", "macro_colors", "flashlight_at_start", "look_up_barcodes", "show_contribute", "export_reminder",
                 "keep_safety_copy", "last_export_ms", "export_reminder_shown_ms", "export_reminder_enabled_ms",
             ),
@@ -182,6 +183,37 @@ class SettingsStateTest {
         )
         assertEquals("FIVE_SECONDS", store.values["undo_window"])
         assertEquals(5, store.values["day_start_hour"])
+    }
+
+    @Test fun searchingAsITypeIsOffUntilTheWarningIsAccepted() {
+        assertFalse(state.searchOffTyping)
+        state.chooseSearchOffTyping(true)
+        assertTrue(state.searchOffTypingWarning)
+        assertFalse("not before the answer", state.searchOffTyping)
+        assertNull(store.values["search_off_typing"])
+        state.cancelSearchOffTyping()
+        assertFalse(state.searchOffTypingWarning)
+        assertFalse(state.searchOffTyping)
+        state.chooseSearchOffTyping(true)
+        state.confirmSearchOffTyping()
+        assertFalse(state.searchOffTypingWarning)
+        assertTrue(state.searchOffTyping)
+        assertTrue("persisted", SettingsState(AppSettings(store)) { now }.searchOffTyping)
+    }
+
+    @Test fun turningSearchingAsITypeOffAsksNothing() {
+        state.chooseSearchOffTyping(true)
+        state.confirmSearchOffTyping()
+        state.chooseSearchOffTyping(true)
+        assertFalse("already on", state.searchOffTypingWarning)
+        state.chooseSearchOffTyping(false)
+        assertFalse(state.searchOffTypingWarning)
+        assertFalse(state.searchOffTyping)
+    }
+
+    @Test fun anUnknownValueOfSearchingAsITypeReadsAsOff() {
+        store.values["search_off_typing"] = "MAYBE"
+        assertFalse(SettingsState(AppSettings(store)) { now }.searchOffTyping)
     }
 
     @Test fun macroColorsAreStandardUntilChosen() {

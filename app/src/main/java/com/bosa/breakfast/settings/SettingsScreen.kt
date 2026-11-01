@@ -41,6 +41,7 @@ import com.bosa.breakfast.transfer.DiaryPicker
 import com.bosa.breakfast.domain.MealSlot
 import com.bosa.breakfast.ui.components.AddCircle
 import com.bosa.breakfast.ui.components.ChoiceOption
+import com.bosa.breakfast.ui.components.ConfirmDialog
 import com.bosa.breakfast.ui.components.Hairline
 import com.bosa.breakfast.ui.components.LongDraft
 import com.bosa.breakfast.ui.theme.BreakfastType
@@ -107,6 +108,14 @@ private fun ColumnScope.LoggingPage(settings: SettingsState) {
     Hairline()
     ChoiceRow("Learn from my picks", ON_OFF, settings.learnFromPicks, settings::chooseLearnFromPicks)
     Hairline()
+    ChoiceRow("Search Open Food Facts as I type", ON_OFF, settings.searchOffTyping, settings::chooseSearchOffTyping)
+    Hairline()
+    if (settings.searchOffTypingWarning) {
+        ConfirmDialog(
+            "Turn on", settings::confirmSearchOffTyping, settings::cancelSearchOffTyping,
+            text = "Open Food Facts can block your connection for sending too many searches. Everything you type gets sent to them, without you pressing anything.",
+        )
+    }
 }
 
 @Composable

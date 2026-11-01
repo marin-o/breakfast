@@ -11,8 +11,10 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -20,6 +22,7 @@ import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -99,19 +102,17 @@ internal fun rememberUnmatchedRows(parts: UnmatchedParts): @Composable (DraftRow
     }
 }
 
+/** A row that opens and closes with a chevron, with [body] inset under it. */
 @Composable
-private fun UnmatchedRow(row: DraftRow.Unresolved, parts: UnmatchedParts, open: Boolean, onToggle: () -> Unit, onFocus: () -> Unit) {
+private fun FoldingRow(open: Boolean, onToggle: () -> Unit, header: @Composable (Modifier) -> Unit, body: @Composable ColumnScope.() -> Unit) {
     val colors = LocalBreakfastColors.current
     val motion = rememberMotion()
     val turn by animateFloatAsState(if (open) 180f else 0f, motion.nav(), label = "unmatched")
-    val name = remember(row.text) { parts.resolve.nameOf(row.text) }
-    val choices = remember(row.text) { parts.log.localChoices(row.text) }
-    var catalogue by remember(name) { mutableStateOf(emptyList<FoodRecord>()) }
-    LaunchedEffect(name) { catalogue = parts.usda.forPart(name) }
     Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
         Row(
             Modifier
                 .fillMaxWidth()
+                .heightIn(min = 48.dp)
                 .clickable(role = Role.Button, onClick = onToggle)
                 // TalkBack says whether it is open by the action it offers.
                 .semantics {
@@ -119,38 +120,79 @@ private fun UnmatchedRow(row: DraftRow.Unresolved, parts: UnmatchedParts, open: 
                 },
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (choices.isEmpty()) NotInYourFoodsRow(row.text, Modifier.weight(1f), noValue = row.noValue)
-            else FoodRow(name = row.text, quantityLine = "which one?", calories = "", modifier = Modifier.weight(1f))
+            header(Modifier.weight(1f))
             Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = null, tint = colors.soft, modifier = Modifier.size(22.dp).graphicsLayer { rotationZ = turn })
         }
         AnimatedVisibility(open, enter = motion.rowIn(), exit = motion.rowOut()) {
-            Column(Modifier.fillMaxWidth().padding(start = PartInset, top = 4.dp).semantics { isTraversalGroup = true }) {
-                choices.forEach { choice ->
-                    // One tap: this part, with its amount, logs to the queue's meal and leaves the draft; with no meal yet, the Log asks.
-                    PartFoodRow(name, choice.food.name, choice.quantityLine, choice.kcal) { onFocus(); parts.resolve.resolve(choice.food) }
-                }
-                catalogue.forEach { food ->
-                    OfferedFoodRow(name, food) { onFocus(); parts.review.choose(food, origin = ProductReviewOrigin.QUEUE) }
-                }
-                when (val state = parts.results.stateOf(name)) {
-                    OffPartState.Searching -> LinearProgress("Searching Open Food Facts", Modifier.padding(vertical = 8.dp))
-                    is OffPartState.Found -> state.foods.forEach { food ->
-                        OfferedFoodRow(name, food) { onFocus(); parts.review.choose(food, origin = ProductReviewOrigin.QUEUE) }
-                    }
-                    OffPartState.NoResults -> StatusLine(OffSearchStatus.NoResults)
-                    OffPartState.Offline -> StatusLine(OffSearchStatus.Offline)
-                    OffPartState.Failed -> StatusLine(OffSearchStatus.Failed)
-                    null -> Unit
-                }
-                Column(Modifier.fillMaxWidth().padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SearchOrCreateButtons(
-                        onSearch = { onFocus(); parts.search.open(name, fromResolver = true); parts.search.submit() },
-                        onCreate = { onFocus(); parts.foodForm.open(name, fromResolver = true) },
-                    )
-                    SearchYourFoodsButton({ parts.log.resolveNotInFoods(row) }, Modifier.fillMaxWidth())
-                    SkipButton { onFocus(); parts.resolve.skip() }
-                }
-            }
+            Column(Modifier.fillMaxWidth().padding(start = PartInset, top = 4.dp).semantics { isTraversalGroup = true }, content = body)
+        }
+    }
+}
+
+/** An Open Food Facts search for [name], as a list shows it: its progress, its results, or why there are none. */
+@Composable
+private fun OffPartRows(state: OffPartState?, name: String, onPick: (FoodRecord) -> Unit) {
+    when (state) {
+        OffPartState.Searching -> LinearProgress("Searching Open Food Facts", Modifier.padding(vertical = 8.dp))
+        is OffPartState.Found -> state.foods.forEach { food -> OfferedFoodRow(name, food) { onPick(food) } }
+        OffPartState.NoResults -> StatusLine(OffSearchStatus.NoResults)
+        OffPartState.Offline -> StatusLine(OffSearchStatus.Offline)
+        OffPartState.Failed -> StatusLine(OffSearchStatus.Failed)
+        null -> Unit
+    }
+}
+
+/**
+ * Tells [search] which part of draft [text] is being typed, and that the Log has gone from the screen: a pause no longer
+ * applies. Only an edit since the Log composed arms a pause, so its first effect never does.
+ */
+@Composable
+internal fun FollowTypedPartForOff(search: OffPartSearch, text: String, query: String, searchAsTyped: Boolean) {
+    val openedWith = remember { text }
+    var edited by remember { mutableStateOf(false) }
+    // Before the effect below: a keystroke reaches the query later than the text, never earlier.
+    LaunchedEffect(text) { edited = logDraftEdited(edited, text, openedWith) }
+    LaunchedEffect(query, searchAsTyped) { search.typed(query, searchAsTyped && edited) }
+    DisposableEffect(search) { onDispose(search::stopResting) }
+}
+
+/** "From Open Food Facts" for the part being typed, once it was asked; only [query]'s own answer shows, so older text has no row to tap. */
+@Composable
+internal fun TypedPartOffRows(search: OffPartSearch, query: String, open: Boolean, onToggle: () -> Unit, onPick: (FoodRecord) -> Unit) {
+    val state = search.stateOf(query) ?: return
+    FoldingRow(open, onToggle, header = { FoodRow(name = "From Open Food Facts", quantityLine = "", calories = "", modifier = it) }) {
+        OffPartRows(state, query, onPick)
+    }
+}
+
+@Composable
+private fun UnmatchedRow(row: DraftRow.Unresolved, parts: UnmatchedParts, open: Boolean, onToggle: () -> Unit, onFocus: () -> Unit) {
+    val name = remember(row.text) { parts.resolve.nameOf(row.text) }
+    val choices = remember(row.text) { parts.log.localChoices(row.text) }
+    var catalogue by remember(name) { mutableStateOf(emptyList<FoodRecord>()) }
+    LaunchedEffect(name) { catalogue = parts.usda.forPart(name) }
+    FoldingRow(
+        open, onToggle,
+        header = { modifier ->
+            if (choices.isEmpty()) NotInYourFoodsRow(row.text, modifier, noValue = row.noValue)
+            else FoodRow(name = row.text, quantityLine = "which one?", calories = "", modifier = modifier)
+        },
+    ) {
+        choices.forEach { choice ->
+            // One tap: this part, with its amount, logs to the queue's meal and leaves the draft; with no meal yet, the Log asks.
+            PartFoodRow(name, choice.food.name, choice.quantityLine, choice.kcal) { onFocus(); parts.resolve.resolve(choice.food) }
+        }
+        catalogue.forEach { food ->
+            OfferedFoodRow(name, food) { onFocus(); parts.review.choose(food, origin = ProductReviewOrigin.QUEUE) }
+        }
+        OffPartRows(parts.results.stateOf(name), name) { food -> onFocus(); parts.review.choose(food, origin = ProductReviewOrigin.QUEUE) }
+        Column(Modifier.fillMaxWidth().padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SearchOrCreateButtons(
+                onSearch = { onFocus(); parts.search.open(name, fromResolver = true); parts.search.submit() },
+                onCreate = { onFocus(); parts.foodForm.open(name, fromResolver = true) },
+            )
+            SearchYourFoodsButton({ parts.log.resolveNotInFoods(row) }, Modifier.fillMaxWidth())
+            SkipButton { onFocus(); parts.resolve.skip() }
         }
     }
 }

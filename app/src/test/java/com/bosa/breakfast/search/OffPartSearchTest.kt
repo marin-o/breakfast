@@ -111,6 +111,16 @@ class OffPartSearchTest {
         assertEquals(3, asked.size)
     }
 
+    @Test fun aSearchUsesTheLimitWithoutASlotOfItsOwnOnlyWhenPressedFor() {
+        var slots = 0
+        val counting = object : OffSearchService by service {
+            override fun takeSearchSlot(): Boolean { slots++; return true }
+        }
+        OffPartSearch(counting, CoroutineScope(Dispatchers.Unconfined), Dispatchers.Unconfined).press("polenta")
+        assertEquals("a press goes through search, which waits for a slot", 0, slots)
+        assertEquals(listOf("polenta"), asked)
+    }
+
     @Test fun aMixedWordIsNotSent() {
         search.start(listOf("pоlenta"))
         assertEquals(emptyList<String>(), asked)

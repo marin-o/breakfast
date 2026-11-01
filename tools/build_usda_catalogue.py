@@ -28,7 +28,7 @@ ARCHIVE_SHA256 = "dfb06ae7ddc397ccd570b91c14b75438ab2ba39f64f22d321f61d4a52a77f3
 ARCHIVE_MEMBER = "surveyDownload.json"
 
 # Raise it whenever the file's content changes, with USDA_CATALOGUE_VERSION in UsdaCatalogueReader.kt.
-CATALOGUE_VERSION = 6
+CATALOGUE_VERSION = 7
 # Not ".gz": the Android Gradle plugin unpacks a .gz asset when it merges assets and drops the extension.
 DEFAULT_OUTPUT = (
     Path(__file__).resolve().parent.parent / "app/src/main/assets/usda" / f"fndds-2021-2023-v{CATALOGUE_VERSION}.sqlite.gzip"
@@ -63,6 +63,17 @@ COMMON_FOODS = (
     "Sugar, NFS", "Coffee, brewed", "Beef, NFS", "Pork, NFS", "Turkey, NFS", "Fish, NFS", "Ham", "Beer", "Ketchup",
     "Mustard", "Jam", "Mayonnaise, regular", "Hazelnuts", "Almonds, NFS", "Peanuts, NFS",
 )
+
+# Local dishes USDA prints under other names, by the food's exact description: extra search words, indexed like the
+# additional descriptions and never shown.
+EXTRA_SEARCH_WORDS = {
+    "Stuffed cabbage rolls with beef and rice": "sarma",
+    "Stuffed cabbage, with meat, Puerto Rican style": "sarma",
+    "Stuffed cabbage, with meat and rice, Syrian dish, Puerto Rican style": "sarma",
+    "Stuffed grape leaves with beef and rice": "sarma dolma",
+    "Stuffed grape leaves with lamb and rice": "sarma dolma",
+    "Grape leaves stuffed with rice": "sarma dolma",
+}
 
 # Macedonian words, singular and plural, and the English words each searches this database by (the owner checks them;
 # docs/usda-macedonian-words.csv is written from here). A word listed twice finds either English word, and two words
@@ -101,6 +112,7 @@ MACEDONIAN_WORDS = (
     ("бадем", "almonds"), ("бадеми", "almonds"), ("лешник", "hazelnuts"), ("лешници", "hazelnuts"),
     ("кикирики", "peanuts"),
     ("кафе", "coffee"), ("чај", "tea"), ("сок", "juice"), ("вода", "water"), ("вино", "wine"), ("пиво", "beer"),
+    ("сарма", "sarma"), ("долма", "dolma"),
     ("поховано", "breaded"), ("поховани", "breaded"), ("пржено", "fried"), ("пржени", "fried"), ("варено", "boiled"),
     ("варени", "boiled"), ("печено", "baked"), ("печено", "roasted"), ("печени", "baked"), ("печени", "roasted"),
 )
@@ -222,7 +234,8 @@ def build_database(foods, path):
                 (
                     food["fdcId"], food["foodCode"], food["description"], "; ".join(additional) or None,
                     amounts[KCAL], amounts.get(PROTEIN), amounts.get(FAT), amounts.get(CARBS),
-                    search_text(food["description"]), search_text(" ".join(additional)),
+                    search_text(food["description"]),
+                    search_text(" ".join(additional + [EXTRA_SEARCH_WORDS.get(food["description"], "")]).strip()),
                     COMMON_BUMP if food["description"] in COMMON_FOODS else 0,
                 ),
             )
@@ -299,6 +312,11 @@ def check_contents(db, report):
     if missing:
         fail(f"common foods not in the file: {missing}")
     print(f"{db.execute('SELECT count(*) FROM food WHERE bump > 0').fetchone()[0]} foods have a ranking bump")
+
+    missing = [name for name in EXTRA_SEARCH_WORDS if not db.execute("SELECT 1 FROM food WHERE description = ?", (name,)).fetchone()]
+    if missing:
+        fail(f"foods with extra search words not in the file: {missing}")
+    print(f"{len(EXTRA_SEARCH_WORDS)} foods have extra search words")
 
     if len(set(MACEDONIAN_WORDS)) != len(MACEDONIAN_WORDS):
         fail("a Macedonian word and its English word are listed twice")

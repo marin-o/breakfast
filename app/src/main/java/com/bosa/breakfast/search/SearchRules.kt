@@ -20,6 +20,9 @@ internal fun shouldApplyOffSearchResult(
 internal fun offQuerySendable(name: String): Boolean =
     name.any(Char::isLetterOrDigit) && matchWords(name).none { scriptOf(it) == TextScript.MIXED }
 
+/** Whether a typed name may go to Open Food Facts with nothing pressed: [offQuerySendable], with three letters at least. */
+internal fun offSearchesByItself(name: String): Boolean = offQuerySendable(name) && name.count(Char::isLetter) >= 3
+
 /**
  * The [foods] a search or a local choice for [name] may show, by the script rule: a product is shown only with a name word in a
  * script [name] has letters in ("кисело млеко 2%" is Cyrillic), and a name with no letters shows them all. The one filter

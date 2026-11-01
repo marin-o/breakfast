@@ -153,6 +153,64 @@ class UsdaInTheLogTest {
         assertEquals(chicken, kit.owners.review.product)
     }
 
+    @Test fun `Open Food Facts for the part being typed reviews with the typed amount, and nothing changes until Add`() {
+        val kit = AppKit(foods = listOf(rawEgg))
+        kit.plannerFoods = listOf(rawEgg, chicken)
+        kit.offFoods = listOf(chicken)
+        kit.log.open(null)
+        kit.log.onDraft("1 egg, 200 g kefir")
+        val before = kit.log.draftView()
+        assertEquals("the egg is in the comparison", listOf(rawEgg.id), before.logged.map { it.food.id })
+        val parts = UnmatchedParts(kit.owners.resolve, kit.owners.offParts, kit.owners.search, kit.owners.foodForm, kit.owners.review, kit.log, kit.owners.usdaParts)
+        parts.results.press("kefir")
+        assertEquals(listOf("kefir"), kit.offSearched)
+        assertEquals("1 egg, 200 g kefir", kit.log.draft)
+        assertEquals("what Add would log stays", before.logged, kit.log.draftView().logged)
+        parts.pickForTypedPart("kefir", chicken)
+        assertEquals(chicken, kit.owners.review.product)
+        assertEquals(ProductReviewOrigin.LOG_PART, kit.owners.review.origin)
+        assertEquals("200", kit.owners.review.amount)
+        kit.review.addToLog()
+        assertEquals("the food in the kefir part's place, the egg untouched", "1 egg, 200 g Chicken, breast, coated", kit.log.draft)
+        assertEquals(chicken.id, kit.log.pinsSnapshot().values.single().id)
+    }
+
+    @Test fun `what Open Food Facts found goes with the draft and with the Log`() {
+        val kit = AppKit(foods = listOf(egg))
+        kit.plannerFoods = listOf(egg)
+        kit.log.open(null)
+        kit.log.onDraft("kefir")
+        kit.owners.offParts.press("kefir")
+        assertTrue(kit.owners.offParts.stateOf("kefir") != null)
+        kit.log.onDraft("")
+        assertNull(kit.owners.offParts.stateOf("kefir"))
+        kit.log.onDraft("kefir")
+        kit.owners.offParts.press("kefir")
+        kit.log.close()
+        assertNull(kit.owners.offParts.stateOf("kefir"))
+    }
+
+    @Test fun `reopening the Log sends nothing again, a press does, and clearing the draft lets the pause send it`() {
+        val kit = AppKit(foods = listOf(egg))
+        kit.plannerFoods = listOf(egg)
+        kit.pausesEnd = true
+        kit.log.open(null)
+        kit.log.onDraft("kefir")
+        kit.owners.offParts.typed("kefir", searchAsTyped = true)
+        assertEquals(listOf("kefir"), kit.offSearched)
+        kit.log.close()
+        kit.log.open(null)
+        kit.owners.offParts.typed("kefir", searchAsTyped = true)
+        assertEquals("no typing, no search", listOf("kefir"), kit.offSearched)
+        assertNull("what was found may stay dropped", kit.owners.offParts.stateOf("kefir"))
+        kit.owners.offParts.press("kefir")
+        assertEquals(listOf("kefir", "kefir"), kit.offSearched)
+        kit.log.onDraft("")
+        kit.log.onDraft("kefir")
+        kit.owners.offParts.typed("kefir", searchAsTyped = true)
+        assertEquals(listOf("kefir", "kefir", "kefir"), kit.offSearched)
+    }
+
     // ---- What the catalogue is asked ----
 
     @Test fun `the catalogue is asked the food text of the part being typed, a space after it too`() {
