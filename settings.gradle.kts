@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "IronBreakfast"
+rootProject.name = "Breakfast"
 include(":app")

@@ -47,7 +47,7 @@ The diary, search and food-detail patterns follow MyFitnessPal so the app feels 
 
 ## Brand Commitments
 
-- The product name is **Breakfast**. **Iron** was its development name and is still the repository name.
+- The product name is **Breakfast**, and the repository has the same name.
 - UI copy is minimal. Labels are short and specific, with no slogans, helper paragraphs or instructional empty states. If an action needs explaining, fix the affordance instead.
 - The design must have its own identity. A first design canvas was rejected for looking like a generic AI-minimal default. An earlier brief asked for a modern, slick, elegant feel with a restrained amount of green. Treat that as a prior request, not a settled palette.
 - Familiarity comes from MyFitnessPal's interaction patterns, never from its visuals.
