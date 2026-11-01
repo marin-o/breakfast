@@ -224,10 +224,13 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
     fun reloadToday() { day.check(returning = false); if (ready) session.refresh() }
     private var stopped = false
     /** The activity left the screen (backgrounded or closed). */
-    fun onAppStopped() { stopped = true; reminders.hide(); announcements.stop() }
+    fun onAppStopped() { stopped = true; reminders.hide(); announcements.stop(); notices.stop(); confirmations.slot.stop(); undo.slot.stop() }
     /** The activity is on screen again after a stop: a user following today moves to the new today. */
     fun onAppStarted() {
         announcements.start()
+        notices.start()
+        confirmations.slot.start()
+        undo.slot.start()
         if (!stopped) return
         stopped = false
         day.check(returning = true)

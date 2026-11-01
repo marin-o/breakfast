@@ -8,7 +8,7 @@ import androidx.compose.ui.unit.dp
 val FieldShape = RoundedCornerShape(12.dp)
 val ChoiceShape = RoundedCornerShape(12.dp)
 val SecondaryShape = RoundedCornerShape(14.dp)
-val SnackbarShape = RoundedCornerShape(14.dp)
+val ToastShape = RoundedCornerShape(14.dp)
 val PrimaryShape = RoundedCornerShape(16.dp)
 val ComposerShape = RoundedCornerShape(16.dp)
 val SheetShape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)

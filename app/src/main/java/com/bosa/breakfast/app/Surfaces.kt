@@ -36,6 +36,8 @@ import com.bosa.breakfast.transfer.DiaryTransfer
 internal enum class Surface(
     /** Drawn over the base screen: the base then takes no Back, and "No local match" and the export reminder stay hidden. */
     val coversBase: Boolean = false,
+    /** A notice's toast sits above this surface's own bottom, whatever lies under it. */
+    val toastFloor: Boolean = coversBase,
 ) {
     DAILY, MEAL, LIBRARY,
     /** The Recipes tab: the list of recipes. */
@@ -68,11 +70,11 @@ internal enum class Surface(
     DISCARD_FOOD,
     /** "Delete food" asks first, over the food page or Edit food. */
     DELETE_FOOD,
-    LIBRARY_NO_MATCH,
+    LIBRARY_NO_MATCH(toastFloor = true),
     OFF_SEARCH(coversBase = true), RESOLVER(coversBase = true), PRODUCT_REVIEW(coversBase = true),
-    CONTRIBUTION_REVIEW, CONTRIBUTION_SIGN_IN, CONTRIBUTION_FAILURE,
-    NOTICE, REPLACE_DIARY, DELETE_ALL, STORAGE_UNAVAILABLE,
-    /** Drawn alone, nothing else (not even a notice) until it closes; under the scan backdrop it waits undrawn. */
+    CONTRIBUTION_REVIEW(toastFloor = true), CONTRIBUTION_SIGN_IN(toastFloor = true), CONTRIBUTION_FAILURE(toastFloor = true),
+    REPLACE_DIARY, DELETE_ALL, STORAGE_UNAVAILABLE,
+    /** Drawn alone, nothing else (but a notice's toast) until it closes; under the scan backdrop it waits undrawn. */
     ENTRY_DETAIL(coversBase = true),
     /** Drawn alone, over whatever it was opened from, which comes back as it was. */
     SCANNER(coversBase = true),
@@ -82,6 +84,12 @@ internal enum class Surface(
 }
 
 /**
+ * The surface whose bottom a notice's toast sits above: the full screen on top, else the base screen. One that marks no
+ * bottom (`ui/components/ToastFloorMark`) leaves it above the keyboard or the system bars.
+ */
+internal fun toastFloorOf(shown: List<Surface>): Surface? = (shown.lastOrNull { it.toastFloor } ?: shown.firstOrNull { it.base })?.slot
+
+/**
  * What is open, in which order: the one model the root composable draws from ([shown]), system Back follows ([back])
  * and the top check reads ([baseCovered]).
  *
@@ -89,8 +97,8 @@ internal enum class Surface(
  * ordered list of surfaces from it, so drawing order, Back and "is anything on top" cannot disagree. Stacking that
  * is legitimate stays: the scanner over the food form (Back returns to the form), the resolver under its children
  * (it comes back when one closes without resolving) and after a background save, the Log ↔ Library part-resolve
- * frame, Settings and its pages over Daily or the Library, the entry detail and its edits, the contribution screens, dialogs
- * and notices.
+ * frame, Settings and its pages over Daily or the Library, the entry detail and its edits, the contribution screens and
+ * dialogs. A notice is no surface: its toast lies over all of these ([toastFloorOf]).
  *
  * It owns the two surfaces that are the app's own: the Meal screen ([meal]) and Settings ([settingsOpen], over Daily
  * or the Library), and the
@@ -100,7 +108,6 @@ internal enum class Surface(
  */
 internal class Surfaces(
     private val session: DiarySession,
-    private val notices: Notices,
     private val settings: SettingsState,
     private val log: LogComposer,
     private val library: LibraryState,
@@ -180,7 +187,6 @@ internal class Surfaces(
         Surface.CONTRIBUTION_REVIEW -> contribution.reviewOpen && contribution.pending != null
         Surface.CONTRIBUTION_SIGN_IN -> contribution.authOpen
         Surface.CONTRIBUTION_FAILURE -> contribution.failure != null
-        Surface.NOTICE -> notices.message != null
         Surface.REPLACE_DIARY -> transfer.pendingImport != null
         Surface.DELETE_ALL -> transfer.deleteAllOpen
         Surface.STORAGE_UNAVAILABLE -> session.storageUnavailable
@@ -236,7 +242,7 @@ internal class Surfaces(
         // Dialogs and sheets, in their own window; the backdrop goes with its review sheet.
         Surface.SCAN_REVIEW_BACKDROP, Surface.ENTRY_FOOD_PICKER, Surface.LIBRARY_FOOD_ADD, Surface.RECIPE_LOG, Surface.RECIPE_INGREDIENT_ADD,
         Surface.DISCARD_RECIPE, Surface.DELETE_RECIPE, Surface.DISCARD_PROFILE, Surface.DELETE_WEIGHT_POINT, Surface.MIXED_MEAL_PICKER,
-        Surface.BATCH_MEAL_PICKER, Surface.DISCARD_FOOD, Surface.DELETE_FOOD, Surface.PRODUCT_REVIEW, Surface.NOTICE, Surface.REPLACE_DIARY,
+        Surface.BATCH_MEAL_PICKER, Surface.DISCARD_FOOD, Surface.DELETE_FOOD, Surface.PRODUCT_REVIEW, Surface.REPLACE_DIARY,
         Surface.DELETE_ALL, Surface.STORAGE_UNAVAILABLE -> null
     }
 

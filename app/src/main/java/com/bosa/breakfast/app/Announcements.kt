@@ -5,8 +5,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 
 /**
- * What TalkBack reads out for a snackbar that comes and goes ("Logged!", an Undo offer), each once, as it read the
- * dialogs those replaced. A node that appears is not reliably read, and a repeat of the same text changes nothing on
+ * What TalkBack reads out for a toast that comes and goes ("Logged!", an Undo offer, a notice), each once, as it read
+ * the dialogs those replaced. A node that appears is not reliably read, and a repeat of the same text changes nothing on
  * screen, so the owners [say] each new one here, and the root reads out what [take] gives every time [serial] moves.
  *
  * Kept with the view model: a recreated screen (rotation, dark mode) takes nothing it already read. While the app is

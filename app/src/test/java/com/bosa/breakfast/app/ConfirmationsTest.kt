@@ -33,6 +33,16 @@ class ConfirmationsTest {
         assertEquals("going says nothing", 2, said.size)
     }
 
+    @Test fun aSwipeEndsItAndItsTimer() {
+        confirmations.logged()
+        confirmations.slot.close(confirmations.slot.showId)
+        assertNull(confirmations.message)
+        confirmations.logged()
+        assertEquals("Logged!", confirmations.message)
+        time.advance(CONFIRMATION_MS)
+        assertNull(confirmations.message)
+    }
+
     @Test fun aNewOneStartsTheTimeAgain() {
         confirmations.logged()
         confirmations.logged()

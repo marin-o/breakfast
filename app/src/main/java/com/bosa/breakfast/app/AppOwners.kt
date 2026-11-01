@@ -89,7 +89,7 @@ internal class AppStores<D>(
 
 /**
  * Where the owners run: [scope] (the view model's), [io] for files and the network, [main] for what the Library hands
- * back to the main thread, [compute] for ranking and planning. [sleep] is the wait of the Undo and "Not right?" timers.
+ * back to the main thread, [compute] for ranking and planning. [sleep] is the wait of the toasts' and "Not right?" timers.
  */
 internal class AppThreads(
     val scope: CoroutineScope,
@@ -127,10 +127,10 @@ internal class AppOwners<D>(
         save = { saveSelectedDay(savedState, it) },
         onSelected = { scan.invalidateLookup() },
     )
-    /** The app's one modal message (see [Notices]); features speak through it. */
-    val notices = Notices()
-    /** What TalkBack reads out for the snackbars that come and go, each once (see [Announcements]). */
+    /** What TalkBack reads out for the toasts that come and go, each once (see [Announcements]). */
     val announcements = Announcements()
+    /** The app's one notice, a toast over every screen (see [Notices]); features speak through it. */
+    val notices = Notices(threads.scope, threads.sleep, announcements::say)
     /** "Logged!" after a food is logged to the meal and day the user chose (see [Confirmations]); it goes by itself. */
     val confirmations = Confirmations(threads.scope, announce = announcements::say, sleep = threads.sleep)
     /** The read model and the write gate (see [DiarySession]). */
@@ -388,7 +388,7 @@ internal class AppOwners<D>(
 
     /** What is open and in which order: drawing, Back and the top check (see [Surfaces]); the Meal screen and Settings. */
     val surfaces: Surfaces = Surfaces(
-        session, notices, settings, log, library, resolve, entryEdit, foodForm, search, scan, review, contribution, transfer, recipes, recipeForm, profile, onboarding,
+        session, settings, log, library, resolve, entryEdit, foodForm, search, scan, review, contribution, transfer, recipes, recipeForm, profile, onboarding,
         initialMeal = savedState.get<String>(MEAL_SLOT_KEY)?.let { runCatching { MealSlot.valueOf(it) }.getOrNull() },
     )
 
@@ -446,12 +446,12 @@ internal class AppOwners<D>(
     )
 
     /**
-     * After a damaged diary was set aside (`data/DamagedDiaries`): its notice, until the user dismissed it, also after
-     * the app was killed before that. Checked after every reload, so damage found during the session shows it too.
+     * After a damaged diary was set aside (`data/DamagedDiaries`): its notice, with no time limit, until the user closed
+     * it, also after the app was killed before that. Checked after every reload, so damage found during the session shows it too.
      */
     private fun showDamagedNotice() {
         if (!session.damagedNoticePending() || notices.message == DIARY_DAMAGED) return
-        notices.show(DIARY_DAMAGED, onDismiss = session::damagedNoticeSeen)
+        notices.show(DIARY_DAMAGED, onDismiss = session::damagedNoticeSeen, durationMs = null)
     }
 
     /** About, Licences: USDA's lines, then the bundled licence, read on [AppThreads.io] (left out when it cannot be read). */

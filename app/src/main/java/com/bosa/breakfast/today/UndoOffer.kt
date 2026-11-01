@@ -2,10 +2,10 @@ package com.bosa.breakfast.today
 
 import com.bosa.breakfast.domain.MealEntry
 
-/** A one-time Undo, shown as a snackbar until [UNDO_WINDOW_MS] after [offeredAtMs] or the next log, edit or delete. */
+/** A one-time Undo, shown as a toast until [UNDO_WINDOW_MS] after [offeredAtMs] or the next log, edit or delete. */
 internal sealed interface UndoOffer {
     val offeredAtMs: Long
-    /** The snackbar's text. */
+    /** The toast's text. */
     val text: String
     data class Deleted(val entry: MealEntry, override val offeredAtMs: Long) : UndoOffer {
         override val text: String get() = deletedText(entry)
@@ -16,10 +16,10 @@ internal sealed interface UndoOffer {
     }
 }
 
-/** The delete snackbar's text ("Egg deleted"). */
+/** The delete toast's text ("Egg deleted"). */
 internal fun deletedText(entry: MealEntry): String = "${entry.foodName} deleted"
 
-/** The snackbars' action. */
+/** The toasts' action. */
 internal const val UNDO = "Undo"
 
 /** What TalkBack reads for a new offer: its text, then the action ("Logged! Undo", "Egg deleted. Undo"). */

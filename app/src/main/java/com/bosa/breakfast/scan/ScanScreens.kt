@@ -7,6 +7,7 @@ import com.bosa.breakfast.ui.components.MealField
 import com.bosa.breakfast.ui.components.NutrientFields
 import com.bosa.breakfast.ui.components.NutrientField
 import com.bosa.breakfast.ui.components.SubScreen
+import com.bosa.breakfast.ui.components.ToastFloorMark
 import com.bosa.breakfast.ui.screens.kcalLabel
 import com.bosa.breakfast.domain.editableNumber
 import com.bosa.breakfast.domain.sourceLetter
@@ -276,6 +277,7 @@ private fun LookupProgress(code: String, onCancel: () -> Unit, modifier: Modifie
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             Viewfinder(viewfinderModifier.size(width = 260.dp, height = 140.dp), colors.cameraMark)
         }
+        ToastFloorMark()
         Column(Modifier.fillMaxWidth().padding(start = Gutter, end = Gutter, bottom = 24.dp), horizontalAlignment = Alignment.CenterHorizontally, content = bottom)
     }
 }

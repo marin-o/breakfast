@@ -175,7 +175,7 @@ class LibraryStateTest {
         library.onInput(" 2 egg, kefir ")
         library.submitInput()
         assertTrue(library.mixedMealPickerOpen)
-        assertEquals("Choose a meal before adding a mixed batch with an unquantified food.", notices.message)
+        assertEquals("the picker says it", null, notices.message)
         library.chooseMixedMeal(MealSlot.BREAKFAST)
         assertFalse(library.mixedMealPickerOpen)
         assertEquals(listOf("save \"2 egg, kefir\" BREAKFAST 2026-10-28"), store.calls)

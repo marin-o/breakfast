@@ -82,7 +82,7 @@ class SurfacesTest {
         app.notices.show("Saved.")
         shows("SCANNER")
         app.back()
-        shows("MEAL", "NOTICE")
+        shows("MEAL")
     }
 
     // ---- 3. Scan review over the scanner's backdrop ----
@@ -293,7 +293,7 @@ class SurfacesTest {
         app.notices.show("Saved.")
         shows("ENTRY_DETAIL")
         app.back()
-        shows("MEAL", "NOTICE")
+        shows("MEAL")
     }
 
     @Test fun anEditFromDailyShowsItsMealBeneathAndBackReturnsToDaily() {
@@ -418,7 +418,7 @@ class SurfacesTest {
         app.openLibrary()
         app.library.onInput("2 egg, ayran")
         app.library.submitInput()
-        shows("LIBRARY", "MIXED_MEAL_PICKER", "NOTICE")
+        shows("LIBRARY", "MIXED_MEAL_PICKER")
     }
 
     /** Delete food asks over the food page; Cancel keeps the page, Delete food deletes it and the Library shows. */
@@ -481,11 +481,49 @@ class SurfacesTest {
 
     // ---- 11. Notices ----
 
-    @Test fun aNoticeIsDrawnOverEveryScreen() {
+    /** A notice is a toast over every screen, not a surface: it covers nothing and takes no Back. */
+    @Test fun aNoticeIsNoSurface() {
         app.openLibrary()
         app.openSettings()
         app.notices.show("Diary exported.")
-        shows("LIBRARY", "SETTINGS", "NOTICE")
+        shows("LIBRARY", "SETTINGS")
+        app.back()
+        assertEquals("Diary exported.", app.notices.message)
+    }
+
+    /** A saved food's form closes as its notice comes: the notice stays, and sits above the Library's bar. */
+    @Test fun aNoticeOutlivesTheFormThatSaidIt() {
+        app.openLibrary()
+        app.foodForm.open("Kefir")
+        assertEquals(Surface.FOOD_FORM, toastFloorOf(app.surfaces.shown()))
+        app.notices.show("Personal food updated for future logs.")
+        app.foodForm.hide()
+        shows("LIBRARY")
+        assertEquals(Surface.DAILY, toastFloorOf(app.surfaces.shown()))
+        assertEquals("Personal food updated for future logs.", app.notices.message)
+    }
+
+    @Test fun aNoticeSitsAboveTheBottomOfTheFullScreenOnTop() {
+        assertEquals(Surface.DAILY, toastFloorOf(app.surfaces.shown()))
+        app.log.open(null)
+        assertEquals(Surface.LOG, toastFloorOf(app.surfaces.shown()))
+        app.log.close()
+        app.openSettings()
+        assertEquals(Surface.SETTINGS, toastFloorOf(app.surfaces.shown()))
+    }
+
+    /** They do not cover the base for Back or its reminder, but they lie over its bar, opaque. */
+    @Test fun theContributionAndNoMatchScreensAreTheirOwnToastFloor() {
+        val under = listOf(Surface.LIBRARY)
+        for (screen in listOf(Surface.CONTRIBUTION_REVIEW, Surface.CONTRIBUTION_SIGN_IN, Surface.CONTRIBUTION_FAILURE, Surface.LIBRARY_NO_MATCH)) {
+            assertFalse(screen.coversBase)
+            assertEquals(screen, toastFloorOf(under + screen))
+        }
+    }
+
+    @Test fun aDialogOverAScreenLeavesTheNoticeOnThatScreensFloor() {
+        assertEquals(Surface.PROFILE, toastFloorOf(listOf(Surface.DAILY, Surface.PROFILE, Surface.DISCARD_PROFILE)))
+        assertEquals(null, toastFloorOf(listOf(Surface.SCAN_REVIEW_BACKDROP)))
     }
 
     // ---- The top check ----

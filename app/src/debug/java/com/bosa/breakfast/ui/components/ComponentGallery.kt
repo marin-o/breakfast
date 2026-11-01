@@ -69,7 +69,7 @@ private fun ComponentGallery() {
             SearchField("kiki", {}, {}, label = "Search foods")
             Composer(onScan = {}) { ComposerText("Log food", {}, Modifier.weight(1f)) }
             BottomNav(selected = NavTab.MEALS, onMeals = {}, onLibrary = {}, onRecipes = {}, onSettings = {}, onProfile = {})
-            Snackbar("Saved meal", "Undo", {})
+            Toast("Saved meal", "Undo", {})
             LinearProgress("Searching Open Food Facts")
             SectionHeading("Servings")
             Hairline()

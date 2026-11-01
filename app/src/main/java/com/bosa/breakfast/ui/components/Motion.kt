@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.dp
 /** Screens over the base glide in this long (DESIGN.md, Motion), and out in [SCREEN_OUT_MS]. */
 internal const val SCREEN_IN_MS = 220
 internal const val SCREEN_OUT_MS = 160
-/** The Add/Undo snackbars and "Not right?". */
+/** The toasts and "Not right?". */
 internal const val FEEDBACK_MS = 180
 /** Rows fading in and collapsing out. */
 internal const val LIST_MS = 200
@@ -57,7 +57,7 @@ internal const val PAGE_MS = 220
 
 /** How far a screen and the day's content slide as they come and go. */
 internal val ScreenSlide = 24.dp
-/** How far the snackbars and "Not right?" rise as they appear. */
+/** How far the toasts and "Not right?" rise as they appear. */
 internal val FeedbackSlide = 8.dp
 
 /**
@@ -135,7 +135,7 @@ internal class Motion(val reduced: Boolean, private val density: Density) {
     /** [ScreenSlide] in pixels. */
     val screenSlidePx: Float get() = with(density) { ScreenSlide.toPx() }
 
-    /** A snackbar or "Not right?" appearing: a fade and an [FeedbackSlide] rise; with [resize] its space opens too. */
+    /** A toast or "Not right?" appearing: a fade and an [FeedbackSlide] rise; with [resize] its space opens too. */
     fun feedbackIn(resize: Boolean = false): EnterTransition {
         if (reduced) return EnterTransition.None
         val rise = with(density) { FeedbackSlide.roundToPx() }
@@ -178,7 +178,7 @@ internal fun rememberMotion(): Motion {
 }
 
 /**
- * Something on its way out: it takes no tap and TalkBack does not see it. A closed snackbar, a removed row or a
+ * Something on its way out: it takes no tap and TalkBack does not see it. A closed toast, a removed row or a
  * leaving "Not right?" can still be drawn while it fades, but it can no longer be used. Only presses and releases are
  * taken (a tap needs both), so a drag that starts on it still scrolls the list around it.
  */

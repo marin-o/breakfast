@@ -21,7 +21,7 @@ class SurfaceTransitionsTest {
     }
 
     @Test fun dialogsAndSheetsKeepTheirOwnMotion() {
-        for (s in listOf(Surface.NOTICE, Surface.ENTRY_QUICK_EDIT, Surface.LIBRARY_FOOD_ADD, Surface.PRODUCT_REVIEW, Surface.MIXED_MEAL_PICKER, Surface.DISCARD_FOOD)) {
+        for (s in listOf(Surface.ENTRY_QUICK_EDIT, Surface.LIBRARY_FOOD_ADD, Surface.PRODUCT_REVIEW, Surface.MIXED_MEAL_PICKER, Surface.DISCARD_FOOD)) {
             assertEquals(SurfaceChange(emptySet(), emptySet(), emptySet()), change(listOf(Surface.DAILY), listOf(Surface.DAILY, s)))
         }
     }

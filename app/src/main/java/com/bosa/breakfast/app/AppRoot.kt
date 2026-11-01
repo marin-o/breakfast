@@ -26,6 +26,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import com.bosa.breakfast.domain.MealSlot
+import com.bosa.breakfast.ui.components.LocalToastFloor
+import com.bosa.breakfast.ui.components.LocalToastSeat
+import com.bosa.breakfast.ui.components.NoticeToastHost
+import com.bosa.breakfast.ui.components.ToastSeat
 import com.bosa.breakfast.ui.components.inert
 import com.bosa.breakfast.ui.components.LocalScreenBody
 import androidx.compose.runtime.remember
@@ -102,7 +106,7 @@ fun BreakfastApp(vm: BreakfastViewModel = viewModel()) {
     // A recreation (dark mode, resize, locale) stops the old activity, but the user never left.
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { if (stopMeansLeaving(activity?.isChangingConfigurations == true)) vm.onAppStopped() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { vm.onAppStarted() }
-    // TalkBack reads each "Logged!" and each new Undo offer once, a repeat too, in order; a recreation reads nothing.
+    // TalkBack reads each "Logged!", notice and new Undo offer once, a repeat too, in order; a recreation reads nothing.
     val view = LocalView.current
     LaunchedEffect(vm.announcements.serial) { vm.announcements.take().forEach(view::announceForAccessibility) }
     // What is open and in which order (see [Surfaces]): drawn bottom first, each surface keyed so it keeps its state
@@ -111,9 +115,16 @@ fun BreakfastApp(vm: BreakfastViewModel = viewModel()) {
     val shown = vm.surfaces.shown()
     val motion = rememberMotion()
     val transitions = rememberSurfaceTransitions()
-    for (drawn in transitions.frame(shown, motion)) key(if (drawn is Surface) drawn.slot else drawn) {
-        if (drawn is Surface) ShownSurface(transitions, drawn.slot, motion) { DrawSurface(vm, drawn) }
-        else GhostSurface(transitions, drawn as Ghost, motion)
+    val toastSeat = remember(vm) { ToastSeat(vm.notices.slot, NOTICE_ACTION, vm.notices::dismiss) }
+    CompositionLocalProvider(LocalToastSeat provides toastSeat) {
+        for (drawn in transitions.frame(shown, motion)) key(if (drawn is Surface) drawn.slot else drawn) {
+            if (drawn is Surface) ShownSurface(transitions, drawn.slot, motion) {
+                CompositionLocalProvider(LocalToastFloor provides drawn.slot) { DrawSurface(vm, drawn) }
+            }
+            else GhostSurface(transitions, drawn as Ghost, motion)
+        }
+        // Over every surface, so a screen that closes as the notice comes (a saved food) cannot take it along.
+        NoticeToastHost(toastSeat, toastFloorOf(shown))
     }
     // System Back goes to the topmost surface that takes it; a dialog or sheet takes it in its own window first.
     BackHandler(enabled = vm.surfaces.takesBack(shown)) { vm.surfaces.back() }
@@ -159,7 +170,6 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         Surface.CONTRIBUTION_REVIEW -> vm.contribution.pending?.let { ContributionReviewScreen(vm.contribution, it) }
         Surface.CONTRIBUTION_SIGN_IN -> ContributionSignInScreen(vm.contribution)
         Surface.CONTRIBUTION_FAILURE -> vm.contribution.failure?.let { ContributionFailureScreen(vm.contribution, it) }
-        Surface.NOTICE -> vm.notices.message?.let { message -> AlertDialog(onDismissRequest = vm.notices::dismiss, confirmButton = { TextButton(vm.notices::dismiss) { Text("OK") } }, text = { Text(message) }) }
         Surface.REPLACE_DIARY -> ConfirmDialog("Replace diary", vm.transfer::confirmImport, vm.transfer::cancelImport, text = "This replaces entries and foods, not settings.")
         Surface.DELETE_ALL -> AlertDialog(
             onDismissRequest = vm.transfer::cancelDeleteAll,
@@ -183,7 +193,7 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
  * The base screen, whichever shows (Daily, a meal, the Library, Recipes), and its changes: the new one fades in over the
  * old one and its body moves by [baseMove] (from the side a tab lies on, a rise into a meal or a meal's Library, the
  * reverse back). The screen on its way out is [inert]: no tap, no TalkBack, and Back already acts on the new one.
- * The bottom area ([BaseBottomArea]: the snackbars, the ink bar, the tabs) is drawn once over them, outside the change,
+ * The bottom area ([BaseBottomArea]: the toasts, the ink bar, the tabs) is drawn once over them, outside the change,
  * so it never leaves or comes back; hidden during an entry edit, which owns the input and its own sheet.
  */
 @OptIn(ExperimentalMaterial3Api::class)

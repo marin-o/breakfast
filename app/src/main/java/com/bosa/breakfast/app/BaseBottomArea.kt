@@ -1,6 +1,6 @@
 package com.bosa.breakfast.app
 
-import com.bosa.breakfast.today.UndoSnackbars
+import com.bosa.breakfast.today.UndoToasts
 import androidx.compose.runtime.getValue
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -21,16 +20,16 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.Modifier
 import com.bosa.breakfast.ui.theme.ComposerHeight
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.unit.dp
 import com.bosa.breakfast.domain.MealSlot
 import com.bosa.breakfast.library.LibrarySearchField
 import com.bosa.breakfast.ui.components.BottomNav
 import com.bosa.breakfast.ui.components.Composer
 import com.bosa.breakfast.ui.components.ComposerFade
 import com.bosa.breakfast.ui.components.ComposerText
-import com.bosa.breakfast.ui.components.ConfirmationSnackbar
 import com.bosa.breakfast.ui.components.NavTab
-import com.bosa.breakfast.ui.components.Snackbar
+import com.bosa.breakfast.ui.components.ToastFloorMark
+import com.bosa.breakfast.ui.components.ToastReveal
+import com.bosa.breakfast.ui.components.closingToast
 import com.bosa.breakfast.ui.components.inert
 import com.bosa.breakfast.ui.components.rememberMotion
 import com.bosa.breakfast.ui.label
@@ -61,7 +60,7 @@ internal fun BaseScreen.navTab(): NavTab? = when (this) {
 private class Kept<T>(var value: T)
 
 /**
- * The one bottom area of the base screens, drawn once over whichever shows, outside their change: the snackbars, the
+ * The one bottom area of the base screens, drawn once over whichever shows, outside their change: the toasts, the
  * ink bar and the tabs never leave or come back on a tab change. Only what differs changes in place: the bar's text
  * crosses between the Log opener and the Library's search ([Motion.nav]), the tabs' line slides, the tabs fold away
  * under a meal, and on Recipes the bar fades where it stands so the tabs do not move.
@@ -81,12 +80,12 @@ internal fun BaseBottomArea(vm: BreakfastViewModel, screen: BaseScreen, meal: Me
     // The area rides above the keyboard (also while it closes after the search), clear of a side display cutout.
     ComposerFade(modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).imePadding()) {
         val logScreen = screen == BaseScreen.DAILY || screen == BaseScreen.MEAL
-        UndoSnackbars(undo, shown = logScreen)
-        ConfirmationSnackbar(vm.confirmations.message)
-        if (screen == BaseScreen.DAILY && vm.reminders.shownOnDaily(covered = surfaces.baseCovered())) {
-            LaunchedEffect(Unit) { vm.reminders.onScreenNow() }
-            Snackbar("Export your diary.", "Export", vm.reminders::export, Modifier.padding(bottom = 8.dp))
-        }
+        ToastFloorMark()
+        UndoToasts(undo, shown = logScreen)
+        ToastReveal(vm.confirmations.message, vm.confirmations.slot)
+        val reminder = screen == BaseScreen.DAILY && vm.reminders.shownOnDaily(covered = surfaces.baseCovered())
+        if (reminder) LaunchedEffect(Unit) { vm.reminders.onScreenNow() }
+        ToastReveal("Export your diary.".takeIf { reminder }, remember(vm) { closingToast(vm.reminders::hide) }, "Export", vm.reminders::export)
         val barAlpha by animateFloatAsState(if (mode != null) 1f else 0f, motion.nav(), label = "bar")
         // The bar's place keeps its height on Recipes, so the tabs and "Logged!" do not move.
         Box(Modifier.fillMaxWidth().heightIn(min = ComposerHeight)) {

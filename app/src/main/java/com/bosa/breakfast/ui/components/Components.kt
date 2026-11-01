@@ -6,7 +6,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.material.icons.outlined.Person
 import com.bosa.breakfast.ui.theme.Gutter
 import androidx.compose.foundation.layout.fillMaxSize
-import com.bosa.breakfast.ui.theme.SnackbarGutter
+import com.bosa.breakfast.ui.theme.ToastGutter
 import com.bosa.breakfast.domain.MeasureUnit
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.semantics.heading
@@ -139,7 +139,6 @@ import com.bosa.breakfast.ui.theme.PrimaryShape
 import com.bosa.breakfast.ui.theme.SecondaryHeight
 import com.bosa.breakfast.ui.theme.SecondaryShape
 import com.bosa.breakfast.ui.theme.SheetShape
-import com.bosa.breakfast.ui.theme.SnackbarShape
 import com.bosa.breakfast.ui.theme.TertiaryHeight
 
 /** Food names and typed text use the Macedonian shaping locale. */
@@ -916,7 +915,7 @@ fun ComposerFade(modifier: Modifier = Modifier, content: @Composable ColumnScope
             .fillMaxWidth()
             .background(Brush.verticalGradient(0f to colors.bg.copy(alpha = 0f), 0.22f to colors.bg))
             .navigationBarsPadding()
-            .padding(start = SnackbarGutter, end = SnackbarGutter, top = 12.dp),
+            .padding(start = ToastGutter, end = ToastGutter, top = 12.dp),
         content = content,
     )
 }
@@ -1151,48 +1150,12 @@ fun Sheet(
             Box(Modifier.padding(top = 12.dp, bottom = 8.dp).size(width = 36.dp, height = 5.dp).background(colors.line, CircleShape))
         },
     ) {
-        Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 24.dp), content = content)
-    }
-}
-
-/** Ink snackbar above the composer. The action is `bg` 500 on the right. */
-@Composable
-fun Snackbar(
-    message: String,
-    actionLabel: String? = null,
-    onAction: (() -> Unit)? = null,
-    modifier: Modifier = Modifier,
-) {
-    val colors = LocalBreakfastColors.current
-    Row(
-        modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp)
-            .clip(SnackbarShape)
-            .background(colors.ink)
-            .padding(start = 16.dp, end = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(message, color = colors.bg, style = BreakfastType.Secondary, modifier = Modifier.weight(1f).padding(vertical = 12.dp))
-        if (actionLabel != null && onAction != null) {
-            Text(
-                actionLabel,
-                color = colors.bg,
-                style = BreakfastType.Button,
-                modifier = Modifier.clickable(role = Role.Button, onClick = onAction).padding(horizontal = 12.dp, vertical = 12.dp),
-            )
+        Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 24.dp)) {
+            SheetNoticeToast()
+            // The content keeps what the notice leaves, however tall it is.
+            Column(Modifier.weight(1f, fill = false), content = content)
         }
     }
-}
-
-/**
- * A confirmation with no action ("Logged!", `app/Confirmations`) as a [Snackbar], gliding in and out with [Reveal].
- * TalkBack reads each confirmation once from the root (`BreakfastApp`), not from this node, which comes and goes.
- */
-@Composable
-internal fun ConfirmationSnackbar(message: String?, modifier: Modifier = Modifier) {
-    // [modifier] places the whole reveal (an align in a Box must sit on it); the 8dp gap comes and goes with the bar.
-    Reveal(message, modifier) { Snackbar(it, modifier = Modifier.padding(bottom = 8.dp)) }
 }
 
 /**
@@ -1257,7 +1220,7 @@ fun TopBar(
 /**
  * The shell of a full screen over the base: `bg`, the safe area, the gutter and the [TopBar] 8dp down. With [scroll] the
  * header and [content] scroll together; without it [content] places its own scrolling part. [bottom] stays under them,
- * above the keyboard.
+ * above the keyboard, with a notice's toast directly above it ([ToastStack]), and [toasts] are the screen's own there.
  */
 @Composable
 fun SubScreen(
@@ -1268,6 +1231,7 @@ fun SubScreen(
     trailing: @Composable () -> Unit = {},
     scroll: Boolean = true,
     bottom: (@Composable ColumnScope.() -> Unit)? = null,
+    toasts: (@Composable ColumnScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(modifier.fillMaxSize(), color = LocalBreakfastColors.current.bg) {
@@ -1281,6 +1245,7 @@ fun SubScreen(
                 TopBar(title, onBack, Modifier.padding(top = 8.dp), subtitle = subtitle, trailing = trailing)
                 content()
             }
+            if (toasts != null || bottom != null) ToastStack(toasts ?: {})
             if (bottom != null) Column(Modifier.fillMaxWidth().padding(horizontal = Gutter), content = bottom)
         }
     }

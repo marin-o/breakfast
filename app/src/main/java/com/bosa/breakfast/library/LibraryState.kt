@@ -228,7 +228,6 @@ internal class LibraryState(
         if (segments.any { it.amount == null }) {
             if (effectiveTarget == null) {
                 pendingBatch = emptyList()
-                notices.show("Choose a meal before adding a mixed batch with an unquantified food.")
                 mixedMealPickerOpen = true
                 return
             }

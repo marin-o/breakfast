@@ -47,6 +47,60 @@ class UndoControllerTest {
         assertEquals("kept, re-timed, ended or a batch that saved nothing: nothing new", 2, said.size)
     }
 
+    /** Swiping away a logged batch's or a delete's offer ends only the offer: nothing is written. */
+    @Test fun aSwipeEndsTheOfferAndTheEntriesStay() {
+        diary.commit(DiaryChange.BatchLogged("Logged!", batch))
+        undo.slot.close(undo.slot.showId)
+        assertNull(undo.offer)
+        assertFalse(time.sleeping)
+        undo.undoBatch()
+        assertTrue(store.batches.isEmpty())
+        undo.delete(egg)
+        undo.slot.close(undo.slot.showId)
+        assertNull(undo.deletedEntry)
+        undo.undoDelete()
+        assertEquals(listOf("egg"), store.deleted)
+    }
+
+    /** A swipe begun on one offer, ending after the next one came, ends only its own. */
+    @Test fun aSwipeOnAnOlderOfferLeavesTheNewerOne() {
+        undo.delete(egg)
+        val swiped = undo.slot.showId
+        val other = entry("other")
+        undo.delete(other)
+        undo.slot.close(swiped)
+        assertEquals(other, undo.deletedEntry)
+        assertTrue(time.sleeping)
+    }
+
+    /** Re-timing keeps the same show, so a finger on the toast keeps its gesture. */
+    @Test fun aWindowChangeIsNoNewShow() {
+        undo.delete(egg)
+        val id = undo.slot.showId
+        window = 30_000L
+        undo.windowChanged()
+        assertEquals(id, undo.slot.showId)
+    }
+
+    /** Under a finger or while away a window keeps counting from when it was made; the offer closes only when back. */
+    @Test fun anOfferPastItsWindowClosesWhenTheFingerLeavesOrTheAppIsBack() {
+        undo.delete(egg)
+        undo.slot.hold(undo.slot.showId, true)
+        assertFalse(time.sleeping)
+        time.advance(20_000L)
+        assertEquals(egg, undo.deletedEntry)
+        undo.slot.hold(undo.slot.showId, false)
+        assertNull(undo.offer)
+
+        undo.delete(entry("other"))
+        undo.slot.stop()
+        time.advance(5_000L)
+        undo.slot.start()
+        assertEquals(listOf(10_000L), time.sleeps.takeLast(1))
+        time.advance(10_000L)
+        assertNull(undo.offer)
+    }
+
     @Test fun aDeleteOffersItsUndoUntilTheWindowEnds() {
         undo.delete(egg)
         assertEquals(listOf("egg"), store.deleted)

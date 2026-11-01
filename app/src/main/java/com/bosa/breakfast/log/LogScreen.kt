@@ -6,10 +6,10 @@ import com.bosa.breakfast.app.rememberDraftView
 import com.bosa.breakfast.ui.components.DraftParts
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.draw.alpha
-import com.bosa.breakfast.today.UndoSnackbars
+import com.bosa.breakfast.today.UndoToasts
 import com.bosa.breakfast.today.UndoController
-import com.bosa.breakfast.ui.theme.SnackbarGutter
-import com.bosa.breakfast.ui.components.ConfirmationSnackbar
+import com.bosa.breakfast.ui.components.ToastReveal
+import com.bosa.breakfast.ui.components.ToastStack
 import com.bosa.breakfast.app.Confirmations
 import com.bosa.breakfast.ui.components.ScanBarcodeIcon
 import com.bosa.breakfast.scan.ScanSession
@@ -201,9 +201,9 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
             }
         }
         // While its unmatched foods are worked through, the batch that just logged and each part say so here.
-        Column(Modifier.fillMaxWidth().padding(horizontal = SnackbarGutter)) {
-            UndoSnackbars(undo, shown = unmatched.resolve.queueHasMeal)
-            ConfirmationSnackbar(confirmations.message)
+        ToastStack {
+            UndoToasts(undo, shown = unmatched.resolve.queueHasMeal)
+            ToastReveal(confirmations.message, confirmations.slot)
         }
         // The add bar sits above whichever is taller: the keyboard or the navigation bar.
         // At large font the button takes its own full-width row so the sum keeps its width.

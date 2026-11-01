@@ -2,25 +2,18 @@ package com.bosa.breakfast.resolve
 
 import com.bosa.breakfast.search.SkipButton
 import com.bosa.breakfast.search.SearchYourFoodsButton
-import com.bosa.breakfast.ui.theme.SnackbarGutter
 import com.bosa.breakfast.ui.components.SearchOrCreateButtons
 import com.bosa.breakfast.ui.components.SubScreen
 import com.bosa.breakfast.ui.screens.plainLine
 import com.bosa.breakfast.ui.screens.QuantityDisplay
 import com.bosa.breakfast.ui.theme.*
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -32,7 +25,7 @@ import com.bosa.breakfast.ui.label
 import com.bosa.breakfast.ui.components.foodText
 import com.bosa.breakfast.ui.components.FoodRow
 import com.bosa.breakfast.ui.components.Hairline
-import com.bosa.breakfast.ui.components.ConfirmationSnackbar
+import com.bosa.breakfast.ui.components.ToastReveal
 import com.bosa.breakfast.ui.components.SearchField
 import com.bosa.breakfast.ui.components.SectionHeading
 import com.bosa.breakfast.ui.theme.LocalBreakfastColors
@@ -56,42 +49,36 @@ import com.bosa.breakfast.ui.screens.matchDisplay
     val meta = listOfNotNull(context.ifBlank { null }, "$position of $total").joinToString(". ")
     val typed = listOfNotNull(display.quantity, display.name).joinToString(" ")
     LaunchedEffect(raw) { resolve.onQuery(display.name) }
-    Box(Modifier.fillMaxSize()) {
-        SubScreen("Resolve", resolve::close) {
-            Column(Modifier.padding(top = 14.dp).fillMaxWidth().semantics(mergeDescendants = true) { }) {
-                Text(meta, color = colors.soft, style = BreakfastType.Meta)
-                Text(foodText(typed), color = colors.ink, style = BreakfastType.LargeInput, modifier = Modifier.padding(top = 4.dp))
+    // A part logged from a screen the resolver opened says "Logged!" at its foot, while the queue goes on.
+    SubScreen("Resolve", resolve::close, toasts = { ToastReveal(confirmations.message, confirmations.slot) }) {
+        Column(Modifier.padding(top = 14.dp).fillMaxWidth().semantics(mergeDescendants = true) { }) {
+            Text(meta, color = colors.soft, style = BreakfastType.Meta)
+            Text(foodText(typed), color = colors.ink, style = BreakfastType.LargeInput, modifier = Modifier.padding(top = 4.dp))
+        }
+        Hairline(Modifier.padding(top = 30.dp))
+        Column(Modifier.padding(top = 16.dp)) {
+            if (resolve.searchOpen) {
+                Text("Search your foods", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(bottom = 6.dp))
+                SearchField(resolve.query, resolve::onQuery, onClear = { resolve.onQuery("") }, label = "Search your foods")
+            } else {
+                SearchYourFoodsButton(resolve::beginSearch, Modifier.padding(bottom = 8.dp))
             }
-            Hairline(Modifier.padding(top = 30.dp))
-            Column(Modifier.padding(top = 16.dp)) {
-                if (resolve.searchOpen) {
-                    Text("Search your foods", color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(bottom = 6.dp))
-                    SearchField(resolve.query, resolve::onQuery, onClear = { resolve.onQuery("") }, label = "Search your foods")
-                } else {
-                    SearchYourFoodsButton(resolve::beginSearch, Modifier.padding(bottom = 8.dp))
+            if (resolve.results.isNotEmpty()) {
+                SectionHeading("Local matches", Modifier.padding(top = 30.dp, bottom = 4.dp))
+                resolve.results.forEach { ranked ->
+                    val match = matchDisplay(ranked.food, raw)
+                    FoodRow(
+                        name = ranked.food.name,
+                        quantityLine = QuantityDisplay(match.detail, match.approximateLabel).plainLine(),
+                        calories = match.kcal,
+                        onClick = { resolve.resolve(ranked.food) },
+                    )
                 }
-                if (resolve.results.isNotEmpty()) {
-                    SectionHeading("Local matches", Modifier.padding(top = 30.dp, bottom = 4.dp))
-                    resolve.results.forEach { ranked ->
-                        val match = matchDisplay(ranked.food, raw)
-                        FoodRow(
-                            name = ranked.food.name,
-                            quantityLine = QuantityDisplay(match.detail, match.approximateLabel).plainLine(),
-                            calories = match.kcal,
-                            onClick = { resolve.resolve(ranked.food) },
-                        )
-                    }
-                }
-                Column(Modifier.padding(top = 30.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SearchOrCreateButtons({ search.open(resolve.currentName(), fromResolver = true) }, { foodForm.open(resolve.currentName(), fromResolver = true) })
-                    SkipButton(resolve::skip)
-                }
+            }
+            Column(Modifier.padding(top = 30.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SearchOrCreateButtons({ search.open(resolve.currentName(), fromResolver = true) }, { foodForm.open(resolve.currentName(), fromResolver = true) })
+                SkipButton(resolve::skip)
             }
         }
-        // A part logged from a screen the resolver opened says "Logged!" here, while the queue goes on.
-        ConfirmationSnackbar(
-            confirmations.message,
-            Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = SnackbarGutter),
-        )
     }
 }
