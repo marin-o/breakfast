@@ -129,6 +129,14 @@ class OffSearchTest {
         assertEquals(listOf("Ayran"), search.results.map { it.name })
     }
 
+    @Test fun aPickStopsTheRunningSearch() {
+        search.open("kefir")
+        search.submit()
+        search.choose(product("Kefir 1%"))
+        assertEquals(listOf("kefir"), off.cancelled)
+        assertFalse(search.busy)
+    }
+
     @Test fun aSecondSubmitWhileOneRunsAndASearchBeforeStorageAreRefused() {
         search.open("kefir")
         search.submit()

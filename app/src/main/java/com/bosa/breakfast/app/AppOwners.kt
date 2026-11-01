@@ -164,11 +164,18 @@ internal class AppOwners<D>(
         clock = clock,
         scope = threads.scope,
         sleep = threads.sleep,
-        openSearch = { name -> search.open(name, reviewOrigin = ProductReviewOrigin.CORRECTION) },
+        // The strip's Search is the press: Open Food Facts is asked at once, as from the Log's unmatched rows, for what was
+        // typed, as the strip's alternatives are: never the food's name in another script.
+        openSearch = { entry ->
+            search.open(resolve.typed(entry.sourcePhrase).foodPhrase.trim().ifBlank { entry.foodName }, reviewOrigin = ProductReviewOrigin.CORRECTION)
+            search.submit()
+        },
         initialCorrectingId = savedState[CORRECTING_ID_KEY],
     )
     /** The Open Food Facts contribution flow (see [ContributionFlow]). */
     val contribution = ContributionFlow(stores.contributions, notices, threads.scope, threads.io, showContribute = { settings.showContribute })
+    /** The USDA rows on "Not right?"'s search, one apart from the others': that search may lie over either's screen. */
+    val usdaCorrection = UsdaPartSearch(stores.usda, threads.scope, threads.io, threads.main, threads.sleep)
     /** The Open Food Facts search (see [OffSearch]); what it opens over and returns to stays with the resolve flow. */
     val search: OffSearch = OffSearch(
         off = stores.offSearch,
@@ -176,8 +183,9 @@ internal class AppOwners<D>(
         io = threads.io,
         ready = { session.ready },
         onOpen = { fromResolver -> surfaces.searchOpened(fromResolver) },
-        onClose = { review.forgetPartLeft(); resolve.childClosed() },
+        onClose = { usdaCorrection.clear(); review.forgetPartLeft(); resolve.childClosed() },
         onChoose = { food, origin -> review.choose(food, origin = origin) },
+        isFoodBeingCorrected = feedback::isFoodBeingCorrected,
     )
     /** The Profile page and the macro targets Meals reads (see [ProfileState]). */
     val profile = ProfileState(
@@ -354,6 +362,7 @@ internal class AppOwners<D>(
         correctingEntry = feedback::correctingEntry,
         correct = feedback::correct,
         partInDraft = log::partInDraft,
+        backToSearch = { search.returnFromReview() },
     )
     /** The Recipes tab: the list, the recipe page, logging one and Delete recipe (see [RecipeBook]). */
     val recipes: RecipeBook = RecipeBook(
@@ -459,8 +468,13 @@ internal class AppOwners<D>(
         listOf(USDA_LICENCE_LINES, runCatching { stores.licence() }.getOrDefault("")).filter { it.isNotBlank() }.joinToString("\n\n")
     }
 
-    /** "Not right?" waits while what shows it is covered by foods left to match: the resolver, or the Log with its rows. */
-    internal fun feedbackHeld(): Boolean = resolve.resolverOpen || (log.open && resolve.queueActive)
+    /**
+     * "Not right?" waits while what shows it is covered by foods left to match (the resolver, or the Log with its rows), or
+     * by its own correction: its search or the review of a pick, which Back may leave for the strip.
+     */
+    internal fun feedbackHeld(): Boolean = resolve.resolverOpen || (log.open && resolve.queueActive) ||
+        (search.open && search.reviewOrigin == ProductReviewOrigin.CORRECTION) ||
+        (review.product != null && review.origin == ProductReviewOrigin.CORRECTION)
 
     /** The Library tab itself is on show, not a meal's Library. */
     private fun libraryTabOnScreen(): Boolean = library.open && library.target == null

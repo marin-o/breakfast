@@ -13,6 +13,7 @@ import com.bosa.breakfast.domain.Measure
 import com.bosa.breakfast.domain.MeasureUnit
 import com.bosa.breakfast.domain.RankedFood
 import com.bosa.breakfast.domain.ReplacementResult
+import com.bosa.breakfast.domain.sameBarcode
 import com.bosa.breakfast.suspendRunCatching
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -56,8 +57,8 @@ internal class MatchFeedback(
     private val clock: () -> Long,
     private val scope: CoroutineScope,
     private val sleep: suspend (Long) -> Unit = { delay(it) },
-    /** The search a correction goes to, on the entry's food name. */
-    private val openSearch: (String) -> Unit = {},
+    /** The search a correction goes to, for this entry. */
+    private val openSearch: (MealEntry) -> Unit = {},
     initialCorrectingId: String? = null,
 ) {
     /** The entries whose strip is open. */
@@ -107,38 +108,41 @@ internal class MatchFeedback(
     fun search(entry: MealEntry) {
         if (!isOpen(entry)) return
         correctingId = entry.id
-        openSearch(entry.foodName)
+        openSearch(entry)
     }
 
     /** The entry the last [search] was for, while the diary has it. */
     fun correctingEntry(): MealEntry? = session.entries.firstOrNull { it.id == correctingId }
 
+    /** [food] is what the entry being corrected already is: the same id, or the same product under another (a stored food's barcode). */
+    fun isFoodBeingCorrected(food: FoodRecord): Boolean {
+        val foodId = correctingEntry()?.foodId ?: return false
+        return food.id == foodId || sameBarcode(session.foods.firstOrNull { it.id == foodId }?.barcode, food.barcode)
+    }
+
     /**
      * A food found from [search], reviewed: [store] stores it, and in the same write the entry becomes [amount] of
      * [measure] of it. Stored, it goes to [onStored] whatever the replacement said; a refused one says why. Reported as a
      * food change: the Library lists the food, a pin follows it, and the pending Undo stays as for any pick. With no entry
-     * left to correct (the diary was replaced under it), nothing is written: it says so and [onGone] runs.
+     * left to correct (the diary was replaced under it), nothing is written, the food included: it says so and [onGone] runs.
      */
     fun correct(store: suspend () -> FoodRecord, amount: Double, measure: Measure, onGone: () -> Unit, onStored: (FoodRecord) -> Unit) {
-        val id = correctingId ?: run {
+        val entry = correctingEntry() ?: run {
             notices.show("That saved entry is no longer available.")
             onGone()
             return
         }
-        // The entry gone, the plain replacement is what says so.
-        val entry = correctingEntry()
         session.write(
             change = DiaryChange.FoodsChanged,
             onSuccess = { (food, pick) ->
                 if (pick.result is ReplacementResult.Success) correctingId = null
-                settle(id, pick)
+                settle(entry.id, pick)
                 onStored(food)
             },
             onFailure = { notices.show(it.message ?: "Could not save this food.") },
         ) {
             val food = store()
-            val result = if (entry == null) this.store.replaceEntry(id, food.id)
-            else this.store.replaceEntryWith(id, food.id, amount, measure.unit, measure.name, entry.mealSlot, entry.dayKey)
+            val result = this.store.replaceEntryWith(entry.id, food.id, amount, measure.unit, measure.name, entry.mealSlot, entry.dayKey)
             food to learnedPick(food.id, result)
         }
     }

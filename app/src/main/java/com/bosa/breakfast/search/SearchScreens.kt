@@ -82,16 +82,21 @@ import com.bosa.breakfast.ui.screens.formatKcal
     TertiaryButton("Skip", onClick, Modifier.fillMaxWidth(), soft = true)
 }
 
-/** Explicit Open Food Facts search: nothing is sent until Search (or the keyboard's search key) is used. */
-@Composable internal fun OffSearchScreen(search: OffSearch, foodForm: FoodForm, resolve: ResolveFlow) {
+/**
+ * Explicit Open Food Facts search: nothing is sent until a Search (or the keyboard's search key) is used. From "Not right?"
+ * the USDA foods for the query are over its results, so it isn't titled for Open Food Facts alone.
+ */
+@Composable internal fun OffSearchScreen(search: OffSearch, foodForm: FoodForm, resolve: ResolveFlow, usda: UsdaPartSearch) {
     val colors = LocalBreakfastColors.current
-    SubScreen("Open Food Facts", search::close) {
+    val correcting = search.reviewOrigin == ProductReviewOrigin.CORRECTION
+    SubScreen(if (correcting) "Search" else "Open Food Facts", search::close) {
         SearchCaption(Modifier.padding(top = 6.dp))
         Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SearchField(search.query, search::onQuery, onClear = { search.onQuery("") }, label = "Search Open Food Facts", modifier = Modifier.weight(1f), onSearch = search::submit)
+            SearchField(search.query, search::onQuery, onClear = { search.onQuery("") }, label = if (correcting) "Search" else "Search Open Food Facts", modifier = Modifier.weight(1f), onSearch = search::submit)
             if (search.busy) SecondaryButton("Search", search::submit, Modifier.widthIn(min = 104.dp), enabled = false, fillWidth = false)
             else PrimaryButton("Search", search::submit, Modifier.widthIn(min = 104.dp), kind = ButtonKind.Neutral, fillWidth = false)
         }
+        if (correcting) UsdaRows(rememberUsdaRows(usda, search.query).filterNot(search::leavesOut), search.query, Modifier.padding(top = 8.dp), search::choose)
         Column(Modifier.padding(top = 16.dp)) {
             when {
                 search.busy -> Column(Modifier.padding(top = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -110,6 +115,8 @@ import com.bosa.breakfast.ui.screens.formatKcal
                 }
             }
             search.message?.let { message ->
+                // Under the USDA foods, "No results" says whose.
+                if (correcting) Text("From Open Food Facts", color = colors.soft, style = BreakfastType.Secondary)
                 val createPersonal = { foodForm.open(search.query.trim(), fromResolver = resolve.continuation, reviewAfterSave = search.reviewOrigin) }
                 val status = offSearchStatus(search.unavailable, message)
                 val (title, body) = offStatusText(status)

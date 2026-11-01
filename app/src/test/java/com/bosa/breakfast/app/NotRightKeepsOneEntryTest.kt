@@ -35,10 +35,7 @@ class NotRightKeepsOneEntryTest {
     /** Both screens the strip shows on. */
     private fun onEachScreen(test: (AppKit) -> Unit) { test(appOn(MealSlot.LUNCH)); test(appOn(null)) }
 
-    private fun AppKit.searchOnTheStrip() {
-        feedback.search(wrong)
-        search.submit()
-    }
+    private fun AppKit.searchOnTheStrip() = feedback.search(wrong)
 
     private fun AppKit.assertOneEntryReplaced(food: String) {
         assertEquals(calls.toString(), listOf(food), calls.filter { it.startsWith("replace") }.map { it.split(" ")[3] })
@@ -211,6 +208,274 @@ class NotRightKeepsOneEntryTest {
         app.review.add(MealSlot.LUNCH)
         assertEquals(listOf("review log found LUNCH"), app.calls.filter { it.contains("log") })
         assertTrue(app.calls.none { it.startsWith("replace") })
+    }
+
+    // ---- The USDA foods on the strip's Search ----
+
+    private val usdaEgg = food("fndds_1", "Egg, whole, raw")
+
+    /** What the screen draws: it asks for the query, and the rows that came are left out as the food being corrected. Only the pause ends. */
+    private fun AppKit.usdaRowsDrawn(): List<com.bosa.breakfast.domain.FoodRecord> {
+        pausesEnd = true
+        owners.usdaCorrection.typed(search.query)
+        pausesEnd = false
+        return owners.usdaCorrection.rowsFor(search.query).filterNot(search::leavesOut)
+    }
+
+    /** The strip's Search with the catalogue answering. */
+    private fun AppKit.searchWithRows() {
+        usdaFoods = listOf(usdaEgg)
+        searchOnTheStrip()
+        usdaRowsDrawn()
+    }
+
+    @Test fun theStripsSearchShowsTheUsdaFoodsAndAsksOpenFoodFactsOnce() = onEachScreen { app ->
+        app.searchWithRows()
+        assertEquals(listOf(usdaEgg), app.usdaRowsDrawn())
+        assertEquals(listOf(found), app.search.results)
+        assertEquals(listOf(wrong.sourcePhrase), app.offSearched)
+    }
+
+    private fun AppKit.searchedFor(typed: String, foodName: String = "Egg"): String {
+        val logged = wrong.copy(sourcePhrase = typed, foodName = foodName)
+        diaryHas(logged)
+        feedback.search(logged)
+        return offSearched.single()
+    }
+
+    @Test fun theSearchAsksWhatWasTypedLeavingItsAmountAsTheLogDoes() {
+        assertEquals("eggs", appOn(MealSlot.LUNCH).searchedFor("2 eggs"))
+    }
+
+    @Test fun aCyrillicPhraseIsSentCyrillicNotAsTheFoodsLatinName() {
+        val app = appOn(MealSlot.LUNCH)
+        assertEquals("јајца", app.searchedFor("2 јајца", foodName = "Egg"))
+        assertEquals("јајца", app.search.query)
+    }
+
+    @Test fun aBlankPhraseFallsBackToTheFoodName() {
+        assertEquals("Egg", appOn(MealSlot.LUNCH).searchedFor(" "))
+    }
+
+    @Test fun usdaRowsStayWithNoConnection() {
+        val app = appOn(MealSlot.LUNCH)
+        app.offOffline = true
+        app.searchWithRows()
+        assertEquals(listOf(usdaEgg), app.usdaRowsDrawn())
+        assertTrue(app.search.unavailable)
+        app.search.choose(usdaEgg)
+        app.review.addToLog()
+        app.assertOneEntryReplaced("fndds_1")
+    }
+
+    @Test fun aUsdaRowReplacesTheEntryKeepingItsAmountAndIsLearnedOnce() = onEachScreen { app ->
+        app.diaryHas(wrong.copy(enteredAmount = 200.0, enteredUnit = MeasureUnit.GRAM))
+        app.searchWithRows()
+        app.search.choose(app.usdaRowsDrawn().single())
+        assertEquals(ProductReviewOrigin.CORRECTION, app.review.origin)
+        assertEquals("200", app.review.amount)
+        app.review.addToLog()
+        assertTrue(app.calls.toString(), "replace wrong with fndds_1 200.0 g LUNCH 2026-10-28" in app.calls)
+        app.assertOneEntryReplaced("fndds_1")
+        assertEquals("the strip's own learning, once", 1, app.calls.count { it == "reinforce fndds_1" })
+        assertEquals("nothing learned beside it", emptyList<String>(), app.reinforced)
+        assertFalse("the strip closes", app.feedback.isOpen(wrong))
+        assertTrue("no network for its servings", app.calls.none { it.startsWith("fetch") })
+    }
+
+    @Test fun aCorrectionThroughFindBetterMatchEndsOnAUsdaRow() {
+        val app = appOn(MealSlot.LUNCH)
+        app.searchWithRows()
+        app.search.choose(found)
+        app.review.findBetterMatch()
+        assertEquals(ProductReviewOrigin.CORRECTION, app.search.reviewOrigin)
+        app.search.onQuery("egg")
+        app.search.choose(app.usdaRowsDrawn().single())
+        app.review.addToLog()
+        app.assertOneEntryReplaced("fndds_1")
+    }
+
+    @Test fun aRefusedUsdaReplacementIsNotLearned() {
+        val app = appOn(MealSlot.LUNCH)
+        app.replacement = ReplacementResult.Failure("That saved entry is no longer available.")
+        app.searchWithRows()
+        app.search.choose(usdaEgg)
+        app.review.addToLog()
+        assertEquals("That saved entry is no longer available.", app.notices.message)
+        assertTrue(app.calls.toString(), app.calls.none { it.startsWith("reinforce") })
+        assertEquals(emptyList<String>(), app.reinforced)
+    }
+
+    @Test fun anEntryGoneBeforeAddStoresNoFood() {
+        val app = appOn(MealSlot.LUNCH)
+        app.searchOnTheStrip()
+        app.search.choose(found)
+        app.diaryHas()
+        app.review.addToLog()
+        app.assertGoneSaidAndNothingWritten()
+        assertEquals("nothing stored or written at all", emptyList<String>(), app.calls)
+    }
+
+    @Test fun usdaRowsFollowTheTypingAndLeaveWithTheSearch() {
+        val app = appOn(MealSlot.LUNCH)
+        app.searchWithRows()
+        app.search.onQuery("milk")
+        assertEquals("the old rows go at once", emptyList<Any>(), app.owners.usdaCorrection.rowsFor(app.search.query))
+        assertEquals("nothing is sent for typing", listOf(wrong.sourcePhrase), app.offSearched)
+        app.search.onQuery("egg")
+        assertEquals(listOf(usdaEgg), app.usdaRowsDrawn())
+        app.search.close()
+        assertEquals(emptyList<Any>(), app.owners.usdaCorrection.rowsFor("egg"))
+    }
+
+    @Test fun aLateUsdaAnswerForOlderTextIsNotDrawn() {
+        val app = appOn(MealSlot.LUNCH)
+        app.usdaFoods = listOf(usdaEgg)
+        val usda = app.owners.usdaCorrection
+        app.searchOnTheStrip()
+        app.io.holding = true
+        app.pausesEnd = true
+        usda.typed("egg")
+        usda.typed("milk")
+        assertEquals(emptyList<Any>(), usda.rowsFor("milk"))
+        app.io.runAll()
+        assertEquals("only for the text as it reads", emptyList<Any>(), usda.rowsFor("egg"))
+        assertEquals(listOf(usdaEgg), usda.rowsFor("milk"))
+    }
+
+    @Test fun aLateUsdaAnswerAfterTheSearchClosedStaysOut() {
+        val app = appOn(MealSlot.LUNCH)
+        app.usdaFoods = listOf(usdaEgg)
+        val usda = app.owners.usdaCorrection
+        app.searchOnTheStrip()
+        app.io.holding = true
+        app.pausesEnd = true
+        usda.typed("egg")
+        app.search.close()
+        app.io.runAll()
+        assertEquals(emptyList<Any>(), usda.rows)
+    }
+
+    @Test fun theEntrysOwnFoodIsNotOfferedButAnotherStoredOneIs() {
+        val app = appOn(MealSlot.LUNCH)
+        app.diaryHas(wrong.copy(foodId = usdaEgg.id))
+        val stored = food("fndds_2", "Egg, white")
+        app.diary.foods = listOf(stored)
+        app.owners.session.refresh()
+        app.usdaFoods = listOf(usdaEgg, stored)
+        app.searchOnTheStrip()
+        assertEquals(listOf(stored), app.usdaRowsDrawn())
+    }
+
+    private fun AppKit.entryIsOnStoredProduct() {
+        diaryHas(wrong.copy(foodId = "stored"))
+        diary.foods = listOf(food("stored", "Mine").copy(barcode = barcode))
+        owners.session.refresh()
+    }
+
+    @Test fun theEntrysOwnFoodIsNotAnOpenFoodFactsRowByIdOrByBarcode() {
+        val byBarcode = appOn(MealSlot.LUNCH)
+        byBarcode.entryIsOnStoredProduct()
+        val same = food("off-$barcode", "Same").copy(barcode = barcode)
+        byBarcode.offFoods = listOf(same, found)
+        byBarcode.searchOnTheStrip()
+        assertEquals(listOf(found), byBarcode.search.results)
+
+        val byId = appOn(MealSlot.LUNCH)
+        byId.diaryHas(wrong.copy(foodId = "off-1"))
+        byId.offFoods = listOf(food("off-1", "Same"), found)
+        byId.searchOnTheStrip()
+        assertEquals(listOf(found), byId.search.results)
+    }
+
+    @Test fun onlyTheEntrysOwnFoodAnsweringIsNoResults() {
+        val app = appOn(MealSlot.LUNCH)
+        app.entryIsOnStoredProduct()
+        app.offFoods = listOf(food("off-$barcode", "Same").copy(barcode = barcode))
+        app.searchOnTheStrip()
+        assertEquals(emptyList<Any>(), app.search.results)
+        assertTrue(app.search.message.orEmpty().startsWith("No usable result"))
+    }
+
+    @Test fun aLaterSearchNotFromTheStripOffersThatFoodAgain() {
+        val app = appOn(MealSlot.LUNCH)
+        app.entryIsOnStoredProduct()
+        val same = food("off-$barcode", "Same").copy(barcode = barcode)
+        app.offFoods = listOf(same)
+        app.searchOnTheStrip()
+        app.search.close()
+        app.search.open("same")
+        app.search.submit()
+        assertEquals(listOf(same), app.search.results)
+    }
+
+    @Test fun aPickWhileTheSearchWaitsDropsItSoNothingIsSentLater() {
+        val app = appOn(MealSlot.LUNCH)
+        app.usdaFoods = listOf(usdaEgg)
+        app.io.holding = true
+        app.searchOnTheStrip()
+        assertTrue(app.search.busy)
+        app.search.choose(usdaEgg)
+        assertFalse(app.search.busy)
+        app.io.runAll()
+        assertEquals(emptyList<String>(), app.offSearched)
+        assertEquals(emptyList<Any>(), app.search.results)
+    }
+
+    @Test fun theStripWaitsThroughTheCorrectionsSearchAndItsReview() {
+        val app = appOn(MealSlot.LUNCH)
+        assertFalse(app.owners.feedbackHeld())
+        app.searchOnTheStrip()
+        assertTrue("the search", app.owners.feedbackHeld())
+        app.search.choose(found)
+        assertTrue("the review", app.owners.feedbackHeld())
+        app.review.dismiss()
+        assertTrue("the search again", app.owners.feedbackHeld())
+        app.search.close()
+        assertFalse(app.owners.feedbackHeld())
+    }
+
+    @Test fun anOrdinarySearchDoesNotHoldTheStrip() {
+        val app = appOn(MealSlot.LUNCH)
+        app.search.open("egg")
+        assertFalse(app.owners.feedbackHeld())
+        app.search.choose(found)
+        assertFalse(app.owners.feedbackHeld())
+    }
+
+    @Test fun backFromTheReviewReturnsToTheSearchAndWritesNothing() = onEachScreen { app ->
+        app.searchWithRows()
+        app.search.choose(found)
+        app.review.dismiss()
+        assertNull(app.review.product)
+        assertTrue(app.search.open)
+        assertEquals(ProductReviewOrigin.CORRECTION, app.search.reviewOrigin)
+        assertEquals(wrong.sourcePhrase, app.search.query)
+        assertEquals(listOf(found), app.search.results)
+        assertEquals(listOf(usdaEgg), app.usdaRowsDrawn())
+        assertEquals("nothing sent again", 1, app.offSearched.size)
+        assertEquals("nothing written", emptyList<String>(), app.calls)
+        assertTrue("the strip is still there", app.feedback.isOpen(wrong))
+        app.search.choose(found)
+        app.review.addToLog()
+        app.assertOneEntryReplaced("found")
+    }
+
+    @Test fun backFromAReviewNotPickedOnTheSearchStaysClosed() {
+        val scanned = appOn(MealSlot.LUNCH)
+        scanned.barcodes[barcode] = found
+        scanned.searchOnTheStrip()
+        scanned.search.choose(found)
+        scanned.review.rescan()
+        scanned.scan.onBarcode(barcode)
+        scanned.review.dismiss()
+        assertFalse(scanned.search.open)
+
+        val ordinary = appOn(MealSlot.LUNCH)
+        ordinary.search.open("egg")
+        ordinary.search.choose(found)
+        ordinary.review.dismiss()
+        assertFalse(ordinary.search.open)
     }
 
     @Test fun aSearchNotFromTheStripStillLogsToItsMeal() {

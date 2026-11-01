@@ -82,6 +82,8 @@ internal class AppKit(
     var replacement: ReplacementResult = ReplacementResult.Failure("not in these tests")
     /** What Open Food Facts answers, whatever it is asked. */
     var offFoods: List<FoodRecord> = emptyList()
+    /** Open Food Facts can't be reached. */
+    var offOffline = false
     /** What the USDA catalogue answers, whatever it is asked. */
     var usdaFoods: List<FoodRecord> = emptyList()
     /** What Open Food Facts was asked, in order. */
@@ -195,7 +197,7 @@ internal class AppKit(
                 override fun preflight(draft: OffContributionDraft) = OffPreflightResult.Existing
                 override fun contribute(draft: OffContributionDraft, username: String, password: String) = OffContributionResult.Success
             },
-            offSearch = object : OffSearchService { override suspend fun search(query: String): OffSearchResult { offSearched += query; return OffSearchResult.Success(offFoods) } },
+            offSearch = object : OffSearchService { override suspend fun search(query: String): OffSearchResult { offSearched += query; return if (offOffline) OffSearchResult.Unavailable else OffSearchResult.Success(offFoods) } },
             usda = object : com.bosa.breakfast.search.UsdaCatalogue { override suspend fun search(text: String) = usdaFoods },
             licence = { "SIL Open Font License" },
             weights = object : WeightStore {

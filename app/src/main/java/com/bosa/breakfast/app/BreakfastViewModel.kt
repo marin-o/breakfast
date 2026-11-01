@@ -195,6 +195,7 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
     internal val offParts = app.offParts
     internal val usdaParts = app.usdaParts
     internal val usdaFoods = app.usdaFoods
+    internal val usdaCorrection = app.usdaCorrection
     internal val transfer = app.transfer
     internal val reminders = app.reminders
     internal val resolve = app.resolve

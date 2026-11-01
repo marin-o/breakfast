@@ -33,6 +33,9 @@ interface OffSearchService {
  *
  * The screens around it are not its business. Opening and closing tell the coordinator through [onOpen] (whether it
  * was opened from the resolver) and [onClose]; a picked product goes to [onChoose] (product review).
+ *
+ * Opened for "Not right?", the food being corrected is not offered ([leavesOut]), and Back from the review of a pick
+ * comes back here with its results ([returnFromReview]).
  */
 internal class OffSearch(
     private val off: OffSearchService,
@@ -43,6 +46,8 @@ internal class OffSearch(
     private val onOpen: (fromResolver: Boolean) -> Unit,
     private val onClose: () -> Unit,
     private val onChoose: (FoodRecord, ProductReviewOrigin?) -> Unit,
+    /** [food] is the one the entry being corrected already is. */
+    private val isFoodBeingCorrected: (FoodRecord) -> Boolean = { false },
 ) {
     var open by mutableStateOf(false); private set
     var query by mutableStateOf(""); private set
@@ -53,9 +58,14 @@ internal class OffSearch(
     var unavailable by mutableStateOf(false); private set
     private var job: Job? = null
     private var generation = 0L
+    /** A pick of a correction gave way to its review, which Back returns from. */
+    private var leftForReview = false
 
     /** What this search was opened for, when a logging review opened it: what it picks or creates goes on to that. */
     var reviewOrigin by mutableStateOf<ProductReviewOrigin?>(null); private set
+
+    /** This search is for "Not right?", and [food] is what the entry already is: it isn't offered as what it should have been. */
+    fun leavesOut(food: FoodRecord): Boolean = reviewOrigin == ProductReviewOrigin.CORRECTION && isFoodBeingCorrected(food)
 
     /** Opens the search on [prefill]; [fromResolver] when the resolver opened it, so closing returns there. */
     fun open(prefill: String? = null, fromResolver: Boolean = false, reviewOrigin: ProductReviewOrigin? = null) {
@@ -68,6 +78,7 @@ internal class OffSearch(
         results = emptyList()
         message = null
         unavailable = false
+        leftForReview = false
     }
 
     /** The arrow, Back or Cancel: the search running stops. */
@@ -75,11 +86,24 @@ internal class OffSearch(
         drop()
         busy = false
         open = false
+        leftForReview = false
         onClose()
     }
 
-    /** Another screen took the search's place (the food form, product review): a search still running is not applied. */
-    fun hide() { open = false }
+    /** Another screen took the search's place (the food form, product review): a search running or waiting for its slot stops. */
+    fun hide() {
+        drop()
+        busy = false
+        open = false
+        leftForReview = false
+    }
+
+    /** Back from the review of a correction's pick: the search shows again as it was left. Reached any other way, nothing happens. */
+    fun returnFromReview() {
+        if (!leftForReview) return
+        leftForReview = false
+        open = true
+    }
 
     /** Typing: the running search stops and the previous results go. */
     fun onQuery(value: String) {
@@ -94,6 +118,7 @@ internal class OffSearch(
     /** A result row: the search gives way to product review for [food]. */
     fun choose(food: FoodRecord) {
         hide()
+        leftForReview = reviewOrigin == ProductReviewOrigin.CORRECTION
         onChoose(food, reviewOrigin)
     }
 
@@ -116,7 +141,7 @@ internal class OffSearch(
             if (shouldApplyOffSearchResult(mine, generation, captured, query, open)) {
                 when (result) {
                     is OffSearchResult.Success -> {
-                        results = foodsInScript(captured, result.foods)
+                        results = foodsInScript(captured, result.foods).filterNot(::leavesOut)
                         message = if (results.isEmpty()) "No usable result for \"$captured\"." else null
                     }
                     OffSearchResult.Unavailable -> {

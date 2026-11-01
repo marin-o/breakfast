@@ -413,7 +413,7 @@ private fun amountFieldText(review: ProductReview): String =
         parseDecimal(review.fat),
     )
     val per100 = listOf(MacroPart("${basisLabel(basis.amount, basis.unit)}: ${kcalLabel(values.calories)}")) + macroLetterParts(values)
-    Sheet(onDismissRequest = review::close, skipPartiallyExpanded = true) {
+    Sheet(onDismissRequest = review::dismiss, skipPartiallyExpanded = true) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState())) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(foodText(review.name.ifBlank { food.name }), color = colors.ink, style = BreakfastType.Section, modifier = Modifier.weight(1f))

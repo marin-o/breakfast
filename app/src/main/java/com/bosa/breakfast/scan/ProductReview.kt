@@ -112,6 +112,8 @@ internal class ProductReview(
     private val correct: (store: suspend () -> FoodRecord, amount: Double, measure: Measure, onGone: () -> Unit, onStored: (FoodRecord) -> Unit) -> Unit = { _, _, _, _, _ -> },
     /** Where queued part [raw] is in the Log's draft. */
     private val partInDraft: (raw: String) -> SegmentSpan? = { null },
+    /** Back from a correction's review: the search it was picked on, if it was. */
+    private val backToSearch: () -> Unit = {},
 ) {
     var product by mutableStateOf<FoodRecord?>(null); private set
     var fromScan by mutableStateOf(false); private set
@@ -248,6 +250,13 @@ internal class ProductReview(
         fromScan = false
         origin = ProductReviewOrigin.LIBRARY
         onClosed()
+    }
+
+    /** Back or the sheet's scrim: [close], and a correction goes back to where it was found. */
+    fun dismiss() {
+        val correcting = origin == ProductReviewOrigin.CORRECTION
+        close()
+        if (correcting) backToSearch()
     }
 
     /** Another screen took the review's place (a resolved part returning to the Log). */
@@ -395,7 +404,8 @@ internal class ProductReview(
         val scanned = fromScan
         val measure = Measure(draft.unit, draft.servingName)
         if (origin == ProductReviewOrigin.CORRECTION) {
-            correct({ storeIt(draft.food) }, draft.amount, measure, ::close) { stored -> finish(stored, draft.food, scanned) {} }
+            // [correct] learns the pick when the entry took it, so a USDA food isn't learned a second time here.
+            correct({ storeIt(draft.food) }, draft.amount, measure, ::close) { stored -> finish(stored, draft.food, scanned, learnsPick = false) {} }
             return
         }
         session.write(
@@ -410,9 +420,9 @@ internal class ProductReview(
 
     /**
      * [food] was stored as [stored]: the review is over, unless [keepsProduct] leaves it on screen for what comes next,
-     * and what comes next is the caller's.
+     * and what comes next is the caller's. A USDA food counts as picked, unless [learnsPick] says that is already seen to.
      */
-    private fun finish(stored: FoodRecord, food: FoodRecord, scanned: Boolean, keepsProduct: Boolean = false, next: () -> Unit) {
+    private fun finish(stored: FoodRecord, food: FoodRecord, scanned: Boolean, keepsProduct: Boolean = false, learnsPick: Boolean = true, next: () -> Unit) {
         fetchSaved(storedFood(stored.id))
         if (!keepsProduct) {
             product = null
@@ -421,7 +431,7 @@ internal class ProductReview(
         offerContribution(contributionDraftAfterLocalSave(food, scanned))
         fromScan = false
         next()
-        if (isUsdaFoodId(food.id)) onCataloguePicked(stored.id)
+        if (learnsPick && isUsdaFoodId(food.id)) onCataloguePicked(stored.id)
     }
 
     /** A product picked while a part is being resolved (of the Log's draft or a recipe's ingredients): stored as the food it is, then picked for the part. */

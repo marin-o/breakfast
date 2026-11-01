@@ -164,7 +164,7 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         Surface.DELETE_FOOD -> ConfirmDialog("Delete food", vm.library::confirmDelete, vm.library::cancelDelete, text = "Past entries keep their numbers.")
         Surface.DISCARD_FOOD -> ConfirmDialog("Discard", vm.foodForm::discard, vm.foodForm::keepEditing, dismiss = "Keep editing")
         Surface.LIBRARY_NO_MATCH -> LibraryNoMatchScreen(vm.library, vm.surfaces, vm.search, vm.foodForm, vm.usdaFoods, vm.review)
-        Surface.OFF_SEARCH -> OffSearchScreen(vm.search, vm.foodForm, vm.resolve)
+        Surface.OFF_SEARCH -> OffSearchScreen(vm.search, vm.foodForm, vm.resolve, vm.usdaCorrection)
         Surface.RESOLVER -> ResolveUnknownScreen(vm.resolve, vm.undo, vm.search, vm.foodForm, vm.confirmations)
         Surface.PRODUCT_REVIEW -> vm.review.product?.let { ProductReviewSheet(vm.review, it) }
         Surface.CONTRIBUTION_REVIEW -> vm.contribution.pending?.let { ContributionReviewScreen(vm.contribution, it) }
