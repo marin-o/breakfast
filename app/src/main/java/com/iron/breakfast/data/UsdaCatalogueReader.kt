@@ -17,7 +17,7 @@ import java.io.IOException
 import java.io.InputStream
 
 /** The file's version: raise it whenever the file's content changes, with `CATALOGUE_VERSION` in `tools/build_usda_catalogue.py`. */
-internal const val USDA_CATALOGUE_VERSION = 1
+internal const val USDA_CATALOGUE_VERSION = 4
 
 private const val USDA_FILE_NAME = "fndds-2021-2023-v$USDA_CATALOGUE_VERSION.sqlite"
 
@@ -43,7 +43,7 @@ class UsdaCatalogueReader internal constructor(
         { context.applicationContext.assets.open(USDA_ASSET_PATH) },
     )
 
-    private class Opened(val db: SQLiteDatabase, val aliases: Map<String, List<String>>)
+    private class Opened(val db: SQLiteDatabase, val aliases: Map<String, List<String>>, val translations: Map<String, List<String>>)
 
     private val lock = Any()
     private var opened: Opened? = null
@@ -55,7 +55,7 @@ class UsdaCatalogueReader internal constructor(
 
     /** Every food [text] finds, in rank order, before the limit of a search. */
     internal fun rankedCandidates(text: String): List<UsdaCandidate> = readOrElse(emptyList()) { catalogue ->
-        val query = usdaQuery(text, catalogue.aliases) ?: return@readOrElse emptyList()
+        val query = usdaQuery(text, catalogue.aliases, catalogue.translations) ?: return@readOrElse emptyList()
         query.rank(query.matchExpressions().flatMap { candidates(catalogue.db, it) }.distinctBy { it.fdcId })
     }
 
@@ -84,7 +84,7 @@ class UsdaCatalogueReader internal constructor(
                 // No localized collators: they would ask to write to android_metadata.
                 val db = SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS)
                 try {
-                    Opened(db, readAliases(db))
+                    Opened(db, readAliases(db), readTranslations(db))
                 } catch (failed: SQLiteException) {
                     db.close()
                     throw failed
@@ -99,15 +99,21 @@ class UsdaCatalogueReader internal constructor(
     }
 
     private fun readAliases(db: SQLiteDatabase): Map<String, List<String>> =
-        db.rawQuery("SELECT word, target FROM alias ORDER BY word, target", null).use { cursor ->
+        readWordLists(db, "SELECT word, target FROM alias ORDER BY word, target")
+
+    private fun readTranslations(db: SQLiteDatabase): Map<String, List<String>> =
+        readWordLists(db, "SELECT word, english FROM translation ORDER BY word, english")
+
+    private fun readWordLists(db: SQLiteDatabase, sql: String): Map<String, List<String>> =
+        db.rawQuery(sql, null).use { cursor ->
             buildList { while (cursor.moveToNext()) add(cursor.getString(0) to cursor.getString(1)) }
         }.groupBy({ it.first }, { it.second })
 
     private fun candidates(db: SQLiteDatabase, match: String): List<UsdaCandidate> = db.rawQuery(
-        "SELECT fdc_id, description FROM food WHERE fdc_id IN (SELECT docid FROM food_fts WHERE food_fts MATCH ?)",
+        "SELECT fdc_id, description, bump FROM food WHERE fdc_id IN (SELECT docid FROM food_fts WHERE food_fts MATCH ?)",
         arrayOf(match),
     ).use { cursor ->
-        buildList { while (cursor.moveToNext()) add(UsdaCandidate(cursor.getLong(0), cursor.getString(1))) }
+        buildList { while (cursor.moveToNext()) add(UsdaCandidate(cursor.getLong(0), cursor.getString(1), cursor.getInt(2))) }
     }
 
     private fun readRow(db: SQLiteDatabase, fdcId: Long): UsdaFoodRow? = db.rawQuery(

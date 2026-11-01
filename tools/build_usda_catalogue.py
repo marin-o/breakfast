@@ -10,6 +10,7 @@ and the same SQLite version give the same bytes. Any failed check ends with a no
 """
 import argparse
 import contextlib
+import csv
 import gzip
 import hashlib
 import json
@@ -27,11 +28,13 @@ ARCHIVE_SHA256 = "dfb06ae7ddc397ccd570b91c14b75438ab2ba39f64f22d321f61d4a52a77f3
 ARCHIVE_MEMBER = "surveyDownload.json"
 
 # Raise it whenever the file's content changes, with USDA_CATALOGUE_VERSION in UsdaCatalogueReader.kt.
-CATALOGUE_VERSION = 1
+CATALOGUE_VERSION = 4
 # Not ".gz": the Android Gradle plugin unpacks a .gz asset when it merges assets and drops the extension.
 DEFAULT_OUTPUT = (
     Path(__file__).resolve().parent.parent / "app/src/main/assets/usda" / f"fndds-2021-2023-v{CATALOGUE_VERSION}.sqlite.gzip"
 )
+# The Macedonian table as the owner reads it.
+WORDS_CSV = Path(__file__).resolve().parent.parent / "docs/usda-macedonian-words.csv"
 
 # What the archive holds, by the spec. A different count means a different archive or a broken reader.
 EXPECTED_FOODS_IN = 5432
@@ -47,6 +50,59 @@ DROPPED_LABEL_WORDS = ("guideline amount", "yield", "surface")
 # file, so the app has one list.
 ALIASES = (("breaded", "coated"),)
 
+# Common foods, by their exact description: the ranking bump orders results and can never make a food green.
+COMMON_BUMP = 1
+COMMON_FOODS = (
+    "Egg, whole, raw", "Milk, NFS", "Yogurt, NFS", "Cheese, NFS", "Butter, NFS", "Olive oil", "Sunflower oil",
+    "Banana, raw", "Apple, raw", "Orange, raw", "Lemon, raw", "Pear, raw", "Peach, raw", "Plum, raw", "Cherries, raw",
+    "Strawberries, raw", "Grapes, raw", "Watermelon, raw", "Pineapple, raw", "Avocado, raw", "Tomatoes, raw",
+    "Cucumber, raw", "Carrots, raw", "Onions, raw", "Garlic, raw", "Lettuce, raw", "Spinach, raw", "Broccoli, raw",
+    "Cauliflower, raw", "Mushrooms, raw", "Eggplant, raw", "Oats, raw", "Pasta, cooked", "Noodles, cooked", "Honey",
+    "Sugar, NFS", "Coffee, brewed", "Beef, NFS", "Pork, NFS", "Turkey, NFS", "Fish, NFS", "Ham", "Beer", "Ketchup",
+    "Mustard", "Jam", "Mayonnaise, regular", "Hazelnuts", "Almonds, NFS", "Peanuts, NFS",
+)
+
+# Macedonian words, singular and plural, and the English words each searches this database by (the owner checks them;
+# docs/usda-macedonian-words.csv is written from here). A word listed twice finds either English word, and two words
+# ("црн дроб") are read together before each is read alone. Every target must be a word of some food. The English plural
+# where the file prints it so: a plural also tries its singular.
+MACEDONIAN_WORDS = (
+    ("јајце", "egg"), ("јајца", "eggs"), ("млеко", "milk"), ("леб", "bread"), ("ориз", "rice"), ("јогурт", "yogurt"),
+    ("сирење", "cheese"), ("кашкавал", "cheese"), ("урда", "ricotta"), ("путер", "butter"), ("павлака", "cream"),
+    ("месо", "meat"), ("пилешко", "chicken"), ("пилешки", "chicken"), ("гради", "breast"), ("говедско", "beef"),
+    ("свинско", "pork"), ("јагнешко", "lamb"), ("телешко", "veal"), ("мисирка", "turkey"), ("мисиркино", "turkey"),
+    ("риба", "fish"), ("риби", "fish"), ("туна", "tuna"), ("лосос", "salmon"), ("пастрмка", "trout"),
+    ("сардини", "sardines"), ("ракчиња", "shrimp"), ("шунка", "ham"), ("сланина", "bacon"), ("колбас", "sausage"),
+    ("колбаси", "sausage"), ("дроб", "liver"), ("црн дроб", "liver"), ("стек", "steak"), ("хамбургер", "hamburger"), ("ќофте", "meatball"),
+    ("ќофтиња", "meatballs"),
+    ("банана", "banana"), ("банани", "bananas"), ("јаболко", "apple"), ("јаболка", "apple"), ("портокал", "orange"),
+    ("портокали", "orange"), ("лимон", "lemon"), ("лимони", "lemon"), ("круша", "pear"), ("круши", "pear"),
+    ("праска", "peach"), ("праски", "peach"), ("слива", "plum"), ("сливи", "plum"), ("цреша", "cherries"),
+    ("цреши", "cherries"), ("јагода", "strawberries"), ("јагоди", "strawberries"), ("грозје", "grapes"),
+    ("лубеница", "watermelon"), ("лубеници", "watermelon"), ("кајсија", "apricot"), ("кајсии", "apricot"),
+    ("смоква", "fig"), ("смокви", "fig"), ("ананас", "pineapple"), ("киви", "kiwi"), ("авокадо", "avocado"),
+    ("домат", "tomatoes"), ("домати", "tomatoes"), ("компир", "potatoes"), ("компири", "potatoes"), ("кромид", "onions"),
+    ("лук", "garlic"), ("пиперка", "peppers"), ("пиперки", "peppers"), ("краставица", "cucumber"),
+    ("краставици", "cucumber"), ("морков", "carrots"), ("моркови", "carrots"), ("зелка", "cabbage"), ("марула", "lettuce"),
+    ("спанаќ", "spinach"), ("печурка", "mushrooms"), ("печурки", "mushrooms"), ("тиквичка", "zucchini"),
+    ("тиквички", "zucchini"), ("тиква", "pumpkin"), ("патлиџан", "eggplant"), ("патлиџани", "eggplant"),
+    ("брокула", "broccoli"), ("карфиол", "cauliflower"), ("цвекло", "beets"), ("ротквица", "radish"),
+    ("магдонос", "parsley"), ("целер", "celery"), ("пченка", "corn"), ("грав", "beans"), ("грашок", "peas"),
+    ("леќа", "lentils"),
+    ("овес", "oats"), ("овесна", "oatmeal"), ("брашно", "flour"), ("тестенина", "pasta"), ("тестенини", "pasta"),
+    ("шпагети", "spaghetti"), ("пица", "pizza"), ("кифла", "roll"), ("кифли", "roll"), ("пита", "pie"), ("пита", "pita"),
+    ("палачинка", "crepe"), ("палачинки", "crepe"), ("сендвич", "sandwich"), ("салата", "salad"), ("супа", "soup"),
+    ("помфрит", "fries"), ("чипс", "chips"), ("пуканки", "popcorn"),
+    ("шеќер", "sugar"), ("мед", "honey"), ("масло", "oil"), ("маслиново", "olive"), ("сончогледово", "sunflower"),
+    ("џем", "jam"), ("мајонез", "mayonnaise"), ("кечап", "ketchup"), ("сенф", "mustard"), ("чоколадо", "chocolate"),
+    ("торта", "cake"), ("колаче", "cookie"), ("колачи", "cookie"), ("орев", "walnuts"), ("ореви", "walnuts"),
+    ("бадем", "almonds"), ("бадеми", "almonds"), ("лешник", "hazelnuts"), ("лешници", "hazelnuts"),
+    ("кикирики", "peanuts"),
+    ("кафе", "coffee"), ("чај", "tea"), ("сок", "juice"), ("вода", "water"), ("вино", "wine"), ("пиво", "beer"),
+    ("поховано", "breaded"), ("поховани", "breaded"), ("пржено", "fried"), ("пржени", "fried"), ("варено", "boiled"),
+    ("варени", "boiled"), ("печено", "baked"), ("печено", "roasted"), ("печени", "baked"), ("печени", "roasted"),
+)
+
 SCHEMA = """
 CREATE TABLE food (
     fdc_id INTEGER PRIMARY KEY,
@@ -58,7 +114,8 @@ CREATE TABLE food (
     fat REAL,
     carbs REAL,
     search_name TEXT NOT NULL,
-    search_extra TEXT NOT NULL
+    search_extra TEXT NOT NULL,
+    bump INTEGER NOT NULL
 );
 CREATE TABLE portion (
     fdc_id INTEGER NOT NULL,
@@ -71,6 +128,11 @@ CREATE TABLE alias (
     word TEXT NOT NULL,
     target TEXT NOT NULL,
     PRIMARY KEY (word, target)
+) WITHOUT ROWID;
+CREATE TABLE translation (
+    word TEXT NOT NULL,
+    english TEXT NOT NULL,
+    PRIMARY KEY (word, english)
 ) WITHOUT ROWID;
 CREATE VIRTUAL TABLE food_fts USING fts4(content="food", search_name, search_extra, tokenize=unicode61);
 """
@@ -139,6 +201,7 @@ def build_database(foods, path):
     db.executescript(SCHEMA)
     with db:
         db.executemany("INSERT INTO alias VALUES (?, ?)", ALIASES)
+        db.executemany("INSERT INTO translation VALUES (?, ?)", MACEDONIAN_WORDS)
         for food in sorted(foods, key=lambda f: f["fdcId"]):
             report["foods in"] += 1
             report["portions in"] += len(food["foodPortions"])
@@ -153,11 +216,12 @@ def build_database(foods, path):
             additional = additional_descriptions(food)
             report["additional descriptions kept"] += len(additional)
             db.execute(
-                "INSERT INTO food VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO food VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     food["fdcId"], food["foodCode"], food["description"], "; ".join(additional) or None,
                     amounts[KCAL], amounts.get(PROTEIN), amounts.get(FAT), amounts.get(CARBS),
                     search_text(food["description"]), search_text(" ".join(additional)),
+                    COMMON_BUMP if food["description"] in COMMON_FOODS else 0,
                 ),
             )
             report["foods kept"] += 1
@@ -229,6 +293,21 @@ def check_contents(db, report):
         fail('"млеко" finds something')
     print('the Cyrillic word for milk matches 0')
 
+    missing = [name for name in COMMON_FOODS if not db.execute("SELECT 1 FROM food WHERE description = ?", (name,)).fetchone()]
+    if missing:
+        fail(f"common foods not in the file: {missing}")
+    print(f"{db.execute('SELECT count(*) FROM food WHERE bump > 0').fetchone()[0]} foods have a ranking bump")
+
+    if len(set(MACEDONIAN_WORDS)) != len(MACEDONIAN_WORDS):
+        fail("a Macedonian word and its English word are listed twice")
+    empty = [word for word, english in MACEDONIAN_WORDS if not ids_for(db, f'"{english}"')]
+    if empty:
+        fail(f"Macedonian words whose English finds nothing: {empty}")
+    print(f"{len(MACEDONIAN_WORDS)} Macedonian words, each finds a food")
+    for word, english in (("пита", "pie"), ("пита", "pita"), ("печено", "baked"), ("печено", "roasted"), ("црн дроб", "liver")):
+        if (word, english) not in MACEDONIAN_WORDS:
+            fail(f"{word} does not ask {english}")
+
 
 def write_gzip(source, target):
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -238,6 +317,14 @@ def write_gzip(source, target):
         with gzip.GzipFile(filename="", mode="wb", compresslevel=9, fileobj=out, mtime=0) as zipped:
             shutil.copyfileobj(raw, zipped)
     os.replace(temporary, target)
+
+
+def write_words_csv(target):
+    """The Macedonian table for the owner to check. UTF-8 with a BOM, so a spreadsheet reads the Cyrillic."""
+    with open(target, "w", encoding="utf-8-sig", newline="\n") as out:
+        writer = csv.writer(out, lineterminator="\n")
+        writer.writerow(("macedonian", "english"))
+        writer.writerows(MACEDONIAN_WORDS)
 
 
 def main():
@@ -266,6 +353,7 @@ def main():
         check_database(database, report)
 
         write_gzip(database, args.output)
+        write_words_csv(WORDS_CSV)
         print(f"sqlite bytes: {database.stat().st_size}")
     print(f"gzip bytes: {args.output.stat().st_size}")
     print(f"gzip SHA-256: {sha256_of(args.output)}")

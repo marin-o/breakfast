@@ -4,15 +4,15 @@ import java.util.Locale
 
 /**
  * Source boxes describe the local record's provenance. Personal overrides remain P even when
- * their underlying record came from OFF. A bundled marker is reserved for an actual catalogue
- * fixture; an otherwise unknown generic record has no trustworthy source and is marked "?".
+ * their underlying record came from OFF or USDA. A stored food with no other source is one an
+ * older version bundled, and stays B; no food at all (its entry outlived it) is marked "?".
  */
 internal fun sourceLetter(food: FoodRecord?): String = when {
     food == null -> "?"
     food.origin == FoodOrigin.CUSTOM || food.personalOverride -> "P"
-    FoodCatalog.fixtures.any { it.id == food.id } -> "B"
+    isUsdaFoodId(food.id) -> "U"
     isOpenFoodFactsSource(food) -> "O"
-    else -> "?"
+    else -> "B"
 }
 
 /** OFF provenance is independent from the source box: local overrides still may be contributed. */

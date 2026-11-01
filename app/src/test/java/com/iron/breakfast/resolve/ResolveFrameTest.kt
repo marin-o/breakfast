@@ -4,7 +4,7 @@ import com.iron.breakfast.QueueDispatcher
 import com.iron.breakfast.app.DiaryChange
 import com.iron.breakfast.app.Notices
 import com.iron.breakfast.domain.DraftRow
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.LogPlanner
@@ -43,7 +43,7 @@ class ResolveFrameTest {
     private val notices = Notices()
     private val calls = mutableListOf<String>()
     private var logSaved = SavedMeal(listOf(entry("e1")), NutritionValues.ZERO)
-    private val plannerFor = { pins: Map<String, FoodRecord> -> LogPlanner(FoodMatcher(FoodCatalog.fixtures), pins = pins) }
+    private val plannerFor = { pins: Map<String, FoodRecord> -> LogPlanner(FoodMatcher(TestFoods.fixtures), pins = pins) }
     private val events = mutableListOf<String>()
 
     private val resolve: ResolveFlow = ResolveFlow(

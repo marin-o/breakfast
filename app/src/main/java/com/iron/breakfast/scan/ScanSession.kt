@@ -53,6 +53,8 @@ internal class ScanSession(
     private val onProduct: (food: FoodRecord, origin: ProductReviewOrigin) -> Unit,
     /** An unknown barcode: New food; with [reviewAfterSave], the food saved goes on to a review for that. */
     private val onManualForm: (name: String, brand: String, barcode: String, fromOff: Boolean, reviewAfterSave: ProductReviewOrigin?) -> Unit,
+    /** The user left the scanner with nothing read. */
+    private val onEnded: () -> Unit = {},
 ) {
     var open by mutableStateOf(false); private set
     /** The scanner is still open but its camera preview cannot be used. */
@@ -107,6 +109,7 @@ internal class ScanSession(
         lookupBusy = false
         lookupCode = ""
         requester = null
+        onEnded()
     }
 
     /** The day or the meal on screen changed: a lookup in flight no longer applies. */

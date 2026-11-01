@@ -28,9 +28,9 @@ class ServingsTest {
     private val rice = food("custom-rice", "Rice", kcal = 130.0)
     private val cupNoodles = food("custom-cup-noodles", "Cup noodles", kcal = 450.0, defaultUnit = MeasureUnit.PIECE,
         servings = listOf(ServingConversion(MeasureUnit.PIECE, 65.0, "personal serving")))
-    private val banana = FoodCatalog.fixtures.first { it.id == "banana" }
+    private val banana = TestFoods.fixtures.first { it.id == "banana" }
 
-    private fun planner(vararg extra: FoodRecord) = LogPlanner(FoodMatcher(FoodCatalog.fixtures + extra))
+    private fun planner(vararg extra: FoodRecord) = LogPlanner(FoodMatcher(TestFoods.fixtures + extra))
 
     @Test fun aServingNameMatchesInAnyCaseSingularOrPluralWithinItsScript() {
         assertTrue(servingNameMatches("slices", "slice"))
@@ -135,8 +135,8 @@ class ServingsTest {
         val coffee = food("custom-coffee", "Coffee", MeasureUnit.MILLILITER, kcal = 2.0)
         val biscuits = food("off-biscuits", "Butter biscuits", servings = listOf(ServingConversion(MeasureUnit.GRAM, 12.5, "Open Food Facts serving size", label = "cookie")))
         val cookies = food("custom-cookies", "Cookies", kcal = 480.0)
-        val before = LogPlanner(FoodMatcher(FoodCatalog.fixtures + coffee + cookies))
-        val after = LogPlanner(FoodMatcher(FoodCatalog.fixtures + coffee + cookies + biscuits))
+        val before = LogPlanner(FoodMatcher(TestFoods.fixtures + coffee + cookies))
+        val after = LogPlanner(FoodMatcher(TestFoods.fixtures + coffee + cookies + biscuits))
         for (text in listOf("coffee 2 cookies", "200 ml coffee 2 cookies", "coffee 2 cookies 1 banana")) {
             assertEquals(text, before.segments(text).map { it.text }, after.segments(text).map { it.text })
         }

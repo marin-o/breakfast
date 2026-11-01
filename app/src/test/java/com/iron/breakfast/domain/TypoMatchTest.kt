@@ -9,7 +9,7 @@ class TypoMatchTest {
     private fun food(id: String, name: String, aliases: List<String> = emptyList()) =
         testFood(id, name, aliases, origin = FoodOrigin.GENERIC, defaultAmount = 100.0, defaultUnit = MeasureUnit.GRAM)
 
-    private val matcher = FoodMatcher(FoodCatalog.fixtures)
+    private val matcher = FoodMatcher(TestFoods.fixtures)
 
     @Test fun aTypoInALongWordStillFindsTheFood() {
         assertEquals("Banana", matcher.best("bananna")?.food?.name)

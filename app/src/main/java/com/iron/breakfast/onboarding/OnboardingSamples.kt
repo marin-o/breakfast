@@ -2,9 +2,12 @@ package com.iron.breakfast.onboarding
 
 import com.iron.breakfast.domain.SegmentResolution
 import com.iron.breakfast.domain.RankedFood
+import com.iron.breakfast.domain.FoodOrigin
+import com.iron.breakfast.domain.FoodRecord
+import com.iron.breakfast.domain.NutritionBasis
+import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.NutritionCalculator
 import com.iron.breakfast.domain.MeasureUnit
-import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.DraftRow
 import com.iron.breakfast.domain.LogDraftView
 import com.iron.breakfast.domain.NutritionValues
@@ -39,11 +42,25 @@ internal const val SAMPLE_PARTIAL = "ban"
 internal const val SAMPLE_UNKNOWN = "100 g kefyr"
 
 private val calculator = NutritionCalculator()
-private fun catalogueFood(id: String) = FoodCatalog.fixtures.first { it.id == id }
 
-/** A part of the catalogue's [foodId], through the real calculator. `OnboardingSamplesTest` pins it to what the planner gives. */
-private fun sampleEntry(raw: String, foodId: String, amount: Double, unit: MeasureUnit): DraftRow.Entry {
-    val food = catalogueFood(foodId)
+private fun sampleFood(id: String, name: String, values: NutritionValues, unit: MeasureUnit, amount: Double, conversions: List<ServingConversion> = emptyList()) = FoodRecord(
+    id = id, name = name, aliases = emptyList(), category = "sample", origin = FoodOrigin.GENERIC,
+    nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, values), conversions = conversions, defaultAmount = amount, defaultUnit = unit,
+)
+
+// The examples' foods, with fixed values: nothing of the user's or of a database is read.
+private val SAMPLE_EGG = sampleFood(
+    "egg", "Egg", NutritionValues(143.0, 12.6, 0.7, 9.5), MeasureUnit.PIECE, 1.0,
+    listOf(ServingConversion(MeasureUnit.PIECE, 50.0, "large egg reference", true)),
+)
+private val SAMPLE_OATS = sampleFood("rolled_oats", "Rolled oats", NutritionValues(389.0, 16.9, 66.3, 6.9), MeasureUnit.GRAM, 40.0)
+private val SAMPLE_BANANA = sampleFood(
+    "banana", "Banana", NutritionValues(89.0, 1.1, 22.8, 0.3), MeasureUnit.PIECE, 1.0,
+    listOf(ServingConversion(MeasureUnit.PIECE, 118.0, "medium banana reference", true)),
+)
+
+/** A part of [food], through the real calculator. `OnboardingSamplesTest` pins it to what the planner gives. */
+private fun sampleEntry(raw: String, food: FoodRecord, amount: Double, unit: MeasureUnit): DraftRow.Entry {
     return DraftRow.Entry(SegmentResolution(raw, emptyList(), food, amount, unit, calculator.calculate(food, amount, unit)))
 }
 
@@ -51,12 +68,12 @@ private fun viewOf(rows: List<DraftRow>) = LogDraftView(rows, emptyList(), choic
 
 /** The rows for [SAMPLE_LINE]. */
 internal fun sampleLineView(): LogDraftView = viewOf(
-    listOf(sampleEntry("2 eggs", "egg", 2.0, MeasureUnit.PIECE), sampleEntry("100g oats", "rolled_oats", 100.0, MeasureUnit.GRAM)),
+    listOf(sampleEntry("2 eggs", SAMPLE_EGG, 2.0, MeasureUnit.PIECE), sampleEntry("100g oats", SAMPLE_OATS, 100.0, MeasureUnit.GRAM)),
 )
 
 /** The green chip for [SAMPLE_PARTIAL]. */
 internal fun samplePartialView(): LogDraftView {
-    val banana = catalogueFood("banana")
+    val banana = SAMPLE_BANANA
     return viewOf(emptyList()).copy(
         choices = listOf(RankedFood(banana, 1.0, emptyList())),
         activePhrase = SAMPLE_PARTIAL,

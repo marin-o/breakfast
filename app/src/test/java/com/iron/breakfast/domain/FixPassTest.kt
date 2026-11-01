@@ -14,7 +14,7 @@ class FixPassTest {
         amount: Double = 1.0, unit: MeasureUnit = MeasureUnit.PIECE,
     ) = testFood(id, name, aliases, category, basisAmount = amount, unit = unit, values = NutritionValues(100.0, 5.0, 10.0, 2.0), defaultAmount = amount, defaultUnit = unit)
 
-    private val fixtures = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+    private val fixtures = LogPlanner(FoodMatcher(TestFoods.fixtures))
 
     // Item 2: word separators split only when both sides are foods on their own.
 
@@ -33,7 +33,7 @@ class FixPassTest {
     }
 
     @Test fun ampersandInsideANameStaysOneSegment() {
-        val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+        val planner = LogPlanner(FoodMatcher(TestFoods.fixtures))
         assertEquals(listOf("M&M"), planner.segments("M&M").map { it.text })
         assertEquals(listOf("Ben & Jerry's"), planner.segments("Ben & Jerry's").map { it.text })
         assertEquals(listOf("Ben & Jerry's"), planner.plan("Ben & Jerry's").unresolved)
@@ -141,7 +141,7 @@ class FixPassTest {
     }
 
     @Test fun aTypoWithOneCandidateAndNoFirstLetterEditResolves() {
-        val buckwheat = LogPlanner(FoodMatcher(FoodCatalog.fixtures + food("buckwheat", "Buckwheat", category = "Grain")))
+        val buckwheat = LogPlanner(FoodMatcher(TestFoods.fixtures + food("buckwheat", "Buckwheat", category = "Grain")))
         assertEquals("buckwheat", buckwheat.resolve("buckweat")?.food?.id)
         assertEquals("banana", fixtures.resolve("bananna")?.food?.id)
         assertEquals("banana", fixtures.resolve("бананна")?.food?.id) // a Cyrillic typo matches the Cyrillic alias
@@ -222,7 +222,7 @@ class FixPassTest {
 }
 
 class FixPassWordTest {
-    private val fixtures = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+    private val fixtures = LogPlanner(FoodMatcher(TestFoods.fixtures))
 
     @Test fun shortAndApostropheWordsNeverFindAFoodBySubstring() {
         // "M", "s" and "Jerry's" used to match "Grandma's ajvar"; now a short word must be a whole word.
@@ -233,7 +233,7 @@ class FixPassWordTest {
     }
 
     @Test fun aPartialNumberWordNameResolvesToTheFoodWithItsDefault() {
-        val grain = LogPlanner(FoodMatcher(FoodCatalog.fixtures + FoodRecord(
+        val grain = LogPlanner(FoodMatcher(TestFoods.fixtures + FoodRecord(
             id = "tenbread", name = "Ten grain bread", aliases = emptyList(), category = "Bread", origin = FoodOrigin.CUSTOM,
             nutrition = NutritionBasis(1.0, MeasureUnit.PIECE, NutritionValues(100.0, 5.0, 10.0, 2.0)),
             defaultAmount = 1.0, defaultUnit = MeasureUnit.PIECE,

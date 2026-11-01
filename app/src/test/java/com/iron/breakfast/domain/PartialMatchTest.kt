@@ -12,7 +12,7 @@ class PartialMatchTest {
         nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(340.0, 12.0, 70.0, 3.0)),
         defaultAmount = 100.0, defaultUnit = MeasureUnit.GRAM,
     )
-    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures + buckwheat))
+    private val planner = LogPlanner(FoodMatcher(TestFoods.fixtures + buckwheat))
 
     /** "kiselo" is not a word of any food, and "mleko" is Latin: nothing Cyrillic matches it, so no home milk. */
     @Test fun kiseloMlekoDoesNotOfferHomeMilk() {

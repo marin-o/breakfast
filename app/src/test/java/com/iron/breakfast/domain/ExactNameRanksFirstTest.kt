@@ -6,7 +6,7 @@ import org.junit.Test
 /** An exact name or alias ranks first; a learned preference only orders matches of equal standing. */
 class ExactNameRanksFirstTest {
     private val now = 1_000L
-    private val matcher = FoodMatcher(FoodCatalog.fixtures, nowMs = { now })
+    private val matcher = FoodMatcher(TestFoods.fixtures, nowMs = { now })
     private val eggplant = "usda_2685577_eggplant_raw"
 
     private fun prefer(vararg ids: Pair<String, Int>) =

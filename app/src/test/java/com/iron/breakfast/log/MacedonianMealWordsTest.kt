@@ -1,6 +1,6 @@
 package com.iron.breakfast.log
 
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.LogPlanner
 import com.iron.breakfast.domain.MealSlot
@@ -12,7 +12,7 @@ import com.iron.breakfast.domain.mealMarkerSlots
 
 /** Meal words in Macedonian, Cyrillic and Latin, select the meal the way the English ones do. */
 class MacedonianMealWordsTest {
-    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+    private val planner = LogPlanner(FoodMatcher(TestFoods.fixtures))
 
     @Test fun everyMacedonianMealWordNamesItsSlot() {
         mapOf(

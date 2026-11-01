@@ -7,10 +7,7 @@ import android.content.Context
 import android.util.Log
 import androidx.room.Room
 import androidx.room.withTransaction
-import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
-import com.iron.breakfast.domain.BuiltInCatalogSync
-import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.Preference
 import com.iron.breakfast.domain.Recipe
@@ -120,13 +117,9 @@ class BreakfastStore internal constructor(
         }
     }
 
-    /** Clears archived foods, seeds and syncs the catalogue, then reads the diary: what opening storage does. */
+    /** Clears archived foods, then reads the diary: what opening storage does. Stored foods are never rewritten here. */
     private suspend fun load() {
-        database.withTransaction {
-            deleteArchivedFoods()
-            seedMissingFixtures()
-            syncBuiltInFoods()
-        }
+        database.withTransaction { deleteArchivedFoods() }
         model = readSnapshot()
     }
 
@@ -279,9 +272,6 @@ class BreakfastStore internal constructor(
     suspend fun deleteFood(id: String) {
         requireReady()
         write(FOODS + PREFERENCES + RECIPES) {
-            // Only a personal food: a bundled one would come back at the next start, an Open Food Facts one is a cache.
-            val stored = database.foodDao().byId(id) ?: return@write
-            require(stored.origin == FoodOrigin.CUSTOM.name) { "Only a personal food can be deleted." }
             deleteFoodRows(id)
         }
     }
@@ -366,7 +356,7 @@ class BreakfastStore internal constructor(
 
     /**
      * Import diary: replaces every table with [rows] in one transaction, then, as at start, deletes the foods an older
-     * file holds as archived and seeds and syncs the catalogue. Any failure rolls the whole transaction back, so the
+     * file holds as archived. Any failure rolls the whole transaction back, so the
      * stored diary and [model] stay as they were. [rows] must already have passed [validateDiary].
      */
     internal suspend fun replaceDiary(rows: DiaryRows) {
@@ -392,18 +382,15 @@ class BreakfastStore internal constructor(
                 database.weightPointDao().insertAllOrAbort(points)
             }
             deleteArchivedFoods()
-            seedMissingFixtures()
-            syncBuiltInFoods()
         }
     }
 
     /**
-     * Delete all data: in one transaction, every entry, every recipe and every food (with its aliases and conversions) is deleted and
-     * the built-in catalogue is seeded again, as on a first start. [alsoPreferences] also deletes the learned
-     * preferences; otherwise they stay. Any failure rolls the whole transaction back. [beforeSeed] runs inside the
-     * transaction after the deletes (tests make it throw).
+     * Delete all data: in one transaction, every entry, every recipe and every food (with its aliases and conversions) is
+     * deleted, as on a first start, which has no foods. [alsoPreferences] also deletes the learned preferences; otherwise
+     * they stay. Any failure rolls the whole transaction back. [afterDeletes] runs inside it (tests make it throw).
      */
-    internal suspend fun deleteAllData(alsoPreferences: Boolean, beforeSeed: suspend () -> Unit = {}) {
+    internal suspend fun deleteAllData(alsoPreferences: Boolean, afterDeletes: suspend () -> Unit = {}) {
         requireReady()
         write(ALL_TABLES) {
             deleteRecipeRows()
@@ -413,9 +400,7 @@ class BreakfastStore internal constructor(
             database.foodAliasDao().deleteAll()
             database.foodDao().deleteAll()
             database.weightPointDao().deleteAll()
-            beforeSeed()
-            seedMissingFixtures()
-            syncBuiltInFoods()
+            afterDeletes()
         }
     }
 
@@ -507,32 +492,10 @@ class BreakfastStore internal constructor(
 
     /**
      * Foods are deleted, not archived: a row an older build archived, or an older diary file brought in, is deleted
-     * here (before the catalogue is seeded, so an archived built-in food comes back as the catalogue has it). With
-     * none left it does nothing, so it runs at every start.
+     * here. With none left it does nothing, so it runs at every start.
      */
     private suspend fun deleteArchivedFoods() {
         database.foodDao().archivedIds().forEach { deleteFoodRows(it) }
-    }
-
-    /** Rewrites the stored built-in foods whose catalogue content changed; see [BuiltInCatalogSync]. */
-    private suspend fun syncBuiltInFoods() {
-        val changed = BuiltInCatalogSync.changedRows(readFoods(), FoodCatalog.fixtures)
-        changed.forEach { food ->
-            database.foodDao().upsert(food.toEntity())
-            database.foodAliasDao().deleteForFood(food.id)
-            database.servingConversionDao().deleteForFood(food.id)
-            database.foodAliasDao().insertAll(food.toAliasEntities())
-            database.servingConversionDao().insertAll(food.toConversionEntities())
-        }
-    }
-
-    private suspend fun seedMissingFixtures() {
-        val existingIds = database.foodDao().ids().toSet()
-        val missing = fixtureRowsMissingFrom(existingIds)
-        if (missing.isEmpty()) return
-        database.foodDao().insertAll(missing.map { it.toEntity() })
-        database.foodAliasDao().insertAll(missing.flatMap { it.toAliasEntities() })
-        database.servingConversionDao().insertAll(missing.flatMap { it.toConversionEntities() })
     }
 
     private suspend fun readSnapshot(): StoreSnapshot = reload(StoreSnapshot(), ALL_TABLES)
@@ -557,7 +520,7 @@ class BreakfastStore internal constructor(
         val foods = database.foodDao().all().map { entity ->
             entity.toDomain(
                 aliases = aliases[entity.id].orEmpty().map { it.alias },
-                // The same mapping as every other read: a stored "" label is no label (null), as the catalogue has it.
+                // The same mapping as every other read: a stored "" label is no label (null).
                 conversions = conversions[entity.id].orEmpty().map { it.toDomain() }
             )
         }

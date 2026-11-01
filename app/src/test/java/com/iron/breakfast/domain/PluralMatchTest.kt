@@ -9,7 +9,7 @@ import org.junit.Test
 class PluralMatchTest {
     private fun food(id: String, name: String, aliases: List<String> = emptyList()) = testFood(id, name, aliases, defaultAmount = 100.0, defaultUnit = MeasureUnit.GRAM)
 
-    private val matcher = FoodMatcher(FoodCatalog.fixtures)
+    private val matcher = FoodMatcher(TestFoods.fixtures)
 
     @Test fun pluralTokensMatchTheirSingularNames() {
         assertEquals("Banana", matcher.best("bananas")?.food?.name)

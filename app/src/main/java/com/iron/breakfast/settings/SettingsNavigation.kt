@@ -20,6 +20,10 @@ internal fun versionLabel(versionName: String, versionCode: Int): String = "$ver
 /** About, Licences: the bundled font licence, shown as plain text. */
 internal const val LICENCES_ASSET = "OFL.txt"
 
+/** About, Licences: USDA's suggested citation, word for word, then the data set and its licence on their own line. */
+internal const val USDA_LICENCE_LINES =
+    "U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, 2019. fdc.nal.usda.gov.\nFNDDS 2021-2023. CC0 1.0."
+
 /** How deep [page] lies, for the way a page change moves: the list, a group's page, Licences (opened from About). */
 internal fun pageDepth(page: SettingsPage?): Int = when (page) {
     null -> 0

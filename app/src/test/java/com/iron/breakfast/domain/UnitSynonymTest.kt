@@ -6,7 +6,7 @@ import org.junit.Test
 
 class UnitSynonymTest {
     private val parser = ShorthandParser()
-    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+    private val planner = LogPlanner(FoodMatcher(TestFoods.fixtures))
 
     private fun quantity(input: String) = parser.parse(input).let { Triple(it.amount, it.unit, it.foodPhrase) }
 

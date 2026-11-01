@@ -6,7 +6,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.iron.breakfast.domain.BreakfastEngine
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
@@ -46,7 +46,7 @@ class BreakfastStoreTest {
     }
 
     private fun entry(id: String): MealEntry {
-        val food = FoodCatalog.fixtures.first()
+        val food = TestFoods.fixtures.first()
         return MealEntry(
             id = id, foodId = food.id, foodName = food.name, enteredAmount = 1.0, enteredUnit = MeasureUnit.GRAM,
             resolvedBaseAmount = 1.0, nutritionSnapshot = NutritionValues(10.0, 1.0, 1.0, 1.0), conversionProvenance = "1 g",
@@ -139,18 +139,14 @@ class BreakfastStoreTest {
         assertEqualsFullRead()
     }
 
-    /** Only a personal food can be deleted: a bundled one is refused and stays. */
+    /** Any stored food can be deleted: nothing brings it back at the next start. */
     @Test
-    fun onlyAPersonalFoodIsDeleted() = runBlocking {
-        val bundled = FoodCatalog.fixtures.first()
-        try {
-            store.deleteFood(bundled.id)
-            org.junit.Assert.fail("a bundled food is not deleted")
-        } catch (expected: IllegalArgumentException) {
-            // Refused inside the transaction: nothing written.
-        }
-        assertTrue(store.foods().any { it.id == bundled.id })
-        assertTrue(database.foodDao().byId(bundled.id) != null)
+    fun aBundledFoodStoredByAnOlderVersionIsDeleted() = runBlocking {
+        val bundled = TestFoods.fixtures.first()
+        store.upsertFood(bundled)
+        store.deleteFood(bundled.id)
+        assertTrue(store.foods().none { it.id == bundled.id })
+        assertTrue(database.foodDao().byId(bundled.id) == null)
     }
 
     /** Its food deleted, an entry's amount still changes: its snapshot scales; Replace keeps it, meal and day too. */
@@ -224,11 +220,11 @@ class BreakfastStoreTest {
         assertTrue(foods === store.foods())
         assertTrue(preferences === store.preferenceMap())
 
-        store.reinforce(FoodCatalog.fixtures.first().id)
+        store.reinforce(TestFoods.fixtures.first().id)
         assertTrue(foods === store.foods())
         assertTrue(preferences !== store.preferenceMap())
 
-        store.upsertFood(FoodCatalog.fixtures.first().copy(name = "Edited"))
+        store.upsertFood(TestFoods.fixtures.first().copy(name = "Edited"))
         assertTrue(foods !== store.foods())
     }
 
@@ -426,17 +422,42 @@ class BreakfastStoreTest {
         assertTrue(matcher === engine.matcherForTesting())
         assertTrue(planner === engine.planner())
 
-        engine.reinforce(FoodCatalog.fixtures.first().id)
+        engine.reinforce(TestFoods.fixtures.first().id)
         assertTrue(matcher === engine.matcherForTesting())
         assertTrue(planner !== engine.planner())
 
-        store.upsertFood(FoodCatalog.fixtures.first().copy(name = "Edited"))
+        store.upsertFood(TestFoods.fixtures.first().copy(name = "Edited"))
         assertTrue(matcher !== engine.matcherForTesting())
     }
 
-    /** A second start (initialize on the same database) rewrites no catalogue row, so the table order stays. */
+    /** A new install starts with no foods of its own, and a start seeds none. */
+    @Test
+    fun aNewInstallHasNoFoods() = runBlocking {
+        assertEquals(emptyList<FoodRecord>(), store.foods())
+        BreakfastStore(database).initialize()
+        assertTrue(database.foodDao().all().isEmpty())
+    }
+
+    /** A food an older version bundled stays as stored, its values included, with the entries that name it. */
+    @Test
+    fun aFoodAnOlderVersionBundledStaysWithItsEntries() = runBlocking {
+        val old = TestFoods.fixtures.first()
+        val stored = old.copy(nutrition = old.nutrition.copy(values = NutritionValues(1.0, 2.0, 3.0, 4.0)))
+        store.upsertFood(stored)
+        store.saveEntries(listOf(entry("old-a")))
+        val foods = database.foodDao().all()
+        val entries = database.mealEntryDao().all()
+
+        BreakfastStore(database).initialize()
+
+        assertEquals(foods, database.foodDao().all())
+        assertEquals(entries, database.mealEntryDao().all())
+    }
+
+    /** A second start (initialize on the same database) rewrites nothing, so the table order stays. */
     @Test
     fun aSecondStartRewritesNothing() = runBlocking {
+        TestFoods.fixtures.forEach { store.upsertFood(it) }
         val before = database.foodDao().all()
         BreakfastStore(database).initialize()
         assertEquals(before, database.foodDao().all())
@@ -452,17 +473,16 @@ class BreakfastStoreTest {
     /** A diary with a personal food, an edited built-in food, entries and two learned picks. */
     private suspend fun fillForDeleteAll() {
         store.upsertFood(personal)
-        val builtIn = FoodCatalog.fixtures.first()
+        val builtIn = TestFoods.fixtures.first()
         store.upsertFood(builtIn.copy(name = "Edited ${builtIn.name}", personalOverride = true))
         store.saveEntries(listOf(entry("all-a"), entry("all-b")))
         store.reinforce(personal.id)
         store.reinforce(builtIn.id)
     }
 
-    /** B9 Delete all data: entries and foods go, the built-in catalogue comes back as on a first start, picks stay. */
+    /** B9 Delete all data: entries and foods go, as on a first start, with no food seeded; picks stay. */
     @Test
-    fun deleteAllRemovesEntriesAndFoodsAndSeedsTheCatalogueAgain() = runBlocking {
-        val fresh = database.foodDao().all()
+    fun deleteAllRemovesEntriesAndFoodsAndSeedsNothing() = runBlocking {
         fillForDeleteAll()
         val preferences = database.preferenceDao().all()
 
@@ -471,8 +491,8 @@ class BreakfastStoreTest {
         assertEquals(emptyList<MealEntry>(), store.entries())
         assertEquals(emptyList<String>(), database.mealEntryDao().all().map { it.id })
         assertEquals(null, database.foodDao().byId(personal.id))
-        assertEquals(fresh, database.foodDao().all())
-        assertEquals(FoodCatalog.fixtures.map { it.id }.sorted(), store.foods().map { it.id }.sorted())
+        assertTrue(database.foodDao().all().isEmpty())
+        assertEquals(emptyList<FoodRecord>(), store.foods())
         assertEquals(preferences, database.preferenceDao().all())
     }
 

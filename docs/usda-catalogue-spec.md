@@ -4,7 +4,7 @@ Owner's request, 2026-10-31: generic foods the built-in list and Open Food Facts
 
 ## Decisions
 - USDA FNDDS 2021-2023, shipped in the app, is the one bundled food database. `FoodCatalog.kt` and its ~40 foods are deleted, and everything that reads them moves over.
-- Foods already stored on a phone stay as that person's foods, and log entries keep their own values. A new install starts with no foods of its own.
+- Foods already stored on a phone stay as that person's foods, and log entries keep their own values. A new install starts with no foods of its own. Every stored food can be deleted; entries keep their own values.
 - No change to the diary schema, unless building this shows one is needed: ask the owner first. No new dependency.
 - No second dataset until a real gap shows up. CAPNUTRA is out: no licence to redistribute.
 - Open Food Facts stays behind the Find matches button, for packaged products.
@@ -30,6 +30,8 @@ Owner's request, 2026-10-31: generic foods the built-in list and Open Food Facts
 - No "USDA" on the rows. The source shows in the food's details and in Licences.
 - A part nothing local fully matches keeps Find matches for Open Food Facts, as today. Its results come after the USDA rows.
 
+The same rows show in Library search, under a no-match part and in recipe ingredient search.
+
 ## Picking one
 - A tap opens the existing product review with the typed amount, or 100 g with none. Portions show as named servings, marked approximate, with grams visible. Nothing is written before Add.
 - Add stores it with id `fndds_<fdcId>`, its source fields and the original description as the name; the user can rename it. Picked twice, the stored food is reused with any edits. The catalogue never writes to a stored food.
@@ -40,9 +42,9 @@ Owner's request, 2026-10-31: generic foods the built-in list and Open Food Facts
 - A green food logged with no tap adds nothing, so an unnoticed wrong pick can't reinforce itself.
 - A saved food goes green when its name fully matches. With two saved foods matching "egg", the one with the higher score must win the green pick: test it, and fix it if not.
 
-## Wording (owner to approve)
+## Wording (owner: as USDA asks)
 - Source in a food's details: "USDA FoodData Central".
-- Settings, Licences, added: "U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, FNDDS 2021-2023. fdc.nal.usda.gov. CC0 1.0." USDA doesn't endorse the app, and nothing may imply it.
+- Settings, Licences, added: USDA's suggested citation word for word, "U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, 2019. fdc.nal.usda.gov.", then on its own line "FNDDS 2021-2023. CC0 1.0." USDA doesn't endorse the app, and nothing may imply it.
 
 ## Checks
 - Importer: 5,432 foods and 22,194 portions in, 9,647 additional descriptions, drops reported. FDC 2705975: 219 kcal, 24.6 g protein, 9.99 g fat, 6.01 g carbs; 165 g gives 361.35 kcal.

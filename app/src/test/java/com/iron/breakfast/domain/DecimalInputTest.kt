@@ -14,7 +14,7 @@ class DecimalInputTest {
         nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(250.0, 9.0, 49.0, 3.0)),
         defaultAmount = 100.0, defaultUnit = MeasureUnit.GRAM,
     )
-    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures + bread))
+    private val planner = LogPlanner(FoodMatcher(TestFoods.fixtures + bread))
 
     @Test fun aFieldReadsTheCommaAsTheDecimalSeparator() {
         assertEquals("12.5", "12,5".decimalInput())
@@ -72,7 +72,7 @@ class DecimalInputTest {
     }
 
     @Test fun pickingAChoiceAfterADigitAndACommaKeepsTheAmountsApart() {
-        val banana = FoodCatalog.fixtures.first { it.id == "banana" }
+        val banana = TestFoods.fixtures.first { it.id == "banana" }
         val picked = planner.withChoice("eggs 2,ban", banana)
         assertEquals("eggs 2, Banana ", picked)
         assertEquals(listOf("eggs 2", "Banana"), planner.segments(picked).map { it.text })

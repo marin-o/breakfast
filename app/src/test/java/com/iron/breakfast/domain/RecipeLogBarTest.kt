@@ -20,7 +20,7 @@ class RecipeLogBarTest {
     private val soup = Recipe("recipe-soup", "Lentil soup", totalWeight = 1000.0, ingredients = listOf(ingredient))
     private val broth = Recipe("recipe-broth", "Bone broth", totalVolume = 2000.0, ingredients = listOf(ingredient))
 
-    private fun planner(recipes: List<Recipe> = listOf(chili, stew, soup, broth), foods: List<FoodRecord> = FoodCatalog.fixtures) =
+    private fun planner(recipes: List<Recipe> = listOf(chili, stew, soup, broth), foods: List<FoodRecord> = TestFoods.fixtures) =
         LogPlanner(FoodMatcher(RecipeIndex().matchable(foods, recipes)))
 
     private fun resolved(text: String, planner: LogPlanner = planner()): SegmentResolution =
@@ -83,10 +83,10 @@ class RecipeLogBarTest {
 
     @Test fun aRecipeRanksAsAPersonalFoodDoes() {
         // The same name as a bundled food: the recipe wins, as a personal food would, by the same score.
-        val bundled = FoodCatalog.fixtures.first { it.id == "banana" }
+        val bundled = TestFoods.fixtures.first { it.id == "banana" }
         val bananaBread = Recipe("recipe-banana", bundled.name, portions = 1.0, ingredients = listOf(ingredient))
-        val withRecipe = FoodMatcher(RecipeIndex().matchable(FoodCatalog.fixtures, listOf(bananaBread))).suggestions(bundled.name)
-        val withPersonal = FoodMatcher(FoodCatalog.fixtures + bananaBread.asFood().copy(id = "custom-banana")).suggestions(bundled.name)
+        val withRecipe = FoodMatcher(RecipeIndex().matchable(TestFoods.fixtures, listOf(bananaBread))).suggestions(bundled.name)
+        val withPersonal = FoodMatcher(TestFoods.fixtures + bananaBread.asFood().copy(id = "custom-banana")).suggestions(bundled.name)
         assertEquals("recipe-banana", withRecipe.first().food.id)
         assertEquals(withPersonal.map { it.score }, withRecipe.map { it.score })
     }
@@ -108,7 +108,7 @@ class RecipeLogBarTest {
             NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(350.0, 5.0, 50.0, 15.0)), defaultAmount = 80.0, defaultUnit = MeasureUnit.GRAM)
         val rice = FoodRecord("custom-rice", "Rice", emptyList(), "Personal food", FoodOrigin.CUSTOM,
             NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(130.0, 2.7, 28.0, 0.3)), defaultAmount = 150.0, defaultUnit = MeasureUnit.GRAM)
-        val foods = FoodCatalog.fixtures + portionCake + rice
+        val foods = TestFoods.fixtures + portionCake + rice
         // A recipe that could take "cake" or "rice" as portions changes nothing for a food the part names as it reads.
         val cake = Recipe("recipe-cake", "Cake", portions = 8.0, ingredients = listOf(ingredient))
         val withRecipes = planner(listOf(cake, chili), foods)

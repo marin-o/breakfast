@@ -6,7 +6,7 @@ import org.junit.Test
 
 /** Latin matches only Latin and Cyrillic only Cyrillic, in every tier; a word that mixes the two matches nothing. */
 class MixedScriptTest {
-    private val matcher = FoodMatcher(FoodCatalog.fixtures)
+    private val matcher = FoodMatcher(TestFoods.fixtures)
     private val planner = LogPlanner(matcher)
 
     /** "banana" with a Cyrillic а in second place, as a bilingual keyboard types it. */
@@ -48,7 +48,7 @@ class MixedScriptTest {
             nutrition = NutritionBasis(1.0, MeasureUnit.PIECE, NutritionValues(200.0, 20.0, 20.0, 5.0)),
             defaultAmount = 1.0, defaultUnit = MeasureUnit.PIECE,
         )
-        val custom = FoodMatcher(FoodCatalog.fixtures + bar)
+        val custom = FoodMatcher(TestFoods.fixtures + bar)
         assertTrue(custom.startingWith("про", limit = 50).any { it.food.id == "protein_bar" })
         assertTrue(custom.startingWith("bar", limit = 50).any { it.food.id == "protein_bar" })
         assertTrue(custom.startingWith("bаr").isEmpty())

@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
@@ -43,7 +43,7 @@ class DiaryImportTest {
         database.close()
     }
 
-    private val custom = FoodCatalog.fixtures.first().copy(
+    private val custom = TestFoods.fixtures.first().copy(
         id = "custom-import", name = "Домашен бурек", aliases = listOf("burek", "бурек"), origin = FoodOrigin.CUSTOM,
         nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(280.0, 9.0, null, 17.5)),
         conversions = listOf(ServingConversion(MeasureUnit.PIECE, 150.0, "user", approximate = true, label = "slice")),
@@ -81,7 +81,7 @@ class DiaryImportTest {
         val beforeCounts = counts()
         val beforeEntries = store.entries()
 
-        // Wipe: an empty diary (the store seeds the catalogue again), as after a reinstall.
+        // Wipe: an empty diary, as after a reinstall.
         store.replaceDiary(DiaryRows(emptyList(), emptyList(), emptyList(), emptyList(), emptyList()))
         assertEquals(0, store.entries().size)
         assertNotEquals(beforeCounts, counts())

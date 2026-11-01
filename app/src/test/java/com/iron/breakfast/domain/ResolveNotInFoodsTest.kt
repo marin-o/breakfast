@@ -16,7 +16,7 @@ class ResolveNotInFoodsTest {
         defaultAmount = 100.0,
         defaultUnit = MeasureUnit.MILLILITER,
     )
-    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+    private val planner = LogPlanner(FoodMatcher(TestFoods.fixtures))
 
     @Test fun aPickedPartKeepsItsTypedAmount() {
         assertEquals("Branded pesto 200ml", planner.pickedText("kiselo mleko 200ml", picked))
@@ -43,7 +43,7 @@ class ResolveNotInFoodsTest {
     }
 
     @Test fun aPinnedPartResolvesToThePickedFood() {
-        val pinned = LogPlanner(FoodMatcher(FoodCatalog.fixtures), pins = mapOf("Branded pesto 200ml" to picked))
+        val pinned = LogPlanner(FoodMatcher(TestFoods.fixtures), pins = mapOf("Branded pesto 200ml" to picked))
         val entry = pinned.plan("Branded pesto 200ml").entries.single()
         assertEquals("off-pesto-ml", entry.food.id)
         assertEquals(200.0, entry.amount, 0.0)
@@ -51,7 +51,7 @@ class ResolveNotInFoodsTest {
     }
 
     @Test fun aPinOverridesWhatTheTextWouldOtherwiseMatch() {
-        val pinned = LogPlanner(FoodMatcher(FoodCatalog.fixtures), pins = mapOf("kiselo mleko 200ml" to picked))
+        val pinned = LogPlanner(FoodMatcher(TestFoods.fixtures), pins = mapOf("kiselo mleko 200ml" to picked))
         assertEquals("off-pesto-ml", pinned.plan("kiselo mleko 200ml").entries.single().food.id)
         assertTrue(planner.plan("kiselo mleko 200ml").entries.none { it.food.id == "off-pesto-ml" })
     }

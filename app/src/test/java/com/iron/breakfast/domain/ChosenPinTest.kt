@@ -8,10 +8,10 @@ import org.junit.Test
 /** A tapped choice stays the tapped food: the chosen text is pinned to it, whatever the ranking prefers. */
 class ChosenPinTest {
     private val now = 1_000L
-    private val matcher = FoodMatcher(FoodCatalog.fixtures, nowMs = { now })
+    private val matcher = FoodMatcher(TestFoods.fixtures, nowMs = { now })
     private val eggplant = "usda_2685577_eggplant_raw"
     private val prefs = mapOf(eggplant to Preference(eggplant, explicitCount = 1, lastReinforcedEpochMs = now))
-    private val egg = FoodCatalog.fixtures.first { it.id == "egg" }
+    private val egg = TestFoods.fixtures.first { it.id == "egg" }
     private val planner = LogPlanner(matcher, prefs)
 
     private fun pinned(chosen: ChosenDraft) = LogPlanner(matcher, prefs, pins = mapOf(requireNotNull(chosen.part) to egg))

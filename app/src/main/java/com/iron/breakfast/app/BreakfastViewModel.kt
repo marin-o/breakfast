@@ -90,6 +90,7 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
                 override fun planner(pins: Map<String, FoodRecord>) = engine.planner(pins)
                 override suspend fun save(text: String, meal: MealSlot, dayKey: String, pins: Map<String, FoodRecord>) =
                     engine.save(text, mealSlot = meal, dayKey = dayKey, pins = pins)
+                override suspend fun reinforce(foodId: String) = engine.reinforce(foodId)
             },
             library = object : LibraryStore {
                 override suspend fun foodsMatching(query: String) = engine.foodsMatching(query)
@@ -121,8 +122,8 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
                 }
             },
             products = object : ProductStore {
-                override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
-                    engine.cacheFoodAndLog(food, amount, unit, meal, dayKey)
+                override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String, servingName: String?) {
+                    engine.cacheFoodAndLog(food, amount, unit, meal, dayKey, servingName)
                 }
                 override suspend fun updateFood(food: FoodRecord) = engine.updateFood(food)
                 override suspend fun cacheFood(food: FoodRecord) = engine.cacheFood(food)
@@ -149,9 +150,11 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
             },
             contributions = off,
             offSearch = off,
+            usda = com.iron.breakfast.data.UsdaCatalogueReader(application),
             recipes = object : RecipeStore {
                 override fun ingredientPlanner(pins: Map<String, FoodRecord>) = engine.ingredientPlanner(pins)
                 override suspend fun foodsMatching(query: String) = engine.foodsMatching(query)
+                override suspend fun cacheFood(food: FoodRecord) = engine.cacheFood(food)
                 override suspend fun saveRecipe(recipe: Recipe) = engine.saveRecipe(recipe)
                 override suspend fun deleteRecipe(id: String) = engine.deleteRecipe(id)
                 override suspend fun logRecipe(recipe: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
@@ -188,6 +191,8 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
     internal val profile = app.profile
     internal val onboarding = app.onboarding
     internal val offParts = app.offParts
+    internal val usdaParts = app.usdaParts
+    internal val usdaFoods = app.usdaFoods
     internal val transfer = app.transfer
     internal val reminders = app.reminders
     internal val resolve = app.resolve

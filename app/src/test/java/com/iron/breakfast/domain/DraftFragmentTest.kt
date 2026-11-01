@@ -12,7 +12,7 @@ class DraftFragmentTest {
         nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(340.0, 12.0, 70.0, 3.0)),
         defaultAmount = 100.0, defaultUnit = MeasureUnit.GRAM,
     )
-    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures + buckwheat))
+    private val planner = LogPlanner(FoodMatcher(TestFoods.fixtures + buckwheat))
 
     private fun rowTexts(draft: DraftView) = draft.rows.map {
         when (it) {
@@ -89,7 +89,7 @@ class DraftFragmentTest {
 }
 
 class DraftTrailingSpaceTest {
-    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+    private val planner = LogPlanner(FoodMatcher(TestFoods.fixtures))
 
     /** A space after a part finishes it: the part is no longer typed, so a clean match is an entry row, not a choice. */
     @Test fun aTrailingSpaceFinishesTheLastPart() {

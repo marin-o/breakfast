@@ -11,7 +11,6 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Update
-import com.iron.breakfast.domain.FoodCatalog
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
@@ -502,9 +501,6 @@ val ROOM_MIGRATION_10_11 = object : androidx.room.migration.Migration(10, 11) {
         db.execSQL("ALTER TABLE `weight_points_new` RENAME TO `weight_points`")
     }
 }
-
-internal fun fixtureRowsMissingFrom(existingIds: Set<String>): List<FoodRecord> =
-    FoodCatalog.fixtures.filterNot { it.id in existingIds }
 
 fun FoodRecord.toEntity(): FoodEntity = FoodEntity(
     id = id,

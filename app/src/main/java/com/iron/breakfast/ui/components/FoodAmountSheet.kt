@@ -34,13 +34,23 @@ import com.iron.breakfast.ui.screens.kcalLabel
 import com.iron.breakfast.ui.theme.BreakfastType
 import com.iron.breakfast.ui.theme.LocalBreakfastColors
 
+/** What an amount counts, as a wrapping row of chips: the food's [measures]. [detail] is a chip's second line. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun MeasureChoices(food: FoodRecord, selected: Measure?, onSelect: (Measure) -> Unit, modifier: Modifier = Modifier, detail: (Measure) -> String? = { null }) {
+    FlowRow(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        food.measures().forEach { candidate ->
+            ChoiceOption(candidate.label, selected == candidate, { onSelect(candidate) }, detail = detail(candidate))
+        }
+    }
+}
+
 /**
  * The amount sheet: the food's name and source, the amount and what it counts (the food's [measures]: its default and
  * basis, the other of g and ml with a density, its named servings; the row wraps), the meal ([startMeal]; none for a recipe's ingredient, which has no meal), the kcal and macros it comes
  * to, and Add. The Library logs through it, a recipe is logged through it, and a recipe's ingredient is added through
  * it. Its values are saveable, so a configuration change keeps the open sheet as it was.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun FoodAmountSheet(
     food: FoodRecord,
@@ -52,7 +62,6 @@ internal fun FoodAmountSheet(
 ) {
     val colors = LocalBreakfastColors.current
     var amountText by rememberSaveable(food.id, startMeal) { mutableStateOf(editableNumber(startAmount)) }
-    val measures = food.measures()
     // The unit and a serving's name, saved apart (a Measure is not a Bundle value).
     var unit by rememberSaveable(food.id, startMeal) { mutableStateOf(startMeasure.unit) }
     var servingName by rememberSaveable(food.id, startMeal) { mutableStateOf(startMeasure.name.takeIf { startMeasure.unit == MeasureUnit.SERVING }) }
@@ -66,11 +75,7 @@ internal fun FoodAmountSheet(
             Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Secondary)
             // The field fills its row, so the units take their own line under it, as on the entry's quick edit.
             DecimalField("Amount", amountText, { amountText = it })
-            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                measures.forEach { candidate ->
-                    ChoiceOption(candidate.label, measure == candidate, { unit = candidate.unit; servingName = candidate.name })
-                }
-            }
+            MeasureChoices(food, measure, { unit = it.unit; servingName = it.name })
             chosenMeal?.let { meal -> MealField(meal, { chosenMeal = it }) }
             Hairline()
             Text(calc?.let { kcalLabel(it.nutrition.calories) } ?: POSITIVE_AMOUNT_MESSAGE, color = colors.ink, style = BreakfastType.Section)

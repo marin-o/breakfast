@@ -3,7 +3,7 @@ package com.iron.breakfast.log
 import com.iron.breakfast.app.DiaryChange
 import com.iron.breakfast.app.SavedLogDraft
 import com.iron.breakfast.domain.DraftRow
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.LogPlanner
@@ -29,7 +29,7 @@ class LogComposerTest {
         var result = SavedMeal(listOf(entry("e1")), NutritionValues.ZERO)
         var failure: Throwable? = null
         var held: kotlinx.coroutines.CompletableDeferred<Unit>? = null
-        override fun planner(pins: Map<String, FoodRecord>) = LogPlanner(FoodMatcher(FoodCatalog.fixtures), pins = pins)
+        override fun planner(pins: Map<String, FoodRecord>) = LogPlanner(FoodMatcher(TestFoods.fixtures), pins = pins)
         override suspend fun save(text: String, meal: MealSlot, dayKey: String, pins: Map<String, FoodRecord>): SavedMeal {
             failure?.let { throw it }
             held?.await()
@@ -64,9 +64,9 @@ class LogComposerTest {
     @Test fun theDraftComesBackAsSavedAndClearingItDropsItsPins() {
         val restored = composer(SavedLogDraft("2 eggs", committed = true))
         assertEquals(SavedLogDraft("2 eggs", true), restored.savedDraft())
-        restored.chooseSuggestion(FoodCatalog.fixtures.first { it.id == "egg" })
+        restored.chooseSuggestion(TestFoods.fixtures.first { it.id == "egg" })
         restored.onDraft("2 eggs, ban")
-        restored.chooseSuggestion(FoodCatalog.fixtures.first { it.id == "banana" })
+        restored.chooseSuggestion(TestFoods.fixtures.first { it.id == "banana" })
         assertTrue(restored.pinsSnapshot().isNotEmpty())
         restored.onDraft(" ")
         assertEquals(emptyMap<String, FoodRecord>(), restored.pinsSnapshot())

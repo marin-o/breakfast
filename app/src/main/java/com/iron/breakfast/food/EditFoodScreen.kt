@@ -26,7 +26,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.library.LibraryState
-import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.library.servingRowName
 import com.iron.breakfast.ui.components.AddCircle
@@ -122,7 +121,7 @@ internal fun EditFoodScreen(form: FoodForm, session: DiarySession, library: Libr
                 TertiaryButton("Add alias", { draft.aliasFieldOpen = true })
             }
             PrimaryButton("Save", form::save, Modifier.padding(top = 8.dp))
-            if (food.origin == FoodOrigin.CUSTOM) DestructiveButton("Delete food", { library.askDelete(food) }, Modifier.fillMaxWidth(), outlined = true)
+            DestructiveButton("Delete food", { library.askDelete(food) }, Modifier.fillMaxWidth(), outlined = true)
         }
     }
 }

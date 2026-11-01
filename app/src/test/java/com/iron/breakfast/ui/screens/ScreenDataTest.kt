@@ -6,7 +6,7 @@ import com.iron.breakfast.ui.countLabel
 import com.iron.breakfast.contribution.contributionAvailable
 import com.iron.breakfast.domain.sourceLetter
 import com.iron.breakfast.domain.FoodOrigin
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
@@ -45,17 +45,23 @@ class ScreenDataTest {
     }
 
     @Test
-    fun sourceMarkerMapsBundledPersonalAndOpenFoodFacts() {
+    fun sourceMarkerMapsUsdaPersonalAndOpenFoodFacts() {
         assertEquals("B", sourceLetter(generic))
         assertEquals("P", sourceLetter(generic.copy(origin = FoodOrigin.CUSTOM)))
         assertEquals("P", sourceLetter(generic.copy(personalOverride = true)))
         assertEquals("P", sourceLetter(generic.copy(personalOverride = true, sourceName = "Open Food Facts")))
-        assertEquals("B", sourceLetter(generic.copy(sourceName = "Open Food Facts")))
-        assertEquals("?", sourceLetter(generic.copy(id = "local-generic", sourceName = "Local import", sourceId = "local-1")))
-        assertEquals("?", sourceLetter(generic.copy(id = "never-a-fixture", sourceName = null, sourceId = null)))
+        assertEquals("O", sourceLetter(generic.copy(sourceName = "Open Food Facts")))
+        assertEquals("B", sourceLetter(generic.copy(id = "local-generic", sourceName = "Local import", sourceId = "local-1")))
+        assertEquals("B", sourceLetter(generic.copy(id = "never-a-fixture", sourceName = null, sourceId = null)))
         assertEquals("?", sourceLetter(null))
-        assertEquals("B", sourceLetter(FoodCatalog.fixtures.first { it.id == "banana" }))
-        assertEquals("B", sourceLetter(FoodCatalog.fixtures.first { it.id == "oat_milk" }))
+        // A food an older version bundled stays stored, and stays Bundled.
+        assertEquals("B", sourceLetter(TestFoods.fixtures.first { it.id == "banana" }))
+        assertEquals("Bundled", sourceLabel("B"))
+        assertEquals("Unknown source", sourceLabel("?"))
+        val usda = generic.copy(id = "fndds_2705975", sourceName = "USDA FoodData Central")
+        assertEquals("U", sourceLetter(usda))
+        assertEquals("USDA FoodData Central", sourceLabel("U"))
+        assertEquals("P", sourceLetter(usda.copy(personalOverride = true)))
         val off = generic.copy(id = "off-local", sourceName = "Open Food Facts", sourceId = "4006381333931")
         assertEquals("O", sourceLetter(off))
         assertEquals("P", sourceLetter(off.copy(personalOverride = true)))
@@ -232,7 +238,7 @@ class ScreenDataTest {
     }
 
     @Test fun aChoiceThatCannotBeCountedShowsNoKcal() {
-        val oats = FoodCatalog.fixtures.first { it.nutrition.unit == MeasureUnit.GRAM && it.conversions.none { c -> c.unit == MeasureUnit.PIECE } }
+        val oats = TestFoods.fixtures.first { it.nutrition.unit == MeasureUnit.GRAM && it.conversions.none { c -> c.unit == MeasureUnit.PIECE } }
         assertNull(choiceKcalDetail(NutritionCalculator().calculate(oats, 2.0, MeasureUnit.PIECE)))
         assertEquals("${formatKcal(oats.nutrition.values.calories)} kcal", choiceKcalDetail(NutritionCalculator().calculate(oats, oats.nutrition.amount, oats.nutrition.unit)))
     }

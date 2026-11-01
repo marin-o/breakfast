@@ -8,7 +8,7 @@ import org.junit.Test
  * after food words leads the next food, so "2 egg 1 banana" is two foods.
  */
 class QuantityAttachmentTest {
-    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+    private val planner = LogPlanner(FoodMatcher(TestFoods.fixtures))
 
     private fun parts(input: String) = planner.segments(input).map { it.text }
 

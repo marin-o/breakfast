@@ -151,6 +151,7 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
             }
             log.error?.let { Text(it, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(top = 8.dp)) }
             DraftParts(draft, onChoose = log::chooseSuggestion, onResolve = log::resolveNotInFoods, queued = unmatched.resolve.parts.takeIf { unmatched.resolve.queueActive }.orEmpty(), queuedRow = rememberUnmatchedRows(unmatched))
+            UsdaRows(rememberUsdaRows(unmatched.usda, draft.catalogueQuery), draft.catalogueQuery, Modifier.padding(top = 8.dp)) { unmatched.pickForTypedPart(draft.catalogueQuery, it) }
         }
         // While its unmatched foods are worked through, the batch that just logged and each part say so here.
         Column(Modifier.fillMaxWidth().padding(horizontal = SnackbarGutter)) {

@@ -2,7 +2,7 @@ package com.iron.breakfast.ui.screens
 
 import com.iron.breakfast.food.createFoodState
 import com.iron.breakfast.scan.parseProductAmount
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.LogPlanner
@@ -33,7 +33,7 @@ class SearchScanCreateDataTest {
         assertEquals(UnknownDisplay(null, "ajvar lovec"), unknownDisplay("ajvar lovec"))
         assertEquals(UnknownDisplay("1.5 g", "salt"), unknownDisplay("1.5 g salt"))
         // A glued part in the queue ("млеко200г": Домашно млеко has no gram conversion) shows its amount apart.
-        val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+        val planner = LogPlanner(FoodMatcher(TestFoods.fixtures))
         assertEquals(UnknownDisplay("200 g", "млеко"), unknownDisplay("млеко200г", planner.typed("млеко200г")))
     }
 

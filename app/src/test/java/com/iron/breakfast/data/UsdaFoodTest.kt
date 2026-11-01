@@ -1,7 +1,6 @@
 package com.iron.breakfast.data
 
-import com.iron.breakfast.domain.BuiltInCatalogSync
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
@@ -136,14 +135,13 @@ class UsdaFoodTest {
         assertEquals(setOf(MeasureUnit.GRAM), food.conversions.map { it.unit }.toSet())
     }
 
-    @Test fun `a food without a cup portion gets no invented row, and the cup is the calculator's marked estimate`() {
+    @Test fun `a food without a cup portion gets no invented row, and the cup has no value`() {
         val food = row.copy(portions = listOf(UsdaPortionRow("1 small breast", 140.0))).toFoodRecord()!!
         assertTrue(food.conversions.none { it.unit == MeasureUnit.CUP })
         assertFalse(Measure(MeasureUnit.CUP) in food.measures())
-        val cup = food.grams(MeasureUnit.CUP)
-        assertEquals(240.0, cup.resolvedBaseAmount, 0.0)
-        assertTrue(cup.approximate)
-        assertTrue(cup.provenance.startsWith("Approximate fallback"))
+        assertFalse(food.grams(MeasureUnit.CUP).supported)
+        assertFalse(food.grams(MeasureUnit.TABLESPOON).supported)
+        assertFalse(food.grams(MeasureUnit.TEASPOON).supported)
     }
 
     @Test fun `a row past the plausible bounds is no food`() {
@@ -151,9 +149,7 @@ class UsdaFoodTest {
         assertNull(row.copy(protein = -1.0).toFoodRecord())
     }
 
-    @Test fun `it isn't taken for an Open Food Facts food or a catalogue food`() {
-        val food = row.toFoodRecord()!!
-        assertFalse(isOpenFoodFactsSource(food))
-        assertTrue(BuiltInCatalogSync.changedRows(listOf(food), FoodCatalog.fixtures).isEmpty())
+    @Test fun `it isn't taken for an Open Food Facts food`() {
+        assertFalse(isOpenFoodFactsSource(row.toFoodRecord()!!))
     }
 }

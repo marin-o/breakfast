@@ -75,13 +75,13 @@ class ShorthandParser {
         var start = 0
         (HARD_BREAK.findAll(input).map { it.range.first } + input.length).forEach { end ->
             val segment = partsOfSegment(input, start, end, probe)
-            val previous = spans.lastOrNull()
             val first = segment.firstOrNull()
             val breakBefore = if (start > 0) input[start - 1] else null
-            if (probe != null && breakBefore == ',' && previous != null && first != null &&
-                isWholeFoodName(input.substring(previous.start, first.end), probe)
-            ) {
-                spans[spans.lastIndex] = spanOf(input, previous.start, first.end)
+            val joinFrom = if (probe != null && breakBefore == ',' && first != null) nameJoinStart(input, spans, first.end, probe) else null
+            if (joinFrom != null) {
+                val joined = spanOf(input, spans[joinFrom].start, first!!.end)
+                spans.subList(joinFrom, spans.size).clear()
+                spans += joined
                 spans += segment.drop(1)
             } else {
                 spans += segment
@@ -132,6 +132,15 @@ class ShorthandParser {
         }
         return out
     }
+
+    /**
+     * The first of the last [spans] that, with all up to [end] after it, is one food's name: a name may hold several
+     * commas ("Egg, whole, raw"). Only across commas; null when there is none.
+     */
+    private fun nameJoinStart(input: String, spans: List<SegmentSpan>, end: Int, probe: FoodProbe): Int? =
+        (spans.lastIndex downTo maxOf(0, spans.size - MAX_COMMAS_IN_A_NAME))
+            .takeWhile { at -> input.substring(spans[at].start, end).none { it == ';' || it == '\n' } }
+            .firstOrNull { at -> isWholeFoodName(input.substring(spans[at].start, end), probe) }
 
     /** True when [text], with or without its amount, is exactly one food's name or alias. */
     private fun isWholeFoodName(text: String, probe: FoodProbe): Boolean =
@@ -501,6 +510,8 @@ class ShorthandParser {
         /** Characters that always end a part. A comma does too, unless it sits between two digits ([ItemComma]). */
         const val BREAK_CHARS = ";\n"
         /** A comma between two digits is a decimal separator ("1,5 kg"), never a break; "oats,1 banana" still breaks. */
+        /** How many parts a comma-holding food name is read back from. */
+        const val MAX_COMMAS_IN_A_NAME = 8
         val HARD_BREAK = Regex("${ItemComma.pattern}|[$BREAK_CHARS]")
         val WORD = Regex("\\S+")
         val WHITESPACE = Regex("\\s+")

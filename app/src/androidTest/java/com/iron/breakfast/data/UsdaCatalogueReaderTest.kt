@@ -56,6 +56,8 @@ class UsdaCatalogueReaderTest {
         assertEquals(15777, count("SELECT count(*) FROM portion"))
         assertEquals(0, count("SELECT count(*) FROM portion WHERE grams <= 0"))
         assertEquals(1, count("SELECT count(*) FROM alias"))
+        assertEquals(153, count("SELECT count(*) FROM translation"))
+        assertEquals(50, count("SELECT count(*) FROM food WHERE bump > 0"))
         db.rawQuery("PRAGMA integrity_check", null).use {
             it.moveToFirst()
             assertEquals("ok", it.getString(0))
@@ -99,9 +101,28 @@ class UsdaCatalogueReaderTest {
         assertEquals(USDA_MAX_RESULTS, search("chicken").size)
     }
 
-    @Test fun cyrillicOrMixedFindsNothing() {
-        assertEquals(emptyList<Any>(), search("млеко"))
-        assertEquals(emptyList<Any>(), search("egg млеко"))
+    @Test fun aCyrillicWordInTheTableFindsItsFoods() {
+        val first = search("јајце").first()
+        assertEquals("Egg, whole, raw", first.name)
+        assertTrue(search("пилешки гради").any { it.name.contains("chicken", ignoreCase = true) })
+    }
+
+    @Test fun aCyrillicWordFindsEachOfItsEnglishWords() {
+        assertTrue(search("пита").any { it.name.contains("pie", ignoreCase = true) })
+        assertTrue(reader().rankedCandidates("пита").any { it.name == "Bread, pita" })
+        assertTrue(reader().rankedCandidates("печено").any { it.name.contains("baked", ignoreCase = true) })
+        assertTrue(reader().rankedCandidates("печени").any { it.name.contains("roasted", ignoreCase = true) })
+        assertTrue(search("црн дроб").any { it.name.contains("liver", ignoreCase = true) })
+    }
+
+    @Test fun aCyrillicWordOutsideTheTableOrAMixedWordFindsNothing() {
+        assertEquals(emptyList<Any>(), search("чорба"))
+        assertEquals(emptyList<Any>(), search("egg чорба"))
+        assertEquals(emptyList<Any>(), search("eгg"))
+    }
+
+    @Test fun aBumpPutsTheCommonFoodFirst() {
+        assertEquals("Egg, whole, raw", search("egg").first().name)
     }
 
     @Test fun rawFtsSyntaxIsNeverSyntax() {

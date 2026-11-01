@@ -1,7 +1,7 @@
 package com.iron.breakfast
 
 import com.iron.breakfast.domain.DraftInvariantTest
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.LogPlanner
 import com.iron.breakfast.domain.MeasureUnit
@@ -18,7 +18,7 @@ import org.junit.Test
 class AddBarMatchesAddTest {
     private data class Saved(val foodId: String, val amount: Double, val unit: MeasureUnit, val kcal: Double)
 
-    private fun fixturesPlanner(countTyping: Boolean = true) = LogPlanner(FoodMatcher(FoodCatalog.fixtures), countTyping = countTyping)
+    private fun fixturesPlanner(countTyping: Boolean = true) = LogPlanner(FoodMatcher(TestFoods.fixtures), countTyping = countTyping)
     private val fixtures = fixturesPlanner()
     private val extra = listOf("2 eggs, milk", "1 ban", "2 eggs, ban", "milk", "ban", "дом")
 

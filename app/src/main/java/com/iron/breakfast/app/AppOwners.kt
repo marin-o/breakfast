@@ -35,6 +35,9 @@ import com.iron.breakfast.scan.ProductStore
 import com.iron.breakfast.scan.ScanSession
 import com.iron.breakfast.search.OffSearch
 import com.iron.breakfast.search.OffSearchService
+import com.iron.breakfast.search.UsdaCatalogue
+import com.iron.breakfast.search.UsdaPartSearch
+import com.iron.breakfast.settings.USDA_LICENCE_LINES
 import com.iron.breakfast.settings.SettingsState
 import com.iron.breakfast.settings.undoWindowMs
 import com.iron.breakfast.today.DayState
@@ -76,6 +79,7 @@ internal class AppStores<D>(
     val transferLog: TransferLog,
     val contributions: OffContributions,
     val offSearch: OffSearchService,
+    val usda: UsdaCatalogue,
     val recipes: RecipeStore,
     /** About, Licences: the bundled licence as text (an app asset); throws when it cannot be read. */
     val licence: () -> String,
@@ -170,7 +174,7 @@ internal class AppOwners<D>(
         io = threads.io,
         ready = { session.ready },
         onOpen = { fromResolver -> surfaces.searchOpened(fromResolver) },
-        onClose = { resolve.childClosed() },
+        onClose = { review.forgetPartLeft(); resolve.childClosed() },
         onChoose = { food, origin -> review.choose(food, origin = origin) },
     )
     /** The Profile page and the macro targets Meals reads (see [ProfileState]). */
@@ -181,6 +185,10 @@ internal class AppOwners<D>(
     )
     /** The Open Food Facts results under the Log's unmatched foods (see [OffPartSearch]). */
     val offParts = OffPartSearch(stores.offSearch, threads.scope, threads.io, announce = announcements::say)
+    /** The USDA rows under the Log's parts (see [UsdaPartSearch]). */
+    val usdaParts = UsdaPartSearch(stores.usda, threads.scope, threads.io, threads.main, threads.sleep)
+    /** The USDA rows under the Library's search and the ingredient search, one apart from the Log's: the Log may lie over the Library. */
+    val usdaFoods = UsdaPartSearch(stores.usda, threads.scope, threads.io, threads.main, threads.sleep)
     /** Export, import, Delete all and the safety copy (see [DiaryTransfer]); the root launches its pickers. */
     val transfer = DiaryTransfer(
         session = session,
@@ -224,6 +232,7 @@ internal class AppOwners<D>(
         onQueueLeft = { source ->
             resolve.leftBy(source)
             offParts.clear()
+            usdaParts.clear()
         },
         onDraftEdited = { source, parts ->
             resolve.sourceEdited(source, parts)
@@ -281,7 +290,7 @@ internal class AppOwners<D>(
         offerContribution = contribution::offerAfterLocalSave,
         startScanFor = { onBarcode -> scan.beginFor(onBarcode) },
         onOpen = { fromResolver -> surfaces.foodFormOpened(fromResolver) },
-        onClose = resolve::childClosed,
+        onClose = { review.forgetPartLeft(); resolve.childClosed() },
         onSaved = { food, newFood, advancesQueue ->
             val forRecipe = newFood && recipeForm.searchOpen
             resolve.foodSaved(food, newFood, advancesQueue)
@@ -307,6 +316,7 @@ internal class AppOwners<D>(
             val overQueue = reviewAfterSave == ProductReviewOrigin.LOG_PART && resolve.queueActive
             foodForm.open(name, brand, barcode, fromResolver = overQueue, fromOff = fromOff, reviewAfterSave = reviewAfterSave)
         },
+        onEnded = { review.forgetPartLeft() },
     )
     /** Product review after a scan or a search pick (see [ProductReview]); its queue and resolve hand-offs go to [resolve]. */
     val review: ProductReview = ProductReview(
@@ -330,6 +340,7 @@ internal class AppOwners<D>(
         confirmLogged = confirmations::logged,
         scope = threads.scope,
         io = threads.io,
+        onCataloguePicked = { log.learnPick(it) },
     )
     /** The Recipes tab: the list, the recipe page, logging one and Delete recipe (see [RecipeBook]). */
     val recipes: RecipeBook = RecipeBook(
@@ -354,6 +365,7 @@ internal class AppOwners<D>(
         main = threads.main,
         compute = threads.compute,
         onSaved = { recipe -> surfaces.showRecipe(recipe) },
+        onCataloguePicked = { log.learnPick(it) },
     )
     /** A food stored now is the pick of a part: of the Log's draft, or of the recipe form's ingredient search. */
     private fun resolvingAPart(): Boolean = resolve.resolvingPart || recipeForm.searchOpen
@@ -428,8 +440,10 @@ internal class AppOwners<D>(
         notices.show(DIARY_DAMAGED, onDismiss = session::damagedNoticeSeen)
     }
 
-    /** About, Licences: the bundled licence, read on [AppThreads.io]; empty when it cannot be read. */
-    suspend fun licenceText(): String = withContext(threads.io) { runCatching { stores.licence() }.getOrDefault("") }
+    /** About, Licences: USDA's lines, then the bundled licence, read on [AppThreads.io] (left out when it cannot be read). */
+    suspend fun licenceText(): String = withContext(threads.io) {
+        listOf(USDA_LICENCE_LINES, runCatching { stores.licence() }.getOrDefault("")).filter { it.isNotBlank() }.joinToString("\n\n")
+    }
 
     /** "Not right?" waits while what shows it is covered by foods left to match: the resolver, or the Log with its rows. */
     internal fun feedbackHeld(): Boolean = resolve.resolverOpen || (log.open && resolve.queueActive)

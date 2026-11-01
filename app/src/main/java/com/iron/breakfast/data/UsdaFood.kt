@@ -33,8 +33,7 @@ internal data class UsdaFoodRow(
  * no named serving, so the unit isn't offered twice. Null when the row fails the bounds every food read from outside
  * passes ([plausibleNutrition]).
  *
- * Not a built-in food: `BuiltInCatalogSync` matches by id against the fixtures, so a stored one is left alone, and the
- * catalogue is never written back to it.
+ * Once stored it is the user's: the catalogue is never written back to it.
  */
 internal fun UsdaFoodRow.toFoodRecord(): FoodRecord? {
     val values = NutritionValues(kcal, protein, carbs, fat)

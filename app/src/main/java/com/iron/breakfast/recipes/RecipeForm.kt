@@ -13,6 +13,8 @@ import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.Measure
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.Recipe
+import com.iron.breakfast.domain.ShorthandParser
+import com.iron.breakfast.library.librarySearchText
 import com.iron.breakfast.domain.libraryRecencyOrder
 import com.iron.breakfast.domain.replaceDraftPart
 import com.iron.breakfast.domain.FormBack
@@ -67,7 +69,10 @@ internal class RecipeForm(
     private val compute: CoroutineDispatcher,
     /** Saved: the recipe as stored. */
     private val onSaved: (Recipe) -> Unit,
+    /** A USDA row tapped: that tap counts as a pick. */
+    private val onCataloguePicked: (foodId: String) -> Unit = {},
 ) {
+    private val parser = ShorthandParser()
     var open by mutableStateOf(false); private set
     /** The recipe Edit is for; null for New recipe. */
     var editingRecipeId by mutableStateOf<String?>(null); private set
@@ -213,6 +218,32 @@ internal class RecipeForm(
             pins.add(fields.ingredients, text, food, row.start)
         }
         endSearch()
+    }
+
+    /** The search's text as the USDA catalogue is asked it: the food text, without a typed amount. */
+    val catalogueQuery: String get() = librarySearchText(query, parser)
+
+    /**
+     * A USDA row tapped in the search: the food is stored, then taken as a stored one is. An amount typed in the search
+     * ("2 eggs") makes it the last ingredient at once; with none, [pick] asks.
+     */
+    fun pickCatalogueFood(food: FoodRecord) {
+        if (!session.canWrite) return
+        val typedText = query
+        session.write(
+            change = DiaryChange.FoodsChanged,
+            onSuccess = { stored ->
+                if (searchOpen) {
+                    onCataloguePicked(stored.id)
+                    val planner = store.ingredientPlanner(pinsSnapshot())
+                    if (resolving == null && planner.typed(typedText).amount != null) {
+                        val (amount, measure) = planner.quantityOf(typedText, stored)
+                        addIngredient(stored, amount, measure)
+                    } else pick(stored)
+                }
+            },
+            onFailure = { notices.show(it.message ?: "Could not save this food.") },
+        ) { store.cacheFood(food) }
     }
 
     /** The amount sheet went without adding: the search stays, and reads again, since the food may be new. */

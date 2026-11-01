@@ -8,7 +8,7 @@ import androidx.room.withTransaction
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionValues
@@ -57,14 +57,10 @@ class BreakfastDatabaseTest {
     }
 
     @Test
-    fun freshSeedIsIdempotentAndMealSnapshotSurvivesReopen() = runBlocking {
-        val fixtures = fixtureRowsMissingFrom(emptySet())
-        seed(fixtures)
-        val firstCount = database.foodDao().all().size
-        seed(fixtureRowsMissingFrom(database.foodDao().ids().toSet()))
-        assertEquals(firstCount, database.foodDao().all().size)
+    fun storedFoodsAndAMealSnapshotSurviveReopen() = runBlocking {
+        seed(TestFoods.fixtures)
 
-        val food = FoodCatalog.fixtures.first()
+        val food = TestFoods.fixtures.first()
         val entry = MealEntry(
             id = "relaunch-entry",
             foodId = food.id,
@@ -88,7 +84,7 @@ class BreakfastDatabaseTest {
 
     @Test
     fun foodUpsertReplacesAliasesAndConversionsTransactionally() = runBlocking {
-        val food = FoodCatalog.fixtures.first()
+        val food = TestFoods.fixtures.first()
         seed(listOf(food))
         val edited = food.copy(
             name = "Edited ${food.name}",

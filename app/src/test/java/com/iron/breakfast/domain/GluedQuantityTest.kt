@@ -18,7 +18,7 @@ class GluedQuantityTest {
         nutrition = NutritionBasis(1.0, MeasureUnit.PIECE, NutritionValues(0.0, 0.0, 0.0, 0.0)),
         defaultAmount = 1.0, defaultUnit = MeasureUnit.PIECE,
     )
-    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures + mleko + vitamin))
+    private val planner = LogPlanner(FoodMatcher(TestFoods.fixtures + mleko + vitamin))
 
     private data class Saved(val foodId: String, val amount: Double, val unit: MeasureUnit)
 

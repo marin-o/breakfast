@@ -6,7 +6,7 @@ import com.iron.breakfast.ui.screens.previewQuantityLine
 import com.iron.breakfast.ui.countLabel
 import com.iron.breakfast.app.DiaryChange
 import com.iron.breakfast.app.Notices
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.LogPlanner
@@ -28,12 +28,18 @@ internal val chili = Recipe("recipe-chili", "Chili", listOf("чили"), portion
 /** The store the recipe owners write through, recording each write. */
 internal class FakeRecipeStore(private val diary: OpenDiary) : RecipeStore {
     val calls = mutableListOf<String>()
-    var foods: List<FoodRecord> = FoodCatalog.fixtures
+    var foods: List<FoodRecord> = TestFoods.fixtures
     var failDelete = false
     var failSave = false
     var failLog = false
     override fun ingredientPlanner(pins: Map<String, FoodRecord>) = LogPlanner(FoodMatcher(foods), pins = pins)
     override suspend fun foodsMatching(query: String) = foods.filter { it.name.contains(query, ignoreCase = true) }
+    override suspend fun cacheFood(food: FoodRecord): FoodRecord {
+        if (failSave) throw IllegalStateException()
+        calls += "store ${food.id}"
+        foods = foods.filterNot { it.id == food.id } + food
+        return food
+    }
     override suspend fun saveRecipe(recipe: Recipe): Recipe {
         if (failSave) throw IllegalStateException()
         val stored = recipe.copy(id = recipe.id.ifBlank { "recipe-new" })

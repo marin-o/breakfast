@@ -2,7 +2,7 @@ package com.iron.breakfast.data
 
 import kotlin.test.assertFalse
 import com.iron.breakfast.domain.ProfileValues
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.ui.components.LongDraft
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -294,7 +294,7 @@ class DiaryExportTest {
     }
 
     @Test fun theBundledCatalogueAndAnEmptyDiaryPass() {
-        val catalogue = FoodCatalog.fixtures
+        val catalogue = TestFoods.fixtures
         val rows = DiaryRows(
             foods = catalogue.map { it.toEntity() },
             aliases = catalogue.flatMap { it.toAliasEntities() },
@@ -430,9 +430,9 @@ class DiaryExportTest {
     }
 
     @Test fun aYearOfLoggingWritesAndReadsQuickly() {
-        val foods = FoodCatalog.fixtures.map { it.toEntity() } + (1..200).map { food("custom-$it") }
+        val foods = TestFoods.fixtures.map { it.toEntity() } + (1..200).map { food("custom-$it") }
         val entries = (1..3_000).map { entry("year-$it", "custom-${it % 200 + 1}", it * 60_000L) }
-        val rows = DiaryRows(foods, FoodCatalog.fixtures.flatMap { it.toAliasEntities() }, FoodCatalog.fixtures.flatMap { it.toConversionEntities() }, emptyList(), entries)
+        val rows = DiaryRows(foods, TestFoods.fixtures.flatMap { it.toAliasEntities() }, TestFoods.fixtures.flatMap { it.toConversionEntities() }, emptyList(), entries)
         val started = System.nanoTime()
         val text = encodeDiary(diaryFileOf(rows, settings, 0L))
         val imported = valid(text)

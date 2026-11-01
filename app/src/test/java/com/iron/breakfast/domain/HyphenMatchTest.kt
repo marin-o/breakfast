@@ -21,7 +21,7 @@ class HyphenMatchTest {
     private val koka = food("custom-k", "Кока")
     private val cola = food("custom-c", "Cola")
     private val vitaminka = food("custom-vitaminka", "Vitaminka-Витаминка")
-    private val matcher = FoodMatcher(FoodCatalog.fixtures + zero + classic + kokaKola + kokaSpaced + koka + cola + vitaminka)
+    private val matcher = FoodMatcher(TestFoods.fixtures + zero + classic + kokaKola + kokaSpaced + koka + cola + vitaminka)
 
     @Test fun theLibrarySearchReadsAHyphenAsABreakOnBothSides() {
         assertTrue(foodMatchesQuery(zero, "coca-cola zero sugar"))

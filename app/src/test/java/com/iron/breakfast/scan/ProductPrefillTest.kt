@@ -1,7 +1,7 @@
 package com.iron.breakfast.scan
 
 import com.iron.breakfast.contribution.contributionDraftAfterLocalSave
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
@@ -29,7 +29,7 @@ class ProductPrefillTest {
         )
 
         // A queued part prefills from the planner's reading, as the resolve flow passes it; a glued part keeps its amount.
-        val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+        val planner = LogPlanner(FoodMatcher(TestFoods.fixtures))
         val resolver = productPrefill(pesto, planner.typed("1 tbsp pesto"))
         assertEquals(1.0, resolver.amount)
         assertEquals(MeasureUnit.TABLESPOON, resolver.unit)

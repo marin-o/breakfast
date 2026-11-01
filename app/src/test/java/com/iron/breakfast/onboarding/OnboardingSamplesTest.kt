@@ -1,7 +1,7 @@
 package com.iron.breakfast.onboarding
 
 import com.iron.breakfast.domain.DraftRow
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.LogDraftView
 import com.iron.breakfast.domain.LogPlanner
@@ -12,7 +12,7 @@ import org.junit.Test
 
 /** What the tutorial shows is what the app shows for that text over its catalogue: the real planner, the fixed samples. */
 class OnboardingSamplesTest {
-    private fun real(text: String, committed: Boolean) = logDraftViewOf(LogPlanner(FoodMatcher(FoodCatalog.fixtures)), text, committed, ready = true)
+    private fun real(text: String, committed: Boolean) = logDraftViewOf(LogPlanner(FoodMatcher(TestFoods.fixtures)), text, committed, ready = true)
 
     private fun rowsOf(view: LogDraftView) = view.rows.map { row ->
         when (row) {

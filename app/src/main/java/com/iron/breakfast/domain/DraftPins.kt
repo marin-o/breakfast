@@ -95,7 +95,7 @@ internal class DraftPins {
         if (pins.isEmpty()) return emptyMap()
         val checking = planner(emptyMap())
         val standing = pins.mapNotNull { pin ->
-            val part = partAround(draft, pin.nameStart, pin.food.name.length)
+            val part = partAround(draft, pin.nameStart, pin.food)
             (part to pin).takeIf { part.text == pin.madeFor || checking.pinFits(part.text, part.left, part.right, pin.food) }
         }
         val plain = standing.associate { (part, pin) -> part.text to pin.food }
@@ -112,14 +112,25 @@ internal class DraftPins {
 
     private class Part(val text: String, val left: String, val right: String)
 
-    /** The part around a name: back to the separator before it, on to the one after it. */
-    private fun partAround(draft: String, nameStart: Int, nameLength: Int): Part {
+    /**
+     * The part around a food's name: back to the separator before it, or past the commas of a serving of that food
+     * written before it ("2 cups, cooked Rice"), on to the separator after it.
+     */
+    private fun partAround(draft: String, nameStart: Int, food: FoodRecord): Part {
+        val nameEnd = nameStart + food.name.length
         val before = draft.substring(0, nameStart)
-        val after = draft.substring(nameStart + nameLength)
-        val left = before.substring(before.indexOfLast { it in HARD_SEPARATORS } + 1)
+        val after = draft.substring(nameEnd)
+        val left = servingBefore(before, food) ?: before.substring(before.indexOfLast { it in HARD_SEPARATORS } + 1)
         val right = WORD_SEPARATOR.find(after)?.let { after.substring(0, it.range.first) } ?: after
-        val text = (left + draft.substring(nameStart, nameStart + nameLength) + right).trim()
+        val text = (left + draft.substring(nameStart, nameEnd) + right).trim()
         return Part(text, left.trim(), right.trim())
+    }
+
+    /** The amount and comma-holding serving of [food] that [before] ends in, or null. A cut at each comma, nearest last. */
+    private fun servingBefore(before: String, food: FoodRecord): String? {
+        if (food.conversions.none { it.name?.contains(',') == true }) return null
+        val starts = before.indices.filter { before[it] in HARD_SEPARATORS }.map { it + 1 }
+        return (listOf(0) + starts).map(before::substring).firstOrNull { food.writtenServing(it) != null }
     }
 
     private companion object {

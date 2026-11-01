@@ -11,9 +11,9 @@ class SuggestionScriptTest {
         testFood(id, name, aliases, category, values = NutritionValues(100.0, 5.0, 10.0, 2.0), defaultAmount = 100.0, defaultUnit = MeasureUnit.GRAM)
 
     private val buckwheat = food("buckwheat", "Buckwheat", category = "Grain")
-    private val chicken = FoodCatalog.fixtures.first { it.id == "usda_2646171_chicken_thigh_raw" }
+    private val chicken = TestFoods.fixtures.first { it.id == "usda_2646171_chicken_thigh_raw" }
     private val chevap = food("chevap", "Чевап", category = "Meat")
-    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures + buckwheat + chevap))
+    private val planner = LogPlanner(FoodMatcher(TestFoods.fixtures + buckwheat + chevap))
 
     private fun suggested(fragment: String) = planner.draft(fragment).suggestions.map { it.food.id }
 

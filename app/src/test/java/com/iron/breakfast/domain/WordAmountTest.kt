@@ -6,7 +6,7 @@ import org.junit.Test
 
 class WordAmountTest {
     private val parser = ShorthandParser()
-    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+    private val planner = LogPlanner(FoodMatcher(TestFoods.fixtures))
 
     private fun amountOf(input: String) = parser.parse(input).amount
 

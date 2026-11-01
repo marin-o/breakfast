@@ -7,7 +7,7 @@ import org.junit.Test
 
 class SegmentationTest {
     private val parser = ShorthandParser()
-    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+    private val planner = LogPlanner(FoodMatcher(TestFoods.fixtures))
 
     private val protein = FoodRecord(
         id = "custom_protein_bar", name = "Protein 2 bar", aliases = listOf("protein bar"), category = "Snack",
@@ -16,7 +16,7 @@ class SegmentationTest {
         defaultAmount = 1.0, defaultUnit = MeasureUnit.PIECE,
     )
     private val vitamin = protein.copy(id = "custom_b12", name = "Vitamin B12 tablet", aliases = emptyList(), category = "Supplement")
-    private val customMatcher = FoodMatcher(FoodCatalog.fixtures + protein + vitamin)
+    private val customMatcher = FoodMatcher(TestFoods.fixtures + protein + vitamin)
     private val customPlanner = LogPlanner(customMatcher)
 
     /** The same probe the planner gives the parser, for a planner over [matcher]. */
@@ -28,7 +28,7 @@ class SegmentationTest {
         override fun matchesWholeWord(word: String) = m.matchesWholeWord(word)
     })
 
-    private fun split(input: String) = splitWith(planner, FoodMatcher(FoodCatalog.fixtures), input)
+    private fun split(input: String) = splitWith(planner, FoodMatcher(TestFoods.fixtures), input)
 
     @Test fun explicitSeparatorsSplitParts() {
         assertEquals(listOf("1 banana", "2 eggs"), parser.split("1 banana; 2 eggs"))
@@ -120,7 +120,7 @@ class SegmentationTest {
 
     @Test fun aCommaInsideAFoodNameKeepsTheNameWhole() {
         val pindzur = protein.copy(id = "pindzur", name = "Пинџур, домашен", aliases = emptyList(), category = "Spread")
-        val named = LogPlanner(FoodMatcher(FoodCatalog.fixtures + pindzur))
+        val named = LogPlanner(FoodMatcher(TestFoods.fixtures + pindzur))
         assertEquals(listOf("pindzur"), named.plan("Пинџур, домашен").entries.map { it.food.id })
         assertTrue(named.plan("Пинџур, домашен").unresolved.isEmpty())
         // "100 g" cannot be converted for a piece-counted food, so it is not logged: it stays a Not in your foods row.
@@ -134,7 +134,7 @@ class SegmentationTest {
     }
 
     @Test fun everyBundledNameWithADigitStaysOneFood() {
-        val numbered = FoodCatalog.fixtures.filter { food -> food.name.any { it.isDigit() } }
+        val numbered = TestFoods.fixtures.filter { food -> food.name.any { it.isDigit() } }
         assertTrue(numbered.size >= 3)
         numbered.forEach { food ->
             // Each food is weighed in its own basis unit, so the amount is valid for that food.
@@ -147,7 +147,7 @@ class SegmentationTest {
 }
 
 class SegmentationProbeRejoinTest {
-    private val catalogue = FoodCatalog.fixtures + FoodRecord(
+    private val catalogue = TestFoods.fixtures + FoodRecord(
         id = "mac", name = "Macaroni and cheese", aliases = emptyList(), category = "Pasta", origin = FoodOrigin.CUSTOM,
         nutrition = NutritionBasis(1.0, MeasureUnit.PIECE, NutritionValues(300.0, 10.0, 40.0, 12.0)),
         defaultAmount = 1.0, defaultUnit = MeasureUnit.PIECE,

@@ -2,7 +2,7 @@ package com.iron.breakfast.app
 
 import com.iron.breakfast.scan.ProductReviewOrigin
 import androidx.compose.runtime.snapshots.Snapshot
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.resolve.food
@@ -419,7 +419,7 @@ class AppOwnersTest {
 
     @Test fun deletingAFoodClosesItsFormDropsItsPinAndClosesItsReview() {
         // A personal food: only those can be deleted.
-        val egg = FoodCatalog.fixtures.first { it.id == "egg" }.copy(origin = FoodOrigin.CUSTOM)
+        val egg = TestFoods.fixtures.first { it.id == "egg" }.copy(origin = FoodOrigin.CUSTOM)
         val app = AppKit(foods = listOf(egg))
         app.log.onDraft("2 eggs")
         app.log.chooseSuggestion(egg)
@@ -476,7 +476,10 @@ class AppOwnersTest {
 
     /** About, Licences: read by the owners on their IO dispatcher, not by the screen. */
     @Test fun theLicenceIsReadByTheOwners() = kotlinx.coroutines.runBlocking {
-        assertEquals("SIL Open Font License", AppKit().owners.licenceText())
+        assertEquals(
+            "U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, 2019. fdc.nal.usda.gov.\nFNDDS 2021-2023. CC0 1.0.\n\nSIL Open Font License",
+            AppKit().owners.licenceText(),
+        )
     }
 
     @Test fun aLogAddOffersItsUndoAndANewDayStartMovesAFollowerOfToday() {

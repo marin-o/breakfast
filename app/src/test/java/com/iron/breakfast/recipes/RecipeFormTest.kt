@@ -5,7 +5,7 @@ import com.iron.breakfast.QueueDispatcher
 import com.iron.breakfast.app.DiaryChange
 import com.iron.breakfast.app.Notices
 import com.iron.breakfast.domain.DraftRow
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.Recipe
 import com.iron.breakfast.resolve.food
@@ -19,11 +19,11 @@ import org.junit.Test
 
 /** New recipe and Edit over the production [RecipeForm]: typed ingredients, the search and its sheet, Back and Save. */
 class RecipeFormTest {
-    private val egg = FoodCatalog.fixtures.first { it.id == "egg" }
-    private val oats = FoodCatalog.fixtures.first { it.id == "rolled_oats" }
+    private val egg = TestFoods.fixtures.first { it.id == "egg" }
+    private val oats = TestFoods.fixtures.first { it.id == "rolled_oats" }
     private val kefir = food("custom-kefir", "Kefir")
-    private val diary = OpenDiary().apply { foods = FoodCatalog.fixtures + kefir }
-    private val store = FakeRecipeStore(diary).apply { foods = FoodCatalog.fixtures + kefir }
+    private val diary = OpenDiary().apply { foods = TestFoods.fixtures + kefir }
+    private val store = FakeRecipeStore(diary).apply { foods = TestFoods.fixtures + kefir }
     private val notices = Notices()
     private val io = QueueDispatcher()
     private val saved = mutableListOf<Recipe>()
@@ -41,6 +41,51 @@ class RecipeFormTest {
         form.onTotal(weight)
         form.onIngredients(ingredients)
         form.commitIngredients()
+    }
+
+    // ---- A USDA row in the ingredient search ----
+
+    private val usdaEgg = food("fndds_9", "Egg, whole, raw").let { it.copy(conversions = it.conversions + com.iron.breakfast.domain.ServingConversion(MeasureUnit.GRAM, 50.0, "portion", approximate = true, label = "egg")) }
+
+    @Test fun aUsdaRowWithAnAmountTypedIsStoredAndAddedAtThatAmount() {
+        form.openNew()
+        form.openSearch()
+        form.onQuery("2 eggs")
+        assertEquals("eggs", form.catalogueQuery)
+        form.pickCatalogueFood(usdaEgg)
+        assertEquals(listOf("store fndds_9"), store.calls)
+        assertFalse(form.searchOpen)
+        assertEquals("2 eggs Egg, whole, raw", form.fields.ingredients)
+        val row = form.ingredientsView().draft.rows.single() as DraftRow.Entry
+        assertEquals(usdaEgg.id, row.resolution.food.id)
+        assertEquals("egg", row.resolution.label)
+    }
+
+    @Test fun aUsdaRowWithNoAmountTypedIsStoredAndAsksAsAStoredFoodDoes() {
+        form.openNew()
+        form.openSearch()
+        form.onQuery("egg")
+        form.pickCatalogueFood(usdaEgg)
+        assertEquals(usdaEgg, form.adding)
+        assertEquals("", form.fields.ingredients)
+    }
+
+    @Test fun aUsdaRowOpenedForAPartTakesThatPartsPlace() {
+        typed(ingredients = "2 usdaonly, 40 g oats")
+        val row = form.ingredientsView().draft.rows.first() as DraftRow.Unresolved
+        form.resolveNotInFoods(row)
+        form.pickCatalogueFood(usdaEgg)
+        assertFalse(form.searchOpen)
+        assertEquals("Egg, whole, raw 2, 40 g oats", form.fields.ingredients)
+    }
+
+    @Test fun aUsdaRowThatCannotBeStoredSaysSo() {
+        form.openNew()
+        form.openSearch()
+        store.failSave = true
+        form.pickCatalogueFood(usdaEgg)
+        assertEquals("Could not save this food.", notices.message)
+        assertTrue(form.searchOpen)
     }
 
     @Test fun ingredientsReadAsTheLogReadsThem() {
@@ -139,7 +184,7 @@ class RecipeFormTest {
         form.onQuery("kef")
         form.onQuery("egg")
         io.runAll()
-        assertEquals(FoodCatalog.fixtures.filter { it.name.contains("egg", ignoreCase = true) }.map { it.id }.toSet(), form.results.map { it.id }.toSet())
+        assertEquals(TestFoods.fixtures.filter { it.name.contains("egg", ignoreCase = true) }.map { it.id }.toSet(), form.results.map { it.id }.toSet())
         form.onQuery("kef")
         form.closeSearch()
         io.runAll()
@@ -218,7 +263,7 @@ class RecipeFormTest {
         form.openEdit(recipe)
         form.addIngredient(kefir, 250.0, Measure(MeasureUnit.GRAM))
         assertEquals(setOf("custom-gone", "custom-kefir"), form.pinsSnapshot().values.map { it.id }.toSet())
-        diary.foods = FoodCatalog.fixtures
+        diary.foods = TestFoods.fixtures
         diary.session.refresh()
         form.diaryReplaced()
         assertTrue(form.open)

@@ -9,7 +9,6 @@ import com.iron.breakfast.app.DiaryChange
 import com.iron.breakfast.app.LOGGED
 import com.iron.breakfast.app.DiarySession
 import com.iron.breakfast.app.Notices
-import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.LogPlanner
 import com.iron.breakfast.domain.MealEntry
@@ -18,6 +17,7 @@ import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.RankedFood
 import com.iron.breakfast.domain.SavedMeal
 import com.iron.breakfast.domain.ShorthandParser
+import com.iron.breakfast.domain.TypedPart
 import com.iron.breakfast.domain.libraryRecencyOrder
 import com.iron.breakfast.domain.mealMarkerSlots
 import com.iron.breakfast.resolve.ResolveSource
@@ -286,11 +286,12 @@ internal class LibraryState(
         ) { store.save(cleaned, target, day) }
     }
 
-    /** "Delete food" on a personal food (its page or Edit food): the confirmation opens first. */
-    fun askDelete(food: FoodRecord) {
-        if (food.origin != FoodOrigin.CUSTOM) return
-        deleteRequest = food
-    }
+    /** "Delete food" (its page or Edit food): the confirmation opens first. Any stored food may go: nothing brings it back. */
+    fun askDelete(food: FoodRecord) { deleteRequest = food }
+
+    /** The bar's one part as typed, when it states an amount: what a USDA row tapped under it starts from. */
+    fun typedPart(): TypedPart? = libraryInputSegments(input, store.planner()).singleOrNull()
+        ?.takeIf { it.amount != null }?.let { TypedPart(it.foodPhrase, it.amount, it.unit) }
 
     fun cancelDelete() { deleteRequest = null }
 

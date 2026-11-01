@@ -7,7 +7,8 @@ class NutritionCalculator {
      *
      * What one of the unit is in the food's basis units: a named serving's own amount; the basis itself; the food's own
      * conversion for that unit (its "piece", "tbsp"); else the unit's family: a volume unit on ml by its size, either
-     * family through the food's density, and tsp, tbsp and cup on g without one as 1 ml ≈ 1 g, marked approximate.
+     * family through the food's density, and tsp, tbsp and cup on g without one as 1 ml ≈ 1 g, marked approximate. A USDA
+     * food has its own portions, so a unit it has none for has no value, not that guess.
      * Plain ml (and the units the shorthand reads as ml) on g without a density, and g on ml without one, are unsupported.
      */
     fun calculate(food: FoodRecord, amount: Double, enteredUnit: MeasureUnit?, servingName: String? = null): Calculation {
@@ -75,7 +76,7 @@ class NutritionCalculator {
             MeasureUnit.GRAM -> when {
                 ml != null && density != null ->
                     PerUnit(ml * density / 100.0, "1 ${unit.displayLabel()} = ${ml.prettyAmount()} ml, 100 ml = ${density.prettyAmount()} g; applied to $basisLabel nutrition basis", false)
-                ml != null && unit != MeasureUnit.MILLILITER -> PerUnit(
+                ml != null && unit != MeasureUnit.MILLILITER && !isUsdaFoodId(food.id) -> PerUnit(
                     ml,
                     "Approximate fallback: 1 ${unit.displayLabel()} = ${ml.prettyAmount()} g rough estimate; density varies; applied to $basisLabel nutrition basis",
                     true,

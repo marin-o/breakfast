@@ -64,6 +64,8 @@ data class DraftView(
     val activePhrase: String = "",
     /** Foods the word being typed starts; shown in place of a Not-in-your-foods outcome for the active part. */
     val suggestions: List<RankedFood> = emptyList(),
+    /** What the USDA catalogue is asked while typing ([LogPlanner.partBeingTyped] without its amount); blank for nothing. */
+    val catalogueQuery: String = "",
     /** The part being typed as Add saves it (the last of [logged]); null when Add does not save it. */
     val counted: SegmentResolution? = null,
     /** What the finished draft logs for the part being typed, whatever the add bar counts: the chip that goes green. */
@@ -178,9 +180,16 @@ class LogPlanner(
     }
 
     private fun pickedResolution(raw: String, picked: FoodRecord): SegmentResolution {
-        val (amount, measure) = quantityFor(amountAfterName(raw, picked) ?: readingFor(raw, picked), picked)
+        val (amount, measure) = quantityFor(servingBeforeName(raw, picked) ?: amountAfterName(raw, picked) ?: readingFor(raw, picked), picked)
         val ranked = RankedFood(picked, score = 1.0, reasons = listOf("picked"), fullMatch = true, wholeMatch = true)
         return SegmentResolution(raw, listOf(ranked), picked, amount, measure.unit, calculate(picked, amount, measure), label = measure.name)
+    }
+
+    /** [raw] as [partText] writes a named serving of a picked food, whose commas are the serving's: "2 cups, cooked Rice, white". */
+    private fun servingBeforeName(raw: String, picked: FoodRecord): Reading? {
+        if (!raw.endsWith(" ${picked.name}")) return null
+        val (amount, serving) = picked.writtenServing(raw.removeSuffix(picked.name)) ?: return null
+        return Reading(ParsedSegment(raw, picked.name, amount, null, null, null), wholeName = false, servingWord = serving)
     }
 
     /**
@@ -204,6 +213,7 @@ class LogPlanner(
         if (left.isEmpty() && right.isEmpty()) return true
         if (left.isNotEmpty() && right.isNotEmpty()) return false
         if (matcher.isExactName(part)) return false
+        if (right.isEmpty() && food.writtenServing(left) != null) return true
         val typed = parser.parse(left + right)
         if (typed.amount == null) return false
         val word = typed.foodPhrase.trim()
@@ -308,20 +318,22 @@ class LogPlanner(
     /**
      * The amount and measure a matched [food] takes from [reading]: the typed ones, else the food's defaults. A unit word
      * that is one of the food's serving names counts that serving ("2 slices bread" with a slice); "slices" without one
-     * is a piece, as before.
+     * is a piece, as before. A bare count may have its own meaning for the food ([bareCountMeasure]).
      */
     private fun quantityFor(reading: Reading, food: FoodRecord): Pair<Double, Measure> {
         if (reading.wholeName) return food.defaultAmount to Measure(food.defaultUnit)
         val parsed = reading.parsed
         val serving = reading.servingWord
-        // A bare "a" or "an" means one only when the food is counted by the piece ("a banana", "a can of coke"); "a milk"
-        // is the default.
-        val amount = parsed.amount
-            ?: if (parsed.articleQuantity && (food.defaultUnit == MeasureUnit.PIECE || serving != null)) 1.0 else food.defaultAmount
+        val amount = parsed.amount ?: if (articleMeansOne(reading, food)) 1.0 else food.defaultAmount
         if (serving != null) return amount to food.typedMeasure(MeasureUnit.SERVING, serving)
-        val unit = parsed.unit ?: return amount to Measure(food.defaultUnit)
+        val counted = if (parsed.amount != null) food.bareCountMeasure(parsed.foodPhrase) else food.articleMeasure(parsed.foodPhrase).takeIf { parsed.articleQuantity }
+        val unit = parsed.unit ?: return amount to (counted ?: Measure(food.defaultUnit))
         return amount to food.typedMeasure(unit, parsed.unitWord, parsed.unitLabel)
     }
+
+    /** A bare "a" or "an" means one only when the food is counted ("a banana", "a can of coke", a USDA "an egg"); "a milk" is the default. */
+    private fun articleMeansOne(reading: Reading, food: FoodRecord): Boolean = reading.parsed.articleQuantity &&
+        (food.defaultUnit == MeasureUnit.PIECE || reading.servingWord != null || food.articleMeasure(reading.parsed.foodPhrase) != null)
 
     /** The calories Add would log for [raw] matched to [food]. The Log's choices show exactly this. */
     fun calculationFor(raw: String, food: FoodRecord): Calculation {
@@ -433,7 +445,7 @@ class LogPlanner(
         val reading = readingFor(raw, food)
         if (reading.wholeName) return false
         val parsed = reading.parsed
-        return parsed.amount != null || (parsed.articleQuantity && (food.defaultUnit == MeasureUnit.PIECE || reading.servingWord != null))
+        return parsed.amount != null || articleMeansOne(reading, food)
     }
 
     private fun joinBefore(prefix: String, replacement: String): String {
@@ -476,6 +488,16 @@ class LogPlanner(
 
     /** The parts of [input] the Log page works with, meal words included. Every caller segments through here. */
     fun segments(input: String): List<SegmentSpan> = parser.parts(input, probe)
+
+    /**
+     * The last part while it is still the one being typed, for a search that follows the typing: a space after it doesn't
+     * finish it, as the user may be typing its next word; a separator does. A meal word is no such part.
+     */
+    fun partBeingTyped(input: String): SegmentSpan? {
+        val typed = input.trimEnd()
+        if (typed.isEmpty() || endsOpen(typed)) return null
+        return segments(typed).lastOrNull()?.takeUnless { ShorthandLexicon.mealSlotOf(it.text) != null }
+    }
 
     /** True when the input ends with a separator (or a space), so the last part is finished and nothing is being typed. */
     fun endsOpen(input: String): Boolean = parser.endsOpen(input)
@@ -585,6 +607,7 @@ class LogPlanner(
             logged = plan(input, typing).entries,
             activePhrase = if (activeText.isBlank()) "" else stripArticle(phraseOf(activeText)),
             suggestions = suggestions,
+            catalogueQuery = if (!typing) "" else partBeingTyped(input)?.takeUnless { isPinned(it.text) }?.let { stripArticle(phraseOf(it.text)) }.orEmpty(),
             counted = counted,
             addLogs = plan(input).entries.isNotEmpty(),
             addPick = addPick,

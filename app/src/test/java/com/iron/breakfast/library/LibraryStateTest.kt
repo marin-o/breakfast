@@ -3,7 +3,7 @@ package com.iron.breakfast.library
 import com.iron.breakfast.QueueDispatcher
 import com.iron.breakfast.app.DiaryChange
 import com.iron.breakfast.app.Notices
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.LogPlanner
@@ -30,8 +30,8 @@ class LibraryStateTest {
         var library: List<FoodRecord> = emptyList()
         var saved = SavedMeal(listOf(entry("e1")), NutritionValues.ZERO)
         override suspend fun foodsMatching(query: String) = library.filter { it.name.contains(query, ignoreCase = true) }
-        override fun planner() = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
-        override fun search(phrase: String) = FoodCatalog.fixtures.filter { phrase in it.aliases || phrase == it.id }.map { RankedFood(it, 1.0, emptyList()) }
+        override fun planner() = LogPlanner(FoodMatcher(TestFoods.fixtures))
+        override fun search(phrase: String) = TestFoods.fixtures.filter { phrase in it.aliases || phrase == it.id }.map { RankedFood(it, 1.0, emptyList()) }
         override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String, servingName: String?) {
             calls += "log ${food.id} $amount ${unit.name} $meal $dayKey" + (servingName?.let { " $it" } ?: "")
         }
@@ -63,7 +63,7 @@ class LibraryStateTest {
         confirmLogged = { confirmed++ },
     )
     private val kefir = food("kefir", "Kefir")
-    private val egg = FoodCatalog.fixtures.first { it.id == "egg" }
+    private val egg = TestFoods.fixtures.first { it.id == "egg" }
 
     @Test fun aRefreshAppliesOnlyWhileItStillMatchesWhatIsShown() {
         store.library = listOf(kefir, food("ayran", "Ayran"))
@@ -231,11 +231,23 @@ class LibraryStateTest {
         gate.complete(Unit)
     }
 
-    @Test fun onlyAPersonalFoodCanBeDeleted() {
+    @Test fun anyStoredFoodCanBeDeleted() {
         library.askDelete(egg)
-        assertNull(library.deleteRequest)
+        assertEquals(egg, library.deleteRequest)
         library.confirmDelete()
-        assertEquals(emptyList<String>(), store.calls)
+        assertEquals(listOf("delete egg"), store.calls)
+    }
+
+    @Test fun theBarsOnePartWithAnAmountIsWhatAUsdaRowStartsFrom() {
+        library.show(null, "")
+        assertNull(library.typedPart())
+        library.onInput("kefir")
+        assertNull(library.typedPart())
+        library.onInput("200 g kefir")
+        assertEquals(com.iron.breakfast.domain.TypedPart("kefir", 200.0, MeasureUnit.GRAM), library.typedPart())
+        assertEquals("kefir", library.query)
+        library.onInput("200 g kefir, 2 eggs")
+        assertNull(library.typedPart())
     }
 
     @Test fun aFailedDeleteSaysSoAndKeepsThePage() {

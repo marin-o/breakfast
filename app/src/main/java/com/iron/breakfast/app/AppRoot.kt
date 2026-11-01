@@ -126,7 +126,7 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         Surface.DAILY, Surface.MEAL, Surface.LIBRARY, Surface.RECIPES -> BaseScreens(vm, surface)
         Surface.SCAN_REVIEW_BACKDROP -> ScanReviewBackdrop(vm.review::close)
         // Drawn over the screen beneath, which keeps its scroll position. Dialogs and sheets after it render above it.
-        Surface.LOG -> LogScreen(vm.log, vm.session, vm.settings, vm.day, vm.scan, vm.confirmations, vm.undo, UnmatchedParts(vm.resolve, vm.offParts, vm.search, vm.foodForm, vm.review, vm.log))
+        Surface.LOG -> LogScreen(vm.log, vm.session, vm.settings, vm.day, vm.scan, vm.confirmations, vm.undo, UnmatchedParts(vm.resolve, vm.offParts, vm.search, vm.foodForm, vm.review, vm.log, vm.usdaParts))
         Surface.ENTRY_QUICK_EDIT -> vm.entryEdit.editingEntry()?.let { EntryQuickEditSheet(vm.entryEdit, vm.session, it) }
         Surface.ENTRY_FULL_EDIT -> vm.entryEdit.editingEntry()?.let { EntryFullEditScreen(vm.entryEdit, vm.session, vm.day, it) }
         Surface.ENTRY_FOOD_PICKER -> EntryFoodPicker(vm.entryEdit, vm.session)
@@ -135,7 +135,7 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         Surface.RECIPE -> vm.recipes.page?.let { RecipePageScreen(vm.recipes, it, onEdit = vm.recipeForm::openEdit) }
         Surface.RECIPE_LOG -> vm.recipes.logging?.let { RecipeLogSheet(vm.recipes, vm.surfaces, vm::automaticMealNow, it) }
         Surface.RECIPE_FORM -> RecipeFormScreen(vm.recipeForm, vm.recipes, vm.session, vm.settings)
-        Surface.RECIPE_SEARCH -> RecipeIngredientSearch(vm.recipeForm, vm.search, vm.foodForm)
+        Surface.RECIPE_SEARCH -> RecipeIngredientSearch(vm.recipeForm, vm.search, vm.foodForm, vm.usdaFoods)
         Surface.RECIPE_INGREDIENT_ADD -> vm.recipeForm.adding?.let { IngredientAmountSheet(vm.recipeForm, it) }
         Surface.DISCARD_RECIPE -> ConfirmDialog("Discard", vm.recipeForm::discard, vm.recipeForm::keepEditing, dismiss = "Keep editing")
         // As Delete food: for good, and past entries keep their own name and numbers.
@@ -152,7 +152,7 @@ private fun DrawSurface(vm: BreakfastViewModel, surface: Surface) {
         // Deleting is for good: past entries keep their own name and numbers.
         Surface.DELETE_FOOD -> ConfirmDialog("Delete food", vm.library::confirmDelete, vm.library::cancelDelete, text = "Past entries keep their numbers.")
         Surface.DISCARD_FOOD -> ConfirmDialog("Discard", vm.foodForm::discard, vm.foodForm::keepEditing, dismiss = "Keep editing")
-        Surface.LIBRARY_NO_MATCH -> LibraryNoMatchScreen(vm.library, vm.surfaces, vm.search, vm.foodForm)
+        Surface.LIBRARY_NO_MATCH -> LibraryNoMatchScreen(vm.library, vm.surfaces, vm.search, vm.foodForm, vm.usdaFoods, vm.review)
         Surface.OFF_SEARCH -> OffSearchScreen(vm.search, vm.foodForm, vm.resolve)
         Surface.RESOLVER -> ResolveUnknownScreen(vm.resolve, vm.undo, vm.search, vm.foodForm, vm.confirmations)
         Surface.PRODUCT_REVIEW -> vm.review.product?.let { ProductReviewSheet(vm.review, it) }
@@ -245,7 +245,7 @@ private fun BaseScreen.surface(): Surface = when (this) {
 private fun BaseScreenContent(vm: BreakfastViewModel, surface: Surface, meal: MealSlot?, modifier: Modifier) {
     when (surface) {
         Surface.LIBRARY -> LibraryScreen(
-            vm.library, vm.resolve, vm.day, vm.surfaces, vm.foodForm, vm::automaticMealNow, modifier,
+            vm.library, vm.resolve, vm.day, vm.surfaces, vm.foodForm, vm::automaticMealNow, modifier, vm.usdaFoods, vm.review,
             target = meal,
         )
         Surface.RECIPES -> RecipesScreen(vm.recipes, onNew = vm.recipeForm::openNew, modifier)

@@ -2,8 +2,11 @@ package com.iron.breakfast.recipes
 
 import com.iron.breakfast.scan.ProductReviewOrigin
 import com.iron.breakfast.food.FoodForm
+import com.iron.breakfast.log.UsdaRows
+import com.iron.breakfast.log.rememberUsdaRows
 import com.iron.breakfast.search.OffSearch
-import com.iron.breakfast.search.NoLocalMatch
+import com.iron.breakfast.search.NoLocalMatchWithRows
+import com.iron.breakfast.search.UsdaPartSearch
 import com.iron.breakfast.ui.components.listRowMotion
 import com.iron.breakfast.ui.components.AmountWithUnit
 import com.iron.breakfast.ui.components.FormFields
@@ -133,12 +136,15 @@ private fun IngredientsField(form: RecipeForm) {
 /**
  * The ingredient search: the foods, the last logged first, as the Library lists them, filtered as it is typed. A food
  * tapped opens the amount sheet over it (or, for a "Not in your foods" part, takes its place). Nothing found: Open Food
- * Facts or a personal food, whose stored food comes back as that pick.
+ * Facts or a personal food, whose stored food comes back as that pick. Under them the USDA foods for the same text: a
+ * tap stores one and it goes on as a stored food's pick does ([RecipeForm.pickCatalogueFood]).
  */
 @Composable
-internal fun RecipeIngredientSearch(form: RecipeForm, search: OffSearch, foodForm: FoodForm) {
+internal fun RecipeIngredientSearch(form: RecipeForm, search: OffSearch, foodForm: FoodForm, usda: UsdaPartSearch) {
     val motion = rememberMotion()
     val focus = remember { FocusRequester() }
+    val usdaQuery = form.catalogueQuery
+    val usdaRows = rememberUsdaRows(usda, usdaQuery, except = form.results)
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     SubScreen("Search", form::closeSearch, scroll = false) {
         SearchField(
@@ -147,7 +153,7 @@ internal fun RecipeIngredientSearch(form: RecipeForm, search: OffSearch, foodFor
         )
         Hairline(Modifier.padding(top = 12.dp))
         // What it finds goes into the recipe, so its review has no meal to log to, as a part of the Log's draft has none.
-        if (form.noMatch) NoLocalMatch(form.query, search, foodForm, ProductReviewOrigin.LOG_PART)
+        if (form.noMatch) NoLocalMatchWithRows(usdaRows, form.query, search, foodForm, ProductReviewOrigin.LOG_PART, form::pickCatalogueFood)
         else LazyColumn(Modifier.weight(1f)) {
             items(form.results, key = { it.id }) { food ->
                 FoodRow(
@@ -158,6 +164,7 @@ internal fun RecipeIngredientSearch(form: RecipeForm, search: OffSearch, foodFor
                     onClick = { form.pick(food) },
                 )
             }
+            item { UsdaRows(usdaRows, usdaQuery, onPick = form::pickCatalogueFood) }
         }
     }
 }

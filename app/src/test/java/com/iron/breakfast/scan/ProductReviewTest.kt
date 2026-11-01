@@ -13,6 +13,7 @@ import com.iron.breakfast.domain.TypedPart
 import com.iron.breakfast.domain.ServingConversion
 import com.iron.breakfast.domain.withServingsAdded
 import com.iron.breakfast.resolve.ResolveQueueView
+import com.iron.breakfast.ui.screens.labelFor
 import com.iron.breakfast.today.OpenDiary
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -43,8 +44,8 @@ class ProductReviewTest {
             if (merged != null) diary.foods = diary.foods.map { if (it.id == merged.id) merged else it }
             return merged != null
         }
-        override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
-            calls += "log ${food.name} $amount ${unit.label} $meal $dayKey"
+        override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String, servingName: String?) {
+            calls += "log ${food.name} $amount ${servingName ?: unit.label} $meal $dayKey"
         }
         override suspend fun updateFood(food: FoodRecord) {
             calls += "update ${food.name} ${food.nutrition.values.calories}"
@@ -73,7 +74,7 @@ class ProductReviewTest {
         resolvingPart = { resolvingPart },
         offerContribution = { offers += it },
         onPartResolved = { events += "resolved ${it.id}" },
-        onLogPart = { food, amount, unit -> events += "part ${food.id} $amount ${unit.label}" },
+        onLogPart = { food, amount, measure, replaces -> events += "part ${food.id} $amount ${measure.label}" + (replaces?.let { " for ${it.text}" } ?: "") },
         onLogged = { events += "logged advances=$it" },
         onClosed = { events += "closed" },
         openSearch = { fromResolver, origin -> events += "search fromResolver=$fromResolver" + (origin?.let { " $it" } ?: "") },
@@ -81,6 +82,7 @@ class ProductReviewTest {
         confirmLogged = { confirmed++ },
         scope = diary.scope,
         io = kotlinx.coroutines.Dispatchers.Unconfined,
+        onCataloguePicked = { events += "picked $it" },
     )
 
     /** A queue as the resolve flow builds it: its current part as the planner reads it ("nutella200g" is nutella, 200 g). */
@@ -93,6 +95,135 @@ class ProductReviewTest {
         "off-1", "Nutella", emptyList(), "Spreads", FoodOrigin.GENERIC,
         NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(539.0, 6.3, 57.5, 30.9)), barcode = "3017620422003",
     )
+
+    // ---- A USDA row ----
+
+    private val chicken = FoodRecord(
+        "fndds_1", "Chicken, breast", emptyList(), "USDA FoodData Central", FoodOrigin.GENERIC,
+        NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(200.0, 20.0, 5.0, 10.0)),
+        conversions = listOf(
+            ServingConversion(MeasureUnit.GRAM, 1.0, "per 100 g"),
+            ServingConversion(MeasureUnit.GRAM, 140.0, "portion", approximate = true, label = "cup, cooked, diced"),
+        ),
+        defaultAmount = 100.0, defaultUnit = MeasureUnit.GRAM,
+    )
+
+    @Test fun aUsdaRowStartsAt100GramsWithNoAmountTypedAndWritesNothingBeforeAdd() {
+        review.choose(chicken, origin = ProductReviewOrigin.LOG_PART, typed = TypedPart("chicken", null, null))
+        assertEquals("100", review.amount)
+        assertEquals("g", review.unit)
+        assertEquals(emptyList<String>(), store.calls)
+        assertEquals(emptyList<String>(), events)
+    }
+
+    @Test fun aUsdaRowTakesTheTypedAmountAndPutsTheFoodInThePlaceOfItsPart() {
+        val part = com.iron.breakfast.domain.SegmentSpan("200 g chicken", 0, 13)
+        review.choose(chicken, origin = ProductReviewOrigin.LOG_PART, typed = TypedPart("chicken", 200.0, MeasureUnit.GRAM), replaces = part)
+        assertEquals("200", review.amount)
+        review.addToLog()
+        assertEquals("part stored-fndds_1 200.0 g for 200 g chicken", events.first())
+    }
+
+    @Test fun aChosenServingCountsItsWeightAndGoesBackByItsName() {
+        review.choose(chicken, origin = ProductReviewOrigin.LOG_PART)
+        review.onMeasure(com.iron.breakfast.domain.Measure(MeasureUnit.SERVING, "cup, cooked, diced"))
+        review.onAmount("2")
+        assertEquals(560.0, review.calculation(chicken)!!.nutrition.calories, 1e-9)
+        review.addToLog()
+        assertEquals("part stored-fndds_1 2.0 cup, cooked, diced", events.first())
+    }
+
+    @Test fun addingAUsdaFoodCountsItsTapAsAPickButAClosedReviewDoesNot() {
+        review.choose(chicken, origin = ProductReviewOrigin.LOG_PART)
+        review.close()
+        assertTrue(events.none { it.startsWith("picked") })
+        review.choose(chicken, origin = ProductReviewOrigin.LOG_PART)
+        review.addToLog()
+        assertTrue("picked stored-fndds_1" in events)
+    }
+
+    private fun served(id: String, name: String, vararg servings: String) = chicken.copy(
+        id = id, name = name,
+        conversions = listOf(chicken.conversions.first()) + servings.map { ServingConversion(MeasureUnit.GRAM, 50.0, "portion", approximate = true, label = it) },
+    )
+
+    private val breast = served("fndds_2", "Chicken breast", "cup, cooked, diced", "small breast", "medium breast", "large breast", "breast, NS as to size", "oz, cooked")
+    private val milk = served("fndds_3", "Milk, NFS", "fl oz", "individual school container")
+    private val cupOnly = served("fndds_4", "Rice", "cup, cooked", "fl oz")
+
+    @Test fun aBareCountStartsOnTheServingTheTypedWordsName() {
+        assertEquals(ProductPrefill(2.0, MeasureUnit.SERVING, "breast, NS as to size"), productPrefill(breast, TypedPart("chicken breast", 2.0, null)))
+        assertEquals(ProductPrefill(100.0, MeasureUnit.GRAM), productPrefill(breast, TypedPart("chicken breast", null, null)))
+        assertEquals(ProductPrefill(2.0, MeasureUnit.GRAM), productPrefill(nutella, TypedPart("nutella", 2.0, null)))
+    }
+
+    @Test fun aBareCountWithNoServingNamedPrefersAWholeItemOverACupOrFlOz() {
+        assertEquals("individual school container", productPrefill(milk, TypedPart("milk", 2.0, null)).servingName)
+        assertEquals("medium", productPrefill(served("fndds_5", "Apple", "small", "medium", "large", "slice"), TypedPart("apple", 2.0, null)).servingName)
+    }
+
+    @Test fun aBareCountWithNoWholeItemServingStartsOnPiecesAndSaysItHasNoValue() {
+        assertEquals(ProductPrefill(2.0, MeasureUnit.PIECE), productPrefill(cupOnly, TypedPart("rice", 2.0, null)))
+        review.choose(cupOnly, origin = ProductReviewOrigin.LOG_PART, typed = TypedPart("rice", 2.0, null))
+        assertEquals("piece", review.unit)
+        assertNull(review.calculation(cupOnly))
+        assertEquals(MeasureUnit.PIECE, review.noValue(cupOnly)!!.unit)
+    }
+
+    @Test fun aCupTheFoodHasNoPortionForIsNoValueInTheReview() {
+        review.choose(milk, origin = ProductReviewOrigin.LOG_PART, typed = TypedPart("milk", 1.0, MeasureUnit.CUP))
+        val noValue = review.noValue(milk)!!
+        assertEquals("No value for cup", com.iron.breakfast.ui.screens.noValueLine(noValue.servingName ?: noValue.unit.labelFor(noValue.amount)))
+        review.onUnit("g")
+        assertNull(review.noValue(milk))
+    }
+
+    @Test fun pickingAUsdaFoodAlreadyStoredReviewsItAsStoredAndKeepsEditsMadeThere() {
+        val stored = chicken.copy(name = "My chicken", nutrition = NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(111.0, 1.0, 1.0, 1.0)), personalOverride = true)
+        diary.foods = listOf(stored)
+        diary.session.refresh()
+        review.choose(chicken, origin = ProductReviewOrigin.LOG_PART)
+        assertEquals(stored, review.product)
+        assertEquals("My chicken", review.name)
+        assertEquals("111", review.calories)
+        review.addToLog()
+        assertEquals("nothing edited, nothing updated", listOf("cache My chicken"), store.calls)
+        store.calls.clear()
+        review.choose(chicken, origin = ProductReviewOrigin.LOG_PART)
+        review.onCalories("150")
+        review.addToLog()
+        assertEquals(listOf("update My chicken 150.0", "cache My chicken"), store.calls)
+    }
+
+    private val leftPart = com.iron.breakfast.domain.SegmentSpan("2 chicken", 0, 9)
+
+    @Test fun findBetterMatchKeepsThePartAndItsAmountForTheFoodItFinds() {
+        review.choose(chicken, origin = ProductReviewOrigin.LOG_PART, typed = TypedPart("chicken", 2.0, MeasureUnit.GRAM), replaces = leftPart)
+        review.findBetterMatch()
+        assertTrue("search fromResolver=false LOG_PART" in events)
+        review.choose(nutella, origin = ProductReviewOrigin.LOG_PART)
+        assertEquals("2", review.amount)
+        review.addToLog()
+        assertTrue(events.any { it.endsWith("for 2 chicken") })
+    }
+
+    @Test fun rescanKeepsThePartAndItsAmountForWhatItReads() {
+        review.choose(chicken, origin = ProductReviewOrigin.LOG_PART, typed = TypedPart("chicken", 2.0, MeasureUnit.GRAM), replaces = leftPart)
+        review.rescan()
+        review.choose(nutella, fromScan = true, origin = ProductReviewOrigin.LOG_PART)
+        review.addToLog()
+        assertTrue(events.any { it.endsWith("for 2 chicken") })
+    }
+
+    @Test fun aSearchLeftWithNothingPickedForgetsThePart() {
+        review.choose(chicken, origin = ProductReviewOrigin.LOG_PART, typed = TypedPart("chicken", 2.0, MeasureUnit.GRAM), replaces = leftPart)
+        review.findBetterMatch()
+        review.forgetPartLeft()
+        review.choose(nutella, origin = ProductReviewOrigin.LOG_PART)
+        assertEquals("100", review.amount)
+        review.addToLog()
+        assertTrue(events.none { it.endsWith("for 2 chicken") })
+    }
 
     // ---- A search result's servings, fetched by its barcode ----
 

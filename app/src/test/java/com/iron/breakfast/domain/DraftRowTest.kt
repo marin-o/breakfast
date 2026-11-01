@@ -7,8 +7,8 @@ import org.junit.Test
 
 /** A part with one clean candidate is an entry row, never a single-chip choice; a choice needs at least two candidates or a weak match. */
 class DraftRowTest {
-    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
-    private val homeMilk = FoodCatalog.fixtures.first { it.id == "custom_home_milk" }
+    private val planner = LogPlanner(FoodMatcher(TestFoods.fixtures))
+    private val homeMilk = TestFoods.fixtures.first { it.id == "custom_home_milk" }
 
     @Test fun aCleanSingleCandidateAfterATrailingQuantityIsAnEntryRow() {
         val draft = planner.draft("kiselo mleko 200g 1 kg rolled oats")

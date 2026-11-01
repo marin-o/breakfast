@@ -7,15 +7,15 @@ import org.junit.Test
 
 /** Scripts never cross, aliases share their name's script, and a food's category is never matched. */
 class ScriptAndCategoryTest {
-    private val matcher = FoodMatcher(FoodCatalog.fixtures)
-    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+    private val matcher = FoodMatcher(TestFoods.fixtures)
+    private val planner = LogPlanner(FoodMatcher(TestFoods.fixtures))
     private val homeMilk = "custom_home_milk"
 
     private fun isCyrillic(text: String) = text.any { it in '\u0400'..'\u04FF' }
 
     /** A food may have aliases in either script, but a Cyrillic-named food never gets a Latin alias (Домашно млеко). */
     @Test fun noLatinAliasOnACyrillicNamedFood() {
-        val offenders = FoodCatalog.fixtures.filter { isCyrillic(it.name) }.flatMap { food ->
+        val offenders = TestFoods.fixtures.filter { isCyrillic(it.name) }.flatMap { food ->
             food.aliases.filterNot { isCyrillic(it) }.map { "${food.name} / $it" }
         }
         assertEquals(emptyList<String>(), offenders)

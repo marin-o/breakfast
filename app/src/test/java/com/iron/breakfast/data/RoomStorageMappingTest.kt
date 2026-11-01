@@ -1,6 +1,6 @@
 package com.iron.breakfast.data
 
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
@@ -13,15 +13,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RoomStorageMappingTest {
-    @Test
-    fun fixtureSeedIsFreshAndIdempotentByStableId() {
-        val all = fixtureRowsMissingFrom(emptySet())
-        assertEquals(FoodCatalog.fixtures.map { it.id }.toSet(), all.map { it.id }.toSet())
-        assertTrue(fixtureRowsMissingFrom(all.map { it.id }.toSet()).isEmpty())
-        val existing = setOf(FoodCatalog.fixtures.first().id)
-        assertTrue(fixtureRowsMissingFrom(existing).none { it.id in existing })
-    }
-
     @Test
     fun mealEntryRoundTripPreservesSnapshotAndFutureMealFields() {
         val original = MealEntry(
@@ -38,7 +29,7 @@ class RoomStorageMappingTest {
             sourcePhrase = "2 g example"
         )
         assertEquals(original, original.toEntity().toDomain())
-        assertEquals(FoodOrigin.GENERIC, FoodCatalog.fixtures.first().origin)
+        assertEquals(FoodOrigin.GENERIC, TestFoods.fixtures.first().origin)
     }
 
     @Test
@@ -98,7 +89,7 @@ class RoomStorageMappingTest {
 
     @Test
     fun foodEntityRetainsSourceAndNullableNutrientColumns() {
-        val food = FoodCatalog.fixtures.first()
+        val food = TestFoods.fixtures.first()
         val entity = food.toEntity()
         assertEquals(food.id, entity.id)
         assertEquals(food.sourceId, entity.sourceId)
@@ -109,7 +100,7 @@ class RoomStorageMappingTest {
 
     @Test
     fun personalOverrideRoundTripsAlongsideOffSourceIdentity() {
-        val edited = FoodCatalog.fixtures.first().copy(
+        val edited = TestFoods.fixtures.first().copy(
             sourceName = "Open Food Facts", sourceId = "123", barcode = "123",
             personalOverride = true, name = "My local name"
         )
@@ -122,7 +113,7 @@ class RoomStorageMappingTest {
 
     @Test
     fun aCustomFoodRoundTripsAndIsNeverStoredArchived() {
-        val archived = FoodCatalog.fixtures.first().copy(
+        val archived = TestFoods.fixtures.first().copy(
             id = "custom-food", origin = FoodOrigin.CUSTOM,
             aliases = listOf("legacy alias")
         )
@@ -141,7 +132,7 @@ class RoomStorageMappingTest {
 
     @Test
     fun personalServingLabelRoundTripsThroughRoomMapping() {
-        val food = FoodCatalog.fixtures.first().copy(
+        val food = TestFoods.fixtures.first().copy(
             conversions = listOf(ServingConversion(MeasureUnit.MILLILITER, 330.0, "personal serving", label = "bottle"))
         )
         val persisted = food.toConversionEntities().single()

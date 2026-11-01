@@ -8,7 +8,7 @@ import org.junit.Test
 /** Amounts that cannot be logged, capitalised Cyrillic quantities, a shared alias and apostrophes. */
 class ShorthandEdgeCaseTest {
     private val parser = ShorthandParser()
-    private val matcher = FoodMatcher(FoodCatalog.fixtures)
+    private val matcher = FoodMatcher(TestFoods.fixtures)
     private val planner = LogPlanner(matcher)
 
     @Test fun zeroNegativeAndDivideByZeroAmountsAreNotLogged() {
@@ -25,7 +25,7 @@ class ShorthandEdgeCaseTest {
     }
 
     @Test fun aCalculationRefusesAnAmountItCannotCount() {
-        val banana = FoodCatalog.fixtures.first { it.id == "banana" }
+        val banana = TestFoods.fixtures.first { it.id == "banana" }
         val calculator = NutritionCalculator()
         listOf(0.0, -1.0, Double.NaN, Double.POSITIVE_INFINITY).forEach { amount ->
             assertFalse(amount.toString(), calculator.calculate(banana, amount, null).supported)
@@ -40,7 +40,7 @@ class ShorthandEdgeCaseTest {
     }
 
     @Test fun noAliasIsSharedByTwoCatalogueFoods() {
-        val owners = FoodCatalog.fixtures
+        val owners = TestFoods.fixtures
             .flatMap { food -> food.aliases.map { it.trim().lowercase() to food.id } }
             .groupBy({ it.first }, { it.second })
             .filterValues { it.distinct().size > 1 }

@@ -119,6 +119,64 @@ class UsdaSearchTest {
         )
     }
 
+    @Test fun `the bump orders foods equal in their words, before the shorter name`() {
+        val query = usdaQuery("egg", aliases)!!
+        val common = UsdaCandidate(1, "Egg, whole, raw", bump = 1)
+        val shorter = UsdaCandidate(2, "Egg, deviled")
+        assertEquals(listOf(common, shorter), query.rank(listOf(shorter, common)))
+    }
+
+    @Test fun `the bump never lifts a food above one with more of the words in its name`() {
+        val query = usdaQuery("egg", aliases)!!
+        val eggplant = UsdaCandidate(1, "Eggplant", bump = 1)
+        val egg = UsdaCandidate(2, "Egg, deviled, with a long name")
+        assertEquals(listOf(egg, eggplant), query.rank(listOf(eggplant, egg)))
+    }
+
+    private val macedonian = mapOf(
+        "јајце" to listOf("egg"), "пилешки" to listOf("chicken"), "гради" to listOf("breast"), "домат" to listOf("tomatoes"), "поховано" to listOf("breaded"),
+        "пита" to listOf("pie", "pita"), "печено" to listOf("baked", "roasted"), "дроб" to listOf("liver"), "црн дроб" to listOf("liver"),
+    )
+
+    private fun asked(text: String) = usdaQuery(text, aliases, macedonian)?.matchExpressions()
+
+    @Test fun `a Cyrillic word asks its English word, the last also as a prefix`() {
+        assertEquals(listOf("\"egg*\""), asked("јајце"))
+        assertEquals(listOf("\"chicken\" \"breast*\""), asked("пилешки гради"))
+        assertEquals(listOf("\"egg*\""), asked("ЈАЈЦЕ"))
+    }
+
+    @Test fun `a translated word goes on through the plural and alias rules`() {
+        assertEquals(listOf("\"tomatoes*\"", "\"tomato\"", "\"tomatoe\""), asked("домат"))
+        assertEquals(listOf("\"breaded*\"", "\"coated\""), asked("поховано"))
+    }
+
+    @Test fun `a Cyrillic word with several English words finds any of them`() {
+        assertEquals(listOf("\"pie*\"", "\"pita\""), asked("пита"))
+        assertEquals(listOf("\"chicken\" \"baked*\"", "\"chicken\" \"roasted\""), asked("пилешки печено"))
+        val query = usdaQuery("пита", aliases, macedonian)!!
+        val found = listOf(UsdaCandidate(1, "Apple pie, frozen and long"), UsdaCandidate(2, "Bread, pita"))
+        assertEquals(listOf("Bread, pita", "Apple pie, frozen and long"), query.rank(found).map { it.name })
+    }
+
+    @Test fun `two words the table holds together read as one, before each is read alone`() {
+        assertEquals(listOf("\"liver*\""), asked("црн дроб"))
+        assertEquals(listOf("\"liver*\""), asked("дроб"))
+        assertEquals(listOf("\"chicken\" \"liver*\""), asked("пилешки црн дроб"))
+        assertNull("the first word alone is not in the table", asked("црн"))
+    }
+
+    @Test fun `Cyrillic and Latin words may sit together, each in its own script`() {
+        assertEquals(listOf("\"chicken\" \"breast*\""), asked("пилешки breast"))
+    }
+
+    @Test fun `a Cyrillic word the table lacks, or a word mixing scripts, finds nothing`() {
+        assertNull(asked("млеко"))
+        assertNull(asked("јајце млеко"))
+        assertNull(asked("mилk"))
+        assertNull(asked("јајцe"))
+    }
+
     @Test fun `equal names keep one order`() {
         val query = usdaQuery("egg", aliases)!!
         val first = UsdaCandidate(1, "Egg")

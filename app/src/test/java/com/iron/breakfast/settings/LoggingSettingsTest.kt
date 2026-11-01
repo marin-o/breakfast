@@ -1,6 +1,6 @@
 package com.iron.breakfast.settings
 
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.LogPlanner
@@ -81,9 +81,9 @@ class LoggingSettingsTest {
         assertEquals(MealBounds(10, 15, 20), mealBoundsOf(10, 15, 20))
     }
 
-    private val on = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+    private val on = LogPlanner(FoodMatcher(TestFoods.fixtures))
     private fun off(pins: Map<String, FoodRecord> = emptyMap()) =
-        LogPlanner(FoodMatcher(FoodCatalog.fixtures), pins = pins, countTyping = false)
+        LogPlanner(FoodMatcher(TestFoods.fixtures), pins = pins, countTyping = false)
 
     @Test fun countOnSavesTheWordBeingTyped() {
         assertEquals(listOf("egg", "banana"), on.plan("2 eggs, ban", typing = true).entries.map { it.food.id })
@@ -112,7 +112,7 @@ class LoggingSettingsTest {
     }
 
     @Test fun countOffCountsAPickedWord() {
-        val banana = FoodCatalog.fixtures.first { it.id == "banana" }
+        val banana = TestFoods.fixtures.first { it.id == "banana" }
         val chosen = off().choose("2 eggs, ban", banana)
         val part = requireNotNull(chosen.part)
         val picked = off(mapOf(part to banana))

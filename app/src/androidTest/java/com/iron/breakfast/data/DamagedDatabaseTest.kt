@@ -5,7 +5,7 @@ import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.MealEntry
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.NutritionValues
@@ -44,7 +44,7 @@ class DamagedDatabaseTest {
     private fun store() = BreakfastStore({ openBreakfastDatabase(context, name, damaged).also { opened += it } }, damaged, file)
 
     private fun entry(id: String): MealEntry {
-        val food = FoodCatalog.fixtures.first()
+        val food = TestFoods.fixtures.first()
         return MealEntry(
             id = id, foodId = food.id, foodName = food.name, enteredAmount = 1.0, enteredUnit = MeasureUnit.GRAM,
             resolvedBaseAmount = 1.0, nutritionSnapshot = NutritionValues(1.0, 0.0, 2.0, 3.0), conversionProvenance = "1 g",
@@ -85,7 +85,7 @@ class DamagedDatabaseTest {
         shm?.let { assertArrayEquals("its shared memory as found", it, File(folder, "$name-shm").readBytes()) }
         assertTrue(File(folder, DamagedDiaries.NOTICE).exists())
         assertTrue("a fresh, empty diary", after.entries().isEmpty())
-        assertTrue("with the catalogue seeded", after.foods().isNotEmpty())
+        assertTrue("with no foods, as a new install", after.foods().isEmpty())
         assertFalse("nothing to reopen: it opened on the fresh file", after.reloadIfStale())
         after.saveEntries(listOf(entry("fresh")))
         closeAll()

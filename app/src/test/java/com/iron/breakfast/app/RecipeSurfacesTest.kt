@@ -6,7 +6,7 @@ import com.iron.breakfast.resolve.food
 import com.iron.breakfast.domain.asFood
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.Measure
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.recipes.chili
 import com.iron.breakfast.today.entry
@@ -228,7 +228,7 @@ class RecipeSurfacesTest {
     /** F4: a Log draft's pin holds the recipe as it was picked; after an edit it logs the new numbers. */
     @Test fun aLogPinToARecipeFollowsItsEdit() {
         val halved = chili.copy(portions = 8.0)
-        app.plannerFoods = FoodCatalog.fixtures + chili.asFood()
+        app.plannerFoods = TestFoods.fixtures + chili.asFood()
         app.log.onDraft("1 portion chil")
         app.log.chooseSuggestion(chili.asFood())
         assertEquals(chili.asFood(), app.log.pinsSnapshot().values.single())
@@ -238,7 +238,7 @@ class RecipeSurfacesTest {
 
     /** F4: renamed, the pin's name is no longer in the text, so the part is matched again. */
     @Test fun aLogPinToARecipeRenamedGoes() {
-        app.plannerFoods = FoodCatalog.fixtures + chili.asFood()
+        app.plannerFoods = TestFoods.fixtures + chili.asFood()
         app.log.onDraft("1 portion chil")
         app.log.chooseSuggestion(chili.asFood())
         app.owners.session.write(DiaryChange.RecipesChanged) { app.diary.recipes = listOf(chili.copy(name = "Stew")) }
@@ -258,7 +258,7 @@ class RecipeSurfacesTest {
     }
 
     private fun searchingANewFood() {
-        app.plannerFoods = FoodCatalog.fixtures
+        app.plannerFoods = TestFoods.fixtures
         app.libraryFoods = emptyList()
         app.recipeForm.openNew()
         app.recipeForm.onIngredients("300 g kefyr")
@@ -306,7 +306,7 @@ class RecipeSurfacesTest {
 
     /** A food made from the magnifier: the sheet goes without adding, and the search must not say it does not exist. */
     @Test fun dismissingTheSheetForANewFoodSearchesAgain() {
-        app.plannerFoods = FoodCatalog.fixtures
+        app.plannerFoods = TestFoods.fixtures
         app.libraryFoods = emptyList()
         app.recipeForm.openNew()
         app.recipeForm.openSearch()

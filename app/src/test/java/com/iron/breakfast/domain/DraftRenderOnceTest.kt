@@ -7,7 +7,7 @@ import org.junit.Test
 
 /** A typed part renders once: as one row, or as one choice or suggestion group, never both. */
 class DraftRenderOnceTest {
-    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+    private val planner = LogPlanner(FoodMatcher(TestFoods.fixtures))
 
     private fun rowTexts(draft: DraftView) = draft.rows.map {
         when (it) {

@@ -122,8 +122,14 @@ import com.iron.breakfast.ui.components.TertiaryButton
 import com.iron.breakfast.domain.NutritionValues
 import java.util.concurrent.atomic.AtomicBoolean
 import com.iron.breakfast.ui.screens.productApproxLabel
+import com.iron.breakfast.domain.MeasureUnit
+import com.iron.breakfast.domain.isUsdaFoodId
+import com.iron.breakfast.ui.components.MeasureChoices
+import com.iron.breakfast.ui.screens.measureWeightDetail
 import com.iron.breakfast.ui.screens.basisLabel
 import com.iron.breakfast.ui.screens.formatKcal
+import com.iron.breakfast.ui.screens.labelFor
+import com.iron.breakfast.ui.screens.noValueLine
 import com.iron.breakfast.ui.screens.sourceLabel
 
 
@@ -389,7 +395,9 @@ private fun amountFieldText(review: ProductReview): String =
     val forLog = review.origin == ProductReviewOrigin.LOG_PART
     var meal by rememberSaveable(food.id) { mutableStateOf(review.initialMeal()) }
     var editing by rememberSaveable(food.id) { mutableStateOf(false) }
-    val parsed = parseProductAmount(amountText, basis.unit)
+    // A bare number counts the chosen serving while one is chosen, else the basis unit.
+    val bareUnit = if (review.servingName != null) MeasureUnit.SERVING else basis.unit
+    val parsed = parseProductAmount(amountText, bareUnit)
     val calculation = if (parsed != null) review.calculation(food) else null
     val approx = productApproxLabel(calculation, parsed?.unit, basis.unit)
     val canAdd = parsed != null && calculation?.supported == true
@@ -432,14 +440,22 @@ private fun amountFieldText(review: ProductReview): String =
                 value = amountText,
                 onValueChange = {
                     amountText = it
-                    val next = parseProductAmount(it, basis.unit)
+                    val next = parseProductAmount(it, bareUnit)
                     review.onAmount(editableNumber(next?.amount))
-                    if (next != null) review.onUnit(next.unit.displayLabel())
+                    if (next != null && next.unit != MeasureUnit.SERVING) review.onUnit(next.unit.displayLabel())
                 },
                 modifier = Modifier.padding(top = 16.dp),
-                error = parsed == null && amountText.isNotBlank(),
+                error = amountText.isNotBlank() && calculation == null,
+                errorMessage = review.noValue(food)?.takeIf { parsed != null }?.let { noValueLine(it.servingName ?: it.unit.labelFor(it.amount)) },
                 errorDescription = "Enter a positive amount and a supported unit, such as 100 g or 1 tbsp.",
                 hint = approx?.let { "≈$it" },
+            )
+            if (isUsdaFoodId(food.id)) MeasureChoices(
+                food,
+                selected = review.measure(),
+                onSelect = { review.onMeasure(it); amountText = amountFieldText(review) },
+                detail = { measureWeightDetail(food, it) },
+                modifier = Modifier.padding(top = 8.dp),
             )
             if (!fromLibrary) {
                 if (queueMeal != null) Row(Modifier.fillMaxWidth().padding(top = 18.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {

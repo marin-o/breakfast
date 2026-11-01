@@ -22,6 +22,8 @@ internal interface RecipeStore {
     fun ingredientPlanner(pins: Map<String, FoodRecord> = emptyMap()): LogPlanner
     /** The foods whose name matches [query], for the ingredient search. */
     suspend fun foodsMatching(query: String): List<FoodRecord>
+    /** Stores [food] without a log (a USDA row tapped in the ingredient search); returns it as stored. */
+    suspend fun cacheFood(food: FoodRecord): FoodRecord
     /** Saves [recipe] (a new one has a blank id) and returns it as stored. */
     suspend fun saveRecipe(recipe: Recipe): Recipe
     /** Deletes the recipe for good; entries keep their own name and numbers. */

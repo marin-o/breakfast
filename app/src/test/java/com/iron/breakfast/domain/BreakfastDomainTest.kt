@@ -12,7 +12,7 @@ class BreakfastDomainTest {
 
     @Test
     fun aPersonalOverrideIsKeptDuringRecache() {
-        val candidate = FoodCatalog.fixtures.first().copy(id = "off-123", barcode = "123")
+        val candidate = TestFoods.fixtures.first().copy(id = "off-123", barcode = "123")
         val override = candidate.copy(name = "Local edit", personalOverride = true)
         assertEquals(override, cachedFoodForLogging(candidate, override, null))
         assertEquals(candidate, cachedFoodForLogging(candidate, candidate.copy(name = "Not edited"), null))
@@ -20,7 +20,7 @@ class BreakfastDomainTest {
 
     @Test
     fun suggestionHotPathStaysBoundedWithExpandedCatalog() {
-        val matcher = FoodMatcher(FoodCatalog.fixtures)
+        val matcher = FoodMatcher(TestFoods.fixtures)
         val parsed = parser.parse("ground beef 90/10 raw 100 g")
         val groundBeef = matcher.suggestions(parsed.foodPhrase)
         val partialName = matcher.suggestions("ground beef")
@@ -72,7 +72,7 @@ class BreakfastDomainTest {
         assertEquals("ground beef 90/10 raw", parsed.foodPhrase)
         assertEquals(100.0, parsed.amount)
         assertEquals(MeasureUnit.GRAM, parsed.unit)
-        assertEquals("Ground beef 90/10 raw", FoodMatcher(FoodCatalog.fixtures).best(parsed.foodPhrase)?.food?.name)
+        assertEquals("Ground beef 90/10 raw", FoodMatcher(TestFoods.fixtures).best(parsed.foodPhrase)?.food?.name)
 
         assertEquals(0.5, parser.parse("1/2 banana").amount)
         assertEquals(null, parser.parse("1/2 banana").unit)
@@ -81,13 +81,13 @@ class BreakfastDomainTest {
 
     @Test
     fun explicitModifiersConstrainCandidates() {
-        val matcher = FoodMatcher(FoodCatalog.fixtures)
+        val matcher = FoodMatcher(TestFoods.fixtures)
         assertEquals("Oat milk", matcher.best("oat milk")?.food?.name)
         assertTrue(matcher.suggestions("crunchy peanut butter").all { it.food.name.contains("crunchy", true) })
         assertEquals("Домашно млеко", matcher.best("домашно млеко")?.food?.name)
         assertEquals("Milk 3.2%", matcher.best("milk 3.2%")?.food?.name)
 
-        val generic = FoodCatalog.fixtures.first { it.id == "custom_grandmas_ajvar" }
+        val generic = TestFoods.fixtures.first { it.id == "custom_grandmas_ajvar" }
             .copy(id = "generic_spread", name = "Spread", aliases = listOf("spread"), origin = FoodOrigin.GENERIC)
         val custom = generic.copy(id = "custom_spread", name = "Home spread", origin = FoodOrigin.CUSTOM)
         assertEquals("Home spread", FoodMatcher(listOf(generic, custom)).best("spread")?.food?.name)
@@ -95,14 +95,14 @@ class BreakfastDomainTest {
 
     @Test
     fun expandedFoodsKeepSourceIdentityAndRawMeatDefaults() {
-        val chicken = FoodCatalog.fixtures.first { it.id == "usda_2646170_chicken_breast_raw" }
+        val chicken = TestFoods.fixtures.first { it.id == "usda_2646170_chicken_breast_raw" }
         assertEquals("2646170", chicken.sourceId)
         assertEquals("USDA FoodData Central Foundation Foods", chicken.sourceName)
         assertEquals("2026-04-30", chicken.sourceRelease)
         assertEquals("raw", chicken.preparation)
         assertEquals(MeasureUnit.GRAM, chicken.defaultUnit)
 
-        val matcher = FoodMatcher(FoodCatalog.fixtures)
+        val matcher = FoodMatcher(TestFoods.fixtures)
         assertEquals("Chicken breast raw", matcher.best("chicken")?.food?.name)
         assertEquals("Red bell pepper raw", matcher.best("red pepper")?.food?.name)
         assertEquals("Chicken breast raw", matcher.best("skinless chicken")?.food?.name)
@@ -120,13 +120,13 @@ class BreakfastDomainTest {
 
     @Test
     fun calculationKeepsServingProvenanceAndSnapshotsNutrition() {
-        val milk = FoodCatalog.fixtures.first { it.id == "milk_28" }
+        val milk = TestFoods.fixtures.first { it.id == "milk_28" }
         val result = NutritionCalculator().calculate(milk, 2.0, MeasureUnit.TABLESPOON)
         assertEquals(30.0, result.resolvedBaseAmount)
         assertEquals(16.2, result.nutrition.calories, 0.01)
         assertTrue(result.provenance.contains("15 ml"))
 
-        val peanutButter = FoodCatalog.fixtures.first { it.id == "peanut_butter_smooth" }
+        val peanutButter = TestFoods.fixtures.first { it.id == "peanut_butter_smooth" }
         val teaspoon = NutritionCalculator().calculate(peanutButter, 1.0, MeasureUnit.TEASPOON)
         assertTrue(teaspoon.supported)
         assertEquals(5.3, teaspoon.resolvedBaseAmount, 0.01)
@@ -135,7 +135,7 @@ class BreakfastDomainTest {
         assertTrue(!unsupported.supported)
         assertEquals(0.0, unsupported.nutrition.calories)
 
-        val mustard = FoodCatalog.fixtures.first { it.id == "usda_326698_mustard" }
+        val mustard = TestFoods.fixtures.first { it.id == "usda_326698_mustard" }
         val mustardTeaspoon = NutritionCalculator().calculate(mustard, 1.0, MeasureUnit.TEASPOON)
         assertTrue(mustardTeaspoon.supported)
         assertEquals(6.0, mustardTeaspoon.resolvedBaseAmount, 0.01)
@@ -206,9 +206,9 @@ class BreakfastDomainTest {
 
     @Test
     fun srLegacySaucesKeepSourceMetadataAndPortions() {
-        val mayonnaise = FoodCatalog.fixtures.first { it.id == "usda_171009_mayonnaise" }
-        val soySauce = FoodCatalog.fixtures.first { it.id == "usda_174277_soy_sauce" }
-        val barbecue = FoodCatalog.fixtures.first { it.id == "usda_174523_barbecue_sauce" }
+        val mayonnaise = TestFoods.fixtures.first { it.id == "usda_171009_mayonnaise" }
+        val soySauce = TestFoods.fixtures.first { it.id == "usda_174277_soy_sauce" }
+        val barbecue = TestFoods.fixtures.first { it.id == "usda_174523_barbecue_sauce" }
 
         assertEquals("USDA FoodData Central SR Legacy", mayonnaise.sourceName)
         assertEquals("2018-04", mayonnaise.sourceRelease)

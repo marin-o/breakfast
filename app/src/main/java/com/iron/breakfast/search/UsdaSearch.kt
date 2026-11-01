@@ -28,8 +28,8 @@ private const val PREFIX_MIN_LETTERS = 3
 /** At most this many MATCH expressions answer a text, however many words have other forms: each one is a query. */
 private const val MAX_EXPRESSIONS = 64
 
-/** A food the index found, before it is ranked. */
-internal data class UsdaCandidate(val fdcId: Long, val name: String)
+/** A food the index found, before it is ranked. [bump] is above 0 for a common food; it only orders results. */
+internal data class UsdaCandidate(val fdcId: Long, val name: String, val bump: Int = 0)
 
 /** A typed text as the index is asked it: its [words], and for a word the [aliases] and singular forms it also tries. */
 internal data class UsdaQuery(val words: List<String>, val aliases: Map<String, List<String>>) {
@@ -53,11 +53,13 @@ internal data class UsdaQuery(val words: List<String>, val aliases: Map<String, 
 
     /**
      * The order of the answers: more words whole in the name, then more words in the name at all (the rest are only in
-     * the additional descriptions), then the shorter name. "egg" reads "Egg, whole" before "Eggplant", shorter or not.
+     * the additional descriptions), then the bump, then the shorter name. "egg" reads "Egg, whole" before "Eggplant",
+     * shorter or not.
      */
     fun rank(candidates: List<UsdaCandidate>): List<UsdaCandidate> = candidates.sortedWith(
         compareByDescending<UsdaCandidate> { candidate -> wholeInName(usdaWords(candidate.name).toSet()) }
             .thenByDescending { candidate -> usdaWords(candidate.name).toSet().let { wholeInName(it) + prefixInName(it) } }
+            .thenByDescending { it.bump }
             .thenBy { it.name.length }
             .thenBy { it.fdcId }
     )
@@ -73,14 +75,30 @@ internal data class UsdaQuery(val words: List<String>, val aliases: Map<String, 
 }
 
 /**
- * What [text] asks the catalogue, or null when it can't ask: the catalogue's text is Latin, so a word in another script
- * or a mix of them finds nothing (the script rule, [sameScript]), and a text with no word has nothing to ask. The words
- * are [matchWords] cut to letters and digits, so nothing typed can reach the index as its syntax.
+ * What [text] asks the catalogue, or null when it can't ask. The catalogue's text is Latin. A Cyrillic word is asked as
+ * its English words in [translations], any of which may answer, hidden from the user: the one exception to the script
+ * rule, and only for this catalogue. Two words the table holds together ("црн дроб") are read as one first. A Cyrillic
+ * word the table lacks, a word that mixes scripts, or a word in another script finds nothing, and a text with no word
+ * has nothing to ask. The words are [matchWords] cut to letters and digits, so nothing typed can reach the index as its
+ * syntax.
  */
-internal fun usdaQuery(text: String, aliases: Map<String, List<String>>): UsdaQuery? {
-    if (matchWords(text).any { !sameScript(scriptOf(it), TextScript.LATIN) }) return null
-    val words = usdaWords(text).distinct()
-    return if (words.isEmpty()) null else UsdaQuery(words, aliases)
+internal fun usdaQuery(text: String, aliases: Map<String, List<String>>, translations: Map<String, List<String>> = emptyMap()): UsdaQuery? {
+    val typed = matchWords(text)
+    val english = buildList {
+        var at = 0
+        while (at < typed.size) {
+            val pair = typed.getOrNull(at + 1)?.let { translations["${typed[at]} $it"] }
+            val word = typed[at]
+            add(pair ?: if (scriptOf(word) == TextScript.CYRILLIC) translations[word] ?: return null else listOf(word))
+            at += if (pair != null) 2 else 1
+        }
+    }
+    if (english.any { !sameScript(scriptOf(it.first()), TextScript.LATIN) }) return null
+    val words = english.flatMap { usdaWords(it.first()) }.distinct()
+    if (words.isEmpty()) return null
+    // The other English words of a translated word count as it does, as an alias does.
+    val others = english.filter { it.size > 1 }.associate { it.first() to it.drop(1) + aliases[it.first()].orEmpty() }
+    return UsdaQuery(words, aliases + others)
 }
 
 /** The words of [text] as the index holds them: [matchWords], with the `.` and `%` it keeps as breaks ("2.8%" is 2, 8). */

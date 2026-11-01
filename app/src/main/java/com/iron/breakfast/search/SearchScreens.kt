@@ -1,5 +1,12 @@
 package com.iron.breakfast.search
 
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.iron.breakfast.domain.FoodRecord
+import com.iron.breakfast.log.UsdaRows
+import com.iron.breakfast.log.rememberUsdaRows
+import com.iron.breakfast.scan.ProductReview
 import com.iron.breakfast.scan.ProductReviewOrigin
 import com.iron.breakfast.ui.components.SearchOrCreateButtons
 import com.iron.breakfast.ui.pretty
@@ -35,9 +42,10 @@ import com.iron.breakfast.ui.screens.formatKcal
 
 
 /** Local search that found nothing: the way on is Open Food Facts or a personal food. */
-@Composable internal fun LibraryNoMatchScreen(library: LibraryState, surfaces: Surfaces, search: OffSearch, foodForm: FoodForm) {
+@Composable internal fun LibraryNoMatchScreen(library: LibraryState, surfaces: Surfaces, search: OffSearch, foodForm: FoodForm, usda: UsdaPartSearch, review: ProductReview) {
     val colors = LocalBreakfastColors.current
     val query = library.query
+    val usdaRows = rememberUsdaRows(usda, query)
     // Leaving a no-match result must keep the Daily quick-add draft intact.
     val clear = { library.onQuery("") }
     // The top-left arrow leaves the search as Back does ([Surfaces.leaveNoMatch]).
@@ -45,7 +53,15 @@ import com.iron.breakfast.ui.screens.formatKcal
     SubScreen("Search", leave, scroll = false) {
         SearchCaption(Modifier.padding(top = 6.dp))
         SearchField(query, library::onQuery, onClear = clear, label = "Search library", modifier = Modifier.padding(top = 6.dp))
-        NoLocalMatch(query, search, foodForm)
+        NoLocalMatchWithRows(usdaRows, query, search, foodForm, onPick = { review.choose(it, typed = library.typedPart()) })
+    }
+}
+
+/** [NoLocalMatch] under the USDA foods [rows] that do answer [query], the two scrolling as one. */
+@Composable internal fun ColumnScope.NoLocalMatchWithRows(rows: List<FoodRecord>, query: String, search: OffSearch, foodForm: FoodForm, reviewOrigin: ProductReviewOrigin? = null, onPick: (FoodRecord) -> Unit) {
+    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+        UsdaRows(rows, query, Modifier.padding(top = 8.dp), onPick)
+        NoLocalMatch(query, search, foodForm, reviewOrigin)
     }
 }
 

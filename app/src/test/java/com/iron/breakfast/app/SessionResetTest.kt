@@ -1,7 +1,7 @@
 package com.iron.breakfast.app
 
 import com.iron.breakfast.data.OffContributionDraft
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
@@ -39,7 +39,7 @@ class SessionResetTest {
         assertEquals("Some foods need a match.", app.log.error)
         // A suggestion picked in the draft that is left: a pin. The edit ends the Log's queue.
         app.log.onDraft("ayran, 2 eggs")
-        app.log.chooseSuggestion(FoodCatalog.fixtures.first { it.id == "egg" })
+        app.log.chooseSuggestion(TestFoods.fixtures.first { it.id == "egg" })
         assertTrue(app.log.pinsSnapshot().isNotEmpty())
         // The resolver's queue, as the Library's mixed batch leaves it.
         app.resolve.afterSave(listOf("ayran"), MealSlot.LUNCH, app.library, app.library.text)

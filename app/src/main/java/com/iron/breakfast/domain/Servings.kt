@@ -112,6 +112,58 @@ fun FoodRecord.servingNamed(typed: String): ServingConversion? =
     conversions.firstOrNull { it.isServing() && servingNameMatches(typed, it.name!!) }
 
 /**
+ * The serving a bare count of this food counts ("2 eggs", "2 chicken breast"), or null when none counts whole items: one
+ * named by a word of [typed], else any; of several, the one that is only that word ("breast"), then a medium or regular
+ * one ("medium", "medium breast"), then the first. A cup, a fl oz and the like measure an amount and count nothing.
+ */
+internal fun FoodRecord.countedServing(typed: String): ServingConversion? {
+    val whole = conversions.filter { it.name?.let(::countsWholeItems) == true }
+    val words = typed.split(NON_LETTER).filter { it.isNotEmpty() }
+    val named = whole.filter { serving -> servingHead(serving.name!!).split(' ').any { head -> words.any { servingNameMatches(it, head) } } }
+    return named.firstOrNull { serving -> words.any { servingNameMatches(it, servingHead(serving.name!!)) } }
+        ?: named.ifEmpty { whole }.let { list -> list.firstOrNull { MIDDLE_SIZE.containsMatchIn(it.name!!) } ?: list.firstOrNull() }
+}
+
+/**
+ * What a bare count of this food means, when its default would not do: a USDA food is on grams, so "2 eggs" as 2 g would
+ * log nothing, silently. It counts [countedServing]; with none, pieces, which it has no value for, so the part says so
+ * and doesn't log. Null for any other food, and for one whose default the user moved off its basis.
+ */
+internal fun FoodRecord.bareCountMeasure(typed: String): Measure? {
+    if (!isUsdaFoodId(id) || defaultUnit != nutrition.unit) return null
+    return articleMeasure(typed) ?: Measure(MeasureUnit.PIECE)
+}
+
+/** What an "a" or "an" before this food counts: as [bareCountMeasure], but with no serving to count "a milk" stays the default. */
+internal fun FoodRecord.articleMeasure(typed: String): Measure? {
+    if (!isUsdaFoodId(id) || defaultUnit != nutrition.unit) return null
+    return countedServing(typed)?.let { typedMeasure(MeasureUnit.SERVING, it.name) }
+}
+
+private fun countsWholeItems(name: String): Boolean = name.firstOrNull()?.isDigit() != true && !AMOUNT_SERVING.containsMatchIn(name)
+
+/** A serving's name without what describes it: "breast" of "breast, NS as to size", "can or bottle" of "can or bottle (12 fl oz)". */
+private fun servingHead(name: String): String = name.takeWhile { it != ',' && it != '(' }.trim()
+
+private val NON_LETTER = Regex("[^\\p{L}]+")
+private val MIDDLE_SIZE = Regex("(?iu)^(?:medium|regular)\\b")
+private val AMOUNT_SERVING = Regex("(?iu)^(?:cups?|fl oz|fluid ounces?|oz|ounces?|lbs?|pounds?|tablespoons?|tbsp|teaspoons?|tsp|g|grams?|kg|ml|liters?|litres?|pints?|quarts?|gallons?|(?:cubic|linear) inch(?:es)?)\\b")
+
+/**
+ * The amount and serving [text] is as `LogPlanner.partText` writes them, the serving's own commas kept: "2 cups, cooked,
+ * diced" with a serving "cup, cooked, diced". Null when it is not that.
+ */
+internal fun FoodRecord.writtenServing(text: String): Pair<Double, String>? {
+    val head = text.trim()
+    val amount = head.substringBefore(' ').toDoubleOrNull()?.takeIf(::isPositiveAmount) ?: return null
+    val written = head.substringAfter(' ', "").trim()
+    val name = conversions.firstNotNullOfOrNull { serving ->
+        serving.name?.takeIf { servingNameFor(it, amount).equals(written, ignoreCase = true) }
+    } ?: return null
+    return amount to name
+}
+
+/**
  * What [unit] (typed as [word], when typed) counts for this food: a serving named [word] when it has one, kept in its
  * own unit when that is the serving's unit's own name ("tbsp", "piece"); else [unit], labelled [label] when the
  * shorthand converted it ("kg"). A [MeasureUnit.SERVING] named [word] the food lacks counts for nothing.

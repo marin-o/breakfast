@@ -7,7 +7,8 @@ import com.iron.breakfast.ui.screens.formatKcal
 import com.iron.breakfast.ui.screens.previewQuantityLine
 import com.iron.breakfast.search.foodsInScript
 import com.iron.breakfast.domain.DraftPins
-import com.iron.breakfast.domain.MeasureUnit
+import com.iron.breakfast.domain.Measure
+import com.iron.breakfast.domain.SegmentSpan
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -34,6 +35,8 @@ internal interface LogStore {
     fun planner(pins: Map<String, FoodRecord> = emptyMap()): LogPlanner
     /** Saves [text] to [meal] on [dayKey]: what resolves is logged, the rest comes back unresolved. */
     suspend fun save(text: String, meal: MealSlot, dayKey: String, pins: Map<String, FoodRecord>): SavedMeal
+    /** A tap on a food counts as a pick; nothing while "Learn from my picks" is off. */
+    suspend fun reinforce(foodId: String) {}
 }
 
 /**
@@ -178,6 +181,7 @@ internal class LogComposer(
      * tapped food so it stays that food. Pins live as long as the draft (cleared on Add or an empty draft).
      */
     fun chooseSuggestion(food: FoodRecord) {
+        learnPick(food.id)
         val picked = store.planner(pinsSnapshot()).choose(draft, food, typing = !committed)
         val before = draft
         applyDraft(picked.input)
@@ -185,13 +189,31 @@ internal class LogComposer(
         picked.part?.let { pins.add(picked.input, it, food, picked.input.commonPrefixWith(before).length.coerceAtMost(picked.input.lastIndexOf(it))) }
     }
 
+    /** A tap picked this food: it is learned, outside the write gate, so nothing typed or tapped next waits on it. */
+    fun learnPick(foodId: String) {
+        session.background(DiaryChange.FoodsChanged) { store.reinforce(foodId); false }
+    }
+
+    /** The part a food picked now would take the place of: the one being typed. */
+    fun partBeingTyped(): SegmentSpan? = store.planner(pinsSnapshot()).partBeingTyped(draft)
+
+    /** [part] as the planner reads it: its food text, and the amount and unit typed. */
+    fun typedOf(part: SegmentSpan) = store.planner(pinsSnapshot()).typed(part.text)
+
     /**
-     * A food scanned from the Log page and stored: [amount] [unit] of it after the parts there are, pinned so it reads
-     * as exactly that food. The Log's meal and the rest of the draft stay.
+     * A food from a review of the Log page, stored: [amount] of [measure] of it, pinned so it reads as exactly that food.
+     * It takes the place of the part [replaces] while the draft still holds it, else it goes after the parts there are.
+     * The Log's meal and the rest of the draft stay.
      */
-    fun addScannedPart(food: FoodRecord, amount: Double, unit: MeasureUnit) {
+    fun addScannedPart(food: FoodRecord, amount: Double, measure: Measure, replaces: SegmentSpan? = null) {
         val planner = store.planner(pinsSnapshot())
-        val part = planner.partText(food, amount, unit)
+        val part = planner.partText(food, amount, measure)
+        if (replaces != null && replaces.end <= draft.length && draft.substring(replaces.start, replaces.end) == replaces.text) {
+            val next = replaceDraftPart(draft, replaces.start, replaces.end, part)
+            applyDraft(next)
+            pins.add(next, part, food, replaces.start)
+            return
+        }
         val next = planner.withPartAdded(draft, part)
         applyDraft(next)
         pins.add(next, part, food, next.length - part.length)

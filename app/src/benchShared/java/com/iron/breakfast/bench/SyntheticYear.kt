@@ -1,6 +1,6 @@
 package com.iron.breakfast.bench
 
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
@@ -31,7 +31,7 @@ class SyntheticYear(
     private val calculator = NutritionCalculator()
 
     val custom: List<FoodRecord> = buildCustomFoods()
-    val foods: List<FoodRecord> = FoodCatalog.fixtures + custom
+    val foods: List<FoodRecord> = TestFoods.fixtures + custom
     val diary: List<MealEntry> = buildEntries()
     val preferences: List<Preference> = diary.groupBy { it.foodId }.entries
         .sortedByDescending { it.value.size }.take(80)

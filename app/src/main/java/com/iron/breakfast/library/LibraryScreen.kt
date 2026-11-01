@@ -54,10 +54,13 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import com.iron.breakfast.app.Surfaces
 import com.iron.breakfast.contribution.ContributionFlow
 import com.iron.breakfast.food.FoodForm
+import com.iron.breakfast.log.UsdaRows
+import com.iron.breakfast.log.rememberUsdaRows
 import com.iron.breakfast.resolve.ResolveFlow
+import com.iron.breakfast.scan.ProductReview
+import com.iron.breakfast.search.UsdaPartSearch
 import com.iron.breakfast.settings.SettingsState
 import com.iron.breakfast.today.DayState
-import com.iron.breakfast.domain.FoodOrigin
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealSlot
 import com.iron.breakfast.domain.MeasureUnit
@@ -90,10 +93,14 @@ internal fun LibraryScreen(
     foodForm: FoodForm,
     automaticMeal: () -> MealSlot?,
     modifier: Modifier,
+    /** The USDA rows under the search, and the review a tap on one opens. */
+    usda: UsdaPartSearch,
+    review: ProductReview,
     /** The meal it adds to: the Library's own, or, while it glides out, the one it added to as it showed. */
     target: MealSlot? = library.target,
 ) {
     val motion = rememberMotion()
+    val usdaRows = rememberUsdaRows(usda, library.query, except = library.foods)
     val root = target == null
     // A part being resolved is searched for, not added to a meal the user did not choose here.
     val title = if (resolve.resolvingPart) "Search" else if (root) "Library" else "Add to ${target!!.label()}"
@@ -109,6 +116,7 @@ internal fun LibraryScreen(
         items(library.foods, key = { it.id }) { food ->
             LibraryFoodRow(library, automaticMeal, food, root, listRowMotion(motion))
         }
+        item { UsdaRows(usdaRows, library.query) { review.choose(it, typed = library.typedPart()) } }
     }
 }
 
@@ -242,7 +250,7 @@ internal fun LibraryFoodDetailDialog(
         }
         if (mealMenuOpen) MealChoices(selected = targetMeal, onSelect = { targetMeal = it; mealMenuOpen = false }, modifier = Modifier.padding(top = 8.dp))
         if (contributionShown(settings.showContribute, contributionAvailable(food))) SecondaryButton("Contribute to Open Food Facts", { library.closeFood(); contribution.openForFood(food) }, Modifier.padding(top = 16.dp))
-        if (food.origin == FoodOrigin.CUSTOM) DestructiveButton("Delete food", { library.askDelete(food) }, Modifier.fillMaxWidth().padding(top = 8.dp), outlined = true)
+        DestructiveButton("Delete food", { library.askDelete(food) }, Modifier.fillMaxWidth().padding(top = 8.dp), outlined = true)
     }
     if (amountSheetOpen) LibraryAmountSheet(library, food, targetMeal) { amountSheetOpen = false }
 }

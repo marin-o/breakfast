@@ -1,6 +1,6 @@
 package com.iron.breakfast.log
 
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.LogPlanner
 import com.iron.breakfast.domain.MealSlot
@@ -25,13 +25,13 @@ class LogRulesTest {
 
     @Test fun aBareWordIsAFoodNotASearch() {
         // Done and Add never route to library search: a bare word is planned like any other part.
-        assertEquals(listOf("banana"), draftLogPlan("banana", LogPlanner(FoodMatcher(FoodCatalog.fixtures))).entries.map { it.food.id })
-        assertEquals(listOf("banana"), draftLogPlan("lunch, banana", LogPlanner(FoodMatcher(FoodCatalog.fixtures))).entries.map { it.food.id })
+        assertEquals(listOf("banana"), draftLogPlan("banana", LogPlanner(FoodMatcher(TestFoods.fixtures))).entries.map { it.food.id })
+        assertEquals(listOf("banana"), draftLogPlan("lunch, banana", LogPlanner(FoodMatcher(TestFoods.fixtures))).entries.map { it.food.id })
     }
 
     @Test fun aBareAmbiguousWordCommitsItsTopMatchOnAdd() {
         // "milk" names several foods: committed (Done or Add) it logs the top match, like any finished part.
-        val entries = draftLogPlan("milk", LogPlanner(FoodMatcher(FoodCatalog.fixtures))).entries
+        val entries = draftLogPlan("milk", LogPlanner(FoodMatcher(TestFoods.fixtures))).entries
         assertEquals(1, entries.size)
         assertTrue(entries.single().food.id in listOf("milk_28", "milk_32"))
     }

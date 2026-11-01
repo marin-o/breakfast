@@ -12,7 +12,7 @@ import com.iron.breakfast.data.OffContributionResult
 import com.iron.breakfast.data.OffPreflightResult
 import com.iron.breakfast.data.OffResult
 import com.iron.breakfast.data.OffSearchResult
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.LogPlanner
@@ -76,6 +76,10 @@ internal class AppKit(
     val diary = KitDiary().also { it.foods = foods; it.damaged = damagedDiary }
     /** Writes the fakes received, in order. */
     val calls = mutableListOf<String>()
+    /** What a tap taught, in order. */
+    val reinforced = mutableListOf<String>()
+    /** What the USDA catalogue answers, whatever it is asked. */
+    var usdaFoods: List<FoodRecord> = emptyList()
     /** What Open Food Facts was asked, in order. */
     val offSearched = mutableListOf<String>()
     /** What the queue logged: amount, unit and food. */
@@ -87,7 +91,7 @@ internal class AppKit(
     /** Foods the Library's list finds for any query; empty gives "No local match". */
     var libraryFoods: List<FoodRecord> = emptyList()
     /** The foods the Log's planner matches. */
-    var plannerFoods: List<FoodRecord> = FoodCatalog.fixtures
+    var plannerFoods: List<FoodRecord> = TestFoods.fixtures
     private val plannerFor = { pins: Map<String, FoodRecord> -> LogPlanner(FoodMatcher(plannerFoods), pins = pins) }
     private val transferEvents = mutableListOf<String>()
     /** Picked documents for an import, by name. */
@@ -129,6 +133,7 @@ internal class AppKit(
                     calls += "log save \"$text\" $meal"
                     return SavedMeal(listOf(com.iron.breakfast.today.entry("logged")), NutritionValues.ZERO, unmatched)
                 }
+                override suspend fun reinforce(foodId: String) { reinforced += foodId }
             },
             library = object : LibraryStore {
                 override suspend fun foodsMatching(query: String) = libraryFoods
@@ -157,7 +162,7 @@ internal class AppKit(
                 }
             },
             products = object : ProductStore {
-                override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String) {
+                override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String, servingName: String?) {
                     calls += "review log ${food.id} $meal"
                     // As the engine stores it: over a stored food with its id.
                     diary.foods = diary.foods.map { if (it.id == food.id) food else it }
@@ -178,6 +183,7 @@ internal class AppKit(
                 override fun contribute(draft: OffContributionDraft, username: String, password: String) = OffContributionResult.Success
             },
             offSearch = object : OffSearchService { override suspend fun search(query: String): OffSearchResult { offSearched += query; return OffSearchResult.Success(emptyList()) } },
+            usda = object : com.iron.breakfast.search.UsdaCatalogue { override suspend fun search(text: String) = usdaFoods },
             licence = { "SIL Open Font License" },
             weights = object : WeightStore {
                 private var nextId = 1L
@@ -193,6 +199,7 @@ internal class AppKit(
             recipes = object : RecipeStore {
                 override fun ingredientPlanner(pins: Map<String, FoodRecord>) = plannerFor(pins)
                 override suspend fun foodsMatching(query: String) = libraryFoods
+                override suspend fun cacheFood(food: FoodRecord): FoodRecord { calls += "recipe store ${food.id}"; return food }
                 override suspend fun saveRecipe(recipe: Recipe): Recipe {
                     val stored = recipe.copy(id = recipe.id.ifBlank { "recipe-${recipe.name.lowercase()}" })
                     calls += "save recipe ${stored.id}"

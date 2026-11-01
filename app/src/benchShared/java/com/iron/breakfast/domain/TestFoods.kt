@@ -1,6 +1,7 @@
 package com.iron.breakfast.domain
 
-object FoodCatalog {
+/** Foods for tests: the app ships none of its own. */
+object TestFoods {
     val fixtures: List<FoodRecord> = listOf(
         FoodRecord(
             id = "milk_28",

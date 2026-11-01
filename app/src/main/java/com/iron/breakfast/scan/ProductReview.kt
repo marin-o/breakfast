@@ -16,7 +16,11 @@ import com.iron.breakfast.data.OffContributionDraft
 import com.iron.breakfast.domain.Calculation
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealSlot
+import com.iron.breakfast.domain.Measure
 import com.iron.breakfast.domain.MeasureUnit
+import com.iron.breakfast.domain.SegmentSpan
+import com.iron.breakfast.domain.isUsdaFoodId
+import com.iron.breakfast.domain.bareCountMeasure
 import com.iron.breakfast.domain.NutritionBasis
 import com.iron.breakfast.domain.NutritionCalculator
 import com.iron.breakfast.domain.NutritionValues
@@ -36,7 +40,7 @@ import kotlinx.coroutines.withContext
 /** The writes product review makes; the view model adapts `BreakfastEngine`. */
 internal interface ProductStore {
     /** Stores [food] as needed and logs it. */
-    suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String)
+    suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String, servingName: String? = null)
     suspend fun updateFood(food: FoodRecord)
     /** Stores [food] without a log; returns it as stored. */
     suspend fun cacheFood(food: FoodRecord): FoodRecord
@@ -82,8 +86,8 @@ internal class ProductReview(
     private val resolvingPart: () -> Boolean,
     private val offerContribution: (OffContributionDraft?) -> Unit,
     private val onPartResolved: (FoodRecord) -> Unit,
-    /** [addToLog] stored the food: the Log takes it as a part of its draft. */
-    private val onLogPart: (food: FoodRecord, amount: Double, unit: MeasureUnit) -> Unit,
+    /** [addToLog] stored the food: the Log takes it as a part of its draft, in the place of the part it [replaces], if any. */
+    private val onLogPart: (food: FoodRecord, amount: Double, measure: Measure, replaces: SegmentSpan?) -> Unit,
     private val onLogged: (advancesQueue: Boolean) -> Unit,
     private val onClosed: () -> Unit,
     /** The search for "Find better match"; [origin] goes on to what it picks, when this review was logging. */
@@ -94,12 +98,22 @@ internal class ProductReview(
     private val confirmLogged: () -> Unit,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
+    /** A USDA row tapped and added: that tap counts as a pick (nothing is written before Add). */
+    private val onCataloguePicked: (foodId: String) -> Unit = {},
 ) {
     var product by mutableStateOf<FoodRecord?>(null); private set
     var fromScan by mutableStateOf(false); private set
     var origin by mutableStateOf(ProductReviewOrigin.LIBRARY); private set
     var amount by mutableStateOf("100"); private set
     var unit by mutableStateOf("g"); private set
+    /** The named serving [amount] counts; [unit] is then empty. */
+    var servingName by mutableStateOf<String?>(null); private set
+    /** The part of the Log's draft a new part takes the place of. */
+    private var replaces: SegmentSpan? = null
+    /** The amount the review was opened with for its part. */
+    private var typed: TypedPart? = null
+    /** What "Find better match" or "Rescan" left: the review that follows is for the same part. */
+    private var partLeft: PartLeft? = null
     var name by mutableStateOf(""); private set
     var calories by mutableStateOf(""); private set
     var protein by mutableStateOf(""); private set
@@ -120,22 +134,32 @@ internal class ProductReview(
     }
     private var fetch: ServingFetch? = null
 
+    private class PartLeft(val origin: ProductReviewOrigin, val typed: TypedPart?, val replaces: SegmentSpan?)
+
     /**
      * Reviews [food]. [origin] is what the entry point opened it for (a scan, or the search reached from one); without
      * one, the queue's part while there is a queue, a meal's while one is open, else Save to Library, so a search from
      * Daily's "Not right?" never writes a second entry. A queued part prefills its typed amount. [fetchServings] false
-     * goes to no network: a food just made by hand has no product to fetch.
+     * goes to no network: a food just made by hand has no product to fetch. A new part of the Log's draft may bring its
+     * [typed] amount, and the part it [replaces]; one reached through "Find better match" or "Rescan" takes those on from
+     * the review it follows. A USDA food already stored is reviewed as stored, so what shows is what Add logs.
      */
-    fun choose(food: FoodRecord, fromScan: Boolean = false, origin: ProductReviewOrigin? = null, fetchServings: Boolean = true) {
+    fun choose(picked: FoodRecord, fromScan: Boolean = false, origin: ProductReviewOrigin? = null, fetchServings: Boolean = true, typed: TypedPart? = null, replaces: SegmentSpan? = null) {
         val resolveQueue = queue()
+        val food = storedFood(picked.id)?.takeIf { isUsdaFoodId(picked.id) } ?: picked
         product = food
         this.fromScan = fromScan
         this.origin = origin ?: productReviewOrigin(libraryTab = openMeal() == null, queueActive = resolveQueue != null)
-        // Only a queued part has a typed amount: a new part of the Log's draft starts plain, whatever is queued.
-        val prefill = resolveQueue?.takeIf { this.origin == ProductReviewOrigin.QUEUE }?.let { productPrefill(food, it.current) } ?: ProductPrefill(100.0, food.nutrition.unit)
+        val left = partLeft?.takeIf { it.origin == this.origin }
+        partLeft = null
+        this.typed = typed ?: left?.typed
+        // A queued part's typed amount, or what the tap brought: a scanned part of the Log's draft starts plain, whatever is queued.
+        val prefill = (this.typed ?: resolveQueue?.takeIf { this.origin == ProductReviewOrigin.QUEUE }?.current)?.let { productPrefill(food, it) } ?: ProductPrefill(100.0, food.nutrition.unit)
+        this.replaces = replaces ?: left?.replaces
         filledAmount = prefill.amount
         amount = editableNumber(prefill.amount)
-        unit = prefill.unit.displayLabel()
+        servingName = prefill.servingName
+        unit = if (prefill.servingName != null) "" else prefill.unit.displayLabel()
         name = food.name
         calories = editableNumber(food.nutrition.values.calories)
         protein = editableNumber(food.nutrition.values.protein)
@@ -210,19 +234,38 @@ internal class ProductReview(
     /** "Find better match": the search, which returns to the resolver when the review came from a queue. */
     fun findBetterMatch() {
         val logging = origin.takeIf { it.logs }
+        val left = leavingPart()
         close()
+        partLeft = left
         openSearch(queue() != null, logging)
     }
 
     /** "Rescan": the scanner again. */
     fun rescan() {
         val forLog = origin == ProductReviewOrigin.LOG_PART
+        val left = leavingPart()
         close()
+        partLeft = left
         startScan(forLog)
     }
 
+    /** What the next review takes on, when this one is left for another way to find its food. */
+    private fun leavingPart(): PartLeft? = PartLeft(origin, typed, replaces).takeIf { it.typed != null || it.replaces != null }
+
+    /** The search or scanner a review was left for closed with nothing picked: the next review is a new one. */
+    fun forgetPartLeft() { partLeft = null }
+
     fun onAmount(value: String) { amount = value }
-    fun onUnit(value: String) { unit = value }
+    fun onUnit(value: String) { unit = value; servingName = null }
+
+    /** What [amount] counts now. */
+    fun measure(): Measure? = servingName?.let { Measure(MeasureUnit.SERVING, it) } ?: parseProductUnit(unit)?.let { Measure(it) }
+
+    /** A measure's chip was tapped. */
+    fun onMeasure(measure: Measure) {
+        unit = if (measure.unit == MeasureUnit.SERVING) "" else measure.unit.displayLabel()
+        servingName = measure.name.takeIf { measure.unit == MeasureUnit.SERVING }
+    }
     fun onName(value: String) { name = value }
     fun onCalories(value: String) { calories = value }
     fun onProtein(value: String) { protein = value }
@@ -239,6 +282,14 @@ internal class ProductReview(
     fun initialMeal(): MealSlot = queueMeal() ?: presetMeal(openMeal(), automaticMeal())
 
     fun calculation(food: FoodRecord): Calculation? = draft(food)?.calculation
+
+    /** The fields as they stand when they read but the food has no number for what the amount counts; null otherwise. */
+    fun noValue(food: FoodRecord): ProductDraft? = filled(food)?.takeUnless { it.calculation.supported }
+
+    /** An edit made here reaches a USDA food already stored: the store otherwise keeps the stored food over what it is handed. */
+    private suspend fun keepEditsOfStored(food: FoodRecord) {
+        if (isUsdaFoodId(food.id) && storedFood(food.id)?.let { it != food } == true) store.updateFood(food)
+    }
 
     /** Add in the review sheet: logs the reviewed product to [chosen] (or the queue's meal) on the selected day. */
     fun add(chosen: MealSlot) {
@@ -267,9 +318,13 @@ internal class ProductReview(
                 origin = ProductReviewOrigin.LIBRARY
                 onLogged(plan.advancesQueue)
                 confirmLogged()
+                if (isUsdaFoodId(draft.food.id)) onCataloguePicked(draft.food.id)
             },
             onFailure = { notices.show(it.message ?: "This amount cannot be logged.") },
-        ) { store.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, day) }
+        ) {
+            keepEditsOfStored(draft.food)
+            store.cacheFoodAndLog(draft.food, draft.amount, draft.unit, target, day, draft.servingName)
+        }
     }
 
     /** Save to Library: only when reviewing from the Library, never for a queued part. */
@@ -314,10 +369,11 @@ internal class ProductReview(
                 offerContribution(contributionDraftAfterLocalSave(draft.food, scanned))
                 fromScan = false
                 origin = ProductReviewOrigin.LIBRARY
-                onLogPart(stored, draft.amount, draft.unit)
+                onLogPart(stored, draft.amount, Measure(draft.unit, draft.servingName), replaces)
+                if (isUsdaFoodId(draft.food.id)) onCataloguePicked(stored.id)
             },
             onFailure = { notices.show(it.message ?: "Could not save this food.") },
-        ) { store.cacheFood(draft.food) }
+        ) { keepEditsOfStored(draft.food); store.cacheFood(draft.food) }
     }
 
     /** A product picked while a part is being resolved (of the Log's draft or a recipe's ingredients): stored as the food it is, then picked for the part. */
@@ -336,17 +392,21 @@ internal class ProductReview(
                 offerContribution(contributionDraftAfterLocalSave(draft.food, scanned))
                 fromScan = false
                 onPartResolved(stored)
+                if (isUsdaFoodId(draft.food.id)) onCataloguePicked(stored.id)
             },
             onFailure = { notices.show(it.message ?: "Could not save this food.") },
-        ) { store.cacheFood(draft.food) }
+        ) { keepEditsOfStored(draft.food); store.cacheFood(draft.food) }
     }
 
+    /** [filled] when the amount comes to something. */
+    private fun draft(food: FoodRecord): ProductDraft? = filled(food)?.takeIf { it.calculation.supported }
+
     /** The product as the fields now describe it, with what the amount comes to; null while a field does not read. */
-    private fun draft(food: FoodRecord): ProductDraft? {
+    private fun filled(food: FoodRecord): ProductDraft? {
         val amount = fieldNumber(amount, filledAmount)?.takeIf(::isPositiveAmount)
-        val unit = parseProductUnit(unit)
+        val measure = measure()
         val kcal = fieldNumber(calories, food.nutrition.values.calories)
-        if (amount == null || unit == null ||
+        if (amount == null || measure == null ||
             kcal == null || !kcal.isFinite() || kcal < 0.0
         ) return null
         val draftFood = food.copy(
@@ -357,8 +417,8 @@ internal class ProductReview(
                 NutritionValues(kcal, fieldNumber(protein, food.nutrition.values.protein), fieldNumber(carbs, food.nutrition.values.carbohydrates), fieldNumber(fat, food.nutrition.values.fat)),
             ),
         )
-        val calculation = calculator.calculate(draftFood, amount, unit)
-        return ProductDraft(draftFood, amount, unit, calculation).takeIf { calculation.supported }
+        val calculation = calculator.calculate(draftFood, amount, measure.unit, measure.name)
+        return ProductDraft(draftFood, amount, measure.unit, calculation, measure.name)
     }
 }
 
@@ -381,13 +441,16 @@ internal fun servingsToAdd(food: FoodRecord, full: FoodRecord): List<ServingConv
             food.conversions.none { it.name?.equals(name, ignoreCase = true) == true }
     }.distinctBy { it.name!!.lowercase() }
 
-internal data class ProductPrefill(val amount: Double, val unit: MeasureUnit)
+internal data class ProductPrefill(val amount: Double, val unit: MeasureUnit, val servingName: String? = null)
 
-/** A queued part's typed amount and unit, else 100 of the food's basis unit. */
-internal fun productPrefill(food: FoodRecord, typed: TypedPart): ProductPrefill = ProductPrefill(
-    amount = typed.amount ?: 100.0,
-    unit = typed.unit ?: food.nutrition.unit
-)
+/**
+ * A typed part's amount and unit, else 100 of the food's basis unit. A bare count starts on what the Log counts it as
+ * ([bareCountMeasure]).
+ */
+internal fun productPrefill(food: FoodRecord, typed: TypedPart): ProductPrefill {
+    val counted = food.bareCountMeasure(typed.foodPhrase)?.takeIf { typed.amount != null && typed.unit == null }
+    return ProductPrefill(typed.amount ?: 100.0, counted?.unit ?: typed.unit ?: food.nutrition.unit, counted?.name)
+}
 
 internal fun parseProductUnit(value: String): MeasureUnit? = value.trim().toMeasureUnit()
 
@@ -395,5 +458,6 @@ internal data class ProductDraft(
     val food: FoodRecord,
     val amount: Double,
     val unit: MeasureUnit,
-    val calculation: Calculation
+    val calculation: Calculation,
+    val servingName: String? = null,
 )

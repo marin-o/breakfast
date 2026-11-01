@@ -1,6 +1,6 @@
 package com.iron.breakfast.recipes
 
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.LogPlan
 import com.iron.breakfast.domain.LogPlanner
@@ -15,8 +15,8 @@ import org.junit.Test
 
 /** The recipe form's pure rules: its yields, when it may save, and a recipe typed back into it. */
 class RecipeRulesTest {
-    private val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
-    private val egg = FoodCatalog.fixtures.first { it.id == "egg" }
+    private val planner = LogPlanner(FoodMatcher(TestFoods.fixtures))
+    private val egg = TestFoods.fixtures.first { it.id == "egg" }
 
     @Test fun aYieldIsAPositiveNumberOrNothing() {
         assertEquals(4.0, yieldOf("4")!!, 0.0)
@@ -70,10 +70,10 @@ class RecipeRulesTest {
     @Test fun aRecipeTypedBackIntoTheFormReadsAsItsIngredients() {
         val gone = mince.copy(foodId = "custom-gone", foodName = "Old mince")
         val recipe = chili.copy(ingredients = listOf(mince.copy(foodId = egg.id, foodName = egg.name, enteredAmount = 2.0, enteredUnit = MeasureUnit.PIECE), gone))
-        val edit = recipeEdit(recipe, FoodCatalog.fixtures, planner)
+        val edit = recipeEdit(recipe, TestFoods.fixtures, planner)
         assertEquals("2 piece ${egg.name}, 500 g Old mince", edit.fields.ingredients)
         assertEquals(setOf(egg.id, "custom-gone"), edit.pins.values.map { it.id }.toSet())
-        val plan = LogPlanner(FoodMatcher(FoodCatalog.fixtures), pins = edit.pins).plan(edit.fields.ingredients)
+        val plan = LogPlanner(FoodMatcher(TestFoods.fixtures), pins = edit.pins).plan(edit.fields.ingredients)
         assertTrue(ingredientsComplete(plan))
         val again = ingredientsOf(plan)
         assertEquals(gone.nutritionSnapshot, again[1].nutritionSnapshot)
@@ -81,8 +81,8 @@ class RecipeRulesTest {
         assertEquals(egg.id, again[0].foodId)
         assertEquals("1600" to MeasureUnit.GRAM, edit.fields.total to edit.fields.totalUnit)
         // One total: the weight, else the volume.
-        assertEquals("1600", recipeEdit(recipe.copy(totalVolume = 1500.0), FoodCatalog.fixtures, planner).fields.total)
-        assertEquals("1500" to MeasureUnit.MILLILITER, recipeEdit(recipe.copy(totalWeight = null, totalVolume = 1500.0), FoodCatalog.fixtures, planner).fields.let { it.total to it.totalUnit })
+        assertEquals("1600", recipeEdit(recipe.copy(totalVolume = 1500.0), TestFoods.fixtures, planner).fields.total)
+        assertEquals("1500" to MeasureUnit.MILLILITER, recipeEdit(recipe.copy(totalWeight = null, totalVolume = 1500.0), TestFoods.fixtures, planner).fields.let { it.total to it.totalUnit })
         assertEquals("4", edit.fields.portions)
         val soup = recipeOf(null, RecipeFields(name = "Soup", total = "750", totalUnit = MeasureUnit.MILLILITER, ingredients = "2 eggs"), planner.plan("2 eggs"))
         assertEquals(750.0, soup.totalVolume!!, 0.0)

@@ -1,6 +1,6 @@
 package com.iron.breakfast
 
-import com.iron.breakfast.domain.FoodCatalog
+import com.iron.breakfast.domain.TestFoods
 import com.iron.breakfast.domain.FoodMatcher
 import com.iron.breakfast.domain.LogPlanner
 import com.iron.breakfast.domain.MeasureUnit
@@ -82,7 +82,7 @@ class LogRegressionTest {
     internal val inputs: List<String> get() = expected.map { it.first }
 
     @Test fun resolvedInputsKeepTheirFoodAmountAndUnit() {
-        val planner = LogPlanner(FoodMatcher(FoodCatalog.fixtures))
+        val planner = LogPlanner(FoodMatcher(TestFoods.fixtures))
         val drifted = expected.mapNotNull { (input, want) ->
             val got = planner.plan(input).entries.map { Saved(it.food.id, it.amount, it.unit) }
             if (got == want) null else "$input: want $want, got $got"

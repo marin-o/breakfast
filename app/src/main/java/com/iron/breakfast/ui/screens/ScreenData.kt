@@ -15,6 +15,7 @@ import com.iron.breakfast.ui.clockLabel
 import com.iron.breakfast.ui.components.MacroStat
 import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.domain.MealEntry
+import com.iron.breakfast.domain.Measure
 import com.iron.breakfast.domain.MeasureUnit
 import com.iron.breakfast.domain.Calculation
 import com.iron.breakfast.domain.NutritionCalculator
@@ -113,7 +114,10 @@ internal fun entryQuantityLine(entry: MealEntry): String = markDecimals(
 
 /** Why a part that names a food cannot log: "No value for tbsp", when the food has no number for the unit or serving typed; else its amount. */
 internal fun noValueLine(part: SegmentResolution): String =
-    if (part.noValue) "No value for ${part.label ?: part.unit.labelFor(part.amount)}" else "Amount must be above 0"
+    if (part.noValue) noValueLine(part.label ?: part.unit.labelFor(part.amount)) else "Amount must be above 0"
+
+/** "No value for tbsp": the food has no number for the unit or serving [label] names. */
+internal fun noValueLine(label: String): String = "No value for $label"
 
 private const val MAX_RATE_UNIT_LINE = 28
 
@@ -124,11 +128,12 @@ internal fun withRateUnit(line: String, rateUnit: String, approximate: Boolean):
     return if (withUnit.length <= MAX_RATE_UNIT_LINE) withUnit else line
 }
 
-/** Source label beside the O/B/P box on the entry detail. */
+/** Source label beside the O/U/B/P box on the entry detail. */
 internal fun entrySourceLabel(food: FoodRecord?): String = sourceLabel(sourceLetter(food))
 
 /** Spoken and written name for a source letter. */
 internal fun sourceLabel(letter: String): String = when (letter) {
+    "U" -> "USDA FoodData Central"
     "B" -> "Bundled"
     "P" -> "Personal"
     "O" -> "Open Food Facts"
@@ -221,6 +226,14 @@ internal fun matchDisplay(food: FoodRecord, raw: String, calculator: NutritionCa
 internal fun productApproxLabel(calculation: Calculation?, enteredUnit: MeasureUnit?, basisUnit: MeasureUnit): String? =
     calculation?.takeIf { it.supported && it.approximate && enteredUnit != null && enteredUnit != basisUnit }
         ?.let { "${it.resolvedBaseAmount.pretty()} ${basisUnit.label}" }
+
+/** What one of [measure] weighs for [food], approximate, on its chip: "≈165 g"; null for the basis unit itself. */
+internal fun measureWeightDetail(food: FoodRecord, measure: Measure): String? =
+    productApproxLabel(
+        NutritionCalculator().calculate(food, 1.0, measure.unit, measure.name),
+        measure.unit,
+        food.nutrition.unit,
+    )?.let { "≈$it" }
 
 /**
  * A macro's value and unit as shown: "—" with none known, "12" and "g ?" with some unknown, else "12" and "g". With

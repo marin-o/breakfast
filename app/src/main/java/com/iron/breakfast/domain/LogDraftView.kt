@@ -26,6 +26,8 @@ internal data class LogDraftView(
     val firstIsAddPick: Boolean = false,
     /** The parts that need a match, except one being typed that still has something to show. */
     val needsMatchParts: List<String> = emptyList(),
+    /** What the USDA catalogue is asked for the part being typed; blank for nothing. */
+    val catalogueQuery: String = "",
 )
 
 /**
@@ -48,6 +50,7 @@ internal fun logDraftViewOf(planner: LogPlanner, text: String, committed: Boolea
         hasNoValue = view.hasNoValue,
         firstIsAddPick = view.addPick != null && view.choices.firstOrNull()?.food?.id == view.addPick.food.id,
         needsMatchParts = view.needsMatchParts,
+        catalogueQuery = view.catalogueQuery,
         choiceCalculations = view.choices.map { planner.calculationFor(view.activeText, it.food) },
     )
 }

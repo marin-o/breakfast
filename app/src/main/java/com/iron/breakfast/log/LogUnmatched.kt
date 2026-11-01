@@ -41,6 +41,10 @@ import com.iron.breakfast.search.OffPartSearch
 import com.iron.breakfast.search.OffPartState
 import com.iron.breakfast.search.OffSearch
 import com.iron.breakfast.search.OffSearchStatus
+import com.iron.breakfast.search.UsdaPartSearch
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.iron.breakfast.domain.FoodRecord
 import com.iron.breakfast.ui.components.SearchOrCreateButtons
 import com.iron.breakfast.search.offStatusText
 import com.iron.breakfast.ui.components.FoodRow
@@ -60,11 +64,22 @@ internal class UnmatchedParts(
     val foodForm: FoodForm,
     val review: ProductReview,
     val log: LogComposer,
-)
+    val usda: UsdaPartSearch,
+) {
+    /**
+     * A USDA row for [query] under the part being typed: its review, with the amount typed, and Add puts the food in that
+     * part's place. The rows may still be a frame behind the typing: a tap on one for older text does nothing.
+     */
+    fun pickForTypedPart(query: String, food: FoodRecord) {
+        if (log.draftView().catalogueQuery != query) return
+        val part = log.partBeingTyped()
+        review.choose(food, origin = ProductReviewOrigin.LOG_PART, typed = part?.let(log::typedOf), replaces = part)
+    }
+}
 
 /**
- * The foods Add could not match, as the Log draws them: each "Not in your foods" row opens and closes, with its Open Food
- * Facts results inset under it and its ways on after them. The first starts open; a resolved one leaves the list and the
+ * The foods Add could not match, as the Log draws them: each "Not in your foods" row opens and closes, with its USDA rows
+ * and Open Food Facts results inset under it and its ways on after them. The first starts open; a resolved one leaves the list and the
  * next opens. Returns the row's drawing for [DraftParts].
  */
 @Composable
@@ -91,6 +106,8 @@ private fun UnmatchedRow(row: DraftRow.Unresolved, parts: UnmatchedParts, open: 
     val turn by animateFloatAsState(if (open) 180f else 0f, motion.nav(), label = "unmatched")
     val name = remember(row.text) { parts.resolve.nameOf(row.text) }
     val choices = remember(row.text) { parts.log.localChoices(row.text) }
+    var catalogue by remember(name) { mutableStateOf(emptyList<FoodRecord>()) }
+    LaunchedEffect(name) { catalogue = parts.usda.forPart(name) }
     Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
         Row(
             Modifier
@@ -112,14 +129,13 @@ private fun UnmatchedRow(row: DraftRow.Unresolved, parts: UnmatchedParts, open: 
                     // One tap: this part, with its amount, logs to the queue's meal and leaves the draft.
                     PartFoodRow(name, choice.food.name, choice.quantityLine, choice.kcal) { onFocus(); parts.resolve.resolve(choice.food) }
                 }
+                catalogue.forEach { food ->
+                    OfferedFoodRow(name, food) { onFocus(); parts.review.choose(food, origin = ProductReviewOrigin.QUEUE) }
+                }
                 when (val state = parts.results.stateOf(name)) {
                     OffPartState.Searching -> LinearProgress("Searching Open Food Facts", Modifier.padding(vertical = 8.dp))
                     is OffPartState.Found -> state.foods.forEach { food ->
-                        val basis = basisLabel(food.nutrition.amount, food.nutrition.unit)
-                        val line = listOfNotNull(food.brand?.takeIf { it.isNotBlank() }, basis).joinToString(", ")
-                        PartFoodRow(name, food.name, line, formatKcal(food.nutrition.values.calories)) {
-                            onFocus(); parts.review.choose(food, origin = ProductReviewOrigin.QUEUE)
-                        }
+                        OfferedFoodRow(name, food) { onFocus(); parts.review.choose(food, origin = ProductReviewOrigin.QUEUE) }
                     }
                     OffPartState.NoResults -> StatusLine(OffSearchStatus.NoResults)
                     OffPartState.Offline -> StatusLine(OffSearchStatus.Offline)
@@ -139,7 +155,30 @@ private fun UnmatchedRow(row: DraftRow.Unresolved, parts: UnmatchedParts, open: 
     }
 }
 
-/** One food offered for part [part], inset under its row, by Open Food Facts or the user's own foods; read as that part's. */
+/** Asks [search] for [query] as it is typed; the USDA foods to draw for it, those in [except] (already listed there) left out. */
+@Composable
+internal fun rememberUsdaRows(search: UsdaPartSearch, query: String, except: List<FoodRecord> = emptyList()): List<FoodRecord> {
+    LaunchedEffect(query) { search.typed(query) }
+    return search.rowsFor(query).filterNot { row -> except.any { it.id == row.id } }
+}
+
+/** USDA foods as plain rows: long names don't fit a chip, and arriving they change no selection. */
+@Composable
+internal fun UsdaRows(rows: List<FoodRecord>, query: String, modifier: Modifier = Modifier, onPick: (FoodRecord) -> Unit) {
+    if (rows.isNotEmpty()) Column(modifier) {
+        rows.forEach { food -> OfferedFoodRow(query, food) { onPick(food) } }
+    }
+}
+
+/** A food not stored yet, offered for part [part] by USDA or Open Food Facts: its name, brand, basis and kcal on it. */
+@Composable
+internal fun OfferedFoodRow(part: String, food: FoodRecord, onClick: () -> Unit) {
+    val basis = basisLabel(food.nutrition.amount, food.nutrition.unit)
+    val line = listOfNotNull(food.brand?.takeIf { it.isNotBlank() }, basis).joinToString(", ")
+    PartFoodRow(part, food.name, line, formatKcal(food.nutrition.values.calories), onClick)
+}
+
+/** One food offered for part [part], inset under its row, by USDA, Open Food Facts or the user's own foods; read as that part's. */
 @Composable
 private fun PartFoodRow(part: String, name: String, line: String, kcal: String, onClick: () -> Unit) {
     FoodRow(
