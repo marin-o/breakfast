@@ -59,7 +59,8 @@ Each macro has a "Protein, %" and "Protein, g" field side by side, the dot on th
 Projection: slope and SE over the last 28 days of raw weigh-ins, toward the target. tau = 343 days. r = |slope|, D = kg left, rHigh = r + 1.96SE, rLow = r - 1.96SE. Earliest = D / rHigh. Latest = tau x ln(tau x rLow / (tau x rLow - D)), defined only when rLow > 0 and D < tau x rLow.
 - No target, or target reached: nothing.
 - Fewer than 3 weigh-ins on different days, or no latest date or latest over 2 years away with fewer than 14 weigh-in days: "Not enough data yet. Come back in 9 days." The number is 14 minus the days with a weigh-in, at least 1.
-- Moving away, under 0.05 kg a week, or no latest date or latest over 2 years away with 14+ weigh-in days: "No date yet. Your weight isn't moving toward your target."
+- Moving away, or under 0.05 kg a week, with no date to give: "No date yet. Your weight isn't moving toward your target."
+- Moving toward the target with 14+ weigh-in days, but no latest date or latest over 2 years away: "No date yet. At this pace, your weight may level off before your target."
 - Otherwise: "At about 0.4 kg a week, you reach 78 kg between February and April." One month: "in March". A year follows the month only when not within the next 12 months. With fewer than 14 weigh-in days the "Not enough data yet" line follows it.
 
 ## Nutrition page

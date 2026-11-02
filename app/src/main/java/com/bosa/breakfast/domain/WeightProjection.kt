@@ -20,6 +20,9 @@ sealed interface WeightProjection {
     /** "No date yet. Your weight isn't moving toward your target." */
     data object NoDate : WeightProjection
 
+    /** Moving toward the target, too slowly to give a date: "No date yet. At this pace, your weight may level off before your target." */
+    data object MayLevelOff : WeightProjection
+
     /**
      * The target's dates. With [comeBackInDays] there are under 14 weigh-in days, and the "Not enough data yet" line
      * follows.
@@ -70,12 +73,16 @@ fun weightProjection(points: List<WeightPoint>, targetKg: Double?, goal: Goal?, 
     val slowest = speed - Z_95 * slope.standardError
     val latestDays = if (slowest > 0 && left < TAU_DAYS * slowest) TAU_DAYS * ln(TAU_DAYS * slowest / (TAU_DAYS * slowest - left)) else null
     val latestDate = latestDays?.let { day.plusDays(it.roundToLong()) }
+    val moving = (target - latest.kg) * slope.kgPerDay > 0 && speed * 7 >= SLOWEST_KG_A_WEEK
     if (latestDate == null || latestDate.isAfter(day.plusYears(LONGEST_YEARS))) {
-        return if (enoughDays) WeightProjection.NoDate else WeightProjection.NotEnoughData(comeBack)
+        return when {
+            !enoughDays -> WeightProjection.NotEnoughData(comeBack)
+            moving -> WeightProjection.MayLevelOff
+            else -> WeightProjection.NoDate
+        }
     }
 
-    val toward = (target - latest.kg) * slope.kgPerDay > 0
-    if (!toward || speed * 7 < SLOWEST_KG_A_WEEK) return WeightProjection.NoDate
+    if (!moving) return WeightProjection.NoDate
     val earliest = day.plusDays((left / (speed + Z_95 * slope.standardError)).roundToLong())
     return WeightProjection.Dated(speed * 7, target, earliest, latestDate, comeBack.takeUnless { enoughDays })
 }
@@ -100,6 +107,7 @@ private fun monthText(date: LocalDate, today: LocalDate): String {
 fun projectionLines(projection: WeightProjection, today: LocalDate): List<String> = when (projection) {
     WeightProjection.Nothing -> emptyList()
     WeightProjection.NoDate -> listOf("No date yet. Your weight isn't moving toward your target.")
+    WeightProjection.MayLevelOff -> listOf("No date yet. At this pace, your weight may level off before your target.")
     is WeightProjection.NotEnoughData -> listOf(comeBackLine(projection.comeBackInDays))
     is WeightProjection.Dated -> {
         val to = monthText(projection.latest, today)

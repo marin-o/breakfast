@@ -649,7 +649,7 @@ internal class WeightProjectionTest {
 
     // 0.1 kg/day but tau x r = 34.3 < D = 50.
     @Test fun farBeyondWhatThePaceCanReachIsNoDate() {
-        assertEquals(WeightProjection.NoDate, weightProjection(line(28, 150.0, -0.1), 100.0, Goal.LOSE, TODAY, UTC))
+        assertEquals(WeightProjection.MayLevelOff, weightProjection(line(28, 150.0, -0.1), 100.0, Goal.LOSE, TODAY, UTC))
     }
 }
 
@@ -846,6 +846,7 @@ internal class NutritionWeekTest {
         assertEquals(listOf("Not enough data yet. Come back in 9 days."), projectionLines(WeightProjection.NotEnoughData(9), projectionDay))
         assertEquals(listOf("Not enough data yet. Come back in 1 day."), projectionLines(WeightProjection.NotEnoughData(1), projectionDay))
         assertEquals(listOf("No date yet. Your weight isn't moving toward your target."), projectionLines(WeightProjection.NoDate, projectionDay))
+        assertEquals(listOf("No date yet. At this pace, your weight may level off before your target."), projectionLines(WeightProjection.MayLevelOff, projectionDay))
     }
 
     @Test fun aPaceIsWrittenPlainly() {
