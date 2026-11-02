@@ -37,7 +37,7 @@ The diary, search and food-detail patterns follow MyFitnessPal so the app feels 
 
 ## Capabilities and Constraints
 
-- Kotlin, Jetpack Compose and Material 3 on Android (minSdk 26, targetSdk 35). Storage is local Room through 1.0, and cloud sync is out of scope before then. Barcodes are scanned with CameraX and ML Kit.
+- Kotlin, Jetpack Compose and Material 3 on Android (minSdk 26, targetSdk 35). Storage is local Room through 1.0, and cloud sync is out of scope before then. Barcodes are scanned with CameraX and zxing-cpp.
 - A bundled catalogue of USDA FoodData Central generic foods (pinned build-time snapshots, no runtime USDA dependency or API key) plus OFF for packaged and regional products. Unqualified meat resolves to raw records.
 - Calories are required to create a personal food; protein, carbs and fat may be unknown. Uncertain serving conversions are visibly marked as approximate.
 - Out of scope: saved meals, calorie goals, progress reports, exercise, water, accounts, subscriptions or premium gating, and configurable meal names. Saved meals may come later.

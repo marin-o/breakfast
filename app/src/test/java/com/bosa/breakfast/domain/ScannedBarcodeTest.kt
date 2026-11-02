@@ -37,10 +37,23 @@ class ScannedBarcodeTest {
         assertNull(expandUpcE("065432170"))
     }
 
-    @Test fun aScannedUpcEIsLookedUpAsItsUpcA() {
+    @Test fun anAlreadyExpandedUpcEStaysANormalProductCode() {
+        assertEquals("042100005264", scannedProductBarcode("042100005264"))
+    }
+
+    @Test fun theDecodersThirteenDigitUpcFormsAreLookedUpAsTwelve() {
+        // UPC-A arrives as EAN-13 with a leading 0, and UPC-E as "0" + its UPC-A.
+        assertEquals("042100005264", scannedProductBarcode("0042100005264"))
+        assertEquals("725272730706", scannedProductBarcode("0725272730706"))
+    }
+
+    @Test fun aUpcEInItsEightDigitsIsLookedUpAsItsUpcA() {
         assertEquals("042100005264", scannedProductBarcode("04252614", upcE = true))
-        // An already expanded value, if ML Kit returns one, stays a normal product code.
-        assertEquals("042100005264", scannedProductBarcode("042100005264", upcE = true))
-        assertNull(scannedProductBarcode("WIFI:S:x;;", upcE = true))
+        assertEquals("the decoder's expanded form too", "042100005264", scannedProductBarcode("0042100005264", upcE = true))
+    }
+
+    @Test fun anEan13AndAnEan8KeepEveryDigit() {
+        assertEquals("3017620422003", scannedProductBarcode("3017620422003"))
+        assertEquals("01234565", scannedProductBarcode("01234565"))
     }
 }

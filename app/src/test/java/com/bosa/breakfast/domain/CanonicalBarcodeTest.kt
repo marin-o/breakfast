@@ -47,7 +47,8 @@ class CanonicalBarcodeTest {
     }
 
     @Test fun anExpandedUpcEFeedsTheSameCanonicalCode() {
-        val scanned = requireNotNull(scannedProductBarcode("04252614", upcE = true))
+        // What the decoder reports for the UPC-E 04252614: "0" + its UPC-A.
+        val scanned = requireNotNull(scannedProductBarcode("0042100005264"))
         assertEquals("0042100005264", canonicalBarcode(scanned))
         assertTrue(sameBarcode(scanned, "0042100005264"))
     }

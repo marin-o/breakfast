@@ -1119,6 +1119,10 @@ private fun NavTabButton(label: String, selected: Boolean, motion: Motion, label
     }
 }
 
+/** Material's own thresholds for a sheet, which it keeps internal. */
+private val SheetPositionalThreshold = 56.dp
+private val SheetVelocityThreshold = 125.dp
+
 /** Bottom sheet on `bg` with a 36x5 `line` grabber and 24dp padding over a `scrim`. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1134,9 +1138,11 @@ fun Sheet(
     // Material slide it away). The start is read once: a sheet already open stays as it is when Motion changes.
     val reduced = rememberMotionReduced()
     val density = LocalDensity.current
-    val sheetState = rememberSaveable(skipPartiallyExpanded, saver = SheetState.Saver(skipPartiallyExpanded, { true }, density, false)) {
+    val positionalThreshold = { with(density) { SheetPositionalThreshold.toPx() } }
+    val velocityThreshold = { with(density) { SheetVelocityThreshold.toPx() } }
+    val sheetState = rememberSaveable(skipPartiallyExpanded, saver = SheetState.Saver(skipPartiallyExpanded, positionalThreshold, velocityThreshold, { true }, false)) {
         val start = if (!reduced) SheetValue.Hidden else if (skipPartiallyExpanded) SheetValue.Expanded else SheetValue.PartiallyExpanded
-        SheetState(skipPartiallyExpanded, density, start, { true }, false)
+        SheetState(skipPartiallyExpanded, positionalThreshold, velocityThreshold, start, { true }, false)
     }
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,

@@ -3,12 +3,11 @@ package com.bosa.breakfast.ui.components
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalFontFamilyResolver
-import androidx.compose.ui.text.font.resolveAsTypeface
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import com.bosa.breakfast.domain.WeightPoint
 import com.bosa.breakfast.domain.MINUTES_PER_DAY
@@ -25,10 +24,6 @@ import com.patrykandpatrick.vico.compose.cartesian.axis.rememberAxisGuidelineCom
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberAxisLabelComponent
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberAxisLineComponent
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberAxisTickComponent
-import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottom
-import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStart
-import com.patrykandpatrick.vico.compose.cartesian.layer.continuous
-import com.patrykandpatrick.vico.compose.cartesian.layer.point
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLine
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
@@ -36,20 +31,20 @@ import com.patrykandpatrick.vico.compose.cartesian.rememberVicoScrollState
 import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
 import com.patrykandpatrick.vico.compose.common.component.rememberLineComponent
 import com.patrykandpatrick.vico.compose.common.component.rememberShapeComponent
-import com.patrykandpatrick.vico.compose.common.fill
-import com.patrykandpatrick.vico.core.cartesian.CartesianDrawingContext
-import com.patrykandpatrick.vico.core.cartesian.CartesianMeasuringContext
-import com.patrykandpatrick.vico.core.cartesian.Zoom
-import com.patrykandpatrick.vico.core.cartesian.axis.HorizontalAxis
-import com.patrykandpatrick.vico.core.cartesian.axis.VerticalAxis
-import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModel
-import com.patrykandpatrick.vico.core.cartesian.data.CartesianLayerRangeProvider
-import com.patrykandpatrick.vico.core.cartesian.data.CartesianValueFormatter
-import com.patrykandpatrick.vico.core.cartesian.data.LineCartesianLayerModel
-import com.patrykandpatrick.vico.core.cartesian.decoration.HorizontalLine
-import com.patrykandpatrick.vico.core.cartesian.layer.CartesianLayerDimensions
-import com.patrykandpatrick.vico.core.cartesian.layer.LineCartesianLayer
-import com.patrykandpatrick.vico.core.common.shape.CorneredShape
+import com.patrykandpatrick.vico.compose.common.Fill
+import com.patrykandpatrick.vico.compose.common.Insets
+import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
+import com.patrykandpatrick.vico.compose.cartesian.CartesianMeasuringContext
+import com.patrykandpatrick.vico.compose.cartesian.Zoom
+import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
+import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModel
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
+import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerModel
+import com.patrykandpatrick.vico.compose.cartesian.decoration.HorizontalLine
+import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayerDimensions
+import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
 import com.bosa.breakfast.ui.dayMonthLabel
 import java.time.LocalDate
 import java.time.ZoneId
@@ -136,7 +131,7 @@ private const val LABEL_ROOM = 1.5f
 /** Labels only [dateTicks], so dates fit the width whatever the time the points span. The first and last value make the axis keep room for half a label at each end. */
 private class DateLabels(private val data: WeightChartData) : HorizontalAxis.ItemPlacer {
     private fun ticks(context: CartesianDrawingContext, maxLabelWidth: Float) =
-        dateTicksThatFit(data, context.layerBounds.width() / (maxLabelWidth * LABEL_ROOM))
+        dateTicksThatFit(data, context.layerBounds.width / (maxLabelWidth * LABEL_ROOM))
 
     private val ends = if (data.xs.size == 1) data.xs else listOf(data.minX, data.maxX)
 
@@ -181,19 +176,22 @@ internal fun WeightChart(points: List<WeightPoint>, target: Double?, modifier: M
     val colors = LocalBreakfastColors.current
     // The library keeps much of what it is first given: a new set of points or a new theme starts it again.
     key(data, colors) {
-        val typeface by LocalFontFamilyResolver.current.resolveAsTypeface(Geologica)
-        val label = rememberAxisLabelComponent(color = colors.soft, typeface = typeface, textSize = BreakfastType.Meta.fontSize)
-        val axisLine = rememberAxisLineComponent(fill = fill(colors.line))
-        val tick = rememberAxisTickComponent(fill = fill(colors.line))
-        val targetLine = rememberLineComponent(fill = fill(colors.soft), thickness = 1.dp)
-        val dot = rememberShapeComponent(fill = fill(colors.ink), shape = CorneredShape.Pill)
+        // The 2dp above and below is the padding Vico 2 drew; Vico 3's default is 4dp.
+        val label = rememberAxisLabelComponent(
+            style = TextStyle(color = colors.soft, fontFamily = Geologica, fontSize = BreakfastType.Meta.fontSize),
+            padding = Insets(horizontal = 4.dp, vertical = 2.dp),
+        )
+        val axisLine = rememberAxisLineComponent(fill = Fill(colors.line))
+        val tick = rememberAxisTickComponent(fill = Fill(colors.line))
+        val targetLine = rememberLineComponent(fill = Fill(colors.soft), thickness = 1.dp)
+        val dot = rememberShapeComponent(fill = Fill(colors.ink), shape = CircleShape)
         val chart = rememberCartesianChart(
             rememberLineCartesianLayer(
                 lineProvider = LineCartesianLayer.LineProvider.series(
                     LineCartesianLayer.rememberLine(
-                        fill = LineCartesianLayer.LineFill.single(fill(colors.ink)),
-                        stroke = LineCartesianLayer.LineStroke.continuous(2.dp),
-                        pointProvider = LineCartesianLayer.PointProvider.single(LineCartesianLayer.point(dot, 6.dp)),
+                        fill = LineCartesianLayer.LineFill.single(Fill(colors.ink)),
+                        stroke = LineCartesianLayer.LineStroke.Continuous(2.dp),
+                        pointProvider = LineCartesianLayer.PointProvider.single(LineCartesianLayer.Point(dot, 6.dp)),
                     ),
                 ),
                 rangeProvider = remember { CartesianLayerRangeProvider.fixed(data.minX, data.maxX, data.axis.min, data.axis.max) },
@@ -202,7 +200,7 @@ internal fun WeightChart(points: List<WeightPoint>, target: Double?, modifier: M
                 line = axisLine,
                 label = label,
                 tick = tick,
-                guideline = rememberAxisGuidelineComponent(fill = fill(colors.line)),
+                guideline = rememberAxisGuidelineComponent(fill = Fill(colors.line)),
                 itemPlacer = remember { VerticalAxis.ItemPlacer.step({ data.axis.step }, false) },
                 valueFormatter = remember { CartesianValueFormatter { _, value, _ -> "${value.pretty()} kg" } },
             ),
@@ -219,7 +217,7 @@ internal fun WeightChart(points: List<WeightPoint>, target: Double?, modifier: M
             ),
             decorations = data.target?.let { kg -> listOf(remember { HorizontalLine({ kg }, targetLine) }) }.orEmpty(),
             // Real time: one step is one minute, however far apart the points are.
-            getXStep = { 1.0 },
+            getXStep = { _, _, _ -> 1.0 },
         )
         val model = remember { CartesianChartModel(LineCartesianLayerModel.build { series(data.xs, data.ys) }) }
         CartesianChartHost(

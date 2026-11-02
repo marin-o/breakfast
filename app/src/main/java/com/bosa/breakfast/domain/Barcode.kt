@@ -88,12 +88,15 @@ fun compressUpcE(upcA: String): String? {
 
 /**
  * The scanner's guard: what a decoded symbol becomes before any lookup, or null when it is not a product barcode
- * (a QR code's text, a URL), so the frame is ignored and scanning goes on. A UPC-E symbol ([upcE]) is expanded to
- * its 12-digit UPC-A first, so it is not read as an EAN-8.
+ * (a QR code's text, a URL), so the frame is ignored and scanning goes on. The decoder reports UPC-A, and UPC-E
+ * already expanded to its UPC-A, as 13 digits with a leading 0; those become the 12-digit UPC-A, the form the rest of
+ * the app is handed. A UPC-E still in its 8 digits ([upcE]) expands too, so Open Food Facts is asked for the UPC-A either
+ * way. The local lookup does not depend on it: [barcodeForms] and pickBarcodeMatch accept any spelling.
  */
 fun scannedProductBarcode(raw: String, upcE: Boolean = false): String? {
-    val trimmed = raw.trim()
-    return if (upcE) expandUpcE(trimmed) ?: normalizeBarcode(trimmed) else normalizeBarcode(trimmed)
+    val code = normalizeBarcode(raw) ?: return null
+    if (upcE && code.length == 8) return expandUpcE(code) ?: code
+    return if (code.length == 13 && code[0] == '0') code.substring(1) else code
 }
 
 /**

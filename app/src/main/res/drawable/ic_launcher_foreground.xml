@@ -1,11 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Placeholder mark: a plain filled circle inside the 66dp safe zone. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="@color/icon_mark"
-        android:pathData="M54,34a20,20 0,1 1,0 40a20,20 0,1 1,0 -40z" />
+    <!-- The plate is the whole icon: its colour is the background, and its rim sits at the mask's edge. -->
+    <path android:fillColor="#DDD0B6" android:pathData="M54,25a29,29 0 1,1 0,58a29,29 0 1,1 0,-58z" />
+    <path android:strokeColor="#F36BC4" android:strokeWidth="1.6" android:pathData="M54,21.799999999999997a32.2,32.2 0 1,1 0,64.4a32.2,32.2 0 1,1 0,-64.4z" />
+    <group android:translateX="60" android:translateY="38" android:rotation="12" android:scaleX="0.92" android:scaleY="0.92">
+        <path android:fillColor="#A9682C" android:pathData="M-7 -14H7C12 -14 14 -10 14 -7C14 -4 13 -3 11 -2V11C11 13 10 14 8 14H-8C-10 14 -11 13 -11 11V-2C-13 -3 -14 -4 -14 -7C-14 -10 -12 -14 -7 -14Z" />
+        <path android:fillColor="#E9B872" android:pathData="M-6 -10.5H6C9 -10.5 10.5 -8.5 10.5 -7C10.5 -5.5 9.5 -4.5 7.5 -3.5V9C7.5 10 7 10.5 6 10.5H-6C-7 10.5 -7.5 10 -7.5 9V-3.5C-9.5 -4.5 -10.5 -5.5 -10.5 -7C-10.5 -8.5 -9 -10.5 -6 -10.5Z" />
+    </group>
+    <group android:translateX="71" android:translateY="63" android:rotation="18" android:scaleX="0.92" android:scaleY="0.92">
+        <path android:fillColor="#2F6B3A" android:pathData="M0 -17C5 -17 7 -11 9 -6C12 0 13 3 13 6C13 13 7 17 0 17C-7 17 -13 13 -13 6C-13 3 -12 0 -9 -6C-7 -11 -5 -17 0 -17Z" />
+        <path android:fillColor="#CFE08A" android:pathData="M0 -13.5C3 -13.5 4.5 -9 6.5 -4.5C9 0 10 3 10 6C10 11 5.5 14 0 14C-5.5 14 -10 11 -10 6C-10 3 -9 0 -6.5 -4.5C-4.5 -9 -3 -13.5 0 -13.5Z" />
+        <path android:fillColor="#7A4A25" android:pathData="M0,-0.5a5.5,5.5 0 1,1 0,11.0a5.5,5.5 0 1,1 0,-11.0z" />
+    </group>
+    <group android:translateX="42" android:translateY="60" android:rotation="0" android:scaleX="0.92" android:scaleY="0.92">
+        <path android:fillColor="#FFFFFF" android:pathData="M-3 -16C2 -17 6 -13 10 -11C15 -9 17 -4 16 1C15 5 13 7 13 11C12 15 7 17 2 15C-2 14 -5 17 -10 15C-14 13 -14 9 -16 6C-19 2 -18 -4 -15 -8C-12 -12 -8 -14 -3 -16Z" />
+        <path android:fillColor="#F7A823" android:pathData="M-1,-6.5a6.5,6.5 0 1,1 0,13.0a6.5,6.5 0 1,1 0,-13.0z" />
+    </group>
 </vector>

@@ -191,12 +191,12 @@ A diary day starts at the "Day starts at" hour (Settings, 00:00 to 23:00, defaul
 
 | Dependency | Purpose | Data access |
 | --- | --- | --- |
-| Compose BOM 2024.12.01 (ui, material3, material-icons-extended), activity-compose 1.9.2, core-ktx 1.13.1, lifecycle 2.8.6 | UI, ViewModel, SavedStateHandle | Screen state only |
-| Room 2.8.5 (runtime, ktx; compiler via KAPT; Room Gradle plugin) | Local database `breakfast.db` | All diary and food data, on device |
-| Vico 2.0.0 (compose-m3) | The weight curve, in `ui/components/WeightChart.kt` only | Weight points, on screen |
-| kotlinx-serialization-json 1.8.1 | OFF response parsing, storage codecs | OFF responses, local rows |
-| CameraX 1.4.2 (camera2, lifecycle, view) | Scanner preview and frame analysis | Camera frames, in memory, while the scanner is open |
-| ML Kit barcode-scanning 17.3.0 | Barcode decoding on device | Camera frames. It pulls `play-services-mlkit-barcode-scanning` and `com.google.mlkit:common`, which bring the Google Data Transport stack (`transport-backend-cct`, `firebase-components`). Whether it sends telemetry at runtime is **not verified**; check before any Play release (MOB-032). |
+| Compose BOM 2026.09.00 (ui, material3, material-icons-extended), activity-compose 1.13.0, core-ktx 1.19.1, lifecycle 2.11.0 | UI, ViewModel, SavedStateHandle | Screen state only |
+| Room 2.8.5 (runtime, ktx; compiler via KSP; Room Gradle plugin) | Local database `breakfast.db` | All diary and food data, on device |
+| Vico 3.3.1 (compose-m3) | The weight curve, in `ui/components/WeightChart.kt` only | Weight points, on screen |
+| kotlinx-serialization-json 1.12.0 | OFF response parsing, storage codecs | OFF responses, local rows |
+| CameraX 1.6.2 (camera2, lifecycle, view) | Scanner preview and frame analysis | Camera frames, in memory, while the scanner is open |
+| zxing-cpp Android wrapper 3.1.1 (Apache-2.0) | Barcode decoding on device, EAN-13, EAN-8, UPC-A and UPC-E only, in `scan/ScanScreens.kt` | Camera frames, in memory, while the scanner is open. It pulls no Google services. |
 | Open Food Facts (network service, no SDK) | Search, barcode lookup, contribution | Query text, barcodes; on contribution, the product fields and the OFF login |
 | Test only: JUnit 4.13.2, kotlin-test, room-testing, androidx.test runner/core/ext-junit | Unit and instrumented tests | None |
 

@@ -7,6 +7,7 @@ import com.bosa.breakfast.ui.components.ConfirmDialog
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.fillMaxSize
 import android.util.Log
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -36,7 +37,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.activity.compose.BackHandler
@@ -102,7 +102,7 @@ fun BreakfastApp(vm: BreakfastViewModel = viewModel()) {
     }
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); vm.reloadToday() } }
     // Back from the background: a user following today opens on the new today.
-    val activity = LocalContext.current as? android.app.Activity
+    val activity = LocalActivity.current
     // A recreation (dark mode, resize, locale) stops the old activity, but the user never left.
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { if (stopMeansLeaving(activity?.isChangingConfigurations == true)) vm.onAppStopped() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { vm.onAppStarted() }

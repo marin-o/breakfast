@@ -25,6 +25,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.draw.alpha
@@ -36,8 +37,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
-import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -100,11 +103,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.google.mlkit.vision.barcode.BarcodeScanner
-import com.google.mlkit.vision.barcode.BarcodeScannerOptions
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.common.InputImage
 import com.bosa.breakfast.domain.FoodRecord
 import com.bosa.breakfast.domain.asciiDigits
 import com.bosa.breakfast.domain.displayLabel
@@ -123,7 +121,10 @@ import com.bosa.breakfast.ui.components.SectionHeading
 import com.bosa.breakfast.ui.components.Sheet
 import com.bosa.breakfast.ui.components.TertiaryButton
 import com.bosa.breakfast.domain.NutritionValues
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import zxingcpp.BarcodeReader
 import com.bosa.breakfast.ui.screens.productApproxLabel
 import com.bosa.breakfast.domain.MeasureUnit
 import com.bosa.breakfast.domain.isUsdaFoodId
@@ -183,30 +184,34 @@ import com.bosa.breakfast.ui.screens.sourceLabel
                 if (session.disposed.get()) return@runCatching
                 val provider = providerFuture.get()
                 val preview = Preview.Builder().build().also { it.surfaceProvider = view.surfaceProvider }
-                val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
-                // Product symbologies only: a QR code (Wi-Fi details, a link with a token) is never decoded or sent.
-                val scanner = BarcodeScanning.getClient(
-                    BarcodeScannerOptions.Builder()
-                        .setBarcodeFormats(Barcode.FORMAT_EAN_13, Barcode.FORMAT_EAN_8, Barcode.FORMAT_UPC_A, Barcode.FORMAT_UPC_E)
-                        .build()
-                ); var delivered = false
-                session.provider = provider; session.preview = preview; session.analysis = analysis; session.scanner = scanner
-                analysis.setAnalyzer(ContextCompat.getMainExecutor(ctx)) { proxy ->
-                    @androidx.annotation.OptIn(ExperimentalGetImage::class) val image = proxy.image
-                    if (image == null || delivered || session.disposed.get()) { proxy.close(); return@setAnalyzer }
-                    val rotation = proxy.imageInfo.rotationDegrees
-                    val frame = ScanFrame(proxy.width, proxy.height, rotation, proxy.cropRect.let { Rect(it.left.toFloat(), it.top.toFloat(), it.right.toFloat(), it.bottom.toFloat()) })
-                    scanner.process(InputImage.fromMediaImage(image, rotation)).addOnSuccessListener { codes ->
-                        // Only a product code inside the brackets (plus a little feathering) counts, not one anywhere in view;
-                        // anything else leaves the frame ignored and the scanner looking.
-                        val code = codes.firstNotNullOfOrNull { barcode ->
-                            val raw = barcode.rawValue ?: return@firstNotNullOfOrNull null
-                            val box = barcode.boundingBox ?: return@firstNotNullOfOrNull null
-                            if (!session.accepts(Rect(box.left.toFloat(), box.top.toFloat(), box.right.toFloat(), box.bottom.toFloat()), frame, feather)) null
-                            else scannedProductBarcode(raw, upcE = barcode.format == Barcode.FORMAT_UPC_E)
-                        }
-                        code?.let { if (!delivered && !session.disposed.get()) { delivered = true; scan.onBarcode(it) } }
-                    }.addOnCompleteListener { proxy.close() }
+                // 1280x960 keeps the preview's default 4:3, so both see the same field of view; the decoder reads the shared crop of it.
+                val analysis = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .setResolutionSelector(ResolutionSelector.Builder().setResolutionStrategy(ResolutionStrategy(android.util.Size(1280, 960), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER)).build())
+                    .build()
+                val analysisThread = Executors.newSingleThreadExecutor()
+                session.provider = provider; session.preview = preview; session.analysis = analysis; session.analysisThread = analysisThread
+                val main = ContextCompat.getMainExecutor(ctx)
+                // The reader loads its native library when made, so that too waits for the analysis thread. Only that thread touches these two.
+                val reader by lazy(LazyThreadSafetyMode.NONE) { BarcodeReader(productReaderOptions()) }
+                var delivered = false
+                analysis.setAnalyzer(analysisThread) { proxy ->
+                    proxy.use {
+                        if (delivered || session.disposed.get()) return@use
+                        val code = try {
+                            readProductBarcode(reader, proxy, feather, session)
+                        } catch (_: LinkageError) {
+                            // The decoder's native library cannot load, so no frame can ever be read: stop once, without trying the reader again.
+                            delivered = true
+                            main.execute { if (!session.disposed.get()) { session.dispose(); scan.cameraUnavailable() } }
+                            return@use
+                        } catch (_: Exception) {
+                            // A frame that fails to decode is ignored, as one with no code is, and the next one is tried.
+                            return@use
+                        } ?: return@use
+                        delivered = true
+                        main.execute { if (!session.disposed.get()) scan.onBarcode(code) }
+                    }
                 }
                 // A shared view port crops the analysis frame to what the preview shows, so a box maps straight onto the screen.
                 val owner = context as ComponentActivity
@@ -508,7 +513,7 @@ private class ScannerSession {
     @Volatile var provider: ProcessCameraProvider? = null
     @Volatile var preview: Preview? = null
     @Volatile var analysis: ImageAnalysis? = null
-    @Volatile var scanner: BarcodeScanner? = null
+    @Volatile var analysisThread: ExecutorService? = null
     @Volatile var camera: Camera? = null
     @Volatile var previewBounds: Rect? = null
     @Volatile var viewfinderBounds: Rect? = null
@@ -523,10 +528,37 @@ private class ScannerSession {
     fun dispose() {
         if (!disposed.compareAndSet(false, true)) return
         analysis?.clearAnalyzer()
-        scanner?.close()
         val currentPreview = preview
         val currentAnalysis = analysis
         if (currentPreview != null && currentAnalysis != null) provider?.unbind(currentPreview, currentAnalysis)
+        analysisThread?.shutdown()
+    }
+}
+
+/**
+ * Product symbologies only: a QR code (Wi-Fi details, a link with a token) is never decoded or sent.
+ * Rotation and downscaling are tried, as a phone sees codes at any angle and up close. Inversion is not: it reads each
+ * frame twice, for the rare food barcode printed in negative.
+ */
+private fun productReaderOptions() = BarcodeReader.Options(
+    formats = setOf(BarcodeReader.Format.EAN_13, BarcodeReader.Format.EAN_8, BarcodeReader.Format.UPC_A, BarcodeReader.Format.UPC_E),
+    tryHarder = true,
+    tryRotate = true,
+    tryInvert = false,
+    tryDownscale = true,
+)
+
+/**
+ * The one call into the decoder, on the analysis thread: the first product code inside the brackets (plus the feathering)
+ * in [proxy], or null, which leaves the frame ignored and the scanner looking. Any other code in view does not count.
+ */
+private fun readProductBarcode(reader: BarcodeReader, proxy: ImageProxy, feather: Float, session: ScannerSession): String? {
+    val frame = ScanFrame(proxy.width, proxy.height, proxy.imageInfo.rotationDegrees, proxy.cropRect.let { Rect(it.left.toFloat(), it.top.toFloat(), it.right.toFloat(), it.bottom.toFloat()) })
+    return reader.read(proxy).firstNotNullOfOrNull { result ->
+        val raw = result.text ?: return@firstNotNullOfOrNull null
+        val corners = result.position.run { listOf(topLeft, topRight, bottomRight, bottomLeft) }.map { Offset(it.x.toFloat(), it.y.toFloat()) }
+        if (!session.accepts(uprightBox(corners, frame), frame, feather)) null
+        else scannedProductBarcode(raw, upcE = result.format == BarcodeReader.Format.UPC_E)
     }
 }
 
@@ -540,8 +572,10 @@ private val ScanFeather = 32.dp
 internal data class ScanFrame(val width: Int, val height: Int, val rotation: Int, val crop: Rect)
 
 /**
- * True when [box], an ML Kit box in the upright frame, maps onto the preview inside [viewfinder] grown by [feather].
+ * True when [box], a box in the upright frame, maps onto the preview inside [viewfinder] grown by [feather].
  * The preview fills its [previewSize] centre-cropped, as PreviewView does; [viewfinder] is in preview pixels.
+ * The decoder's box for a linear code is as long as its bars but only as tall as the rows it read, so the box's long
+ * side, the bars, must lie wholly inside; across them only the centre of the rows it read must.
  */
 internal fun barcodeInViewfinder(box: Rect, frame: ScanFrame, previewSize: Size, viewfinder: Rect, feather: Float): Boolean {
     val shown = uprightRect(frame.crop, frame.width, frame.height, frame.rotation)
@@ -551,7 +585,18 @@ internal fun barcodeInViewfinder(box: Rect, frame: ScanFrame, previewSize: Size,
     val dy = (previewSize.height - shown.height * scale) / 2f - shown.top * scale
     val mapped = Rect(box.left * scale + dx, box.top * scale + dy, box.right * scale + dx, box.bottom * scale + dy)
     val allowed = viewfinder.inflate(feather)
-    return mapped.left >= allowed.left && mapped.top >= allowed.top && mapped.right <= allowed.right && mapped.bottom <= allowed.bottom
+    val barsLieAcross = mapped.width >= mapped.height
+    return if (barsLieAcross) mapped.left >= allowed.left && mapped.right <= allowed.right && mapped.center.y in allowed.top..allowed.bottom
+    else mapped.top >= allowed.top && mapped.bottom <= allowed.bottom && mapped.center.x in allowed.left..allowed.right
+}
+
+/**
+ * The box around a code's [corners] in the upright frame. The decoder reads only the crop, turned upright, so its
+ * corners count from the corner of the crop; [barcodeInViewfinder] counts from the corner of the whole upright frame.
+ */
+internal fun uprightBox(corners: List<Offset>, frame: ScanFrame): Rect {
+    val shown = uprightRect(frame.crop, frame.width, frame.height, frame.rotation)
+    return Rect(corners.minOf { it.x } + shown.left, corners.minOf { it.y } + shown.top, corners.maxOf { it.x } + shown.left, corners.maxOf { it.y } + shown.top)
 }
 
 /** [rect] in a [width] x [height] buffer, turned by [rotation] degrees clockwise into the upright frame. */
