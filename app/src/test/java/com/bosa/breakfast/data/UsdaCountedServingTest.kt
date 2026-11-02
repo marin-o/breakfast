@@ -184,8 +184,11 @@ class UsdaCountedServingTest {
         assertEquals(Measure(MeasureUnit.PIECE), planner(gramsOnly).quantityOf("2 flour", gramsOnly).second)
         assertEquals(Measure(MeasureUnit.GRAM), planner(gramsOnly).quantityOf("a flour", gramsOnly).second)
         val mine = tomato.copy(id = "custom_1", name = "Crisps", conversions = listOf(ServingConversion(MeasureUnit.GRAM, 40.0, "mine", label = "package")), defaultUnit = MeasureUnit.GRAM, defaultAmount = 100.0)
-        assertEquals(Measure(MeasureUnit.GRAM), planner(mine).quantityOf("2 crisps", mine).second)
+        // A user food with one serving counts it; with several nothing says which, so it keeps its default unit.
+        assertEquals(Measure(MeasureUnit.SERVING, "package"), planner(mine).quantityOf("2 crisps", mine).second)
         assertEquals(Measure(MeasureUnit.SERVING, "package"), planner(mine).quantityOf("2 package crisps", mine).second)
+        val several = mine.copy(conversions = mine.conversions + ServingConversion(MeasureUnit.GRAM, 25.0, "mine", label = "handful"))
+        assertEquals(Measure(MeasureUnit.GRAM), planner(several).quantityOf("2 crisps", several).second)
     }
 
     @Test fun `plurals read right and match back`() {

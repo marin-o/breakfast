@@ -136,7 +136,7 @@ fun FoodRecord.servingNamed(typed: String): ServingConversion? =
  * A cup, a fl oz and the like measure an amount and count nothing.
  */
 internal fun FoodRecord.countedServing(typed: String): ServingConversion? {
-    val counted = conversions.filter { it.name?.let(::countsWholeItems) == true }
+    val counted = countableServings()
     val typedWords = matchWords(typed)
     val nameWords = matchWords(name)
     fun isTyped(word: String) = typedWords.any { servingNameMatches(it, word) }
@@ -163,7 +163,7 @@ private fun FoodRecord.askedWords(serving: ServingConversion, typed: String): In
 
 /** Whether [typed] asks for a serving of this food by a word that isn't in the food's name ([askedWords]). */
 internal fun FoodRecord.asksForServing(typed: String): Boolean =
-    conversions.any { it.name?.let(::countsWholeItems) == true && askedWords(it, typed) > 0 }
+    countableServings().any { askedWords(it, typed) > 0 }
 
 /** Whether [word] is a word of this food's name. */
 internal fun FoodRecord.namesWord(word: String): Boolean = matchWords(name).any { servingNameMatches(word, it) }
@@ -203,8 +203,15 @@ private fun isBigWhole(serving: ServingConversion): Boolean {
         ('"' in serving.name.orEmpty() && words.any { it in BAKED_WHOLE_WORDS })
 }
 
-/** Whether a bare amount of this food counts servings: a USDA food on its basis, where "2 eggs" as 2 g would log nothing. */
-private fun FoodRecord.countsServings(): Boolean = isUsdaFoodId(id) && defaultUnit == nutrition.unit
+/** The servings that count whole items: a cup, a tbsp, "100 g" and the like measure an amount instead. */
+private fun FoodRecord.countableServings(): List<ServingConversion> = conversions.filter { it.name?.let(::countsWholeItems) == true }
+
+/**
+ * Whether a bare amount of this food counts servings, on its basis, where "2 eggs" as 2 g would log nothing: a USDA food,
+ * and any other with exactly one serving to count ("2 Candybars" with a bar). With several, nothing says which.
+ */
+private fun FoodRecord.countsServings(): Boolean =
+    defaultUnit == nutrition.unit && (isUsdaFoodId(id) || countableServings().size == 1)
 
 /**
  * What a bare count of this food means, when its default would not do ([countsServings]). It counts [countedServing]; with
@@ -224,7 +231,7 @@ internal fun FoodRecord.bareCountMeasure(typed: String): Measure? {
 internal fun FoodRecord.articleMeasure(typed: String): Measure? {
     val serving = countedServing(typed)?.takeIf { countsServings() } ?: return null
     val countsOne = askedWords(serving, typed) > 0 || !(isContainer(serving) || isTinyPart(serving)) ||
-        conversions.filter { it.name?.let(::countsWholeItems) == true }.all { other -> servingWords(other).all { it in DRINK_PACK_WORDS } }
+        countableServings().all { other -> servingWords(other).all { it in DRINK_PACK_WORDS } }
     return if (countsOne) bareCountMeasure(typed) else null
 }
 

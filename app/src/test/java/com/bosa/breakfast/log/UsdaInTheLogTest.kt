@@ -135,8 +135,11 @@ class UsdaInTheLogTest {
     @Test fun `no amount, a typed unit and another food's bare count stay as they were`() {
         assertEquals(100.0, planner(rawEgg).resolve("egg")!!.amount, 1e-9)
         assertEquals(MeasureUnit.GRAM, planner(rawEgg).resolve("100 g egg")!!.unit)
+        // A user food counts its one serving ("egg"; the cup only measures), as a USDA one does; with several servings it keeps its default.
         val own = rawEgg.copy(id = "custom-egg")
-        assertEquals(MeasureUnit.GRAM, planner(own).resolve("2 egg")!!.unit)
+        assertEquals(MeasureUnit.SERVING, planner(own).resolve("2 egg")!!.unit)
+        val several = own.copy(conversions = own.conversions + ServingConversion(MeasureUnit.GRAM, 30.0, "mine", label = "yolk"))
+        assertEquals(MeasureUnit.GRAM, planner(several).resolve("2 egg")!!.unit)
     }
 
     // ---- A row for older text ----

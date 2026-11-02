@@ -158,14 +158,19 @@ class LogPlanner(
         val reading = reading(raw)
         // A word separator left inside one part ("Ben & Jerry's") names one food only when one food covers all of it.
         if (parser.hasWordSeparator(raw) && !matcher.covers(reading.phrase)) return null
-        val plain = resolutionOf(raw, reading, matcher.suggestions(reading.phrase, preferences, SUGGESTION_LIMIT))
+        val ranked = matcher.suggestions(reading.phrase, preferences, SUGGESTION_LIMIT)
+        // The food the part names counts a serving of its own named where a unit goes, even a word of its name ("1 bar
+        // Protein bar"), as every other path to a food reads it ([readingFor]). An exact name carries no amount.
+        val plain = resolutionOf(raw, ranked.firstOrNull()?.let { servingReadingOf(reading, it.food) } ?: reading, ranked)
         if (plain != null && plain.supported && !plain.needsChoice) return plain
         // Only when the part does not resolve as it reads: a word where a unit goes may be a serving's name of the food
-        // it names ("2 cans coke", "coke 2 cans"). A food's name always wins.
+        // it names ("2 cans coke", "coke 2 cans"). A word that is only letters of the rest ("1 can Candybar") is no part
+        // of the name, so it can only be a measure, and one the food lacks is not dropped.
         for (serving in servingReadings(reading)) {
             val word = serving.servingWord!!
             sizeTheFoodLacks(raw, reading, serving)?.let { return it }
-            onTopFood(raw, serving, flagged = matcher.hasServingNamed(word)) { it.servingNamed(word) != null }?.let { return it }
+            val flagged = matcher.hasServingNamed(word) || matcher.isLettersOfWordIn(word, serving.phrase)
+            onTopFood(raw, serving, flagged) { it.servingNamed(word) != null }?.let { return it }
         }
         // Then "2 portions chili" may be portions of a recipe; a food the plain reading resolves is never read this way.
         val portions = portionReading(reading) ?: return plain
@@ -306,10 +311,15 @@ class LogPlanner(
      */
     private fun readingFor(raw: String, food: FoodRecord): Reading {
         val reading = reading(raw)
+        servingReadingOf(reading, food)?.let { return it }
+        return if (takesPortions(food)) portionReading(reading) ?: reading else reading
+    }
+
+    /** [reading] with a word that is a serving of [food] where a unit goes; null when it has no such word. */
+    private fun servingReadingOf(reading: Reading, food: FoodRecord): Reading? {
         // The food's own word is no measure when the part asks for another serving: "1 chunk mango" is not "1 mango".
         val asked = food.asksForServing(reading.parsed.foodPhrase)
-        servingReadings(reading).firstOrNull { food.servingNamed(it.servingWord!!) != null && !(asked && food.namesWord(it.servingWord)) }?.let { return it }
-        return if (takesPortions(food)) portionReading(reading) ?: reading else reading
+        return servingReadings(reading).firstOrNull { food.servingNamed(it.servingWord!!) != null && !(asked && food.namesWord(it.servingWord)) }
     }
 
     /** A recipe with portions: the only thing a "portion" is ever counted for. */
@@ -505,12 +515,15 @@ class LogPlanner(
         override fun matchesWholeWord(word: String): Boolean = wholeWordCache.getOrPut(word) { matcher.matchesWholeWord(word) }
 
         // First the cheap question, whether any food has a serving by that name (most input has none), then the head's food.
-        override fun isServingWord(word: String, head: String): Boolean = word.any(Char::isLetter) &&
-            servingWordCache.getOrPut(word) { matcher.hasServingNamed(word) } &&
-            headServingCache.getOrPut("$word\u0000$head") {
-                // The food the words before the amount name, as they read on their own: does it have that serving?
-                resolve(head)?.takeIf { !it.needsChoice }?.food?.servingNamed(word) != null
-            }
+        // Letters of the head's own name are no food either ("Candybar 1 can"): the word stays with its amount, flagged.
+        override fun isServingWord(word: String, head: String): Boolean = word.any(Char::isLetter) && (
+            matcher.isLettersOfWordIn(word, head) ||
+                servingWordCache.getOrPut(word) { matcher.hasServingNamed(word) } &&
+                headServingCache.getOrPut("$word\u0000$head") {
+                    // The food the words before the amount name, as they read on their own: does it have that serving?
+                    resolve(head)?.takeIf { !it.needsChoice }?.food?.servingNamed(word) != null
+                }
+            )
     }
 
     /** The parts of [input] the Log page works with, meal words included. Every caller segments through here. */

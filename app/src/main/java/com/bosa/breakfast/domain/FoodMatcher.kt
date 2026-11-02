@@ -83,7 +83,7 @@ class FoodMatcher(
         return indexedCatalog.mapNotNull { indexed ->
             val food = indexed.food
             if (explicitModifiers.any { it !in indexed.all.names }) return@mapNotNull null
-            val hits = queries.map { hit(it, indexed) }
+            val hits = hits(queries, indexed)
             val identityHits = hits.filterIndexed { index, _ -> !queries[index].isModifier }
             val exactName = normalizedPhrase in indexed.normalizedNames
             if (identityQueries.isNotEmpty() && identityHits.all { it == null }) return@mapNotNull null
@@ -125,6 +125,26 @@ class FoodMatcher(
     }
 
     /**
+     * How each of [queries] matches a food ([hit]). A token whose only match is as letters of a longer word is no match
+     * when that longer word was typed too: "bar" and "can" name nothing in "bar candybar" and "can candybar", where
+     * "candybar" already is the name word they are letters of. A whole word of the name always matches.
+     */
+    private fun hits(queries: List<QueryToken>, indexed: IndexedFood): List<TokenHit?> = queries.map { query ->
+        hit(query, indexed)?.takeUnless { found -> found.prefix && queries.any { lettersOf(query.raw, it.raw) } }
+    }
+
+    /**
+     * True when [word], singular or plural, is only letters of a longer word of [phrase] ("cans" and "can" in "candybar"),
+     * so what matches [phrase] says nothing about [word]. A word some food names whole is a food of its own, never only
+     * that ("apple" in "pineapple"). Under three letters a word never matches that way.
+     */
+    fun isLettersOfWordIn(word: String, phrase: String): Boolean {
+        val typed = tokens(phrase)
+        return tokens(word).any { token -> singularForms(token).any { form -> typed.any { lettersOf(form, it) } } } &&
+            !matchesWholeWord(word)
+    }
+
+    /**
      * How one input token matches a food, within its own script: an exact form (a substring of the names, whole or a
      * prefix), a singular form that is a whole name word, or a typo of a name word. Null when no tier matches, and
      * always null for a token that mixes scripts ("bаnana" with a Cyrillic а): it is neither Latin nor Cyrillic.
@@ -163,7 +183,7 @@ class FoodMatcher(
         if (isExactName(phrase)) return true
         val queries = tokens(expandAbbreviations(phrase)).map(::QueryToken)
         if (queries.isEmpty()) return false
-        return indexedCatalog.any { indexed -> queries.all { hit(it, indexed) != null } }
+        return indexedCatalog.any { indexed -> hits(queries, indexed).all { it != null } }
     }
 
     /**
@@ -229,6 +249,11 @@ class FoodMatcher(
         private const val TYPO_WEIGHT = 0.6
         private const val MIN_STEM_LENGTH = 3
         private const val STEMMED_NAME_SCORE = 50.0
+        private const val MIN_LETTERS_OF_A_WORD = 3
+
+        private fun lettersOf(part: String, word: String): Boolean =
+            part.length >= MIN_LETTERS_OF_A_WORD && part.length < word.length && part in word
+
         private val EXACT_HIT = TokenHit(EXACT_WEIGHT, false)
         private val PREFIX_HIT = TokenHit(EXACT_WEIGHT, false, prefix = true)
         private val STEM_HIT = TokenHit(STEM_WEIGHT, false)

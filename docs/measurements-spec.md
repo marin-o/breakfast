@@ -5,13 +5,15 @@ Status: approved by the owner on 2026-10-29; built, pending device check. Owner 
 ## Today
 
 - A food has one **nutrition basis**: per 100 g or per 100 ml.
-- It may have extra **servings** (`ServingConversion`): a fixed unit (piece, tbsp, tsp, g, ml) and how many basis units one is. The food form already has a "Servings" list with an optional name ("1 bottle = 500 ml"), but a **name is display only**: "2 bottles cola" is not understood.
-- `NutritionCalculator` picks the first serving with the typed unit; two named servings in g ("bottle", "glass") are not told apart.
-- The Log bar turns kg, l, dl, cl into g or ml. The amount sheet never offers them.
-- tbsp and tsp on a per-100 g food count as 15 g and 5 g, marked approximate.
-- "slice" is read as "piece". Cups, oz, lb, fl oz, and words like can, bottle, scoop, serving are unknown.
-- Open Food Facts products come in per 100 g or 100 ml only; their printed serving ("1 can (330 ml)") is ignored.
-- A recipe yields portions, a total weight and/or a total volume (three fields).
+- It may have extra **servings** (`ServingConversion`): a unit, how many basis units one is, and a name ("bar = 20 g"). Named servings are told apart by name, whatever their unit.
+- The Log bar reads a serving's name where a unit goes ("2 slices bread", "bread 2 slices"), also when the name is a word or just letters of the food's name ("1 bar Protein bar", "1 bar Candybar"). A name the food lacks does not log ("1 can Candybar").
+- A bare count ("2 Candybars") counts the food's serving when it is a USDA food or has exactly one serving to count; a measure (cup, tbsp) counts nothing. A food with several, or none, stays in its default unit ("2 Candybars" is 2 g). The name alone is the default amount.
+- Entries remember the name they were logged with, so the day reads "1 bar".
+- The Log bar reads kg, oz, lb, l, dl, cl, cup and fl oz. The amount sheet offers only what the food has.
+- tbsp, tsp and cup on a per-100 g food with no density count as 1 ml ≈ 1 g, marked approximate.
+- "slice" with no slice serving is read as "piece".
+- Open Food Facts products bring their printed serving ("1 can (330 ml)") and package as named servings when these read clearly.
+- A recipe yields portions and/or one total amount.
 
 ## What changes
 
