@@ -37,7 +37,7 @@ Status: approved by the owner on 2026-10-29; built, pending device check. Owner 
 
 ### 4. Where servings are set **(owner)**
 
-- **New/Edit food form:** the existing "Servings" list; each row "1 [name] = [amount] [g | ml]". The density field sits next to it.
+- **New/Edit food form:** the existing "Servings" list; each row "1 [name] = [amount] [g | ml]". The density field sits next to it. One section (`food/ServingsSection.kt`) in New food, Edit food and the details of a product's review before it is stored, so a serving can be added the first time a product is. A row needs a name; a serving still in its form goes with Save, and one that doesn't read stops it. A serving in the other of g and ml needs the density. If the basis changes after a serving was added, the serving goes through the density; with none, it stays listed in the unit it was added in, the density field shows an error, and Save waits for a density, the old basis or its removal.
 - **Open Food Facts:** a product's `serving_size` becomes a named serving when it reads clearly: "1 can (330 ml)" → can = 330 ml; "2 biscuits (25 g)" → biscuit = 12.5 g; a bare "30 g" → serving = 30 g. Anything unclear is skipped, never guessed. The g/ml in brackets must match the product's basis (or its density), else skipped.
 
 ### 5. Recipes use the same system **(owner)**

@@ -11,7 +11,9 @@ import androidx.compose.runtime.setValue
 import com.bosa.breakfast.domain.FoodRecord
 import com.bosa.breakfast.domain.MeasureUnit
 import com.bosa.breakfast.domain.NutritionInput
+import com.bosa.breakfast.domain.POSITIVE_AMOUNT_MESSAGE
 import com.bosa.breakfast.domain.ServingConversion
+import com.bosa.breakfast.domain.resolveNutrition
 import com.bosa.breakfast.domain.splitAliases
 import kotlinx.serialization.Serializable
 
@@ -50,6 +52,8 @@ class FoodDraft {
     var servingLabel by mutableStateOf("")
     /** "100 ml =" this many g: the food's density, as typed; blank when unknown. */
     var density by mutableStateOf("")
+    /** The basis the amounts in [servings] were added in; null when they are in the basis as it is now. */
+    private var servingsBasis by mutableStateOf<MeasureUnit?>(null)
     /** What the serving form showed when Add serving opened it; until it changes, nothing was typed there. */
     private var servingOpenedWith by mutableStateOf<PendingServing?>(null)
 
@@ -81,13 +85,45 @@ class FoodDraft {
         servings = food?.householdServings().orEmpty()
         density = food?.density.let(::editableNumber)
         servingFormOpen = false; servingUnit = MeasureUnit.PIECE; servingAmount = ""; servingLabel = ""; servingOpenedWith = null
+        servingsBasis = null
     }
+
+    /** The basis Save stores: New food's shorthand ("per 100 ml") counts until the Basis field is changed. */
+    fun basis(): MeasureUnit = resolveNutrition(nutritionInput()).basisUnit
+
+    /**
+     * [servings] with their amounts in [basis]: after the basis changed they go through the density, and with no density
+     * they have no value in it, which is null. They are never read as the same number in the other unit.
+     */
+    fun servingsInBasis(): List<ServingConversion>? {
+        val from = servingsBasis
+        val to = basis()
+        if (from == null || from == to || servings.isEmpty()) return servings
+        val density = densityValue() ?: return null
+        return servings.map { it.copy(baseUnitsPerServing = servingInBasis(it.baseUnitsPerServing, from, to, density)) }
+    }
+
+    /** The rows as the form lists them: in [basis] when they have a value in it, else as they were added. */
+    fun shownServings(): List<ServingConversion> = servingsInBasis() ?: servings
+
+    /** The unit of [shownServings]' amounts. */
+    fun shownServingUnit(): MeasureUnit = servingsBasis.takeIf { servingsInBasis() == null } ?: basis()
+
+    fun removeServing(index: Int) { servings = servings.filterIndexed { i, _ -> i != index } }
+
+    /** The open form's amount is in the other of g and ml than the basis. */
+    private fun servingCrossesFamily(): Boolean =
+        positiveAmountOf(servingAmount) != null && servingUnit != basis() && (servingUnit == MeasureUnit.GRAM || servingUnit == MeasureUnit.MILLILITER)
+
+    /** A serving in the form or in the rows has a value only through a density, and there is none. */
+    private fun densityNeeded(): Boolean =
+        density.isBlank() && (servingsInBasis() == null || (servingFormOpen && servingCrossesFamily()))
 
     /** The density typed: a positive number, or null (blank, or not one). */
     fun densityValue(): Double? = fieldNumber(density, loaded?.density)?.takeIf(::isPositiveAmount)
 
-    /** Something typed as the density that is not a positive number: it shows as an error and Save refuses it. */
-    fun densityError(): Boolean = density.isNotBlank() && densityValue() == null
+    /** A density that is not a positive number, or none where a serving needs one: it shows as an error and Save refuses it. */
+    fun densityError(): Boolean = (density.isNotBlank() && densityValue() == null) || densityNeeded()
 
     /** Aliases already added plus any typed but not yet confirmed in the alias field. */
     fun allAliases(): List<String> =
@@ -99,12 +135,33 @@ class FoodDraft {
 
     fun commitServing(): Boolean {
         val amount = positiveAmountOf(servingAmount) ?: return false
-        val label = servingLabel.trim().ifBlank { null }
+        // A row needs its name: without one, "1 g = 20 g" is no serving.
+        val label = servingLabel.trim().ifBlank { return false }
+        if (densityValue() == null && servingCrossesFamily()) return false
+        val rows = servingsInBasis() ?: return false
+        val basis = basis()
         // A serving is kept in the food's basis units: one typed in the other of g and ml goes through the density.
-        val base = servingInBasis(amount, servingUnit, if (basisUnit == MeasureUnit.MILLILITER.label) MeasureUnit.MILLILITER else MeasureUnit.GRAM, densityValue())
-        servings = servings.filterNot { it.unit == servingUnit && it.label == label } + ServingConversion(servingUnit, base, "personal serving", label = label)
+        val base = servingInBasis(amount, servingUnit, basis, densityValue())
+        servings = rows.filterNot { it.name?.equals(label, ignoreCase = true) == true } + ServingConversion(servingUnit, base, "personal serving", label = label)
+        servingsBasis = basis
         closeServing()
         return true
+    }
+
+    /**
+     * Save with the serving form open: what it holds becomes a row, so nothing typed is lost. Null when Save may go on (a
+     * form with no name and no amount holds nothing), else what Save says; the form stays as it is and nothing is saved.
+     */
+    fun commitPendingServing(): String? {
+        if (!servingFormOpen) return null
+        val amount = positiveAmountOf(servingAmount)
+        return when {
+            amount == null && servingLabel.isBlank() -> null
+            amount == null -> POSITIVE_AMOUNT_MESSAGE
+            servingLabel.isBlank() -> "Name is required"
+            commitServing() -> null
+            else -> POSITIVE_AMOUNT_MESSAGE
+        }
     }
 
     /** Add serving: the form opens on [unit] with amount "0" and no name. */
@@ -140,7 +197,7 @@ class FoodDraft {
     /** The whole form, values and flags, so it can be put back as it was after the process is killed. */
     fun state() = FoodDraftState(
         fields(), barcodeFromScan, fromOff, caloriesEdited, proteinEdited, carbsEdited, fatEdited, basisEdited,
-        aliasFieldOpen, servingFormOpen, servingOpenedWith,
+        aliasFieldOpen, servingFormOpen, servingOpenedWith, servingsBasis,
     )
 
     fun restore(state: FoodDraftState) {
@@ -155,6 +212,7 @@ class FoodDraft {
         caloriesEdited = state.caloriesEdited; proteinEdited = state.proteinEdited; carbsEdited = state.carbsEdited
         fatEdited = state.fatEdited; basisEdited = state.basisEdited
         aliasFieldOpen = state.aliasFieldOpen; servingFormOpen = state.servingFormOpen; servingOpenedWith = state.servingOpenedWith
+        servingsBasis = state.servingsBasis
     }
 }
 
@@ -188,7 +246,7 @@ data class FoodDraftFields(
 
 /**
  * [amount] of [unit] in a food's [basis] unit: as it is in the same unit, through [density] (g in 100 ml) between g and
- * ml, else as typed (no density to convert with).
+ * ml, else as typed (no density to convert with; [FoodDraft] asks for one before it gets here).
  */
 internal fun servingInBasis(amount: Double, unit: MeasureUnit, basis: MeasureUnit, density: Double?): Double = when {
     unit == basis || density == null -> amount
@@ -211,4 +269,5 @@ data class FoodDraftState(
     val aliasFieldOpen: Boolean = false,
     val servingFormOpen: Boolean = false,
     val servingOpenedWith: PendingServing? = null,
+    val servingsBasis: MeasureUnit? = null,
 )

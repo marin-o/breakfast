@@ -12,6 +12,7 @@ import com.bosa.breakfast.domain.NutritionValues
 import com.bosa.breakfast.domain.TypedPart
 import com.bosa.breakfast.domain.ServingConversion
 import com.bosa.breakfast.domain.withServingsAdded
+import com.bosa.breakfast.domain.servingNamed
 import com.bosa.breakfast.resolve.ResolveQueueView
 import com.bosa.breakfast.ui.screens.labelFor
 import com.bosa.breakfast.today.OpenDiary
@@ -536,5 +537,78 @@ class ProductReviewTest {
         review.saveToLibrary()
         assertTrue(store.calls.isEmpty())
         assertEquals(nutella, review.product)
+    }
+
+    // ---- Servings added under "Edit details" ----
+
+    private fun addBar() {
+        review.servingForm.openServing(MeasureUnit.GRAM)
+        review.servingForm.servingLabel = "bar"
+        review.servingForm.servingAmount = "20"
+    }
+
+    @Test fun aServingAddedInAReviewIsCountedAndGoesWithWhatIsStored() {
+        // Saved from the Library.
+        review.choose(nutella, fromScan = true, origin = ProductReviewOrigin.LIBRARY)
+        assertTrue(review.isNewProduct(nutella))
+        addBar()
+        assertTrue(review.servingForm.commitServing())
+        val reviewed = review.withServings(nutella)
+        assertEquals(20.0, reviewed.servingNamed("bar")!!.baseUnitsPerServing, 0.0)
+        review.onMeasure(com.bosa.breakfast.domain.Measure(MeasureUnit.SERVING, "bar"))
+        review.onAmount("2")
+        assertEquals(215.6, review.calculation(nutella)!!.nutrition.calories, 1e-9)
+        review.saveToLibrary()
+        assertEquals("update Nutella 539.0", store.calls.single())
+        assertEquals(20.0, diary.foods.single().servingNamed("bar")!!.baseUnitsPerServing, 0.0)
+    }
+
+    @Test fun aServingStillInItsFormGoesWithAddAndOneThatDoesNotReadStopsIt() {
+        var stored: FoodRecord? = null
+        val logged = object : ProductStore by store {
+            override suspend fun cacheFoodAndLog(food: FoodRecord, amount: Double, unit: MeasureUnit, meal: MealSlot, dayKey: String, servingName: String?) { stored = food }
+        }
+        val review = ProductReview(
+            diary.session, logged, notices, { "2026-10-28" }, { MealSlot.LUNCH }, { null }, { null }, { false }, {}, {},
+            { _, _, _, _ -> }, {}, {}, { _, _ -> }, {}, {}, diary.scope, kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        review.choose(nutella, fromScan = true, origin = ProductReviewOrigin.MEAL)
+        review.servingForm.openServing(MeasureUnit.GRAM)
+        review.servingForm.servingAmount = "20"
+        review.add(MealSlot.LUNCH)
+        assertEquals("Name is required", notices.message)
+        assertNull(stored)
+        review.servingForm.servingLabel = "bar"
+        review.add(MealSlot.LUNCH)
+        assertEquals(20.0, stored!!.servingNamed("bar")!!.baseUnitsPerServing, 0.0)
+    }
+
+    @Test fun aServingGoesToThePartAReviewedProductIsPickedFor() {
+        var stored: FoodRecord? = null
+        val kept = object : ProductStore by store {
+            override suspend fun cacheFood(food: FoodRecord): FoodRecord { stored = food; return food }
+        }
+        val review = ProductReview(
+            diary.session, kept, notices, { "2026-10-28" }, { null }, { null }, { null }, { true }, {}, {},
+            { _, _, _, _ -> }, {}, {}, { _, _ -> }, {}, {}, diary.scope, kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        review.choose(nutella, fromScan = true)
+        review.servingForm.openServing(MeasureUnit.GRAM)
+        review.servingForm.servingLabel = "bar"
+        review.servingForm.servingAmount = "20"
+        review.addToLog()
+        assertEquals(20.0, stored!!.servingNamed("bar")!!.baseUnitsPerServing, 0.0)
+    }
+
+    @Test fun aReviewWithNoServingAddedLeavesTheFoodAsItIs() {
+        review.choose(chicken, origin = ProductReviewOrigin.LOG_PART)
+        assertTrue(review.withServings(chicken) === chicken)
+    }
+
+    @Test fun aStoredProductHasNoNewServings() {
+        diary.foods = listOf(nutella.copy(id = "custom-mine"))
+        diary.session.refresh()
+        assertFalse("the same barcode", review.isNewProduct(nutella))
+        assertFalse("the same id", review.isNewProduct(nutella.copy(id = "custom-mine", barcode = null)))
     }
 }

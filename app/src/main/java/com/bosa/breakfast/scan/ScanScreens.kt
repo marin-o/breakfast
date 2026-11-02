@@ -104,6 +104,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.bosa.breakfast.domain.FoodRecord
+import com.bosa.breakfast.domain.Measure
+import com.bosa.breakfast.domain.servingNamed
+import com.bosa.breakfast.food.ServingsSection
 import com.bosa.breakfast.domain.asciiDigits
 import com.bosa.breakfast.domain.displayLabel
 import com.bosa.breakfast.domain.normalizeBarcode
@@ -397,6 +400,8 @@ private fun amountFieldText(review: ProductReview): String =
     val colors = LocalBreakfastColors.current
     val letter = sourceLetter(food)
     val basis = food.nutrition
+    // What the amount can count, with the servings added under "Edit details".
+    val reviewed = review.withServings(food)
     var amountText by rememberSaveable(food.id) { mutableStateOf(amountFieldText(review)) }
     // While a resolve queue is active the meal is the queue's own: shown as a plain line, not a choice.
     val queueMeal = review.queueMeal()
@@ -443,6 +448,7 @@ private fun amountFieldText(review: ProductReview): String =
                         oneRowWhenItFits = true,
                     )
                 }
+                if (review.isNewProduct(food)) ServingsSection(review.servingForm)
             }
             Field(
                 label = "Amount",
@@ -452,6 +458,8 @@ private fun amountFieldText(review: ProductReview): String =
                     val next = parseProductAmount(it, bareUnit)
                     review.onAmount(editableNumber(next?.amount))
                     if (next != null && next.unit != MeasureUnit.SERVING) review.onUnit(next.unit.displayLabel())
+                    // "1 bar" counts that serving; a word the food has no serving for leaves the measure as it is.
+                    next?.word?.takeIf { next.unit == MeasureUnit.SERVING }?.let(reviewed::servingNamed)?.name?.let { review.onMeasure(Measure(MeasureUnit.SERVING, it)) }
                 },
                 modifier = Modifier.padding(top = 16.dp),
                 error = amountText.isNotBlank() && calculation == null,
@@ -459,11 +467,11 @@ private fun amountFieldText(review: ProductReview): String =
                 errorDescription = "Enter a positive amount and a supported unit, such as 100 g or 1 tbsp.",
                 hint = approx?.let { "≈$it" },
             )
-            if (isUsdaFoodId(food.id)) MeasureChoices(
-                food,
+            if (isUsdaFoodId(food.id) || reviewed.householdServings().isNotEmpty()) MeasureChoices(
+                reviewed,
                 selected = review.measure(),
                 onSelect = { review.onMeasure(it); amountText = amountFieldText(review) },
-                detail = { measureWeightDetail(food, it) },
+                detail = { measureWeightDetail(reviewed, it) },
                 modifier = Modifier.padding(top = 8.dp),
             )
             if (!fromLibrary) {

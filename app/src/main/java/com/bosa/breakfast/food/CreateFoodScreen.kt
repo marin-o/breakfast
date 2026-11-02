@@ -91,6 +91,7 @@ import com.bosa.breakfast.domain.editableNumber
                 ),
                 gap = 12.dp,
             )
+            ServingsSection(draft)
             Field("Alias", draft.aliasInput, { draft.aliasInput = it })
         }
     }

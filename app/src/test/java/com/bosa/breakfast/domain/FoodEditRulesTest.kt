@@ -138,6 +138,7 @@ class FoodEditRulesTest {
     fun draftKeepsMultipleNamedServingsWithTheSameUnit() {
         val draft = FoodDraft()
         draft.servings = listOf(ServingConversion(MeasureUnit.MILLILITER, 330.0, "personal", label = "bottle"))
+        draft.basisUnit = "ml"
         draft.servingUnit = MeasureUnit.MILLILITER
         draft.servingAmount = "250"
         draft.servingLabel = "glass"

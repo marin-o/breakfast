@@ -325,29 +325,17 @@ class BreakfastEngine(
         nowMs: Long = System.currentTimeMillis(),
         dayKey: String,
         sourceName: String? = null,
-        sourceDescription: String? = null
+        sourceDescription: String? = null,
+        servings: List<ServingConversion> = emptyList(),
+        density: Double? = null,
     ): MealEntry {
         require(name.isNotBlank()) { "Name is required" }
         require(basisAmount.isFinite() && basisAmount > 0.0) { "Nutrition basis must be positive" }
         requirePositive(amount)
         require(nutrition.calories.isFinite() && nutrition.calories >= 0.0) { "Calories are required" }
-        val id = "custom-" + UUID.randomUUID()
-        val food = FoodRecord(
-            id = id,
-            name = name.trim(),
-            aliases = alias?.let(::splitAliases).orEmpty(),
-            category = "Personal food",
-            origin = FoodOrigin.CUSTOM,
-            nutrition = NutritionBasis(basisAmount, basisUnit, nutrition),
-            conversions = listOf(ServingConversion(basisUnit, basisAmount, "custom basis")),
-            defaultAmount = amount,
-            defaultUnit = amountUnit,
-            brand = brand?.trim()?.ifBlank { null },
-            barcode = barcode?.trim()?.ifBlank { null },
-            sourceName = sourceName,
-            sourceId = barcode?.trim()?.ifBlank { null },
-            sourceDescription = sourceDescription,
-            personalOverride = true
+        val food = newCustomFoodRecord(
+            "custom-" + UUID.randomUUID(), name, brand, barcode, alias, nutrition, basisAmount, basisUnit,
+            amount, amountUnit, sourceName, sourceDescription, servings, density,
         )
         val calculation = calculator.calculate(food, amount, amountUnit)
         require(calculation.supported) { "Amount unit is incompatible with the nutrition basis" }
@@ -360,16 +348,15 @@ class BreakfastEngine(
     suspend fun saveCustomFood(
         name: String, brand: String?, barcode: String?, alias: String? = null, nutrition: NutritionValues,
         basisAmount: Double, basisUnit: MeasureUnit, sourceName: String? = null,
-        sourceDescription: String? = null
+        sourceDescription: String? = null, servings: List<ServingConversion> = emptyList(), density: Double? = null,
     ): FoodRecord {
         require(name.isNotBlank()) { "Name is required" }
         require(basisAmount.isFinite() && basisAmount > 0.0) { "Nutrition basis must be positive" }
         require(nutrition.calories.isFinite() && nutrition.calories >= 0.0) { "Calories are required" }
-        val food = FoodRecord("custom-" + UUID.randomUUID(), name.trim(), alias?.let(::splitAliases).orEmpty(), "Personal food", FoodOrigin.CUSTOM,
-            NutritionBasis(basisAmount, basisUnit, nutrition), listOf(ServingConversion(basisUnit, basisAmount, "custom basis")),
-            basisAmount, basisUnit, sourceId = barcode?.trim()?.ifBlank { null }, sourceName = sourceName, sourceDescription = sourceDescription,
-            personalOverride = true,
-            brand = brand?.trim()?.ifBlank { null }, barcode = barcode?.trim()?.ifBlank { null })
+        val food = newCustomFoodRecord(
+            "custom-" + UUID.randomUUID(), name, brand, barcode, alias, nutrition, basisAmount, basisUnit,
+            basisAmount, basisUnit, sourceName, sourceDescription, servings, density,
+        )
         store.upsertFood(food)
         invalidateMatcher()
         return food

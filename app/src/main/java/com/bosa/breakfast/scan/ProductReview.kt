@@ -33,6 +33,8 @@ import com.bosa.breakfast.domain.toMeasureUnit
 import com.bosa.breakfast.resolve.ResolveQueueView
 import com.bosa.breakfast.resolve.queueLogPlan
 import com.bosa.breakfast.domain.ServingConversion
+import com.bosa.breakfast.domain.sameBarcode
+import com.bosa.breakfast.food.FoodDraft
 import com.bosa.breakfast.suspendRunCatching
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -73,6 +75,10 @@ internal interface ProductStore {
  *   the search data and nothing waits on or shows the fetch: when it arrives, only its servings in the product's basis
  *   are added, quietly ([servingsToAdd]): to the product while it is reviewed, or, once it was saved or logged, to the
  *   stored food, unless that was edited since. Its nutrition is never taken. Leaving the review cancels it.
+ *
+ * - **Servings added here:** "Edit details" of a product not stored yet ([isNewProduct]) has the food form's Servings
+ *   section over [servingForm]; what the fields describe, and so what is written, carries them ([withServings]). A stored
+ *   food has Edit food for that, and the store keeps it as it is.
  *
  * - **A queue with no meal yet** (the Log's Find matches): a queued part's review is a [ProductReviewOrigin.LOG_PART]
  *   one for that part: Add stores the food and hands it to the Log's draft, and the Log asks for the meal.
@@ -135,6 +141,8 @@ internal class ProductReview(
     var protein by mutableStateOf(""); private set
     var carbs by mutableStateOf(""); private set
     var fat by mutableStateOf(""); private set
+    /** The Servings section's form: only its servings and density are used here. */
+    val servingForm = FoodDraft()
     private val calculator = NutritionCalculator()
     /** The exact amount [amount] was filled with, which it stands for until edited. */
     private var filledAmount: Double? = null
@@ -186,9 +194,24 @@ internal class ProductReview(
         protein = editableNumber(food.nutrition.values.protein)
         carbs = editableNumber(food.nutrition.values.carbohydrates)
         fat = editableNumber(food.nutrition.values.fat)
+        servingForm.load(food)
         leaveFetch()
         // A scanned product is already the full one; a search result is fetched by its barcode for its servings.
         food.barcode?.takeIf { !fromScan && fetchServings }?.let { startFetch(food, it) }
+    }
+
+    /** [food] is not in the diary yet, by id or barcode, so what it is stored with is what the review says. */
+    fun isNewProduct(food: FoodRecord): Boolean = session.foods.none { stored ->
+        stored.id == food.id || (food.barcode != null && stored.barcode != null && sameBarcode(food.barcode, stored.barcode))
+    }
+
+    /** [food] with the servings and density of [servingForm]; [food] itself while those are as it has them. */
+    fun withServings(food: FoodRecord): FoodRecord {
+        val servings = servingForm.servingsInBasis() ?: return food
+        val density = servingForm.densityValue()
+        val own = food.householdServings()
+        if (servings == own && density == food.density) return food
+        return food.copy(conversions = food.conversions - own.toSet() + servings, density = density)
     }
 
     /** The amount of the entry being corrected, when [food] has a number for it. */
@@ -211,7 +234,11 @@ internal class ProductReview(
             val reviewed = product
             when {
                 saved != null -> mergeInto(saved, servings)
-                fetch === started && reviewed?.id == started.productId -> product = reviewed.copy(conversions = reviewed.conversions + servingsToAdd(reviewed, full))
+                fetch === started && reviewed?.id == started.productId -> {
+                    val added = servingsToAdd(withServings(reviewed), full)
+                    product = reviewed.copy(conversions = reviewed.conversions + added)
+                    servingForm.servings = servingForm.servings + added
+                }
             }
         }
     }
@@ -339,10 +366,7 @@ internal class ProductReview(
         if (!session.canWrite) return
         if (origin == ProductReviewOrigin.CORRECTION) { addToLog(); return }
         if (resolvingPart()) { resolvePart(); return }
-        val draft = draft(food) ?: run {
-            notices.show("Enter a positive amount, a supported unit, and valid calories.")
-            return
-        }
+        val draft = writable(food) ?: return
         val resolveQueue = queue()
         // Never null: [chosen] is a meal, and a queue with none reviews as a part of the draft ([choose]). If that ever breaks, crash
         // loudly rather than ignore the tap.
@@ -377,7 +401,7 @@ internal class ProductReview(
         val resolveQueue = queue()
         if (!canSaveProductToLibrary(origin, queueActive = resolveQueue != null)) return
         if (!session.canWrite) return
-        val draft = draft(food) ?: run { notices.show("Enter a positive amount, a supported unit, and valid calories."); return }
+        val draft = writable(food) ?: return
         session.write(
             change = DiaryChange.FoodsChanged,
             onSuccess = {
@@ -399,10 +423,7 @@ internal class ProductReview(
         val food = product ?: return
         if (resolvingPart()) { resolvePart(); return }
         if (!session.canWrite) return
-        val draft = draft(food) ?: run {
-            notices.show("Enter a positive amount, a supported unit, and valid calories.")
-            return
-        }
+        val draft = writable(food) ?: return
         val scanned = fromScan
         val measure = Measure(draft.unit, draft.servingName)
         if (origin == ProductReviewOrigin.CORRECTION) {
@@ -440,16 +461,22 @@ internal class ProductReview(
     private fun resolvePart() {
         val food = product ?: return
         if (!session.canWrite) return
-        val draft = draft(food) ?: run {
-            notices.show("Enter a positive amount, a supported unit, and valid calories.")
-            return
-        }
+        val draft = writable(food) ?: return
         val scanned = fromScan
         session.write(
             change = DiaryChange.FoodsChanged,
             onSuccess = { stored -> finish(stored, draft.food, scanned, keepsProduct = true) { onPartResolved(stored) } },
             onFailure = { notices.show(it.message ?: "Could not save this food.") },
         ) { storeIt(draft.food) }
+    }
+
+    /** What a write takes: an open serving form goes with it; what stops the write is said, and it is null. */
+    private fun writable(food: FoodRecord): ProductDraft? {
+        servingForm.commitPendingServing()?.let { notices.show(it); return null }
+        return draft(food) ?: run {
+            notices.show("Enter a positive amount, a supported unit, and valid calories.")
+            null
+        }
     }
 
     /** [filled] when the amount comes to something. */
@@ -460,10 +487,10 @@ internal class ProductReview(
         val amount = fieldNumber(amount, filledAmount)?.takeIf(::isPositiveAmount)
         val measure = measure()
         val kcal = fieldNumber(calories, food.nutrition.values.calories)
-        if (amount == null || measure == null ||
+        if (servingForm.densityError() || amount == null || measure == null ||
             kcal == null || !kcal.isFinite() || kcal < 0.0
         ) return null
-        val draftFood = food.copy(
+        val draftFood = withServings(food).copy(
             name = name.trim().ifBlank { food.name },
             nutrition = NutritionBasis(
                 food.nutrition.amount,

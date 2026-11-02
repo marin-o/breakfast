@@ -39,6 +39,34 @@ internal fun <T> recencyOrder(items: List<T>, entries: List<MealEntry>, id: (T) 
     return items.sortedWith(compareByDescending<T> { latestByFood[id(it)] ?: Long.MIN_VALUE }.thenBy { name(it).lowercase(Locale.ROOT) })
 }
 
+/** A personal food's rows: its basis, then [servings], less a row that is only the basis again. */
+internal fun personalConversions(basisUnit: MeasureUnit, basisAmount: Double, servings: List<ServingConversion>): List<ServingConversion> =
+    listOf(ServingConversion(basisUnit, basisAmount, "custom basis")) + servings.filterNot { it.unit == basisUnit && it.label.isNullOrBlank() }
+
+/** A new personal food as the form describes it, stored whichever way it is saved. */
+internal fun newCustomFoodRecord(
+    id: String, name: String, brand: String?, barcode: String?, alias: String?, nutrition: NutritionValues,
+    basisAmount: Double, basisUnit: MeasureUnit, defaultAmount: Double, defaultUnit: MeasureUnit,
+    sourceName: String?, sourceDescription: String?, servings: List<ServingConversion>, density: Double?,
+): FoodRecord = FoodRecord(
+    id = id,
+    name = name.trim(),
+    aliases = alias?.let(::splitAliases).orEmpty(),
+    category = "Personal food",
+    origin = FoodOrigin.CUSTOM,
+    nutrition = NutritionBasis(basisAmount, basisUnit, nutrition),
+    conversions = personalConversions(basisUnit, basisAmount, servings),
+    defaultAmount = defaultAmount,
+    defaultUnit = defaultUnit,
+    brand = brand?.trim()?.ifBlank { null },
+    barcode = barcode?.trim()?.ifBlank { null },
+    sourceName = sourceName,
+    sourceId = barcode?.trim()?.ifBlank { null },
+    sourceDescription = sourceDescription,
+    personalOverride = true,
+    density = density,
+)
+
 /**
  * Applies form edits to a stored food. [aliases] and [servings], when given, replace the stored lists
  * outright (so the last alias or serving can be removed); otherwise [aliasText] keeps its older
@@ -64,13 +92,12 @@ internal fun editedCustomFoodRecord(
         ?: original.aliases
     val isCustom = original.origin == FoodOrigin.CUSTOM
     val preserveImportedServings = !isCustom && original.nutrition.unit == basisUnit
-    val basisConversion = ServingConversion(basisUnit, basisAmount, "custom basis")
     val extraServings = servings.orEmpty().filterNot { it.unit == basisUnit && it.label.isNullOrBlank() }
     val importedBasis = original.conversions.filter { it.unit == basisUnit && it.label.isNullOrBlank() }
     val conversions = when {
-        servings == null -> if (preserveImportedServings) original.conversions else listOf(basisConversion)
+        servings == null -> if (preserveImportedServings) original.conversions else personalConversions(basisUnit, basisAmount, emptyList())
         preserveImportedServings -> importedBasis + extraServings
-        else -> listOf(basisConversion) + extraServings
+        else -> personalConversions(basisUnit, basisAmount, extraServings)
     }
     val keepDefault = preserveImportedServings && (servings == null || original.defaultUnit == basisUnit || extraServings.any { it.unit == original.defaultUnit })
     return original.copy(

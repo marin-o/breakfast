@@ -18,6 +18,7 @@ import com.bosa.breakfast.domain.FoodRecord
 import com.bosa.breakfast.domain.MealSlot
 import com.bosa.breakfast.domain.MeasureUnit
 import com.bosa.breakfast.domain.NutritionValues
+import com.bosa.breakfast.domain.ServingConversion
 import com.bosa.breakfast.domain.canonicalBarcode
 import com.bosa.breakfast.domain.editedCustomFoodRecord
 import com.bosa.breakfast.domain.normalizeBarcode
@@ -48,6 +49,10 @@ internal data class NewFood(
     /** "Open Food Facts" for a form opened from an incomplete Open Food Facts result, else null. */
     val sourceName: String?,
     val sourceDescription: String,
+    /** The servings the form added, in the basis unit. */
+    val servings: List<ServingConversion> = emptyList(),
+    /** Grams in 100 ml ("100 ml = X g"); null when not known. */
+    val density: Double? = null,
 )
 
 /**
@@ -159,8 +164,6 @@ internal class FoodForm(
         if (open && editingFoodId?.let { id -> session.foods.none { it.id == id } } == true) close()
     }
 
-    fun commitServing() { draft.commitServing() }
-
     /** The barcode field's scan: the scanner opens over the form, and the barcode it reads comes back here, with no lookup. */
     fun beginBarcodeRescan() { startScanFor(::rescanned) }
     private fun rescanned(barcode: String) { draft.barcode = barcode; draft.barcodeFromScan = true }
@@ -184,7 +187,7 @@ internal class FoodForm(
         // A tap while the save runs is ignored, not reported as invalid.
         if (!session.canWrite) return
         val name = draft.name; val brand = draft.brand; val barcode = draft.barcode.trim()
-        val aliasList = draft.allAliases(); val servingList = draft.servings
+        val aliasList = draft.allAliases()
         val input = draft.nutritionInput()
         val resolved = resolveNutrition(input)
         val editingId = editingFoodId
@@ -197,9 +200,13 @@ internal class FoodForm(
             return
         }
         val kcal = resolved.calories ?: return
+        // A serving still in its form goes with the save; one that doesn't read stops it, so no wrong value is stored.
+        draft.commitPendingServing()?.let { notices.show(it); return }
         // "100 ml =" a number that is not a positive one: the field shows it, and nothing is saved.
         if (draft.densityError()) { notices.show(POSITIVE_AMOUNT_MESSAGE); return }
         val density = draft.densityValue()
+        // Past densityError, they have a value in the basis.
+        val servingList = draft.servingsInBasis().orEmpty()
         // A new or changed code is stored in its canonical form; an unchanged one keeps the spelling it has.
         val storedBarcode = storedBarcodeFor(barcode, foods, editingId)
         val basisAmount = resolved.basisAmount
@@ -228,6 +235,8 @@ internal class FoodForm(
             name, brand, storedBarcode, aliasList.joinToString(", "), nutrition, basisAmount, basisUnit,
             sourceName = fromOff.takeIf { it }?.let { "Open Food Facts" },
             sourceDescription = "Saved from an incomplete Open Food Facts barcode result",
+            servings = servingList,
+            density = density,
         )
         val day = selectedDay()
         session.write(

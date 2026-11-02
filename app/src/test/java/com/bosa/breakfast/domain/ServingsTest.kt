@@ -262,4 +262,24 @@ class ServingsTest {
         assertNull(serving("2 oz", MeasureUnit.GRAM))
         assertNull(serving(null, MeasureUnit.GRAM))
     }
+
+    @Test fun aNewFoodsServingWorksLikeOneAddedInEditFood() {
+        val serving = ServingConversion(MeasureUnit.GRAM, 20.0, "personal serving", label = "bar")
+        val alone = newCustomFoodRecord(
+            "custom-x", " Protein crunch ", "", "5901234123457", null, NutritionValues(400.0, 30.0, 40.0, 10.0),
+            100.0, MeasureUnit.GRAM, 100.0, MeasureUnit.GRAM, null, null, listOf(serving), 90.0,
+        )
+        assertEquals(90.0, alone.density!!, 0.0)
+        assertEquals(listOf(Measure(MeasureUnit.GRAM), Measure(MeasureUnit.MILLILITER), Measure(MeasureUnit.SERVING, "bar")), alone.measures())
+        assertEquals(listOf(serving), alone.householdServings())
+        val edited = editedCustomFoodRecord(
+            food("custom-x", "Protein crunch"), "Protein crunch", "", "", "", alone.nutrition.values, 100.0, MeasureUnit.GRAM,
+            servings = listOf(serving), density = 90.0,
+        )
+        assertEquals(edited.conversions, alone.conversions)
+        val part = planner(alone).plan("1 bar protein crunch").entries.single()
+        assertEquals(MeasureUnit.SERVING to "bar", part.unit to part.label)
+        assertEquals(80.0, part.calculation.nutrition.calories, 1e-9)
+        assertEquals(serving.baseUnitsPerServing, alone.servingNamed("bars")!!.baseUnitsPerServing, 0.0)
+    }
 }

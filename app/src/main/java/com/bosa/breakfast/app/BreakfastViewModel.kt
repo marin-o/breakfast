@@ -115,12 +115,13 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
                 override suspend fun updateFood(food: FoodRecord) = engine.updateFood(food)
                 override suspend fun saveFood(food: NewFood) = engine.saveCustomFood(
                     food.name, food.brand, food.barcode, food.aliases, food.nutrition, food.basisAmount, food.basisUnit,
-                    sourceName = food.sourceName, sourceDescription = food.sourceDescription,
+                    sourceName = food.sourceName, sourceDescription = food.sourceDescription, servings = food.servings, density = food.density,
                 )
                 override suspend fun saveFoodAndLog(food: NewFood, meal: MealSlot, dayKey: String): FoodRecord {
                     val entry = engine.saveCustomAndLog(
                         food.name, food.brand, food.barcode, food.aliases, food.nutrition, food.basisAmount, food.basisUnit, meal,
                         food.basisAmount, food.basisUnit, dayKey = dayKey, sourceName = food.sourceName, sourceDescription = food.sourceDescription,
+                        servings = food.servings, density = food.density,
                     )
                     return engine.foodById(entry.foodId) ?: error("Saved food could not be reloaded.")
                 }

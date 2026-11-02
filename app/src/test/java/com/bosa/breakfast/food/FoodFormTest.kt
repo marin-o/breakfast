@@ -13,6 +13,7 @@ import com.bosa.breakfast.domain.MealSlot
 import com.bosa.breakfast.domain.MeasureUnit
 import com.bosa.breakfast.domain.NutritionValues
 import com.bosa.breakfast.domain.TypedPart
+import com.bosa.breakfast.domain.servingNamed
 import com.bosa.breakfast.resolve.ResolveQueueView
 import com.bosa.breakfast.today.OpenDiary
 import kotlinx.coroutines.CompletableDeferred
@@ -315,7 +316,190 @@ class FoodFormTest {
         assertEquals("en", candidate.languageCode)
         assertEquals("Open Food Facts", store.saved.single().sourceName)
     }
+
+    // ---- Servings on the first add ----
+
+    private fun addBar() {
+        form.draft.openServing(form.draft.basis())
+        form.draft.servingLabel = "bar"
+        form.draft.servingAmount = "20"
+        assertTrue(form.draft.commitServing())
+    }
+
+    private fun assertBarStored() {
+        val saved = store.saved.single()
+        assertEquals(listOf("bar"), saved.servings.map { it.label })
+        assertEquals(20.0, saved.servings.single().baseUnitsPerServing, 0.0)
+        assertEquals(103.0, saved.density!!, 0.0)
+    }
+
+    private fun typeFoodWithBar() {
+        typeFood()
+        form.draft.density = "103"
+        addBar()
+    }
+
+    @Test fun servingsAndDensityGoWithANewFoodSavedAlone() {
+        form.open()
+        typeFoodWithBar()
+        form.save()
+        assertEquals(listOf("save Ayran"), store.calls)
+        assertBarStored()
+    }
+
+    @Test fun servingsAndDensityGoWithANewFoodLoggedToAMeal() {
+        meal = MealSlot.LUNCH
+        form.open()
+        typeFoodWithBar()
+        form.save()
+        assertEquals("save and log Ayran to LUNCH on 2026-10-28", store.calls.single())
+        assertBarStored()
+    }
+
+    @Test fun servingsAndDensityGoWithANewFoodPickedForAPart() {
+        // A Log part's or a recipe ingredient's: both are a part being resolved.
+        resolvingPart = true
+        form.open("Ayran")
+        typeFoodWithBar()
+        form.save()
+        assertEquals(listOf("save Ayran"), store.calls)
+        assertBarStored()
+    }
+
+    @Test fun servingsAndDensityGoWithANewFoodOnItsWayToAReview() {
+        form.open("Ayran", barcode = "5901234123457", reviewAfterSave = com.bosa.breakfast.scan.ProductReviewOrigin.MEAL)
+        typeFoodWithBar()
+        form.save()
+        assertEquals("review Ayran MEAL", events.last())
+        assertBarStored()
+    }
+
+    @Test fun servingsAndDensityGoWithANewFoodForAQueue() {
+        queue = ResolveQueueView(MealSlot.DINNER, listOf("ayran"), 1, TypedPart("ayran", null, null))
+        form.open("Ayran")
+        typeFoodWithBar()
+        form.save()
+        assertEquals("save and log Ayran to DINNER on 2026-10-28", store.calls.single())
+        assertBarStored()
+    }
+
+    @Test fun theShorthandsBasisIsTheServingsBasis() {
+        form.open()
+        form.draft.name = "Milk"
+        form.draft.shorthand = "per 100 ml: 50 kcal"
+        form.draft.openServing(form.draft.basis())
+        assertEquals("the form starts on it", MeasureUnit.MILLILITER, form.draft.servingUnit)
+        form.draft.servingLabel = "glass"
+        form.draft.servingAmount = "250"
+        assertTrue("no density needed", form.draft.commitServing())
+        assertEquals(MeasureUnit.MILLILITER, form.draft.shownServingUnit())
+        form.save()
+        assertEquals(MeasureUnit.MILLILITER, store.saved.single().basisUnit)
+        assertEquals(250.0, store.saved.single().servings.single().baseUnitsPerServing, 0.0)
+    }
+
+    @Test fun aServingStillInItsFormGoesWithSave() {
+        form.open()
+        typeFood()
+        form.draft.openServing(MeasureUnit.GRAM)
+        form.draft.servingLabel = "bar"
+        form.draft.servingAmount = "20,5"
+        form.save()
+        assertEquals(20.5, store.saved.single().servings.single().baseUnitsPerServing, 0.0)
+    }
+
+    @Test fun aServingStillInItsFormGoesWithAnEditsSaveToo() {
+        form.openEdit(kefir)
+        form.draft.openServing(MeasureUnit.GRAM)
+        form.draft.servingLabel = "bar"
+        form.draft.servingAmount = "20"
+        form.save()
+        assertEquals(20.0, store.updated.single().servingNamed("bar")!!.baseUnitsPerServing, 0.0)
+    }
+
+    @Test fun anUntouchedServingFormDoesNotStopSaveAndAddsNothing() {
+        form.open()
+        typeFood()
+        form.draft.openServing(MeasureUnit.GRAM)
+        form.save()
+        assertEquals(listOf("save Ayran"), store.calls)
+        assertTrue(store.saved.single().servings.isEmpty())
+    }
+
+    @Test fun anOpenServingThatDoesNotReadStopsSaveWithNothingStored() {
+        form.open()
+        typeFood()
+        form.draft.openServing(MeasureUnit.GRAM)
+        form.draft.servingLabel = "bar"
+        form.save()
+        assertEquals("a name and no amount", POSITIVE, notices.message)
+        form.draft.servingLabel = ""
+        form.draft.servingAmount = "20"
+        form.save()
+        assertEquals("an amount and no name", "Name is required", notices.message)
+        form.draft.servingLabel = "bar"
+        form.draft.servingUnit = MeasureUnit.MILLILITER
+        form.save()
+        assertTrue("ml on a food on g, with no density", form.draft.densityError())
+        assertEquals(POSITIVE, notices.message)
+        assertTrue(store.calls.isEmpty())
+        assertTrue("the form keeps what was typed", form.open && form.draft.servingFormOpen && form.draft.servingLabel == "bar")
+    }
+
+    @Test fun aBasisChangedAfterAServingGoesThroughTheDensity() {
+        form.open()
+        typeFood()
+        addBar()
+        form.draft.basisEdited = true
+        form.draft.basisUnit = "ml"
+        // No density: it keeps its value in g, and nothing saves it as 20 ml.
+        assertEquals(MeasureUnit.GRAM, form.draft.shownServingUnit())
+        assertEquals(20.0, form.draft.shownServings().single().baseUnitsPerServing, 0.0)
+        assertTrue(form.draft.densityError())
+        form.save()
+        assertTrue(store.calls.isEmpty())
+        // Back on g it is as it was, with no drift.
+        form.draft.basisUnit = "g"
+        assertFalse(form.draft.densityError())
+        form.draft.basisUnit = "ml"
+        form.draft.density = "50"
+        assertEquals(MeasureUnit.MILLILITER, form.draft.shownServingUnit())
+        assertEquals(40.0, form.draft.shownServings().single().baseUnitsPerServing, 1e-9)
+        form.save()
+        assertEquals(40.0, store.saved.single().servings.single().baseUnitsPerServing, 1e-9)
+        assertEquals(MeasureUnit.MILLILITER, store.saved.single().basisUnit)
+    }
+
+    @Test fun removingTheServingLiftsTheNeedForADensity() {
+        form.open()
+        typeFood()
+        addBar()
+        form.draft.basisEdited = true
+        form.draft.basisUnit = "ml"
+        assertTrue(form.draft.densityError())
+        form.draft.removeServing(0)
+        assertFalse(form.draft.densityError())
+    }
+
+    @Test fun aNewFoodsServingsSurviveProcessDeathAndCountAsAChange() {
+        val state = SavedStateHandle()
+        form.open("Ayran")
+        val clean = form.savedForm()!!
+        assertFalse(form.draft.isDirty(clean.baseline))
+        addBar()
+        assertTrue(form.draft.isDirty(clean.baseline))
+        form.draft.basisEdited = true
+        form.draft.basisUnit = "ml"
+        saveFoodForm(state, form.savedForm())
+        val restored = FoodDraft().apply { restore(restoreFoodForm(SavedStateHandle(state.keys().associateWith { state.get<Any?>(it) }))!!.draft) }
+        assertEquals(listOf("bar"), restored.servings.map { it.label })
+        assertTrue(restored.isDirty(clean.baseline))
+        assertEquals("the basis it was added in comes back too", MeasureUnit.GRAM, restored.shownServingUnit())
+        assertTrue(restored.densityError())
+    }
 }
+
+private val POSITIVE = com.bosa.breakfast.domain.POSITIVE_AMOUNT_MESSAGE
 
 private fun record(id: String, name: String, barcode: String?) =
     testFood(id, name, category = "Personal food", values = NutritionValues(60.0, 3.0, 4.0, 3.0), barcode = barcode)
