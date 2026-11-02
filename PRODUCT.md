@@ -57,7 +57,7 @@ The diary, search and food-detail patterns follow MyFitnessPal so the app feels 
 
 - A working prototype covering the diary, meal detail, Library, entry editing, OFF search, scan and contribution (`app/`).
 - USDA source-backed fixture records with their FDC IDs and release dates, plus English and Cyrillic alias fixtures.
-- Nothing exists yet in the way of users, testimonials, usage metrics or speed benchmarks. Do not invent logging-speed claims or comparisons before the evaluation has been run.
+- Nothing exists yet in the way of users, testimonials, usage metrics or speed benchmarks. The store title "Breakfast: Count Calories Fast" and "fast" in the store's short description are the owner's choice. Beyond those, do not invent logging-speed numbers or comparisons before the evaluation has been run.
 
 ## Product Principles
 
