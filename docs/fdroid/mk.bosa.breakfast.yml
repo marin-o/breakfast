@@ -1,0 +1,45 @@
+# DRAFT, not submitted. Goes to metadata/mk.bosa.breakfast.yml in fdroiddata when the owner gives the go.
+# `fdroid rewritemeta` may drop these comments. See release-checklist.md.
+# No AntiFeatures: none of the listed ones applies (see release-checklist.md, "Anti-Features").
+Categories:
+  - Sports & Health
+License: GPL-3.0-only
+AuthorName: Marino Jakmoski
+SourceCode: https://github.com/marin-o/breakfast
+IssueTracker: https://github.com/marin-o/breakfast/issues
+
+AutoName: Breakfast
+
+RepoType: git
+Repo: https://github.com/marin-o/breakfast.git
+
+Builds:
+  # versionName and versionCode must equal app/build.gradle.kts at the tagged commit. These are today's values.
+  # Tag per the Quick Start Guide: versionName '0.1' needs the tag v0.1. The tag does not exist yet.
+  - versionName: '0.1'
+    versionCode: 53
+    # OWNER: replace with the full 40-character hash of the commit the release tag points at. The Build Metadata
+    # Reference asks for a hash, not a tag or branch name.
+    commit: REPLACE_WITH_FULL_HASH_OF_TAG_v0.1
+    subdir: app
+    # The project has no flavours, so this builds the release variant unsigned, for F-Droid to sign.
+    # The wrapper pins Gradle 9.8.2, with distributionSha256Sum set, in gradle/wrapper/gradle-wrapper.properties.
+    gradle:
+      - yes
+    # Only if a test build shows the build image lacks a suitable JDK. The README asks for JDK 21 and the docs
+    # don't state the image's JDK, so this stays off until a test build says otherwise.
+    # sudo:
+    #   - apt-get update
+    #   - apt-get install -y openjdk-21-jdk-headless
+    #   - update-java-alternatives -a
+    # Only if the scanner flags the bundled database, generated from CC0 data by tools/build_usda_catalogue.py.
+    # scanignore:
+    #   - app/src/main/assets/usda/fndds-2021-2023-v7.sqlite.gzip
+
+# Tags reads versionName and versionCode from app/build.gradle.kts at each tagged commit. They are plain literals there,
+# as the Quick Start Guide requires. Tag only real releases, because the highest versionCode among the tags wins.
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+# OWNER: change these two with the release if it is not v0.1 at versionCode 53.
+CurrentVersion: '0.1'
+CurrentVersionCode: 53
