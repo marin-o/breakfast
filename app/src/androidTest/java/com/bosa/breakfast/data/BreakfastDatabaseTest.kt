@@ -408,7 +408,7 @@ class BreakfastDatabaseTest {
             old.execSQL("INSERT INTO meal_entries VALUES ('entry','food','Soup',2.0,'PIECE',300.0,'GRAM',250.5,12.5,NULL,5.0,'2 x 150 g',1,1234,'2 soup','LUNCH','2026-10-01','bowl')")
         }
         val migrated = migrationHelper.runMigrationsAndValidate(name, 12, true, ROOM_MIGRATION_11_12)
-        migrated.query("SELECT id, name, total_weight FROM recipes").use {
+        migrated.query("SELECT id, name, total_volume_ml FROM recipes").use {
             assertEquals(1, it.count)
             it.moveToFirst()
             assertEquals("recipe-soup", it.getString(0))
