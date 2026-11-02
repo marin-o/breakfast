@@ -8,6 +8,7 @@ import com.bosa.breakfast.domain.NutritionBasis
 import com.bosa.breakfast.domain.ServingConversion
 import com.bosa.breakfast.domain.NutritionCalculator
 import com.bosa.breakfast.domain.MeasureUnit
+import com.bosa.breakfast.domain.DayBar
 import com.bosa.breakfast.domain.DraftRow
 import com.bosa.breakfast.domain.LogDraftView
 import com.bosa.breakfast.domain.NutritionValues
@@ -24,7 +25,8 @@ internal val ONBOARDING_PAGES = listOf(
     OnboardingPage("The green one is what the app would log.", "Partial searches also work.", pointsAtExample = true),
     OnboardingPage("Not in your foods?", "Tap Find matches to look it up on Open Food Facts."),
     OnboardingPage("We remember what you pick.", "You can also scan barcodes."),
-    OnboardingPage("Your goals.", "Set up your goals in Profile."),
+    OnboardingPage("Your goals.", "Enter your details in Profile to get your daily burn, then pick a goal."),
+    OnboardingPage("See how it's going.", "Swipe in Profile to see your weight and nutrition."),
 )
 
 private val SAMPLE_DAY = NutritionValues(1240.0, 86.0, 140.0, 38.0)
@@ -36,6 +38,25 @@ internal val SAMPLE_DAY_KCAL: Double get() = SAMPLE_DAY.calories
 internal fun sampleMacroStats(): List<MacroStat> = macroStats(
     SAMPLE_DAY.calories, macroTotalsOf(listOf(SAMPLE_DAY)), ProfileValues(proteinTarget = 120.0, carbsTarget = 180.0, fatTarget = 60.0),
 )
+
+private const val SAMPLE_GOAL_KCAL = 2100.0
+
+private fun sampleBar(dayKey: String, protein: Double, carbs: Double, fat: Double) =
+    DayBar(dayKey, logged = true, kcal = protein + carbs + fat, proteinKcal = protein, carbsKcal = carbs, fatKcal = fat, unknownKcal = 0.0, targetKcal = SAMPLE_GOAL_KCAL)
+
+/** A fixed week's bars, Monday on, one day unlogged: nothing of the user's is read. */
+internal fun sampleWeek(): List<DayBar> = listOf(
+    sampleBar("2026-10-26", 640.0, 880.0, 540.0),
+    sampleBar("2026-10-27", 600.0, 760.0, 630.0),
+    sampleBar("2026-10-28", 680.0, 920.0, 590.0),
+    sampleBar("2026-10-29", 560.0, 720.0, 500.0),
+    DayBar("2026-10-30", logged = false, kcal = 0.0, proteinKcal = 0.0, carbsKcal = 0.0, fatKcal = 0.0, unknownKcal = 0.0, targetKcal = SAMPLE_GOAL_KCAL),
+    sampleBar("2026-10-31", 620.0, 1040.0, 720.0),
+    sampleBar("2026-11-01", 660.0, 800.0, 560.0),
+)
+
+/** What the goals example shows as a daily burn. */
+internal const val SAMPLE_BURN = "2400 kcal"
 
 internal const val SAMPLE_LINE = "2 eggs, 100g oats"
 internal const val SAMPLE_PARTIAL = "ban"

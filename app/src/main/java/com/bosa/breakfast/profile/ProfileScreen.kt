@@ -115,7 +115,7 @@ private val ACTIVITY_CHOICES = listOf(
     Triple(Activity.ACTIVE, "Active", "On your feet or exercising most days"),
     Triple(Activity.VERY_ACTIVE, "Very active", "Hard exercise or physical work daily"),
 )
-private val GOAL_CHOICES = listOf(Goal.LOSE to "Lose", Goal.MAINTAIN to "Maintain", Goal.GAIN to "Gain")
+internal val GOAL_CHOICES = listOf(Goal.LOSE to "Lose", Goal.MAINTAIN to "Maintain", Goal.GAIN to "Gain")
 private val RANGE_CHOICES = listOf(WeightRange.ONE_MONTH to "1M", WeightRange.THREE_MONTHS to "3M", WeightRange.SIX_MONTHS to "6M", WeightRange.ONE_YEAR to "1Y", WeightRange.ALL to "All")
 private val MACRO_NAMES = listOf(Macro.PROTEIN to "Protein", Macro.CARBS to "Carbs", Macro.FAT to "Fat")
 

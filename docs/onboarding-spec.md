@@ -16,7 +16,8 @@ Each page: a short title, one or two short sentences, and a live example drawn w
 2. **The green one is what the app would log.** "Partial searches also work." Example: "ban" with a green Banana chip; the words sit under it, with an arrow up to the chip.
 3. **Not in your foods?** "Tap Find matches to look it up on Open Food Facts." Example: a "Not in your foods" row with the "Find matches" button.
 4. **We remember what you pick.** "You can also scan barcodes." Example: a food row and a recipe row.
-5. **Your goals.** "Set up your goals in Profile." Buttons: "Open Profile" and "Start logging". Example: macro stats with targets.
+5. **Your goals.** "Enter your details in Profile to get your daily burn, then pick a goal." Example: a Daily burn row, the Goal choices, and macro stats with targets.
+6. **See how it's going.** "Swipe in Profile to see your weight and nutrition." Buttons: "Open Profile" and "Start logging". Example: a fixed week of the Nutrition bars with a goal line.
 
 Line by line: `docs/onboarding-copy.csv`, the owner's edits.
 

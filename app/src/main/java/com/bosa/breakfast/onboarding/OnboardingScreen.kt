@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -22,8 +23,14 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.bosa.breakfast.app.Surfaces
+import com.bosa.breakfast.domain.Goal
 import com.bosa.breakfast.domain.MeasureUnit
+import com.bosa.breakfast.profile.GOAL_CHOICES
 import com.bosa.breakfast.ui.components.ButtonKind
+import com.bosa.breakfast.ui.components.ChoiceGrid
+import com.bosa.breakfast.ui.components.MacroBarsChart
+import com.bosa.breakfast.ui.components.TotalRow
+import com.bosa.breakfast.ui.components.curveHeight
 import com.bosa.breakfast.ui.components.DayTotal
 import com.bosa.breakfast.ui.components.FoodRow
 import com.bosa.breakfast.ui.components.PrimaryButton
@@ -108,7 +115,12 @@ private fun OnboardingExample(page: Int) {
             FoodRow("Chicken breast raw", previewQuantityLine(100.0, MeasureUnit.GRAM), formatKcal(106.0))
             FoodRow("Chili", previewQuantityLine(1.0, MeasureUnit.PORTION), formatKcal(412.0))
         }
-        else -> DayTotal(formatKcal(SAMPLE_DAY_KCAL), sampleMacroStats())
+        4 -> Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            TotalRow("Daily burn", SAMPLE_BURN)
+            ChoiceGrid(GOAL_CHOICES.map { it.first }, { goal -> GOAL_CHOICES.first { it.first == goal }.second }, Goal.LOSE, {}, label = "Goal")
+            DayTotal(formatKcal(SAMPLE_DAY_KCAL), sampleMacroStats())
+        }
+        else -> MacroBarsChart(sampleWeek(), showGoal = true, Modifier.fillMaxWidth().height(curveHeight()))
     }
 }
 

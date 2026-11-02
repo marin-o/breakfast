@@ -35,7 +35,7 @@ class OnboardingTest {
         assertEquals(2, app.onboarding.position.page)
         assertTrue(app.back())
         assertEquals(1, app.onboarding.position.page)
-        app.onboarding.settled(4, byUser = true)
+        app.onboarding.settled(5, byUser = true)
         assertTrue(app.onboarding.position.isLast)
     }
 
@@ -65,7 +65,7 @@ class OnboardingTest {
         assertEquals(listOf("ONBOARDING"), app.shown())
         assertFalse(app.done())
         assertFalse("Next stays until the pager is there", app.onboarding.position.arrivedAtLast)
-        app.onboarding.settled(4, byUser = false)
+        app.onboarding.settled(5, byUser = false)
         assertTrue(app.onboarding.position.arrivedAtLast)
     }
 
@@ -77,7 +77,7 @@ class OnboardingTest {
 
     @Test fun startLoggingLandsOnMealsFromAFirstLaunch() {
         val app = firstLaunch()
-        app.onboarding.settled(4, byUser = true)
+        app.onboarding.settled(5, byUser = true)
         app.surfaces.onboardingToMeals()
         assertEquals(listOf("DAILY"), app.shown())
         assertTrue(app.done())
