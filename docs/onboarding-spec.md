@@ -21,7 +21,7 @@ Each page: a short title, one or two short sentences, and a live example drawn w
 Line by line: `docs/onboarding-copy.csv`, the owner's edits.
 
 ## Rules
-- Follows `docs/standards/maintainable_mobile_app_development_guide.md`, `AGENTS.md` and `DESIGN.md`; onboarding is the one place explanatory sentences are allowed.
+- Follows `docs/standards/maintainable_mobile_app_development_guide.md`, and `DESIGN.md`; onboarding is the one place explanatory sentences are allowed.
 - A reusable pager in `ui/components` with pure, unit-tested page state (next, back, where the pager settled, arrival on the last page); skipping and finishing are the owner's. Examples reuse the real rows, chips and bars rather than copying or using pictures.
 - The planner is not run on the user's foods; examples use fixed sample values.
 - No new dependencies, navigation library or schema change.

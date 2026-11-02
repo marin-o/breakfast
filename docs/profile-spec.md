@@ -48,6 +48,6 @@ A Profile page of its own, separate from Settings (owner, 2026-10-31). It opens 
 - Deleting all data also clears the profile.
 
 ## Rules
-- Follows `docs/standards/maintainable_mobile_app_development_guide.md`, `AGENTS.md` and `DESIGN.md`.
+- Follows `docs/standards/maintainable_mobile_app_development_guide.md`, and `DESIGN.md`.
 - Input validation is a pure function: a weight must be a positive number, and a target must be a positive number or empty. Both decimal marks are accepted.
 - The chart library is the one new dependency. No DI, navigation library or Gradle modules.

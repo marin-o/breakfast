@@ -54,8 +54,7 @@ The diary, search and food-detail patterns follow MyFitnessPal so the app feels 
 
 ## Evidence on Hand
 
-- A working prototype covering the diary, meal detail, Library, entry editing, OFF search, scan and contribution (`app/`). Current-app screenshots and a manifest are in `design/claude-ui-handoff/screenshots` and `SCREENSHOT_MANIFEST.md`.
-- Product and UX documents: `docs/breakfast-ux-redesign.md` and `docs/mfp-ux-workflow-map.md`. The previous design brief is `design/claude-ui-handoff/CLAUDE_DESIGN_PROMPT.md`.
+- A working prototype covering the diary, meal detail, Library, entry editing, OFF search, scan and contribution (`app/`).
 - USDA source-backed fixture records with their FDC IDs and release dates, plus English and Cyrillic alias fixtures.
 - Nothing exists yet in the way of users, testimonials, usage metrics or speed benchmarks. Do not invent logging-speed claims or comparisons before the evaluation has been run.
 

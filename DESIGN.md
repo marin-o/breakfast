@@ -151,4 +151,4 @@ The single implementation of each control lives in `ui/components/Components.kt`
 
 ## Source of truth
 
-The locked references are `design/canvas/BRIEF-mono-system.md` (tokens, type and controls) and the `M-*` mocks in `design/canvas/project/` and `design/canvas/shots/`. Where a state cannot be built as drawn, the closest honest version is built and the gap is recorded in the gaps ledger (`docs/design-gaps.md`).
+This document is the design system. Where a state cannot be built as drawn, the closest honest version is built.
