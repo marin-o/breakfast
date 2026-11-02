@@ -182,10 +182,10 @@ private fun ProfilePageFields(profile: ProfileState, scroll: ScrollState) {
     }
 }
 
-/** Daily burn, the goal, its warnings and the pace: only with a body the burn can be worked out from. */
+/** Daily burn, the goal, its warnings and the pace, with a body the burn can be worked out from; without one, what is missing. */
 @Composable
 private fun GoalSection(profile: ProfileState) {
-    val burn = profile.burn ?: return
+    val burn = profile.burn ?: return SoftLine("Enter your height, age, weight and activity to see your daily burn.")
     val draft = profile.draft
     Column {
         TotalRow("Daily burn", "${burn.kcal.roundToInt()} kcal")

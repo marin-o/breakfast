@@ -162,6 +162,19 @@ fun ProfileDraft.withGoal(goal: Goal, burn: Double?): ProfileDraft = copy(goal =
 /** Kg a week chosen ([custom] for the Custom choice); Daily kcal fills in by the goal. */
 fun ProfileDraft.withPace(text: String, custom: Boolean, burn: Double?): ProfileDraft = copy(pace = text, paceCustom = custom).filledFromGoal(burn)
 
+/**
+ * This draft, just edited from [before], with Daily kcal refilled when the edit moved the burn ([burnOf]) under a chosen goal,
+ * macros following. No goal, tracking only (targets are kept there) or a body not valid leaves Daily kcal as it is.
+ */
+fun ProfileDraft.followingBurn(before: ProfileDraft, burnOf: (BurnBody) -> Double): ProfileDraft {
+    if (goal == null || trackingOnly) return this
+    val body = burnBody() ?: return this
+    val old = before.burnBody()
+    if (body == old) return this
+    val burn = burnOf(body)
+    return if (old != null && burnOf(old) == burn) this else filledFromGoal(burn)
+}
+
 private fun ProfileDraft.filledFromGoal(burn: Double?): ProfileDraft {
     val chosen = goal ?: return this
     val kcal = goalKcal(burn ?: return this, chosen, positiveAmountOf(pace), sex)?.kcal ?: return this

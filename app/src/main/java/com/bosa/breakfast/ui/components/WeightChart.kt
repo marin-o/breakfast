@@ -325,6 +325,8 @@ internal fun curveHeight(): Dp = CurveHeight * LocalDensity.current.fontScale.co
 @Composable
 internal fun ChartHost(chart: CartesianChart, model: CartesianChartModel, modifier: Modifier, zoomInViewX: Double? = null, description: String? = null) {
     val moves = zoomInViewX != null
+    // The library starts its zoom state again for a new Zoom instance, so a recomposition must not make one.
+    val maxZoom = remember(zoomInViewX) { if (zoomInViewX != null) Zoom.max(Zoom.x(zoomInViewX), Zoom.Content) else Zoom.Content }
     Box(if (description != null) modifier.clearAndSetSemantics { contentDescription = description } else modifier) {
         CartesianChartHost(
             chart,
@@ -335,15 +337,22 @@ internal fun ChartHost(chart: CartesianChart, model: CartesianChartModel, modifi
                 zoomEnabled = moves,
                 initialZoom = Zoom.Content,
                 minZoom = Zoom.Content,
-                maxZoom = if (zoomInViewX != null) Zoom.max(Zoom.x(zoomInViewX), Zoom.Content) else Zoom.Content,
+                maxZoom = maxZoom,
             ),
         )
         if (!moves) Box(Modifier.matchParentSize().pointerInput(Unit) {})
     }
 }
 
-/** The lifted chart zooms in as far as a week in view. */
-private const val LIFTED_VIEW_MINUTES = 7.0 * MINUTES_PER_DAY
+private const val LIFTED_VIEW_DAYS = 7.0
+private const val LIFTED_ZOOM_AT_LEAST = 3.0
+
+/**
+ * How little of the lifted chart's [span] of x a pinch can leave in view: a week. A chart that short would have no zoom to
+ * give, and so no drag, so it can always go in three times, down to a day.
+ */
+internal fun liftedViewMinutes(span: Double): Double =
+    minOf(LIFTED_VIEW_DAYS * MINUTES_PER_DAY, maxOf(span / LIFTED_ZOOM_AT_LEAST, MINUTES_PER_DAY.toDouble()))
 
 /**
  * The weight curve: [series]' faint dots, its bold trend, [target] as a soft line across, dates along the bottom spaced by
@@ -399,7 +408,7 @@ internal fun WeightChart(series: WeightSeries, target: Double?, modifier: Modifi
         }
         ChartHost(
             chart, model, modifier,
-            zoomInViewX = LIFTED_VIEW_MINUTES.takeIf { lifted },
+            zoomInViewX = if (lifted) liftedViewMinutes(data.maxX - data.minX) else null,
             description = markDecimals(weightChartDescription(data), DisplayDecimal.mark),
         )
     }

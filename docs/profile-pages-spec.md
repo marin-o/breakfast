@@ -6,7 +6,7 @@ Owner-approved 2026-11-02. Reuse shared components; no duplicated layout or logi
 Profile becomes three swipeable pages, with the tappable words Profile, Weight, Nutrition in the top bar (BottomNav's text-tab style). Back with unsaved changes still asks. Save (primary button) shows on Profile only; a draft survives swiping between pages. Charts on a page take no drag or pinch, so a swipe always changes the page.
 
 ## Profile page, in order
-Name; Height, cm + Age; Current weight, kg + Target weight, kg; "Add to curve"; "Several weights a day"; Sex (Female, Male, Not saying); Activity (Inactive, Low active, Active, Very active); "Tracking only"; "Daily burn" row with kcal; Goal (Lose, Maintain, Gain); Kg a week (0.25, 0.5, 1, Custom, with a "Kg a week" field for Custom; shown only on Lose and Gain); two soft lines, shown only with a goal chosen; Daily kcal; macro rows. These replace the old macro preset chips. No sex selected counts as Not saying. Daily burn, Goal and Kg a week show only when height, age, current weight and activity are valid.
+Name; Height, cm + Age; Current weight, kg + Target weight, kg; "Add to curve"; "Several weights a day"; Sex (Female, Male, Not saying); Activity (Inactive, Low active, Active, Very active); "Tracking only"; "Daily burn" row with kcal; Goal (Lose, Maintain, Gain); Kg a week (0.25, 0.5, 1, Custom, with a "Kg a week" field for Custom; shown only on Lose and Gain); two soft lines, shown only with a goal chosen; Daily kcal; macro rows. These replace the old macro preset chips. No sex selected counts as Not saying. Daily burn, Goal and Kg a week show only when height, age, current weight and activity are valid; until then, unless Tracking only is on, that place has one soft line: "Enter your height, age, weight and activity to see your daily burn."
 
 Soft lines under the pace controls:
 - "Daily burn is an estimate, so your real pace may differ."
@@ -34,7 +34,7 @@ Learning from logging, recomputed once a day and on save:
 - adaptive outside 0.75 to 1.3 x formula: w = 0 and show under Daily burn "Your logging and weight don't match. Check that your meals are all logged."
 
 ## Goal and daily kcal
-- Change per day = kg a week x 8840 / 7, minus for Lose, plus for Gain, zero for Maintain. Choosing a goal or pace fills Daily kcal in the draft.
+- Change per day = kg a week x 8840 / 7, minus for Lose, plus for Gain, zero for Maintain. Choosing a goal or pace fills Daily kcal in the draft. So does an edit of height, age, current weight, sex or activity that moves the burn while a goal is chosen, macros following as for any kcal change and the goal staying; with the body not valid, Daily kcal stays.
 - Lowest from a goal: 1200 Female, 1500 Male or Not saying. When it applies: "1500 kcal is the lowest here. That's about 0.4 kg a week." with the real numbers.
 - Pace above 1% of current weight a week: "This is faster than 1% of your weight a week."
 - Automatic adjustment: with a saved goal, Daily kcal is recalculated once a day and moves at most 100 kcal in any 7 days. Typing Daily kcal by hand clears the goal and stops this; a hand-typed target may go below the lowest. Nothing announces an adjustment beyond the soft line above.
@@ -53,7 +53,7 @@ Each macro has a "Protein, %" and "Protein, g" field side by side, the dot on th
 ## Weight page
 - Range: ChoiceOption row 1M, 3M, 6M, 1Y, All; default 3M, or All with under 3 months of points.
 - Chart: faint raw dots, bold exponential trend (alpha 0.1), soft target line. Trend breaks over gaps of more than 14 days. 1Y and All draw weekly averages. Macro colours stay out.
-- Maximise icon top right lifts the chart: scrim behind, a soft drop shadow, full width minus 8dp each side, same aspect ratio, a close icon, drag and pinch working. Back closes it. This is the one shadow in the app.
+- Maximise icon top right lifts the chart: scrim behind, a soft drop shadow, full width minus 8dp each side, same aspect ratio, a close icon, pinch working in as far as a week in view (a chart under three weeks long goes in three times, down to a day), drag working once zoomed. Back closes it. This is the one shadow in the app.
 - Projection below the chart, then a hairline, then the existing point list with delete.
 
 Projection: slope and SE over the last 28 days of raw weigh-ins, toward the target. tau = 343 days. r = |slope|, D = kg left, rHigh = r + 1.96SE, rLow = r - 1.96SE. Earliest = D / rHigh. Latest = tau x ln(tau x rLow / (tau x rLow - D)), defined only when rLow > 0 and D < tau x rLow.

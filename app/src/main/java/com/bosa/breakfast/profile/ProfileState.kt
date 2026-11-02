@@ -25,7 +25,9 @@ import com.bosa.breakfast.domain.nutritionWeek
 import com.bosa.breakfast.domain.projectionLines
 import com.bosa.breakfast.domain.weekStartOf
 import com.bosa.breakfast.domain.weightSeries
+import com.bosa.breakfast.domain.BurnBody
 import com.bosa.breakfast.domain.burnBody
+import com.bosa.breakfast.domain.followingBurn
 import com.bosa.breakfast.domain.dayOf
 import com.bosa.breakfast.domain.gramsText
 import com.bosa.breakfast.domain.percentShown
@@ -169,9 +171,9 @@ internal class ProfileState(
     private val burnBody by derivedStateOf(structuralEqualityPolicy()) { draft.burnBody() }
 
     /** Daily burn from the draft's body; null until height, age, current weight and activity are valid. */
-    val burn: DailyBurn? by derivedStateOf {
-        burnBody?.let { dailyBurn(it, session.weightPoints, session.entries, shownDay()) }
-    }
+    val burn: DailyBurn? by derivedStateOf { burnBody?.let(::burnOf) }
+
+    private fun burnOf(body: BurnBody): DailyBurn = dailyBurn(body, session.weightPoints, session.entries, shownDay())
 
     /** What the draft's goal and pace give, with whether the lowest applied; null without both. */
     val goalResult: GoalKcal? by derivedStateOf {
@@ -231,11 +233,15 @@ internal class ProfileState(
 
     fun savedPage(): SavedProfile? = if (open) SavedProfile(draft, addToCurve) else null
 
-    /** Any field. A changed Daily kcal counts as typed by hand, so it goes through [editKcal] and no screen keeps a goal over it. */
+    /**
+     * Any field. A changed Daily kcal counts as typed by hand, so it goes through [editKcal] and no screen keeps a goal over it.
+     * A body edit that moves the burn refills Daily kcal from the goal, which is not typing, so the goal stays.
+     */
     fun edit(next: ProfileDraft) {
+        val typedKcal = next.kcal.takeIf { it != draft.kcal }
         val others = next.copy(kcal = draft.kcal)
-        if (others != draft) replaceDraft(others)
-        if (next.kcal != draft.kcal) editKcal(next.kcal)
+        if (others != draft) replaceDraft(others.followingBurn(draft) { burnOf(it).kcal })
+        if (typedKcal != null) editKcal(typedKcal)
     }
 
     /** Daily kcal typed by hand: the goal is cleared, and the macros follow by how each was entered. */

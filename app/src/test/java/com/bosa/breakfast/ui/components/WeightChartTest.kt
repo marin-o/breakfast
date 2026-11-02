@@ -36,6 +36,16 @@ class WeightChartTest {
         assertTrue(axis.stepCount <= 5, "$axis")
     }
 
+    @Test fun theLiftedChartAlwaysHasZoomToGive() {
+        val day = 1440.0
+        assertEquals(7 * day, liftedViewMinutes(365 * day))
+        assertEquals(7 * day, liftedViewMinutes(21 * day))
+        assertEquals(4 * day, liftedViewMinutes(12 * day))
+        assertEquals(2 * day, liftedViewMinutes(6 * day))
+        assertEquals(day, liftedViewMinutes(2 * day))
+        assertEquals(day, liftedViewMinutes(day))
+    }
+
     @Test fun noPointsHaveNoChart() {
         assertNull(weightChartData(emptyList(), 75.0))
     }
