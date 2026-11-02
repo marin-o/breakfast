@@ -46,6 +46,7 @@ import com.bosa.breakfast.domain.weightProjection
 import com.bosa.breakfast.domain.withDailyKcal
 import com.bosa.breakfast.domain.withGoal
 import com.bosa.breakfast.domain.withMacroTyped
+import com.bosa.breakfast.domain.withMacrosApplied
 import com.bosa.breakfast.domain.withPace
 import com.bosa.breakfast.domain.withTargetsOf
 import com.bosa.breakfast.domain.ProfileDraft
@@ -119,8 +120,6 @@ internal class ProfileState(
     /** The user's own tick; until they touch it, [addToCurve] follows [curveTickStart]. */
     private var curveTick by mutableStateOf<Boolean?>(null)
     val addToCurve: Boolean get() = curveTick ?: curveTickStart(draft, values, hasPointToday)
-    /** The macro whose % field was just emptied: it stays empty while typed, though the macro's share could fill it. */
-    var clearedPercent by mutableStateOf<Macro?>(null); private set
     var discardOpen by mutableStateOf(false); private set
     /** The point the delete dialog asks about. */
     var deleteRequest by mutableStateOf<WeightPoint?>(null); private set
@@ -203,9 +202,6 @@ internal class ProfileState(
     /** The draft as it was when the kcal field's edit began, so a target passing through 2, 20, 200 on its way to 2000 loses nothing. */
     private var kcalBase: ProfileDraft? = null
 
-    /** The draft as it was when one macro field's edit began, so a number passing through the cap leaves the others' ratio as it was. */
-    private var macroEdit: MacroEdit? = null
-
     private val hasPointToday: Boolean get() = today().let { day -> session.weightPoints.any { it.dayKey == day } }
 
     /** The "Add to curve" tick shows. An unchanged weight offered this way is not an unsaved edit. */
@@ -249,25 +245,18 @@ internal class ProfileState(
         // A key the field refused: nothing was typed, so the goal stays.
         if (text == draft.kcal) return
         val base = kcalBase ?: draft
-        clearedPercent = null
-        macroEdit = null
         draft = base.withDailyKcal(text).copy(goal = null)
         kcalBase = base
     }
 
-    /** One macro field typed: the other two share the rest, from where they stood when this field's edit began. */
+    /** One macro field typed: only that macro changes. A key the field refused was no edit. */
     fun editMacro(macro: Macro, text: String, byPercent: Boolean) {
-        val shown = when {
-            !byPercent -> draft.gramsText(macro)
-            clearedPercent == macro -> ""
-            else -> draft.percentShown(macro)
-        }
-        if (text == shown) return
-        val base = macroEdit?.takeIf { it.macro == macro && it.byPercent == byPercent }?.base ?: draft
-        replaceDraft(base.withMacroTyped(macro, text, byPercent))
-        macroEdit = MacroEdit(macro, byPercent, base)
-        clearedPercent = macro.takeIf { byPercent && text.isBlank() }
+        if (text == if (byPercent) draft.percentShown(macro) else draft.gramsText(macro)) return
+        replaceDraft(draft.withMacroTyped(macro, text, byPercent))
     }
+
+    /** "Apply": the macros not edited by hand take the rest of Daily kcal. Nothing is saved. */
+    fun applyMacros() = replaceDraft(draft.withMacrosApplied())
 
     /** A goal chosen: Daily kcal fills in when the pace allows it. */
     fun chooseGoal(goal: Goal) = replaceDraft(draft.withGoal(goal, burn?.kcal))
@@ -277,9 +266,7 @@ internal class ProfileState(
 
     /** A new draft that ends any edit under way. */
     private fun replaceDraft(next: ProfileDraft) {
-        clearedPercent = null
         kcalBase = null
-        macroEdit = null
         draft = next
     }
 
@@ -383,9 +370,7 @@ internal class ProfileState(
     private fun resetDraft() {
         draft = ProfileDraft.of(values)
         kcalBase = null
-        macroEdit = null
         curveTick = null
-        clearedPercent = null
         discardOpen = false
         deleteRequest = null
     }
@@ -408,7 +393,5 @@ internal class ProfileState(
         )
     }
 }
-
-private class MacroEdit(val macro: Macro, val byPercent: Boolean, val base: ProfileDraft)
 
 private const val COULD_NOT_SAVE = "Could not save."

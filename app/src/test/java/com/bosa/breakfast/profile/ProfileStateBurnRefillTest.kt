@@ -59,6 +59,13 @@ class ProfileStateBurnRefillTest {
         assertNotEquals(grams, profile.draft.gramsText(Macro.PROTEIN))
     }
 
+    @Test fun aRefillKeepsAMacroEditedInGramsAndItsMark() {
+        profile.editMacro(Macro.PROTEIN, "150", byPercent = false)
+        profile.edit(profile.draft.copy(activity = Activity.VERY_ACTIVE))
+        assertEquals("150", profile.draft.gramsText(Macro.PROTEIN))
+        assertEquals(setOf(Macro.PROTEIN), profile.draft.handEditedMacros)
+    }
+
     @Test fun anInvalidBodyKeepsTheKcalAndTheGoal() {
         val before = profile.draft.kcal
         profile.edit(profile.draft.copy(height = "1"))

@@ -48,9 +48,13 @@ With Goal on Lose, below the Goal row, in body text:
 
 ## Macros
 Each macro has a "Protein, %" and "Protein, g" field side by side, the dot on the % label; carbs and fat alike. % fields show only with a valid Daily kcal. Factors 4/4/9.
-- The macro edited, in either field, stays as typed, capped at 100%. The other two share the rest in their current ratio, both zero meaning 50/50. Grams are rounded, the last macro taking the remainder.
+- Typing in either field changes only that macro: its % and g stay in step, capped at 100%, and the other two stay as they are. Emptying either field unsets the macro.
+- A macro typed in counts as edited by hand until Save or leaving Profile. Nothing on screen marks it.
+- "Apply", a full-width secondary button under the macro fields, recalculates: macros edited by hand stay exactly as typed, and the others share what is left of Daily kcal in their current ratio, both zero meaning 50/50, nothing left meaning zero. Grams are rounded, the last macro taking the remainder. Those others follow from then on. Apply saves nothing.
+- Apply shows only with a valid Daily kcal, a hand edit since the last Apply, a macro not edited by hand, and every macro field valid.
+- Save stores what the fields hold, with no rebalancing, and is not held back by percents that do not total 100.
 - Each macro remembers how it was entered. When Daily kcal changes, a % macro keeps its percent, a gram macro keeps its grams, and the rest follows.
-- Targets saved before this feature show as entered; nothing rebalances until an edit.
+- Targets saved before this feature show as entered; nothing rebalances until Apply.
 
 ## Weight page
 - Range: ChoiceOption row 1M, 3M, 6M, 1Y, All; default 3M, or All with under 3 months of points.

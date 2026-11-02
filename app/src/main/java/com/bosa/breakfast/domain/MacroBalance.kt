@@ -37,26 +37,27 @@ private fun shared(others: List<Macro>, restKcal: Double, weight: (Macro) -> Dou
     }
 }
 
-/**
- * [edited] set to [typed] (percent or grams, by [by]) within [kcal], capped at 100%; the other two share the rest in their
- * current ratio. Those keep how they were entered, unless all three were in grams, as targets from before this feature
- * are: then the two others follow from here on. One not set follows once it takes a share.
- */
-fun rebalanceMacros(shares: Map<Macro, MacroShare>, kcal: Double, edited: Macro, typed: Double, by: MacroEntered): Map<Macro, MacroShare> {
-    val factor = kcalPerGram(edited)
-    val percent = if (by == MacroEntered.PERCENT) typed.coerceAtMost(100.0) else percentOf(typed, edited, kcal).coerceAtMost(100.0)
+/** A number typed for [macro] within [kcal], capped at 100%, with its percent and grams in step. */
+private fun typedShare(macro: Macro, typed: Double, by: MacroEntered, kcal: Double): MacroShare {
+    val factor = kcalPerGram(macro)
+    val percent = if (by == MacroEntered.PERCENT) typed.coerceAtMost(100.0) else percentOf(typed, macro, kcal).coerceAtMost(100.0)
     val grams = if (by == MacroEntered.PERCENT) (kcal * percent / 100 / factor).roundToInt().toDouble() else typed.coerceAtMost(kcal / factor)
-    val allInGrams = shares.values.all { it.entered == MacroEntered.GRAMS }
+    return MacroShare(grams, percent, by)
+}
+
+/**
+ * [edited] stay as they are; the others share what is left of [kcal] in their current ratio, and follow from here on. A
+ * macro that had nothing and gets nothing stays as it was: not set, or at 0%.
+ */
+fun macrosWithRestShared(shares: Map<Macro, MacroShare>, kcal: Double, edited: Set<Macro>): Map<Macro, MacroShare> {
     val others = Macro.entries - edited
-    val rest = shared(others, (kcal - grams * factor).coerceAtLeast(0.0)) { shares.getValue(it).percent }
-    return Macro.entries.associateWith { macro ->
-        if (macro == edited) MacroShare(grams, percent, by)
-        else {
-            val g = rest.getValue(macro)
-            val entered = shares.getValue(macro).entered
-            val next = if (allInGrams || (entered == MacroEntered.UNSET && g > 0)) MacroEntered.FOLLOWS else entered
-            MacroShare(g, percentOf(g, macro, kcal), next)
-        }
+    val taken = edited.sumOf { shares.getValue(it).grams * kcalPerGram(it) }
+    val rest = shared(others, (kcal - taken).coerceAtLeast(0.0)) { shares.getValue(it).percent }
+    return shares + others.associateWith { macro ->
+        val before = shares.getValue(macro)
+        val grams = rest.getValue(macro)
+        val following = grams > 0 || before.percent > 0 || before.entered == MacroEntered.FOLLOWS
+        MacroShare(grams, percentOf(grams, macro, kcal), if (following) MacroEntered.FOLLOWS else before.entered)
     }
 }
 
@@ -164,8 +165,8 @@ private fun ProfileDraft.macroShares(kcal: Double): Map<Macro, MacroShare>? {
     return sharesOf({ positiveAmountOf(gramsText(it)) }, { parseDecimal(percentText(it)) }, followingMacros, kcal)
 }
 
-private fun ProfileDraft.withShares(shares: Map<Macro, MacroShare>): ProfileDraft =
-    Macro.entries.fold(this) { draft, macro ->
+private fun ProfileDraft.withShares(shares: Map<Macro, MacroShare>, written: List<Macro> = Macro.entries): ProfileDraft =
+    written.fold(this) { draft, macro ->
         val share = shares.getValue(macro)
         val percent = when {
             share.entered != MacroEntered.PERCENT -> ""
@@ -186,32 +187,35 @@ fun ProfileDraft.percentShown(macro: Macro): String {
 }
 
 /**
- * A macro's field typed. Its text stays as typed, capped at 100%; with a valid Daily kcal and a number, the other two
- * share the rest. With neither, only this field changes: there is nothing to share yet.
+ * A macro's field typed: that macro alone changes, and is marked as edited by hand. A number with a valid Daily kcal
+ * fills its other field, capped at 100%; an emptied field unsets the macro, in both fields.
  */
 fun ProfileDraft.withMacroTyped(macro: Macro, text: String, byPercent: Boolean): ProfileDraft {
-    val asTyped = withMacroTexts(macro, if (byPercent) gramsText(macro) else text, if (byPercent) text else "")
-        .copy(followingMacros = followingMacros - macro)
+    val marked = copy(handEditedMacros = handEditedMacros + macro, macrosPending = true, followingMacros = followingMacros - macro)
+    if (text.isBlank()) return marked.withMacroTexts(macro, "", "")
+    val asTyped = marked.withMacroTexts(macro, if (byPercent) gramsText(macro) else text, if (byPercent) text else "")
     val kcal = validKcal(this.kcal) ?: return asTyped
-    val typedShares = asTyped.macroShares(kcal) ?: return asTyped
     val number = (if (byPercent) parseDecimal(text) else positiveAmountOf(text)) ?: return asTyped
-    val by = if (byPercent) MacroEntered.PERCENT else MacroEntered.GRAMS
-    // The edited macro counts as it stood before this edit: the text just typed says nothing about how the targets were entered.
-    val before = macroShares(kcal)?.getValue(macro)?.entered
-    val shares = if (before == null) typedShares else typedShares + (macro to typedShares.getValue(macro).copy(entered = before))
-    val next = rebalanceMacros(shares, kcal, macro, number, by)
-    val edited = next.getValue(macro)
+    val edited = typedShare(macro, number, if (byPercent) MacroEntered.PERCENT else MacroEntered.GRAMS, kcal)
     val capped = if (byPercent) number > edited.percent else number > edited.grams
-    val shownGrams = when {
-        !byPercent -> if (capped) gramsField(edited.grams) else text
-        else -> gramsField(edited.grams)
+    return when {
+        byPercent -> marked.withMacroTexts(macro, gramsField(edited.grams), if (capped) percentField(edited.percent) else text)
+        capped -> marked.withMacroTexts(macro, gramsField(edited.grams), "")
+        else -> asTyped
     }
-    val shownPercent = when {
-        !byPercent -> ""
-        capped -> percentField(edited.percent)
-        else -> text
-    }
-    return asTyped.withShares(next).withMacroTexts(macro, shownGrams, shownPercent)
+}
+
+/** "Apply" shows: a hand edit waits, a macro is left to take the rest, and every macro field on show is valid. */
+val ProfileDraft.macroApplyOffered: Boolean get() =
+    percentsShown && macrosPending && handEditedMacros.size < Macro.entries.size &&
+        Macro.entries.all { macroTargetTextValid(gramsText(it)) && macroPercentTextValid(percentShown(it)) }
+
+/** "Apply": the macros not edited by hand take what is left of Daily kcal; those edited keep their text as typed. */
+fun ProfileDraft.withMacrosApplied(): ProfileDraft {
+    if (!macroApplyOffered) return this
+    val kcal = validDailyKcal ?: return this
+    val shares = macroShares(kcal) ?: return this
+    return withShares(macrosWithRestShared(shares, kcal, handEditedMacros), Macro.entries - handEditedMacros).copy(macrosPending = false)
 }
 
 /** Daily kcal set to [text]; with a valid number the macros follow by how each was entered. */

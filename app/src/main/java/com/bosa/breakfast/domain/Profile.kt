@@ -33,7 +33,7 @@ data class ProfileValues(
     val proteinPercent: Double? = null,
     val carbsPercent: Double? = null,
     val fatPercent: Double? = null,
-    /** The macros last set by a rebalance and never entered: these follow when Daily kcal changes ([macrosAtKcal]). */
+    /** The macros last set by "Apply" and never entered: these follow when Daily kcal changes ([macrosAtKcal]). */
     val followingMacros: Set<Macro> = emptySet(),
 )
 
@@ -65,6 +65,10 @@ data class ProfileDraft(
     val carbsPercent: String = "",
     val fatPercent: String = "",
     val followingMacros: Set<Macro> = emptySet(),
+    /** Typed in since the page opened: "Apply" leaves these as they are. Their numbers, and how each was entered, are the fields above. */
+    val handEditedMacros: Set<Macro> = emptySet(),
+    /** A macro was typed in since the last "Apply". */
+    val macrosPending: Boolean = false,
 ) {
     companion object {
         fun of(values: ProfileValues) = ProfileDraft(

@@ -59,6 +59,7 @@ import com.bosa.breakfast.domain.gramsText
 import com.bosa.breakfast.domain.heightTextValid
 import com.bosa.breakfast.domain.kcalTargetTextValid
 import com.bosa.breakfast.domain.lowestLine
+import com.bosa.breakfast.domain.macroApplyOffered
 import com.bosa.breakfast.domain.macroPercentTextValid
 import com.bosa.breakfast.domain.macroTargetTextValid
 import com.bosa.breakfast.domain.paceTextValid
@@ -86,6 +87,7 @@ import com.bosa.breakfast.ui.components.NutrientField
 import com.bosa.breakfast.ui.components.NutrientFields
 import com.bosa.breakfast.ui.components.Reveal
 import com.bosa.breakfast.ui.components.SaveButton
+import com.bosa.breakfast.ui.components.SecondaryButton
 import com.bosa.breakfast.ui.components.StepPager
 import com.bosa.breakfast.ui.components.SubScreen
 import com.bosa.breakfast.ui.components.TabWords
@@ -256,10 +258,11 @@ private fun MacroFields(profile: ProfileState) {
         columns = if (large) 1 else 2,
         oneColumnWhenLabelsWrap = true,
     )
+    if (draft.macroApplyOffered) SecondaryButton("Apply", profile::applyMacros)
 }
 
 private fun percentField(profile: ProfileState, macro: Macro, name: String): NutrientField {
-    val shown = if (profile.clearedPercent == macro) "" else profile.draft.percentShown(macro)
+    val shown = profile.draft.percentShown(macro)
     val valid = macroPercentTextValid(shown)
     return NutrientField("$name, %", shown, { profile.editMacro(macro, it, byPercent = true) }, error = !valid, errorMessage = PERCENT_RANGE_MESSAGE.takeUnless { valid }, macro = macro)
 }

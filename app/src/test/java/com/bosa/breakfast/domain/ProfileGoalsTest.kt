@@ -320,63 +320,66 @@ internal class MacroBalanceTest {
     private val unset = MacroShare(0.0, 0.0, MacroEntered.UNSET)
     private val noMacros = mapOf(Macro.PROTEIN to unset, Macro.CARBS to unset, Macro.FAT to unset)
 
+    private fun edited(macro: Macro, share: MacroShare) = noMacros + (macro to share)
+
     // 30% of 2000 = 600 kcal = 150 g. 1400 left, 50/50: carbs 700 / 4 = 175, fat 700 / 9 = 77.8.
     @Test fun aPercentWithBothOthersZeroSharesEvenly() {
-        val out = rebalanceMacros(noMacros, 2000.0, Macro.PROTEIN, 30.0, MacroEntered.PERCENT)
-        assertEquals(150.0, out.getValue(Macro.PROTEIN).grams)
-        assertEquals(30.0, out.getValue(Macro.PROTEIN).percent)
+        val protein = MacroShare(150.0, 30.0, MacroEntered.PERCENT)
+        val out = macrosWithRestShared(edited(Macro.PROTEIN, protein), 2000.0, setOf(Macro.PROTEIN))
+        assertEquals(protein, out.getValue(Macro.PROTEIN))
         assertEquals(175.0, out.getValue(Macro.CARBS).grams)
         assertEquals(78.0, out.getValue(Macro.FAT).grams)
         assertEquals(MacroEntered.FOLLOWS, out.getValue(Macro.FAT).entered)
     }
 
-    // Protein 100 g = 400 kcal. 1600 left. Carbs 200 g (800) and fat 40 g (360): carbs get 800/1160, 1103.4 kcal = 275.9 g, so 276. Fat: (1600 - 1104) / 9 = 55.1.
+    // Protein 100 g = 400 kcal. 1600 left. Carbs 40% and fat 18%: carbs get 40/58, 1103.4 kcal = 275.9 g, so 276. Fat: (1600 - 1104) / 9 = 55.1.
     @Test fun gramsKeepTheOthersRatio() {
         val current = mapOf(
-            Macro.PROTEIN to MacroShare(50.0, 10.0, MacroEntered.FOLLOWS),
+            Macro.PROTEIN to MacroShare(100.0, 20.0, MacroEntered.GRAMS),
             Macro.CARBS to MacroShare(200.0, 40.0, MacroEntered.FOLLOWS),
             Macro.FAT to MacroShare(40.0, 18.0, MacroEntered.FOLLOWS),
         )
-        val out = rebalanceMacros(current, 2000.0, Macro.PROTEIN, 100.0, MacroEntered.GRAMS)
+        val out = macrosWithRestShared(current, 2000.0, setOf(Macro.PROTEIN))
         assertEquals(100.0, out.getValue(Macro.PROTEIN).grams)
-        assertEquals(20.0, out.getValue(Macro.PROTEIN).percent, 0.001)
         assertEquals(276.0, out.getValue(Macro.CARBS).grams)
         assertEquals(55.0, out.getValue(Macro.FAT).grams)
     }
 
+    // 50.5 g fat = 454.5 kcal. 1545.5 left, half 772.75 = 193 g protein; carbs (1545.5 - 772) / 4 = 193.4.
     @Test fun theEditedFatKeepsWhatWasTypedAndCarbsTakeTheRemainder() {
-        val out = rebalanceMacros(noMacros, 2000.0, Macro.FAT, 50.5, MacroEntered.GRAMS)
+        val out = macrosWithRestShared(edited(Macro.FAT, MacroShare(50.5, 22.7, MacroEntered.GRAMS)), 2000.0, setOf(Macro.FAT))
         assertEquals(50.5, out.getValue(Macro.FAT).grams)
-        // 2000 - 454.5 = 1545.5, half 772.75 = 193 g protein; carbs (1545.5 - 772) / 4 = 193.4
         assertEquals(193.0, out.getValue(Macro.PROTEIN).grams)
         assertEquals(193.0, out.getValue(Macro.CARBS).grams)
     }
 
-    @Test fun capsAt100Percent() {
-        val byPercent = rebalanceMacros(noMacros, 2000.0, Macro.PROTEIN, 150.0, MacroEntered.PERCENT)
-        assertEquals(100.0, byPercent.getValue(Macro.PROTEIN).percent)
-        assertEquals(500.0, byPercent.getValue(Macro.PROTEIN).grams)
-        assertEquals(0.0, byPercent.getValue(Macro.FAT).grams)
-        val byGrams = rebalanceMacros(noMacros, 2000.0, Macro.FAT, 900.0, MacroEntered.GRAMS)
-        assertEquals(100.0, byGrams.getValue(Macro.FAT).percent, 0.001)
-        assertEquals(2000.0 / 9, byGrams.getValue(Macro.FAT).grams, 0.001)
-        assertEquals(0.0, byGrams.getValue(Macro.CARBS).grams)
+    // 300 g + 300 g = 2400 kcal, over the 2000: nothing left, never below zero. Fat had a share, so it stays a follower at zero.
+    @Test fun moreEditedThanTheKcalLeavesTheRestAtZero() {
+        val current = mapOf(
+            Macro.PROTEIN to MacroShare(300.0, 60.0, MacroEntered.GRAMS),
+            Macro.CARBS to MacroShare(300.0, 60.0, MacroEntered.GRAMS),
+            Macro.FAT to MacroShare(67.0, 30.0, MacroEntered.GRAMS),
+        )
+        val out = macrosWithRestShared(current, 2000.0, setOf(Macro.PROTEIN, Macro.CARBS))
+        assertEquals(listOf(300.0, 300.0, 0.0), Macro.entries.map { out.getValue(it).grams })
+        assertEquals(MacroEntered.FOLLOWS, out.getValue(Macro.FAT).entered)
     }
 
+    // 900 kcal each: 225 g carbs, 100 g fat.
     @Test fun zeroPercentGivesTheOthersEverything() {
-        val out = rebalanceMacros(noMacros, 1800.0, Macro.PROTEIN, 0.0, MacroEntered.PERCENT)
+        val out = macrosWithRestShared(edited(Macro.PROTEIN, MacroShare(0.0, 0.0, MacroEntered.PERCENT)), 1800.0, setOf(Macro.PROTEIN))
         assertEquals(0.0, out.getValue(Macro.PROTEIN).grams)
         assertEquals(225.0, out.getValue(Macro.CARBS).grams)
         assertEquals(100.0, out.getValue(Macro.FAT).grams)
     }
 
-    @Test fun oldTargetsInGramsFollowAfterTheFirstEdit() {
+    @Test fun oldTargetsInGramsFollowOnceApplied() {
         val old = mapOf(
             Macro.PROTEIN to MacroShare(150.0, 30.0, MacroEntered.GRAMS),
             Macro.CARBS to MacroShare(200.0, 40.0, MacroEntered.GRAMS),
             Macro.FAT to MacroShare(67.0, 30.0, MacroEntered.GRAMS),
         )
-        val out = rebalanceMacros(old, 2000.0, Macro.PROTEIN, 100.0, MacroEntered.GRAMS)
+        val out = macrosWithRestShared(old, 2000.0, setOf(Macro.PROTEIN))
         assertEquals(MacroEntered.GRAMS, out.getValue(Macro.PROTEIN).entered)
         assertEquals(MacroEntered.FOLLOWS, out.getValue(Macro.CARBS).entered)
     }
@@ -448,7 +451,7 @@ internal class MacroBalanceTest {
             Macro.CARBS to MacroShare(200.0, 40.0, MacroEntered.FOLLOWS),
             Macro.FAT to unset,
         )
-        assertEquals(MacroEntered.UNSET, rebalanceMacros(shares, 2000.0, Macro.PROTEIN, 150.0, MacroEntered.GRAMS).getValue(Macro.FAT).entered)
+        assertEquals(MacroEntered.UNSET, macrosWithRestShared(shares, 2000.0, setOf(Macro.PROTEIN)).getValue(Macro.FAT).entered)
     }
 
     @Test fun zeroMacrosAtZeroKcalDoNotDivideByZero() {
@@ -458,14 +461,136 @@ internal class MacroBalanceTest {
 }
 
 internal class MacroDraftTest {
-    @Test fun typingAPercentFillsTheOthersAndKeepsWhatWasTyped() {
-        val out = ProfileDraft(kcal = "2000").withMacroTyped(Macro.PROTEIN, "30", byPercent = true)
+    private val set = ProfileDraft(kcal = "2000", protein = "150", carbs = "200", fat = "67")
+
+    // 40% of 2000 = 800 kcal = 200 g.
+    @Test fun typingAPercentChangesOnlyThatMacro() {
+        val out = set.withMacroTyped(Macro.PROTEIN, "40", byPercent = true)
+        assertEquals("40", out.proteinPercent)
+        assertEquals("200", out.protein)
+        assertEquals("200", out.carbs)
+        assertEquals("67", out.fat)
+        assertEquals(setOf(Macro.PROTEIN), out.handEditedMacros)
+        assertTrue(out.macrosPending)
+    }
+
+    // 100 g = 400 kcal = 20% of 2000.
+    @Test fun typingGramsChangesOnlyThatMacro() {
+        val out = set.withMacroTyped(Macro.PROTEIN, "100", byPercent = false)
+        assertEquals("100", out.protein)
+        assertEquals("20", out.percentShown(Macro.PROTEIN))
+        assertEquals("200", out.carbs)
+        assertEquals("67", out.fat)
+    }
+
+    @Test fun aMarkedMacroStopsFollowing() {
+        val out = set.copy(followingMacros = setOf(Macro.PROTEIN, Macro.FAT)).withMacroTyped(Macro.PROTEIN, "100", byPercent = false)
+        assertEquals(setOf(Macro.FAT), out.followingMacros)
+    }
+
+    // 30%: 150 g protein, 1400 kcal left, 50/50: 175 g carbs, 78 g fat, 35% and 35%.
+    @Test fun applyWithOneEditedSharesTheRest() {
+        val typed = ProfileDraft(kcal = "2000").withMacroTyped(Macro.PROTEIN, "30", byPercent = true)
+        assertTrue(typed.macroApplyOffered)
+        val out = typed.withMacrosApplied()
         assertEquals("30", out.proteinPercent)
         assertEquals("150", out.protein)
         assertEquals("175", out.carbs)
         assertEquals("78", out.fat)
-        assertEquals(setOf(Macro.CARBS, Macro.FAT), out.followingMacros)
         assertEquals("35", out.percentShown(Macro.CARBS))
+        assertEquals(setOf(Macro.CARBS, Macro.FAT), out.followingMacros)
+        assertEquals(setOf(Macro.PROTEIN), out.handEditedMacros)
+        assertFalse(out.macroApplyOffered)
+    }
+
+    // Protein 600 kcal, carbs 800: 600 left, all fat: 66.7 g.
+    private val twoApplied = ProfileDraft(kcal = "2000")
+        .withMacroTyped(Macro.PROTEIN, "30", byPercent = true).withMacrosApplied()
+        .withMacroTyped(Macro.CARBS, "200", byPercent = false).withMacrosApplied()
+
+    @Test fun applyWithTwoEditedPutsTheRestInTheThird() {
+        assertEquals("30", twoApplied.proteinPercent)
+        assertEquals("150", twoApplied.protein)
+        assertEquals("200", twoApplied.carbs)
+        assertEquals("67", twoApplied.fat)
+        assertEquals(setOf(Macro.FAT), twoApplied.followingMacros)
+    }
+
+    // Protein 30% of 2400 = 180 g, 720 kcal; carbs stay 200 g, 800 kcal; 880 left: fat 97.8 g.
+    @Test fun aKcalChangeAfterApplyKeepsPercentAndGramsAndFollowersTakeTheRest() {
+        val out = twoApplied.withDailyKcal("2400")
+        assertEquals("30", out.proteinPercent)
+        assertEquals("180", out.protein)
+        assertEquals("200", out.carbs)
+        assertEquals("98", out.fat)
+        assertEquals(setOf(Macro.PROTEIN, Macro.CARBS), out.handEditedMacros)
+    }
+
+    @Test fun aKcalChangeLeavesAPendingEditPending() = assertTrue(set.withMacroTyped(Macro.PROTEIN, "100", byPercent = false).withDailyKcal("2400").macrosPending)
+
+    // 50% each: 1000 kcal, 250 g, 250 g, 111 g.
+    @Test fun allThreeEditedHasNoApplyAndSavesAsTyped() {
+        val typed = ProfileDraft(kcal = "2000")
+            .withMacroTyped(Macro.PROTEIN, "50", byPercent = true)
+            .withMacroTyped(Macro.CARBS, "50", byPercent = true)
+            .withMacroTyped(Macro.FAT, "50", byPercent = true)
+        assertFalse(typed.macroApplyOffered)
+        assertEquals(typed, typed.withMacrosApplied())
+        val saved = profileOf(typed, ProfileValues())!!
+        assertEquals(listOf(50.0, 50.0, 50.0), listOf(saved.proteinPercent, saved.carbsPercent, saved.fatPercent))
+        assertEquals(listOf(250.0, 250.0, 111.0), listOf(saved.proteinTarget, saved.carbsTarget, saved.fatTarget))
+    }
+
+    @Test fun saveWithAPendingEditStoresWhatIsTyped() {
+        val saved = profileOf(set.withMacroTyped(Macro.PROTEIN, "100", byPercent = false), ProfileValues())!!
+        assertEquals(listOf(100.0, 200.0, 67.0), listOf(saved.proteinTarget, saved.carbsTarget, saved.fatTarget))
+    }
+
+    @Test fun applyLeavesAnEditedTextExactlyAsTyped() {
+        val out = set.withMacroTyped(Macro.CARBS, "120,5", byPercent = false).withMacrosApplied()
+        assertEquals("120,5", out.carbs)
+    }
+
+    @Test fun anEmptiedFieldUnsetsTheMacroInBothAndApplyLeavesItSo() {
+        val typed = ProfileDraft(kcal = "2000").withMacroTyped(Macro.PROTEIN, "30", byPercent = true).withMacroTyped(Macro.PROTEIN, "", byPercent = true)
+        assertEquals("", typed.protein)
+        assertEquals("", typed.percentShown(Macro.PROTEIN))
+        assertEquals(setOf(Macro.PROTEIN), typed.handEditedMacros)
+        // 1000 kcal each: 250 g carbs, 111 g fat.
+        val out = typed.withMacrosApplied()
+        assertEquals("", out.protein)
+        assertEquals("250", out.carbs)
+        assertEquals("111", out.fat)
+    }
+
+    // 300 g + 300 g = 2400 kcal, over the 2000. At 3000, 600 kcal comes back to fat: 66.7 g.
+    @Test fun applyPastTheKcalLeavesTheRestEmptyAndItComesBack() {
+        val out = set.withMacroTyped(Macro.PROTEIN, "300", byPercent = false).withMacroTyped(Macro.CARBS, "300", byPercent = false).withMacrosApplied()
+        assertEquals("300", out.protein)
+        assertEquals("300", out.carbs)
+        assertEquals("", out.fat)
+        assertEquals("67", out.withDailyKcal("3000").fat)
+    }
+
+    @Test fun applyWaitsForValidFields() {
+        val typed = set.withMacroTyped(Macro.PROTEIN, "100", byPercent = false)
+        assertTrue(typed.macroApplyOffered)
+        assertFalse(set.macroApplyOffered)
+        assertFalse(typed.copy(kcal = "0").macroApplyOffered)
+        assertFalse(typed.copy(kcal = "").macroApplyOffered)
+        assertFalse(typed.copy(trackingOnly = true).macroApplyOffered)
+        assertFalse(typed.copy(carbs = "x").macroApplyOffered)
+        assertFalse(typed.copy(fatPercent = ".").macroApplyOffered)
+        // 500 g carbs is 200% of 1000 kcal: the % field on show is in error.
+        assertFalse(typed.copy(kcal = "1000", carbs = "500").macroApplyOffered)
+        assertFalse(set.withMacroTyped(Macro.PROTEIN, "x", byPercent = false).macroApplyOffered)
+    }
+
+    // 2000 kcal / 9 = 222.2 g of fat at most; carbs stay.
+    @Test fun aNumberPastTheCapIsCapped() {
+        val out = set.withMacroTyped(Macro.FAT, "900", byPercent = false)
+        assertEquals(2000.0 / 9, positiveAmountOf(out.fat)!!, 0.001)
+        assertEquals("200", out.carbs)
     }
 
     @Test fun aHundredPercentLeavesTheOthersNotSetSoTheDraftSaves() {
@@ -497,12 +622,12 @@ internal class MacroDraftTest {
         assertEquals(draft.copy(kcal = "2100"), draft.withDailyKcal("2100"))
     }
 
-    @Test fun aSavedDraftKeepsItsPercentAndFollowers() {
-        val typed = ProfileDraft(kcal = "2000").withMacroTyped(Macro.PROTEIN, "30", byPercent = true)
+    @Test fun aSavedDraftKeepsItsPercentAndFollowersAndNoMarks() {
+        val typed = ProfileDraft(kcal = "2000").withMacroTyped(Macro.PROTEIN, "30", byPercent = true).withMacrosApplied()
         val saved = profileOf(typed, ProfileValues())!!
         assertEquals(30.0, saved.proteinPercent)
         assertEquals(setOf(Macro.CARBS, Macro.FAT), saved.followingMacros)
-        assertEquals(typed, ProfileDraft.of(saved))
+        assertEquals(typed.copy(handEditedMacros = emptySet()), ProfileDraft.of(saved))
     }
 
     @Test fun aPercentOutOfRangeOnShowDoesNotSave() = assertNull(profileOf(ProfileDraft(kcal = "2000", fatPercent = "101"), ProfileValues()))
@@ -773,8 +898,10 @@ internal class NutritionWeekTest {
         assertNull(nutritionWeek(monday, emptyList(), emptyList()).days[0].targetKcal)
     }
 
-    @Test fun oldGramTargetsEditedByPercentLetTheOtherTwoFollow() {
-        val edited = ProfileDraft(kcal = "2000", protein = "150", carbs = "200", fat = "67").withMacroTyped(Macro.PROTEIN, "30", byPercent = true)
+    @Test fun oldGramTargetsEditedByPercentFollowOnceApplied() {
+        val typed = ProfileDraft(kcal = "2000", protein = "150", carbs = "200", fat = "67").withMacroTyped(Macro.PROTEIN, "30", byPercent = true)
+        assertEquals(emptySet(), typed.followingMacros)
+        val edited = typed.withMacrosApplied()
         assertEquals(setOf(Macro.CARBS, Macro.FAT), edited.followingMacros)
         val more = edited.withDailyKcal("3000")
         assertEquals("225", more.protein)
@@ -782,12 +909,14 @@ internal class NutritionWeekTest {
         assertTrue(positiveAmountOf(more.fat)!! > 67.0, more.fat)
     }
 
-    @Test fun aPercentMacroEditedBesideGramMacrosLeavesThemGrams() {
+    @Test fun aPercentMacroEditedBesideGramMacrosMakesThemFollowOnceApplied() {
         val draft = ProfileDraft(kcal = "2000", protein = "150", proteinPercent = "30", carbs = "200", fat = "67")
-        assertEquals(emptySet(), draft.withMacroTyped(Macro.PROTEIN, "40", byPercent = true).followingMacros)
+        val typed = draft.withMacroTyped(Macro.PROTEIN, "40", byPercent = true)
+        assertEquals(emptySet(), typed.followingMacros)
+        assertEquals(setOf(Macro.CARBS, Macro.FAT), typed.withMacrosApplied().followingMacros)
     }
 
-    @Test fun aPercentMacroEditedInGramsLeavesTheOthersGrams() {
+    @Test fun aPercentMacroEditedInGramsLeavesTheOthersGramsUntilApply() {
         val draft = ProfileDraft(kcal = "2000", protein = "150", proteinPercent = "30", carbs = "200", fat = "67")
         assertEquals(emptySet(), draft.withMacroTyped(Macro.PROTEIN, "100", byPercent = false).followingMacros)
     }

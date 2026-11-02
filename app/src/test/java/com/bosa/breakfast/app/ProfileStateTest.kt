@@ -12,7 +12,8 @@ import com.bosa.breakfast.domain.TargetRow
 import com.bosa.breakfast.domain.WeightPoint
 import com.bosa.breakfast.domain.WeightProjection
 import com.bosa.breakfast.domain.WeightRange
-import com.bosa.breakfast.domain.withMacroTyped
+import com.bosa.breakfast.domain.macroApplyOffered
+import com.bosa.breakfast.domain.percentShown
 import com.bosa.breakfast.profile.ProfilePage
 import com.bosa.breakfast.profile.ProfilePrefs
 import com.bosa.breakfast.profile.profilePages
@@ -21,6 +22,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -187,6 +189,7 @@ internal class ProfileStateTest {
         profile.edit(ProfileDraft(kcal = "2000"))
         profile.edit(profile.draft.copy(goal = Goal.LOSE))
         profile.editMacro(Macro.PROTEIN, "30", byPercent = true)
+        profile.applyMacros()
         assertEquals(Goal.LOSE, profile.draft.goal)
         assertEquals("175", profile.draft.carbs)
         listOf("", "2", "24", "240", "2400").forEach(profile::editKcal)
@@ -305,22 +308,83 @@ internal class ProfileStateTest {
         assertTrue(profile.paceTooFast)
     }
 
-    /** Typing past the cap takes the others to nothing on the way; the number it ends at finds them as they were. */
-    @Test fun typingThroughTheCapKeepsTheOthersRatio() {
+    @Test fun typingLeavesTheOtherMacrosAloneUntilApply() {
         profile.edit(ProfileDraft(kcal = "2000", carbs = "300", fat = "40", followingMacros = setOf(Macro.CARBS, Macro.FAT)))
-        val base = profile.draft
-        listOf("5", "50", "500", "5000").forEach { profile.editMacro(Macro.PROTEIN, it, byPercent = false) }
-        assertEquals("", profile.draft.carbs)
-        listOf("500", "50").forEach { profile.editMacro(Macro.PROTEIN, it, byPercent = false) }
-        assertEquals(base.withMacroTyped(Macro.PROTEIN, "50", byPercent = false), profile.draft)
+        val before = profile.draft
+        listOf("5", "50", "500", "5000", "500", "50").forEach { profile.editMacro(Macro.PROTEIN, it, byPercent = false) }
+        assertEquals("50", profile.draft.protein)
+        assertEquals(before.carbs, profile.draft.carbs)
+        assertEquals(before.fat, profile.draft.fat)
+        assertTrue(profile.draft.macroApplyOffered)
     }
 
-    @Test fun anotherFieldStartsItsOwnEdit() {
-        profile.edit(ProfileDraft(kcal = "2000", carbs = "300", fat = "40", followingMacros = setOf(Macro.CARBS, Macro.FAT)))
+    // Protein 30%, 150 g, stays; carbs 200 g stays; 600 kcal left in fat: 66.7 g.
+    @Test fun editApplyEditApplyLeavesBothEditsAndPutsTheRestInFat() {
+        profile.edit(ProfileDraft(kcal = "2000"))
+        profile.editMacro(Macro.PROTEIN, "30", byPercent = true)
+        profile.applyMacros()
+        assertFalse(profile.draft.macroApplyOffered)
+        profile.editMacro(Macro.CARBS, "200", byPercent = false)
+        assertEquals("78", profile.draft.fat)
+        profile.applyMacros()
+        assertEquals("150", profile.draft.protein)
+        assertEquals("200", profile.draft.carbs)
+        assertEquals("67", profile.draft.fat)
+    }
+
+    @Test fun applySavesNothing() {
+        profile.edit(ProfileDraft(kcal = "2000"))
+        profile.editMacro(Macro.PROTEIN, "30", byPercent = true)
+        profile.applyMacros()
+        assertEquals(ProfileValues(), profile.values)
+        assertTrue(app.diary.targets.isEmpty())
+        assertTrue(profile.canSave)
+    }
+
+    // 60% of 2000: 300 g each, 120%, with fat left at 67 g.
+    @Test fun saveWithPendingEditsStoresWhatIsTypedAndClearsTheMarks() {
+        ProfilePrefs(app.profileStore).write(ProfileValues(kcalTarget = 2000.0, proteinTarget = 150.0, carbsTarget = 200.0, fatTarget = 67.0))
+        profile.reload()
+        profile.editMacro(Macro.PROTEIN, "60", byPercent = true)
+        profile.editMacro(Macro.CARBS, "60", byPercent = true)
+        assertTrue(profile.canSave)
+        profile.save()
+        assertEquals(listOf(300.0, 300.0, 67.0), listOf(profile.values.proteinTarget, profile.values.carbsTarget, profile.values.fatTarget))
+        assertEquals(60.0, profile.values.carbsPercent)
+        assertEquals(emptySet(), profile.draft.handEditedMacros)
+        assertFalse(profile.draft.macrosPending)
+    }
+
+    /** After a Save, carbs are no longer edited by hand: the next Apply moves them. */
+    @Test fun theNextEditAfterSaveMarksOnlyWhatItTouches() {
+        profile.edit(ProfileDraft(kcal = "2000", protein = "150", carbs = "200", fat = "67"))
+        profile.editMacro(Macro.CARBS, "100", byPercent = false)
+        profile.save()
         profile.editMacro(Macro.PROTEIN, "100", byPercent = false)
-        val before = profile.draft
-        profile.editMacro(Macro.FAT, "50", byPercent = false)
-        assertEquals(before.withMacroTyped(Macro.FAT, "50", byPercent = false), profile.draft)
+        assertEquals(setOf(Macro.PROTEIN), profile.draft.handEditedMacros)
+        profile.applyMacros()
+        assertNotEquals("100", profile.draft.carbs)
+    }
+
+    @Test fun leavingTheProfileClearsTheMarks() {
+        app.surfaces.openProfile()
+        profile.edit(ProfileDraft(kcal = "2000"))
+        profile.editMacro(Macro.PROTEIN, "30", byPercent = true)
+        app.back()
+        profile.discard()
+        app.surfaces.openProfile()
+        assertEquals(emptySet(), profile.draft.handEditedMacros)
+        assertFalse(profile.draft.macrosPending)
+    }
+
+    @Test fun theMarksComeBackAfterTheProcessDies() {
+        val saved = SavedStateHandle()
+        val first = AppKit(saved)
+        first.surfaces.openProfile()
+        first.owners.profile.edit(ProfileDraft(kcal = "2000"))
+        first.owners.profile.editMacro(Macro.PROTEIN, "30", byPercent = true)
+        Snapshot.sendApplyNotifications()
+        assertEquals(setOf(Macro.PROTEIN), AppKit(saved).owners.profile.draft.handEditedMacros)
     }
 
     @Test fun aKcalInvalidThenTrackingOnlySavesAndKeepsTheTarget() {
@@ -647,16 +711,17 @@ internal class ProfileStateTest {
         assertEquals(2000.0, profile.values.kcalTarget)
     }
 
-    @Test fun anEmptiedPercentFieldStaysEmptyUntilTheNextEdit() {
+    @Test fun anEmptiedPercentFieldUnsetsTheMacroAndTheNextKeyFillsIt() {
         app.surfaces.openProfile()
         profile.edit(ProfileDraft(kcal = "2000", protein = "150", carbs = "200", fat = "67"))
         profile.editMacro(Macro.PROTEIN, "3", byPercent = true)
-        assertNull(profile.clearedPercent)
         profile.editMacro(Macro.PROTEIN, "", byPercent = true)
-        assertEquals(Macro.PROTEIN, profile.clearedPercent)
+        assertEquals("", profile.draft.percentShown(Macro.PROTEIN))
+        assertEquals("", profile.draft.protein)
+        assertEquals(setOf(Macro.PROTEIN), profile.draft.handEditedMacros)
         profile.editMacro(Macro.PROTEIN, "4", byPercent = true)
-        assertNull(profile.clearedPercent)
         assertEquals("4", profile.draft.proteinPercent)
+        assertEquals("20", profile.draft.protein)
     }
 
     @Test fun weeksGoBackAndNoLaterThanTheCurrentOne() {
