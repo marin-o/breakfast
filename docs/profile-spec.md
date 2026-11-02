@@ -21,22 +21,17 @@ A Profile page of its own, separate from Settings (owner, 2026-10-31). It opens 
 - Current weight stays what was last saved, even if the tick was off.
 
 ## The curve
-- Drawn with a chart library (owner, 2026-10-31: "just use some library for curves don't custom build it"), behind one wrapper in `ui/components`, so no screen knows the library.
+- Drawn with a chart library (owner, 2026-10-31: "just use some library for curves don't custom build it"), behind wrappers in `ui/components`, the curve and the Nutrition page's bars, so no screen knows the library.
+- The range, the trend, the projection and the lifted chart are in `docs/profile-pages-spec.md`.
 - It has axes: dates along the bottom, kg up the side, with readable labels.
-- Monochrome, per DESIGN.md. The target weight shows as a line when it is set.
+- Monochrome, per DESIGN.md: faint raw dots and a bold trend. The target weight shows as a line when it is set.
 - Empty until there is a point. One point is one day's weight, so it draws as one dot, with its axes.
 - Points sit at their real time, so two on one day are apart. The date labels stay dates.
 - Under the curve, the points are listed newest first. A day with several shows the time on each ("Sat 31 Oct, 07:52"). A wrong point can be deleted, with the shared confirm dialog.
 
-## Calorie target and presets
+## Calorie target and macros
 - The profile also holds a daily calorie target. Meals shows it next to the day's total, the way macros show theirs.
-- Presets sit above the macro fields. A preset fills the fields, which stay editable, and saves nothing until Save:
-  - Kcal and protein: 2 g of protein per kg of current weight (25% of kcal when no weight is set). Carbs and fat stay empty.
-  - Balanced: 30% protein, 40% carbs, 30% fat.
-  - High protein: 40% protein, 30% carbs, 30% fat.
-  - Low carb: 30% protein, 20% carbs, 50% fat.
-- Percentages are of the calorie target, at 4 kcal per gram of protein and carbs and 9 per gram of fat, rounded to whole grams. With no calorie target, a preset that needs one asks for it through the field's own error, and changes nothing.
-- The conversion is one pure, unit-tested function.
+- The macro preset chips are gone (2026-11-02). Each macro now has a percent and a gram field side by side; see `docs/profile-pages-spec.md`, which also holds the goals, the daily burn, the Weight and Nutrition pages, and Tracking only.
 
 ## Macro targets on Meals
 - No target: the macro bar works as it does today.

@@ -132,6 +132,17 @@ fun ProfileValues.burnBody(): BurnBody? {
     return BurnBody(age ?: return null, heightCm ?: return null, currentWeight ?: return null, sex, activity ?: return null)
 }
 
+/** These values as Meals reads them: tracking only hides the targets, and keeps them. */
+fun ProfileValues.targetsShown(): ProfileValues =
+    if (trackingOnly) copy(kcalTarget = null, proteinTarget = null, carbsTarget = null, fatTarget = null) else this
+
+/** "1500 kcal is the lowest here. That's about 0.4 kg a week."; null when the lowest did not apply or claims no pace. */
+fun lowestLine(result: GoalKcal): String? {
+    val lowest = result.lowest ?: return null
+    val pace = result.paceAtLowest ?: return null
+    return "$lowest kcal is the lowest here. That's about ${kgAWeekText(pace)} kg a week."
+}
+
 /** Height as typed, null until valid. */
 val ProfileDraft.validHeightCm: Double? get() = positiveAmountOf(height)?.takeIf(::heightValid)
 

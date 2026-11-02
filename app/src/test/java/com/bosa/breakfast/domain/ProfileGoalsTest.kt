@@ -718,4 +718,89 @@ internal class NutritionWeekTest {
         assertEquals(1800.0, days[6].targetKcal)
         assertNull(nutritionWeek(monday, emptyList(), emptyList()).days[0].targetKcal)
     }
+
+    @Test fun oldGramTargetsEditedByPercentLetTheOtherTwoFollow() {
+        val edited = ProfileDraft(kcal = "2000", protein = "150", carbs = "200", fat = "67").withMacroTyped(Macro.PROTEIN, "30", byPercent = true)
+        assertEquals(setOf(Macro.CARBS, Macro.FAT), edited.followingMacros)
+        val more = edited.withDailyKcal("3000")
+        assertEquals("225", more.protein)
+        assertTrue(positiveAmountOf(more.carbs)!! > 200.0, more.carbs)
+        assertTrue(positiveAmountOf(more.fat)!! > 67.0, more.fat)
+    }
+
+    @Test fun aPercentMacroEditedBesideGramMacrosLeavesThemGrams() {
+        val draft = ProfileDraft(kcal = "2000", protein = "150", proteinPercent = "30", carbs = "200", fat = "67")
+        assertEquals(emptySet(), draft.withMacroTyped(Macro.PROTEIN, "40", byPercent = true).followingMacros)
+    }
+
+    @Test fun aPercentMacroEditedInGramsLeavesTheOthersGrams() {
+        val draft = ProfileDraft(kcal = "2000", protein = "150", proteinPercent = "30", carbs = "200", fat = "67")
+        assertEquals(emptySet(), draft.withMacroTyped(Macro.PROTEIN, "100", byPercent = false).followingMacros)
+    }
+
+    @Test fun trackingOnlyHidesTheTargetsFromMealsAndKeepsThem() {
+        val saved = ProfileValues(kcalTarget = 2000.0, proteinTarget = 100.0, carbsTarget = 200.0, fatTarget = 50.0, trackingOnly = true)
+        val shown = saved.targetsShown()
+        assertNull(shown.kcalTarget)
+        assertNull(shown.proteinTarget)
+        assertNull(shown.carbsTarget)
+        assertNull(shown.fatTarget)
+        assertEquals(2000.0, saved.kcalTarget)
+        val tracking = saved.copy(trackingOnly = false)
+        assertEquals(tracking, tracking.targetsShown())
+    }
+
+    @Test fun theLowestLineNeedsARealPace() {
+        assertEquals("1500 kcal is the lowest here. That's about 0.4 kg a week.", lowestLine(GoalKcal(1500, 1500, 0.42)))
+        assertNull(lowestLine(GoalKcal(1500, 1500, null)))
+        assertNull(lowestLine(GoalKcal(2100)))
+    }
+
+    private val projectionDay: LocalDate = LocalDate.parse("2026-11-02")
+    private fun dated(earliest: String, latest: String, comeBack: Int? = null, kg: Double = 0.42, target: Double = 78.0) =
+        WeightProjection.Dated(kg, target, LocalDate.parse(earliest), LocalDate.parse(latest), comeBack)
+
+    @Test fun projectionBetweenTwoMonths() {
+        assertEquals(
+            listOf("At about 0.4 kg a week, you reach 78 kg between February and April."),
+            projectionLines(dated("2027-02-10", "2027-04-20"), projectionDay),
+        )
+    }
+
+    @Test fun projectionInOneMonth() {
+        assertEquals(listOf("At about 0.4 kg a week, you reach 78.5 kg in March."), projectionLines(dated("2027-03-01", "2027-03-30", target = 78.5), projectionDay))
+    }
+
+    @Test fun aYearFollowsOnlyAMonthPastTheNextTwelve() {
+        assertEquals(
+            listOf("At about 1 kg a week, you reach 78 kg between October and November 2027."),
+            projectionLines(dated("2027-10-10", "2027-11-02", kg = 1.04), projectionDay),
+        )
+        assertEquals(
+            listOf("At about 0.4 kg a week, you reach 78 kg in January 2028."),
+            projectionLines(dated("2028-01-02", "2028-01-20"), projectionDay),
+        )
+    }
+
+    @Test fun underFourteenDaysTheComeBackLineFollows() {
+        assertEquals(
+            listOf("At about 0.4 kg a week, you reach 78 kg in March.", "Not enough data yet. Come back in 9 days."),
+            projectionLines(dated("2027-03-01", "2027-03-30", comeBack = 9), projectionDay),
+        )
+    }
+
+    @Test fun theOtherProjections() {
+        assertEquals(emptyList(), projectionLines(WeightProjection.Nothing, projectionDay))
+        assertEquals(listOf("Not enough data yet. Come back in 9 days."), projectionLines(WeightProjection.NotEnoughData(9), projectionDay))
+        assertEquals(listOf("Not enough data yet. Come back in 1 day."), projectionLines(WeightProjection.NotEnoughData(1), projectionDay))
+        assertEquals(listOf("No date yet. Your weight isn't moving toward your target."), projectionLines(WeightProjection.NoDate, projectionDay))
+    }
+
+    @Test fun aPaceIsWrittenPlainly() {
+        assertEquals("0.4", kgAWeekText(0.42))
+        assertEquals("1", kgAWeekText(1.04))
+        assertEquals("0.06", kgAWeekText(0.06))
+        assertEquals("0.1", kgAWeekText(0.095))
+        assertEquals("10", kgAWeekText(10.0))
+    }
 }

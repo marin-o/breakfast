@@ -149,6 +149,9 @@ private fun ProfileDraft.withMacroTexts(macro: Macro, grams: String, percent: St
 
 private fun validKcal(text: String): Double? = positiveAmountOf(text)?.takeIf(::kcalTargetValid)
 
+/** Daily kcal as typed, null until valid: the macros' % fields show only with one. */
+val ProfileDraft.validDailyKcal: Double? get() = validKcal(kcal)
+
 /** One decimal, as a percent field shows a number it was not typed with. */
 private fun percentField(percent: Double): String = editableNumber((percent * 10).roundToInt() / 10.0)
 
@@ -190,9 +193,12 @@ fun ProfileDraft.withMacroTyped(macro: Macro, text: String, byPercent: Boolean):
     val asTyped = withMacroTexts(macro, if (byPercent) gramsText(macro) else text, if (byPercent) text else "")
         .copy(followingMacros = followingMacros - macro)
     val kcal = validKcal(this.kcal) ?: return asTyped
-    val shares = asTyped.macroShares(kcal) ?: return asTyped
+    val typedShares = asTyped.macroShares(kcal) ?: return asTyped
     val number = (if (byPercent) parseDecimal(text) else positiveAmountOf(text)) ?: return asTyped
     val by = if (byPercent) MacroEntered.PERCENT else MacroEntered.GRAMS
+    // The edited macro counts as it stood before this edit: the text just typed says nothing about how the targets were entered.
+    val before = macroShares(kcal)?.getValue(macro)?.entered
+    val shares = if (before == null) typedShares else typedShares + (macro to typedShares.getValue(macro).copy(entered = before))
     val next = rebalanceMacros(shares, kcal, macro, number, by)
     val edited = next.getValue(macro)
     val capped = if (byPercent) number > edited.percent else number > edited.grams

@@ -25,6 +25,17 @@ internal fun shortDateLabel(dayKey: String): String =
 internal fun dayMonthLabel(date: LocalDate, withYear: Boolean = false): String =
     date.format(DateTimeFormatter.ofPattern(if (withYear) "d MMM yy" else "d MMM", Locale.ENGLISH))
 
+/** "26 Oct to 1 Nov", a week's title. */
+internal fun weekLabel(start: LocalDate, end: LocalDate): String = "${dayMonthLabel(start)} to ${dayMonthLabel(end)}"
+
+/** "Mon", a weekday along the Nutrition chart. */
+internal fun weekdayLabel(dayKey: String): String =
+    runCatching { LocalDate.parse(dayKey).format(DateTimeFormatter.ofPattern("EEE", Locale.ENGLISH)) }.getOrDefault(dayKey)
+
+/** "Aug", or "Aug 26" [withYear]: along a weight chart that spans months. */
+internal fun monthLabel(date: LocalDate, withYear: Boolean = false): String =
+    date.format(DateTimeFormatter.ofPattern(if (withYear) "MMM yy" else "MMM", Locale.ENGLISH))
+
 /** "07:52", the time of a moment on this phone. */
 internal fun clockLabel(epochMs: Long, zone: ZoneId = ZoneId.systemDefault()): String =
     DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT).withZone(zone).format(Instant.ofEpochMilli(epochMs))

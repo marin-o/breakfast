@@ -1,7 +1,10 @@
 package com.bosa.breakfast.domain
 
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.ln
 import kotlin.math.roundToLong
@@ -75,4 +78,35 @@ fun weightProjection(points: List<WeightPoint>, targetKg: Double?, goal: Goal?, 
     if (!toward || speed * 7 < SLOWEST_KG_A_WEEK) return WeightProjection.NoDate
     val earliest = day.plusDays((left / (speed + Z_95 * slope.standardError)).roundToLong())
     return WeightProjection.Dated(speed * 7, target, earliest, latestDate, comeBack.takeUnless { enoughDays })
+}
+
+/** A pace in words: one decimal, two under 0.1, no trailing zero ("0.4", "1", "0.06"). */
+fun kgAWeekText(kgPerWeek: Double): String {
+    val text = String.format(Locale.ROOT, if (kgPerWeek < 0.095) "%.2f" else "%.1f", kgPerWeek)
+    return text.trimEnd('0').trimEnd('.')
+}
+
+private fun comeBackLine(days: Int) = "Not enough data yet. Come back in ${if (days == 1) "1 day" else "$days days"}."
+
+private val MONTH = DateTimeFormatter.ofPattern("MMMM", Locale.ENGLISH)
+
+/** "March", with its year only when it is not within the next 12 months of [today]. */
+private fun monthText(date: LocalDate, today: LocalDate): String {
+    val name = date.format(MONTH)
+    return if (YearMonth.from(date).isBefore(YearMonth.from(today).plusMonths(12))) name else "$name ${date.year}"
+}
+
+/** The lines the Weight page shows for [projection] on [today], in order; none for [WeightProjection.Nothing]. */
+fun projectionLines(projection: WeightProjection, today: LocalDate): List<String> = when (projection) {
+    WeightProjection.Nothing -> emptyList()
+    WeightProjection.NoDate -> listOf("No date yet. Your weight isn't moving toward your target.")
+    is WeightProjection.NotEnoughData -> listOf(comeBackLine(projection.comeBackInDays))
+    is WeightProjection.Dated -> {
+        val to = monthText(projection.latest, today)
+        val time = if (YearMonth.from(projection.earliest) == YearMonth.from(projection.latest)) "in $to" else "between ${monthText(projection.earliest, today)} and $to"
+        listOfNotNull(
+            "At about ${kgAWeekText(projection.kgPerWeek)} kg a week, you reach ${editableNumber(projection.targetKg)} kg $time.",
+            projection.comeBackInDays?.let(::comeBackLine),
+        )
+    }
 }

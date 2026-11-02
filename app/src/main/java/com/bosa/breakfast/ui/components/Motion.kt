@@ -150,6 +150,10 @@ internal class Motion(val reduced: Boolean, private val density: Density) {
         return if (resize) exit + shrinkVertically(tween(FEEDBACK_MS, easing = FastOutSlowInEasing)) else exit
     }
 
+    /** A scrim behind something lifted: it only fades, in the time of what it lies behind ([feedbackIn]). */
+    fun scrimIn(): EnterTransition = if (reduced) EnterTransition.None else fadeIn(tween(FEEDBACK_MS, easing = FastOutSlowInEasing))
+    fun scrimOut(): ExitTransition = if (reduced) ExitTransition.None else fadeOut(tween(FEEDBACK_MS, easing = FastOutSlowInEasing))
+
     /** A row of a list that is not lazy: it fades in as its space opens, and fades as it collapses out. */
     fun rowIn(): EnterTransition = if (reduced) EnterTransition.None else fadeIn(tween(LIST_MS, easing = FastOutSlowInEasing)) + expandVertically(tween(LIST_MS, easing = FastOutSlowInEasing))
     fun rowOut(): ExitTransition = if (reduced) ExitTransition.None else fadeOut(tween(LIST_MS, easing = FastOutSlowInEasing)) + shrinkVertically(tween(LIST_MS, easing = FastOutSlowInEasing))

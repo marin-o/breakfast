@@ -7,13 +7,15 @@ import com.bosa.breakfast.domain.Goal
 import com.bosa.breakfast.domain.Macro
 import com.bosa.breakfast.domain.Sex
 import com.bosa.breakfast.domain.ProfileDraft
-import com.bosa.breakfast.domain.MacroPreset
 import com.bosa.breakfast.domain.ProfileValues
 import com.bosa.breakfast.domain.TargetRow
 import com.bosa.breakfast.domain.WeightPoint
 import com.bosa.breakfast.domain.WeightProjection
+import com.bosa.breakfast.domain.WeightRange
 import com.bosa.breakfast.domain.withMacroTyped
+import com.bosa.breakfast.profile.ProfilePage
 import com.bosa.breakfast.profile.ProfilePrefs
+import com.bosa.breakfast.profile.profilePages
 import com.bosa.breakfast.profile.weightPointLabel
 import kotlinx.coroutines.CompletableDeferred
 import kotlin.test.Test
@@ -142,31 +144,6 @@ internal class ProfileStateTest {
 
     @Test fun anEmptyProfileHasNothingToSave() {
         assertFalse(profile.canSave)
-    }
-
-    @Test fun aPresetFillsTheFieldsAndSavesNothing() {
-        profile.edit(ProfileDraft(kcal = "2000"))
-        profile.applyPreset(MacroPreset.LOW_CARB)
-        assertEquals(ProfileDraft(kcal = "2000", protein = "150", carbs = "100", fat = "111"), profile.draft)
-        assertEquals(ProfileValues(), profile.values)
-        assertEquals(ProfileValues(), ProfilePrefs(app.profileStore).read())
-        assertFalse(profile.kcalAsked)
-    }
-
-    @Test fun aPresetWithoutKcalAsksForItAndChangesNothing() {
-        val typed = ProfileDraft(protein = "90")
-        profile.edit(typed)
-        profile.applyPreset(MacroPreset.BALANCED)
-        assertEquals(typed, profile.draft)
-        assertTrue(profile.kcalAsked)
-    }
-
-    @Test fun typingKcalEndsTheAskingButTypingElsewhereDoesNot() {
-        profile.applyPreset(MacroPreset.BALANCED)
-        profile.edit(profile.draft.copy(protein = "90"))
-        assertTrue(profile.kcalAsked)
-        profile.edit(profile.draft.copy(kcal = "2"))
-        assertFalse(profile.kcalAsked)
     }
 
     @Test fun aKcalTargetIsStoredAndABadOneCannotBeSaved() {
@@ -585,6 +562,76 @@ internal class ProfileStateTest {
         assertEquals(ProfileValues(), profile.values)
         assertEquals("", profile.draft.current)
         assertTrue(profile.points.isEmpty())
+    }
+
+    @Test fun backClosesTheLiftedChartBeforeAnythingElse() {
+        app.surfaces.openProfile()
+        profile.edit(ProfileDraft(name = "Ana"))
+        profile.liftChart()
+        assertTrue(app.back())
+        assertFalse(profile.chartLifted)
+        assertEquals(listOf("DAILY", "PROFILE"), app.shown())
+        app.back()
+        assertEquals(listOf("DAILY", "PROFILE", "DISCARD_PROFILE"), app.shown())
+    }
+
+    @Test fun aDraftSurvivesGoingBetweenPagesAndOpeningStartsOnTheFirst() {
+        app.surfaces.openProfile()
+        profile.edit(ProfileDraft(name = "Ana"))
+        profile.goToPage(ProfilePage.NUTRITION)
+        assertEquals(ProfilePage.NUTRITION, profile.page)
+        profile.pageSettled(2, byUser = false)
+        profile.pageSettled(1, byUser = true)
+        assertEquals(ProfilePage.WEIGHT, profile.page)
+        assertEquals("Ana", profile.draft.name)
+        profile.discard()
+        app.surfaces.openProfile()
+        assertEquals(ProfilePage.PROFILE, profile.page)
+    }
+
+    @Test fun trackingOnlyTakesAwayTheWeightPageAndKeepsTheTargets() {
+        assertEquals(ProfilePage.entries, profilePages(trackingOnly = false))
+        assertEquals(listOf(ProfilePage.PROFILE, ProfilePage.NUTRITION), profilePages(trackingOnly = true))
+        app.surfaces.openProfile()
+        profile.edit(ProfileDraft(kcal = "2000", trackingOnly = true))
+        assertEquals(2, profile.position.count)
+        assertEquals("2000", profile.draft.kcal)
+        profile.save()
+        assertEquals(2000.0, profile.values.kcalTarget)
+    }
+
+    @Test fun anEmptiedPercentFieldStaysEmptyUntilTheNextEdit() {
+        app.surfaces.openProfile()
+        profile.edit(ProfileDraft(kcal = "2000", protein = "150", carbs = "200", fat = "67"))
+        profile.editMacro(Macro.PROTEIN, "3", byPercent = true)
+        assertNull(profile.clearedPercent)
+        profile.editMacro(Macro.PROTEIN, "", byPercent = true)
+        assertEquals(Macro.PROTEIN, profile.clearedPercent)
+        profile.editMacro(Macro.PROTEIN, "4", byPercent = true)
+        assertNull(profile.clearedPercent)
+        assertEquals("4", profile.draft.proteinPercent)
+    }
+
+    @Test fun weeksGoBackAndNoLaterThanTheCurrentOne() {
+        app.surfaces.openProfile()
+        val current = profile.week.start
+        assertFalse(profile.hasNextWeek)
+        profile.nextWeek()
+        assertEquals(current, profile.week.start)
+        profile.previousWeek()
+        assertEquals(current.minusWeeks(1), profile.week.start)
+        assertTrue(profile.hasNextWeek)
+        profile.nextWeek()
+        assertEquals(current, profile.week.start)
+    }
+
+    @Test fun aChosenRangeWinsOverTheDefaultUntilThePageCloses() {
+        app.surfaces.openProfile()
+        assertEquals(WeightRange.ALL, profile.weightRange)
+        profile.chooseRange(WeightRange.ONE_MONTH)
+        assertEquals(WeightRange.ONE_MONTH, profile.weightRange)
+        profile.close()
+        assertEquals(WeightRange.ALL, profile.weightRange)
     }
 }
 

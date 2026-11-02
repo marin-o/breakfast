@@ -1,6 +1,7 @@
 package com.bosa.breakfast.app
 
 import com.bosa.breakfast.onboarding.OnboardingScreen
+import com.bosa.breakfast.domain.targetsShown
 import com.bosa.breakfast.profile.ProfileScreen
 import com.bosa.breakfast.log.UnmatchedParts
 import com.bosa.breakfast.ui.components.ConfirmDialog
@@ -261,7 +262,7 @@ private fun BaseScreenContent(vm: BreakfastViewModel, surface: Surface, meal: Me
         Surface.RECIPES -> RecipesScreen(vm.recipes, onNew = vm.recipeForm::openNew, modifier)
         Surface.DAILY -> DailyScreen(
             vm.session, vm.day, vm.settings, vm.log, vm.contribution, vm.entryEdit, vm.surfaces, vm.undo, vm.feedback,
-            vm.profile.values, modifier,
+            vm.profile.values.targetsShown(), modifier,
         )
         else -> MealScreen(
             vm.session, vm.day, vm.settings, vm.log, vm.contribution, vm.entryEdit, vm.surfaces, vm.undo, vm.feedback,

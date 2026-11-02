@@ -290,6 +290,8 @@ fun ChoiceOption(
     selectable: Boolean = true,
     /** The one the app picks by itself: its border is `ok`, its label stays ink, so it is seen before Add logs it. */
     autoPick: Boolean = false,
+    /** The label in the middle of a wide option, as a row of equal options draws it. */
+    centred: Boolean = false,
 ) {
     val colors = LocalBreakfastColors.current
     val marked = selected || autoPick
@@ -303,6 +305,7 @@ fun ChoiceOption(
             )
             .padding(horizontal = if (compact) 8.dp else 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.Center,
+        horizontalAlignment = if (centred) Alignment.CenterHorizontally else Alignment.Start,
     ) {
         Text(
             foodText(label),
@@ -581,6 +584,32 @@ private fun fitsAColumn(labels: List<String>, style: TextStyle, padding: Dp, wid
     return fitsColumn(with(density) { widest.toDp() } + padding, width, gap, columns)
 }
 
+/**
+ * One choice of [options] as equal compact [ChoiceOption]s under an optional soft [label]: [columns] across, or as many as
+ * still hold every label on one line, so a large font or a small screen breaks the rows, never a word.
+ */
+@Composable
+internal fun <T> ChoiceGrid(options: List<T>, text: (T) -> String, selected: T?, onSelect: (T) -> Unit, columns: Int = options.size, label: String? = null) {
+    val gap = 8.dp
+    Column {
+        if (label != null) Text(label, color = LocalBreakfastColors.current.soft, style = BreakfastType.Meta, modifier = Modifier.padding(bottom = 4.dp))
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val labels = options.map(text)
+            // The compact option's padding and selected outline, each side.
+            val fitting = (columns downTo 2).firstOrNull { fitsAColumn(labels, BreakfastType.SecondaryMedium, 19.dp, maxWidth, gap, it) } ?: 1
+            Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(gap)) {
+                options.chunked(fitting).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                        row.forEach { option -> ChoiceOption(text(option), option == selected, { onSelect(option) }, Modifier.weight(1f), compact = true, centred = true) }
+                        // A short last row keeps the columns' widths.
+                        repeat(fitting - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /** The g and ml of a basis or a serving, in the row they sit in; each takes [itemModifier]. */
 @Composable
 internal fun GramMlChoices(selected: MeasureUnit?, onSelect: (MeasureUnit) -> Unit, itemModifier: Modifier) {
@@ -774,6 +803,9 @@ fun DayHeader(
     onTitleClick: (() -> Unit)? = null,
     /** False on today: Next is dimmed and does nothing. */
     nextEnabled: Boolean = true,
+    /** What TalkBack calls the arrows. */
+    previousDescription: String = "Previous day",
+    nextDescription: String = "Next day",
 ) {
     val colors = LocalBreakfastColors.current
     Row(modifier.fillMaxWidth().heightIn(min = HeaderHeight), verticalAlignment = Alignment.CenterVertically) {
@@ -789,10 +821,10 @@ fun DayHeader(
         }
         if (showToday) TertiaryButton("Go To Today", onToday)
         IconButton(onClick = onPrevious, modifier = Modifier.size(IconTarget)) {
-            Icon(Icons.Outlined.ChevronLeft, contentDescription = "Previous day", tint = colors.ink, modifier = Modifier.size(22.dp))
+            Icon(Icons.Outlined.ChevronLeft, contentDescription = previousDescription, tint = colors.ink, modifier = Modifier.size(22.dp))
         }
         IconButton(onClick = onNext, enabled = nextEnabled, modifier = Modifier.size(IconTarget)) {
-            Icon(Icons.Outlined.ChevronRight, contentDescription = "Next day", tint = colors.ink.copy(alpha = if (nextEnabled) 1f else 0.4f), modifier = Modifier.size(22.dp))
+            Icon(Icons.Outlined.ChevronRight, contentDescription = nextDescription, tint = colors.ink.copy(alpha = if (nextEnabled) 1f else 0.4f), modifier = Modifier.size(22.dp))
         }
     }
 }
@@ -892,10 +924,10 @@ internal fun MacroLabel(text: String, macro: Macro?, color: Color, style: TextSt
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun MacroLine(parts: List<MacroPart>, style: TextStyle, modifier: Modifier = Modifier, alignment: Alignment.Horizontal = Alignment.Start) {
+internal fun MacroLine(parts: List<MacroPart>, style: TextStyle, modifier: Modifier = Modifier, alignment: Alignment.Horizontal = Alignment.Start, color: Color = LocalBreakfastColors.current.soft) {
     val spoken = parts.lineText()
     FlowRow(modifier.clearAndSetSemantics { text = AnnotatedString(spoken) }, horizontalArrangement = Arrangement.spacedBy(MacroLinePartGap, alignment)) {
-        parts.forEach { MacroLabel(it.text, it.macro, LocalBreakfastColors.current.soft, style) }
+        parts.forEach { MacroLabel(it.text, it.macro, color, style) }
     }
 }
 
@@ -1105,7 +1137,7 @@ private class NavSpans {
 }
 
 @Composable
-private fun NavTabButton(label: String, selected: Boolean, motion: Motion, labelModifier: Modifier, onClick: () -> Unit) {
+private fun NavTabButton(label: String, selected: Boolean, motion: Motion, labelModifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = LocalBreakfastColors.current
     val color by animateColorAsState(if (selected) colors.ink else colors.soft, motion.nav(), label = "tab")
     Box(
@@ -1116,6 +1148,16 @@ private fun NavTabButton(label: String, selected: Boolean, motion: Motion, label
         contentAlignment = Alignment.Center,
     ) {
         Text(label, color = color, style = BreakfastType.SecondaryMedium, modifier = labelModifier)
+    }
+}
+
+/** Tappable words in the bottom bar's tab style, for a screen's [TopBar]; they wrap at a large font. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun TabWords(words: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val motion = rememberMotion()
+    FlowRow(modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        words.forEachIndexed { index, word -> NavTabButton(word, index == selected, motion, onClick = { onSelect(index) }) }
     }
 }
 
@@ -1209,6 +1251,8 @@ fun TopBar(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     trailing: @Composable () -> Unit = {},
+    /** Drawn in place of the title, such as [TabWords]. */
+    titleContent: (@Composable () -> Unit)? = null,
 ) {
     val colors = LocalBreakfastColors.current
     Row(modifier.fillMaxWidth().heightIn(min = HeaderHeight), verticalAlignment = Alignment.CenterVertically) {
@@ -1216,7 +1260,7 @@ fun TopBar(
             Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", tint = colors.ink, modifier = Modifier.size(22.dp))
         }
         Column(Modifier.weight(1f).padding(horizontal = if (onBack != null) 4.dp else 0.dp)) {
-            Text(title, color = colors.ink, style = BreakfastType.Title)
+            if (titleContent != null) titleContent() else Text(title, color = colors.ink, style = BreakfastType.Title)
             if (subtitle != null) Text(subtitle, color = colors.soft, style = BreakfastType.Meta)
         }
         trailing()
@@ -1238,6 +1282,7 @@ fun SubScreen(
     scroll: Boolean = true,
     bottom: (@Composable ColumnScope.() -> Unit)? = null,
     toasts: (@Composable ColumnScope.() -> Unit)? = null,
+    titleContent: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(modifier.fillMaxSize(), color = LocalBreakfastColors.current.bg) {
@@ -1248,7 +1293,7 @@ fun SubScreen(
                     .then(if (scroll) Modifier.verticalScroll(rememberScrollState()).padding(bottom = 12.dp) else Modifier)
                     .padding(horizontal = Gutter),
             ) {
-                TopBar(title, onBack, Modifier.padding(top = 8.dp), subtitle = subtitle, trailing = trailing)
+                TopBar(title, onBack, Modifier.padding(top = 8.dp), subtitle = subtitle, trailing = trailing, titleContent = titleContent)
                 content()
             }
             if (toasts != null || bottom != null) ToastStack(toasts ?: {})
@@ -1318,6 +1363,17 @@ internal fun FactRow(label: String, value: String, unit: String? = null, macro: 
             MacroLabel(label, macro, colors.ink, BreakfastType.Body, Modifier.weight(1f))
             shownValue()
         }
+    }
+}
+
+/** A total on its own line: label and value in the title style, the value at the end, under the label when they don't fit. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun TotalRow(label: String, value: String, modifier: Modifier = Modifier) {
+    val colors = LocalBreakfastColors.current
+    FlowRow(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, color = colors.ink, style = BreakfastType.Title)
+        Text(value, color = colors.ink, style = BreakfastType.Title)
     }
 }
 

@@ -1,6 +1,10 @@
 package com.bosa.breakfast.ui.components
 
+import com.bosa.breakfast.domain.CurvePoint
 import com.bosa.breakfast.domain.WeightPoint
+import com.bosa.breakfast.domain.WeightSeries
+import com.bosa.breakfast.domain.curveMinute
+import com.bosa.breakfast.domain.oldestFirst
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -17,6 +21,12 @@ class WeightChartTest {
     private val utc = ZoneOffset.UTC
     private fun at(day: String, time: String, kg: Double = 80.0, zone: ZoneId = utc) =
         WeightPoint(day, kg, LocalDateTime.parse("${day}T$time").atZone(zone).toInstant().toEpochMilli())
+
+    /** The dots of [points], as the page's chart gets them from [com.bosa.breakfast.domain.weightSeries]. */
+    private fun weightChartData(points: List<WeightPoint>, target: Double?, zone: ZoneId = ZoneId.systemDefault()) = weightChartData(
+        WeightSeries(oldestFirst(points).mapNotNull { point -> curveMinute(point, zone)?.let { CurvePoint(it, point.kg) } }.sortedBy { it.minute }, emptyList()),
+        target,
+    )
 
     private fun assertAxisHolds(axis: KgAxis, vararg values: Double) {
         values.forEach { assertTrue(it > axis.min && it < axis.max, "$it in $axis") }
@@ -148,6 +158,37 @@ class WeightChartTest {
                 assertEquals(ticks.sorted().distinct(), ticks)
             }
         }
+    }
+
+    @Test fun theTrendIsDrawnOverTheDotsAndItsLinesAreWholeMinutes() {
+        val series = WeightSeries(
+            listOf(CurvePoint(14400.4, 80.0), CurvePoint(14400.6, 79.0), CurvePoint(30000.0, 78.0)),
+            listOf(listOf(CurvePoint(14400.4, 80.0), CurvePoint(14400.6, 79.9)), listOf(CurvePoint(30000.0, 78.0))),
+        )
+        val data = assertNotNull(weightChartData(series, 70.0))
+        assertEquals(listOf(14400.0, 14401.0, 30000.0), data.xs)
+        assertEquals(2, data.trend.size)
+        assertEquals(listOf(14400.0, 14401.0), data.trend[0].xs)
+        assertAxisHolds(data.axis, 80.0, 78.0, 70.0)
+    }
+
+    @Test fun aTrendOutsideTheDotsWidensTheAxis() {
+        val series = WeightSeries(listOf(CurvePoint(0.0, 80.0), CurvePoint(1440.0, 80.0)), listOf(listOf(CurvePoint(0.0, 84.5), CurvePoint(1440.0, 84.0))))
+        assertAxisHolds(assertNotNull(weightChartData(series, null)).axis, 80.0, 84.5)
+    }
+
+    @Test fun monthTicksAreFirstsOfMonthsThinnedToTheRoom() {
+        val minute = { day: String -> LocalDate.parse(day).toEpochDay() * 1440.0 }
+        val all = monthTicks(minute("2026-08-10"), minute("2026-11-02"), 7f)
+        assertEquals(listOf("2026-09-01", "2026-10-01", "2026-11-01"), all.map { curveDate(it).toString() })
+        val thin = monthTicks(minute("2025-01-01"), minute("2026-12-31"), 4f)
+        assertTrue(thin.size <= 4, "$thin")
+        assertEquals("2025-01-01", curveDate(thin.first()).toString())
+    }
+
+    @Test fun aMonthLabelIsItsShortName() {
+        assertEquals("Aug", com.bosa.breakfast.ui.monthLabel(LocalDate.parse("2026-08-01")))
+        assertEquals("Aug 26", com.bosa.breakfast.ui.monthLabel(LocalDate.parse("2026-08-01"), withYear = true))
     }
 
     @Test fun aDateLabelIsDayAndShortMonth() {

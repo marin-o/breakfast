@@ -12,10 +12,18 @@ import com.bosa.breakfast.domain.Goal
 import com.bosa.breakfast.domain.GoalKcal
 import com.bosa.breakfast.domain.LoseWarning
 import com.bosa.breakfast.domain.Macro
-import com.bosa.breakfast.domain.MacroPreset
 import com.bosa.breakfast.domain.TargetRow
 import com.bosa.breakfast.domain.ageOf
+import com.bosa.breakfast.domain.NutritionWeek
 import com.bosa.breakfast.domain.WeightProjection
+import com.bosa.breakfast.domain.WeightRange
+import com.bosa.breakfast.domain.WeightSeries
+import com.bosa.breakfast.domain.defaultWeightRange
+import com.bosa.breakfast.domain.hasNextWeek
+import com.bosa.breakfast.domain.nutritionWeek
+import com.bosa.breakfast.domain.projectionLines
+import com.bosa.breakfast.domain.weekStartOf
+import com.bosa.breakfast.domain.weightSeries
 import com.bosa.breakfast.domain.burnBody
 import com.bosa.breakfast.domain.dailyAdjusted
 import com.bosa.breakfast.domain.dailyBurn
@@ -42,12 +50,13 @@ import com.bosa.breakfast.domain.curveTickStart
 import com.bosa.breakfast.domain.curveWeightOf
 import com.bosa.breakfast.domain.newestFirst
 import com.bosa.breakfast.domain.profileOf
-import com.bosa.breakfast.domain.withPreset
 import com.bosa.breakfast.domain.FormBack
 import com.bosa.breakfast.domain.formBack
 import com.bosa.breakfast.ui.clockLabel
+import com.bosa.breakfast.ui.components.StepPosition
 import com.bosa.breakfast.ui.pretty
 import com.bosa.breakfast.ui.shortDateLabel
+import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.serialization.Serializable
 
@@ -67,6 +76,13 @@ internal fun weightPointLabel(point: WeightPoint, points: List<WeightPoint>, zon
     val date = shortDateLabel(point.dayKey)
     return if (points.count { it.dayKey == point.dayKey } > 1) "$date, ${clockLabel(point.savedAtEpochMs, zone)}" else date
 }
+
+/** The swipeable pages, each with the word that opens it. */
+internal enum class ProfilePage(val word: String) { PROFILE("Profile"), WEIGHT("Weight"), NUTRITION("Nutrition") }
+
+/** Tracking only has no Weight page. */
+internal fun profilePages(trackingOnly: Boolean): List<ProfilePage> =
+    if (trackingOnly) ProfilePage.entries - ProfilePage.WEIGHT else ProfilePage.entries
 
 /** The open Profile page as typed, for coming back after the process dies. */
 @Serializable
@@ -97,11 +113,45 @@ internal class ProfileState(
     /** The user's own tick; until they touch it, [addToCurve] follows [curveTickStart]. */
     private var curveTick by mutableStateOf<Boolean?>(null)
     val addToCurve: Boolean get() = curveTick ?: curveTickStart(draft, values, hasPointToday)
-    /** The kcal field asks to be filled, after a preset that needed it. */
-    var kcalAsked by mutableStateOf(false); private set
+    /** The macro whose % field was just emptied: it stays empty while typed, though the macro's share could fill it. */
+    var clearedPercent by mutableStateOf<Macro?>(null); private set
     var discardOpen by mutableStateOf(false); private set
     /** The point the delete dialog asks about. */
     var deleteRequest by mutableStateOf<WeightPoint?>(null); private set
+
+    /** The pages there are; the draft's Tracking only takes the Weight page away at once. */
+    val pages: List<ProfilePage> by derivedStateOf { profilePages(draft.trackingOnly) }
+    private var step by mutableStateOf(StepPosition(0, ProfilePage.entries.size))
+
+    /** Where the pager is. Tracking only is on the first page, so a change of the count never moves it. */
+    val position: StepPosition get() = step.copy(count = pages.size).let { if (it.page < it.count) it else it.at(it.count - 1) }
+
+    /** The page on show, or the one a tap is taking it to. */
+    val page: ProfilePage get() = pages[position.page]
+
+    fun goToPage(page: ProfilePage) { step = position.copy(page = pages.indexOf(page).coerceAtLeast(0)) }
+    fun pageSettled(page: Int, byUser: Boolean) { step = position.settledAt(page, byUser) }
+
+    /** The Weight page's chart is lifted over the screen; Back closes that first. */
+    var chartLifted by mutableStateOf(false); private set
+    fun liftChart() { chartLifted = true }
+    fun closeChart() { chartLifted = false }
+
+    private var rangeChosen by mutableStateOf<WeightRange?>(null)
+    val weightRange: WeightRange get() = rangeChosen ?: defaultWeightRange(session.weightPoints, shownDay())
+    fun chooseRange(range: WeightRange) { rangeChosen = range }
+
+    /** What the Weight page's chart draws. */
+    val series: WeightSeries by derivedStateOf { weightSeries(session.weightPoints, weightRange, shownDay()) }
+
+    private var weekChosen by mutableStateOf<LocalDate?>(null)
+    private val weekStart: LocalDate get() = weekChosen ?: weekStartOf(shownDay()) ?: LocalDate.ofEpochDay(0)
+
+    /** The week the Nutrition page shows. */
+    val week: NutritionWeek by derivedStateOf { nutritionWeek(weekStart, session.entries, session.targetHistory) }
+    val hasNextWeek: Boolean get() = hasNextWeek(weekStart, shownDay())
+    fun previousWeek() { weekChosen = weekStart.minusWeeks(1) }
+    fun nextWeek() { if (hasNextWeek) weekChosen = weekStart.plusWeeks(1) }
 
     /** Newest first; sorted again only when the curve changes, not on each key typed. */
     val points: List<WeightPoint> by derivedStateOf { newestFirst(session.weightPoints) }
@@ -136,6 +186,11 @@ internal class ProfileState(
         weightProjection(session.weightPoints, values.targetWeight, values.goal, shownDay())
     }
 
+    /** The projection as the page writes it. */
+    val projectionText: List<String> by derivedStateOf {
+        runCatching { LocalDate.parse(shownDay()) }.getOrNull()?.let { projectionLines(projection, it) }.orEmpty()
+    }
+
     /** The draft as it was when the kcal field's edit began, so a target passing through 2, 20, 200 on its way to 2000 loses nothing. */
     private var kcalBase: ProfileDraft? = null
 
@@ -156,6 +211,7 @@ internal class ProfileState(
     /** The page, from what is saved. */
     fun show() {
         resetDraft()
+        resetPages()
         open = true
     }
 
@@ -178,7 +234,7 @@ internal class ProfileState(
     /** Daily kcal typed by hand: the goal is cleared, and the macros follow by how each was entered. */
     fun editKcal(text: String) {
         val base = kcalBase ?: draft
-        kcalAsked = false
+        clearedPercent = null
         macroEdit = null
         draft = base.withDailyKcal(text).copy(goal = null)
         kcalBase = base
@@ -189,6 +245,7 @@ internal class ProfileState(
         val base = macroEdit?.takeIf { it.macro == macro && it.byPercent == byPercent }?.base ?: draft
         replaceDraft(base.withMacroTyped(macro, text, byPercent))
         macroEdit = MacroEdit(macro, byPercent, base)
+        clearedPercent = macro.takeIf { byPercent && text.isBlank() }
     }
 
     /** A goal chosen: Daily kcal fills in when the pace allows it. */
@@ -197,16 +254,9 @@ internal class ProfileState(
     /** Kg a week chosen or typed: Daily kcal fills in by the goal. */
     fun choosePace(text: String, custom: Boolean) = replaceDraft(draft.withPace(text, custom, burn?.kcal))
 
-    /** A preset that needs the kcal target has none: the field says so until it is typed in. */
-    fun applyPreset(preset: MacroPreset) {
-        val next = draft.withPreset(preset)
-        kcalAsked = next == null
-        if (next != null) replaceDraft(next)
-    }
-
     /** A new draft that ends any edit under way. */
     private fun replaceDraft(next: ProfileDraft) {
-        if (next.kcal != draft.kcal) kcalAsked = false
+        clearedPercent = null
         kcalBase = null
         macroEdit = null
         draft = next
@@ -214,8 +264,9 @@ internal class ProfileState(
 
     fun toggleAddToCurve() { curveTick = !addToCurve }
 
-    /** Back or the arrow: a changed draft asks before it is dropped; while a save runs, nothing happens. */
+    /** Back or the arrow: a lifted chart closes first; a changed draft asks before it is dropped; while a save runs, nothing happens. */
     fun leave() {
+        if (chartLifted) { closeChart(); return }
         when (formBack(saving = session.busy, dirty = draft != ProfileDraft.of(values))) {
             FormBack.IGNORE -> Unit
             FormBack.ASK -> discardOpen = true
@@ -229,6 +280,14 @@ internal class ProfileState(
     fun close() {
         open = false
         resetDraft()
+        resetPages()
+    }
+
+    private fun resetPages() {
+        step = StepPosition(0, ProfilePage.entries.size)
+        chartLifted = false
+        rangeChosen = null
+        weekChosen = null
     }
 
     /** The stored values again, after the diary was replaced or deleted. */
@@ -305,7 +364,7 @@ internal class ProfileState(
         kcalBase = null
         macroEdit = null
         curveTick = null
-        kcalAsked = false
+        clearedPercent = null
         discardOpen = false
         deleteRequest = null
     }

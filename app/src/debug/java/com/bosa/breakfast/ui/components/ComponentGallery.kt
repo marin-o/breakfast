@@ -1,6 +1,8 @@
 package com.bosa.breakfast.ui.components
 
 import com.bosa.breakfast.domain.WeightPoint
+import com.bosa.breakfast.domain.WeightRange
+import com.bosa.breakfast.domain.weightSeries
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,8 +60,8 @@ private fun ComponentGallery() {
                 ChoiceOption("g", true, {})
                 ChoiceOption("ml", false, {}, detail = "105 kcal")
             CheckboxRow("Add to curve", true, {})
-            WeightChart(listOf(WeightPoint("2026-10-01", 82.4, 0L), WeightPoint("2026-10-12", 81.0, 0L), WeightPoint("2026-10-31", 80.2, 0L)), 78.0)
-            WeightChart(listOf(WeightPoint("2026-10-31", 80.2, 0L)), null)
+            WeightChart(weightSeries(listOf(WeightPoint("2026-10-01", 82.4, 0L), WeightPoint("2026-10-12", 81.0, 0L), WeightPoint("2026-10-31", 80.2, 0L)), WeightRange.THREE_MONTHS, "2026-10-31"), 78.0)
+            WeightChart(weightSeries(listOf(WeightPoint("2026-10-31", 80.2, 0L)), WeightRange.THREE_MONTHS, "2026-10-31"), null)
             StepDots(StepPosition(1, 5))
             }
             AddCircle("Add food", {})
