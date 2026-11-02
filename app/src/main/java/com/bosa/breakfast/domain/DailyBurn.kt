@@ -5,13 +5,13 @@ import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import kotlin.math.sqrt
 
-// Daily burn: the National Academies 2023 equations, then what logging and weighing say. See docs/profile-pages-spec.md.
+// Daily burn: Mifflin-St Jeor times an activity factor, then what logging and weighing say. See docs/profile-pages-spec.md.
 
 enum class Sex { FEMALE, MALE, NOT_SAYING }
 
 enum class Activity { INACTIVE, LOW_ACTIVE, ACTIVE, VERY_ACTIVE }
 
-/** What the equations need. A null [sex] counts as Not saying. */
+/** What the equation needs. A null [sex] counts as Not saying. */
 data class BurnBody(val age: Int, val heightCm: Double, val weightKg: Double, val sex: Sex?, val activity: Activity)
 
 /** kcal stored in a kg of body weight (rho). */
@@ -28,37 +28,28 @@ private const val ADAPTIVE_FLOOR_SIGMA = 100.0
 private const val PLAUSIBLE_LOW = 0.75
 private const val PLAUSIBLE_HIGH = 1.3
 
-private class Equation(val constant: Double, val age: Double, val height: Double, val weight: Double) {
-    fun of(body: BurnBody) = constant + age * body.age + height * body.heightCm + weight * body.weightKg
+/** Resting energy by the Mifflin-St Jeor equation, before the sex term. */
+private fun restingBeforeSex(body: BurnBody) = 10 * body.weightKg + 6.25 * body.heightCm - 5 * body.age
+
+private fun sexTerm(sex: Sex?) = when (sex) {
+    Sex.MALE -> 5.0
+    Sex.FEMALE -> -161.0
+    Sex.NOT_SAYING, null -> -78.0
 }
 
-private fun maleEquation(activity: Activity) = when (activity) {
-    Activity.INACTIVE -> Equation(753.07, -10.83, 6.50, 14.10)
-    Activity.LOW_ACTIVE -> Equation(581.47, -10.83, 8.30, 14.94)
-    Activity.ACTIVE -> Equation(1004.82, -10.83, 6.52, 15.91)
-    Activity.VERY_ACTIVE -> Equation(-517.88, -10.83, 15.61, 19.11)
+/** Set low on purpose: too high a burn means a target that gains weight, and logging corrects a low one. */
+private fun activityFactor(activity: Activity) = when (activity) {
+    Activity.INACTIVE -> 1.4
+    Activity.LOW_ACTIVE -> 1.55
+    Activity.ACTIVE -> 1.7
+    Activity.VERY_ACTIVE -> 1.9
 }
 
-private fun femaleEquation(activity: Activity) = when (activity) {
-    Activity.INACTIVE -> Equation(584.90, -7.01, 5.72, 11.71)
-    Activity.LOW_ACTIVE -> Equation(575.77, -7.01, 6.60, 12.14)
-    Activity.ACTIVE -> Equation(710.25, -7.01, 6.54, 12.34)
-    Activity.VERY_ACTIVE -> Equation(511.83, -7.01, 9.07, 12.56)
-}
+/** The equation alone, kcal a day, never below zero; Not saying is the average of both. */
+fun formulaBurn(body: BurnBody): Double =
+    ((restingBeforeSex(body) + sexTerm(body.sex)) * activityFactor(body.activity)).coerceAtLeast(0.0)
 
-/** The equations alone, kcal a day, never below zero; Not saying is the average of both. */
-fun formulaBurn(body: BurnBody): Double {
-    val male = maleEquation(body.activity).of(body)
-    val female = femaleEquation(body.activity).of(body)
-    val burn = when (body.sex) {
-        Sex.MALE -> male
-        Sex.FEMALE -> female
-        Sex.NOT_SAYING, null -> (male + female) / 2
-    }
-    return burn.coerceAtLeast(0.0)
-}
-
-/** How far the equations may be off (sigma). */
+/** How far the equation may be off (sigma). */
 private fun priorSigma(sex: Sex?): Double = when (sex) {
     Sex.MALE -> 339.0
     Sex.FEMALE -> 246.0
@@ -116,7 +107,7 @@ private fun eligibleIntake(entries: List<MealEntry>, today: LocalDate): Pair<Dou
 }
 
 /**
- * [kcal], the burn to use; [formula], the equations alone; [learned], how much logging moved it (w, 0 to 1). With
+ * [kcal], the burn to use; [formula], the equation alone; [learned], how much logging moved it (w, 0 to 1). With
  * [loggingMismatch] the logging and the weight don't fit together, so they count for nothing.
  */
 data class DailyBurn(val kcal: Double, val formula: Double, val learned: Double, val loggingMismatch: Boolean)

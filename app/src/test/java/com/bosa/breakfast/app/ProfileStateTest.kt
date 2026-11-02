@@ -156,7 +156,7 @@ internal class ProfileStateTest {
     }
 
     private val goalValues = ProfileValues(
-        kcalTarget = 2946.0, currentWeight = 80.0, heightCm = 180.0, age = 30, sex = Sex.MALE, activity = Activity.LOW_ACTIVE, goal = Goal.LOSE, paceKgPerWeek = 0.5,
+        kcalTarget = 2759.0, currentWeight = 80.0, heightCm = 180.0, age = 30, sex = Sex.MALE, activity = Activity.LOW_ACTIVE, goal = Goal.LOSE, paceKgPerWeek = 0.5,
     )
 
     @Test fun everyNewFieldIsKeptInPrefs() {
@@ -198,28 +198,28 @@ internal class ProfileStateTest {
 
     @Test fun choosingAGoalFillsKcalFromTheBurn() {
         profile.edit(ProfileDraft(height = "180", age = "30", current = "80", sex = Sex.MALE, activity = Activity.LOW_ACTIVE))
-        assertEquals(2945.77, profile.burn!!.kcal, 0.01)
+        assertEquals(2759.0, profile.burn!!.kcal, 0.01)
         profile.chooseGoal(Goal.MAINTAIN)
-        assertEquals("2946", profile.draft.kcal)
+        assertEquals("2759", profile.draft.kcal)
         profile.chooseGoal(Goal.LOSE)
         profile.choosePace("0.5", custom = false)
-        assertEquals("2314", profile.draft.kcal)
-        assertEquals(2314, profile.goalResult?.kcal)
+        assertEquals("2128", profile.draft.kcal)
+        assertEquals(2128, profile.goalResult?.kcal)
     }
 
     /** The first run only records where the target stood, so the next day's move has it to count from. */
     @Test fun theDailyAdjustmentMovesASavedGoalAndWritesItsRowOnce() {
         ProfilePrefs(app.profileStore).write(goalValues)
         profile.reload()
-        assertEquals(2946.0, profile.values.kcalTarget)
-        assertEquals(listOf(2946.0), app.diary.targets.map { it.kcal })
+        assertEquals(2759.0, profile.values.kcalTarget)
+        assertEquals(listOf(2759.0), app.diary.targets.map { it.kcal })
         app.nowMs += DAY_MS
         profile.adjustDaily()
-        assertEquals(2846.0, profile.values.kcalTarget)
-        assertEquals(2846.0, ProfilePrefs(app.profileStore).read().kcalTarget)
-        assertEquals(listOf(2946.0, 2846.0), app.diary.targets.map { it.kcal })
+        assertEquals(2659.0, profile.values.kcalTarget)
+        assertEquals(2659.0, ProfilePrefs(app.profileStore).read().kcalTarget)
+        assertEquals(listOf(2759.0, 2659.0), app.diary.targets.map { it.kcal })
         profile.adjustDaily()
-        assertEquals(2846.0, profile.values.kcalTarget)
+        assertEquals(2659.0, profile.values.kcalTarget)
         assertEquals(2, app.diary.targets.size)
     }
 
@@ -248,17 +248,17 @@ internal class ProfileStateTest {
         assertTrue(app.diary.targets.isEmpty())
         held.complete(Unit)
         profile.adjustDaily()
-        assertEquals(listOf(2946.0), app.diary.targets.map { it.kcal })
+        assertEquals(listOf(2759.0), app.diary.targets.map { it.kcal })
     }
 
     /** The row is written first: a process killed before the values were applied leaves it ahead of them. */
     @Test fun aRowTodayAheadOfTheValuesIsTrustedAndNothingSticks() {
         ProfilePrefs(app.profileStore).write(goalValues)
-        app.diary.targets = listOf(TargetRow("2026-10-20", 2946.0, null, null, null), TargetRow("2026-10-28", 2846.0, null, null, null))
+        app.diary.targets = listOf(TargetRow("2026-10-20", 2759.0, null, null, null), TargetRow("2026-10-28", 2659.0, null, null, null))
         app.owners.session.refresh()
         profile.reload()
-        assertEquals(2846.0, profile.values.kcalTarget)
-        assertEquals(2846.0, ProfilePrefs(app.profileStore).read().kcalTarget)
+        assertEquals(2659.0, profile.values.kcalTarget)
+        assertEquals(2659.0, ProfilePrefs(app.profileStore).read().kcalTarget)
         assertEquals(Goal.LOSE, profile.values.goal)
         assertEquals(2, app.diary.targets.size)
     }
@@ -278,8 +278,8 @@ internal class ProfileStateTest {
         app.diary.targets = listOf(TargetRow("2026-12-01", 2000.0, null, null, null))
         app.owners.session.refresh()
         profile.reload()
-        assertEquals(listOf(TargetRow("2026-10-28", 2946.0, null, null, null)), app.diary.targets)
-        assertEquals(2946.0, profile.values.kcalTarget)
+        assertEquals(listOf(TargetRow("2026-10-28", 2759.0, null, null, null)), app.diary.targets)
+        assertEquals(2759.0, profile.values.kcalTarget)
     }
 
     @Test fun theProjectionFollowsTheDayCheck() {
@@ -346,7 +346,7 @@ internal class ProfileStateTest {
     }
 
     @Test fun tappingCustomAtASavedPaceAsksNothing() {
-        ProfilePrefs(app.profileStore).write(goalValues.copy(kcalTarget = 2314.0))
+        ProfilePrefs(app.profileStore).write(goalValues.copy(kcalTarget = 2128.0))
         profile.reload()
         app.surfaces.openProfile()
         profile.choosePace("0.5", custom = true)

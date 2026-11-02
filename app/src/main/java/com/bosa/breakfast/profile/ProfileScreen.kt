@@ -3,6 +3,7 @@ package com.bosa.breakfast.profile
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,6 +70,7 @@ import com.bosa.breakfast.domain.weightTextValid
 import com.bosa.breakfast.settings.DisplayDecimal
 import com.bosa.breakfast.settings.markDecimals
 import com.bosa.breakfast.ui.MacroPart
+import com.bosa.breakfast.ui.components.ChoiceOption
 import com.bosa.breakfast.ui.components.AddCircle
 import com.bosa.breakfast.ui.components.CheckboxRow
 import com.bosa.breakfast.ui.components.ChoiceGrid
@@ -107,7 +109,12 @@ import kotlin.math.roundToInt
 private const val CUSTOM = "Custom"
 
 private val SEX_CHOICES = listOf(Sex.FEMALE to "Female", Sex.MALE to "Male", Sex.NOT_SAYING to "Not saying")
-private val ACTIVITY_CHOICES = listOf(Activity.INACTIVE to "Inactive", Activity.LOW_ACTIVE to "Low active", Activity.ACTIVE to "Active", Activity.VERY_ACTIVE to "Very active")
+private val ACTIVITY_CHOICES = listOf(
+    Triple(Activity.INACTIVE, "Inactive", "Mostly sitting, little walking"),
+    Triple(Activity.LOW_ACTIVE, "Low active", "Some walking most days"),
+    Triple(Activity.ACTIVE, "Active", "On your feet or exercising most days"),
+    Triple(Activity.VERY_ACTIVE, "Very active", "Hard exercise or physical work daily"),
+)
 private val GOAL_CHOICES = listOf(Goal.LOSE to "Lose", Goal.MAINTAIN to "Maintain", Goal.GAIN to "Gain")
 private val RANGE_CHOICES = listOf(WeightRange.ONE_MONTH to "1M", WeightRange.THREE_MONTHS to "3M", WeightRange.SIX_MONTHS to "6M", WeightRange.ONE_YEAR to "1Y", WeightRange.ALL to "All")
 private val MACRO_NAMES = listOf(Macro.PROTEIN to "Protein", Macro.CARBS to "Carbs", Macro.FAT to "Fat")
@@ -171,7 +178,7 @@ private fun ProfilePageFields(profile: ProfileState, scroll: ScrollState) {
             CheckboxRow("Several weights a day", draft.severalWeights, { profile.edit(draft.copy(severalWeights = !draft.severalWeights)) })
             // No sex selected counts as Not saying.
             Choices("Sex", SEX_CHOICES, draft.sex ?: Sex.NOT_SAYING) { profile.edit(draft.copy(sex = it)) }
-            Choices("Activity", ACTIVITY_CHOICES, draft.activity, columns = 2) { profile.edit(draft.copy(activity = it)) }
+            ActivityChoices(draft.activity) { profile.edit(draft.copy(activity = it)) }
             CheckboxRow("Tracking only", draft.trackingOnly, { profile.edit(draft.copy(trackingOnly = !draft.trackingOnly)) })
             if (!draft.trackingOnly) {
                 GoalSection(profile)
@@ -273,6 +280,19 @@ private fun rangeField(label: String, value: String, valid: Boolean, message: St
 private fun <T> Choices(label: String?, choices: List<Pair<T, String>>, selected: T?, columns: Int = choices.size, onSelect: (T) -> Unit) {
     val names = choices.toMap()
     ChoiceGrid(choices.map { it.first }, { names.getValue(it) }, selected, onSelect, columns, label)
+}
+
+/** One option a row, because each says what its level means. */
+@Composable
+private fun ActivityChoices(selected: Activity?, onSelect: (Activity) -> Unit) {
+    Column {
+        Text("Activity", color = LocalBreakfastColors.current.soft, style = BreakfastType.Meta, modifier = Modifier.padding(bottom = 4.dp))
+        Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            ACTIVITY_CHOICES.forEach { (activity, name, meaning) ->
+                ChoiceOption(name, activity == selected, { onSelect(activity) }, Modifier.fillMaxWidth(), detail = meaning)
+            }
+        }
+    }
 }
 
 @Composable

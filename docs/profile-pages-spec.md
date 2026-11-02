@@ -15,16 +15,18 @@ Soft lines under the pace controls:
 Age range 1 to 120, height 50 to 300 cm. Tracking only hides the Weight page, Goal section, kcal and macro targets, and Daily burn; Nutrition stays without its goal line. Targets are kept, not erased, and return when it is turned off.
 
 ## Daily burn
-National Academies 2023 equations, kcal/day; A age, H cm, W kg. Written for adults 19+; other ages still calculate.
+Mifflin-St Jeor times an activity factor, kcal/day; A age, H cm, W kg. Written for adults; other ages still calculate.
 
-| Activity | Male | Female |
+Resting = 10W + 6.25H - 5A, plus 5 for Male, -161 for Female, -78 (their average) for Not saying.
+
+| Activity | Factor | Line on the option |
 | --- | --- | --- |
-| Inactive | 753.07 - 10.83A + 6.50H + 14.10W | 584.90 - 7.01A + 5.72H + 11.71W |
-| Low active | 581.47 - 10.83A + 8.30H + 14.94W | 575.77 - 7.01A + 6.60H + 12.14W |
-| Active | 1004.82 - 10.83A + 6.52H + 15.91W | 710.25 - 7.01A + 6.54H + 12.34W |
-| Very active | -517.88 - 10.83A + 15.61H + 19.11W | 511.83 - 7.01A + 9.07H + 12.56W |
+| Inactive | 1.4 | Mostly sitting, little walking |
+| Low active | 1.55 | Some walking most days |
+| Active | 1.7 | On your feet or exercising most days |
+| Very active | 1.9 | Hard exercise or physical work daily |
 
-Not saying: the average of both. Prior sigma: male 339, female 246, not saying 300.
+Owner's decision, 2026-11-02. The National Academies 2023 equations gave 3031 kcal for 88 kg, 168 cm, age 24, Low active, which the owner knows would gain weight. These factors sit low on purpose and are judgement, not measured values; logging corrects them. Prior sigma: male 339, female 246, not saying 300.
 
 Learning from logging, recomputed once a day and on save:
 - Window: last 28 days. Slope and its standard error SE: linear regression on raw weigh-ins, kg/day.
@@ -74,4 +76,4 @@ Week title ("26 Oct to 1 Nov"), previous and next arrows, no later than the curr
 Update `DESIGN.md`, `PRODUCT.md`, `docs/profile-spec.md`, `docs/architecture.md` to match: stacked bars may use macro colours; the weight chart's ranges and maximise; the one shadow; two Vico wrappers; goals and progress views in scope; the percent fields replacing preset chips.
 
 ## Sources
-National Academies, DRI for Energy (2023), nationalacademies.org/read/26818/chapter/7. Hall et al. 2011, pubmed 21872751. Hall and Chow 2013, doi 10.3945/ajcn.111.014399. Sanghvi et al. 2015, PMC4515869. Thresholds and the blend are judgement, not validated in any published app study.
+Mifflin et al. 1990, doi 10.1093/ajcn/51.2.241. National Academies, DRI for Energy (2023), nationalacademies.org/read/26818/chapter/7, considered and not used. Hall et al. 2011, pubmed 21872751. Hall and Chow 2013, doi 10.3945/ajcn.111.014399. Sanghvi et al. 2015, PMC4515869. Thresholds and the blend are judgement, not validated in any published app study.
