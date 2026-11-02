@@ -5,8 +5,9 @@ import java.time.LocalDate
 // What the Nutrition page's week holds: one stacked bar a day, the goal line and the averages.
 
 /**
- * One day's bar, in kcal: the segments add up to [kcal]. An entry's kcal go to its macros by their 4/4/9 share, or to
- * [unknownKcal] when it has no macro data. [logged] false is an empty slot. [targetKcal] is that day's goal line.
+ * One day's bar, in kcal: the segments add up to [kcal]. An entry's macros draw their known grams at 4/4/9, scaled down
+ * only when those exceed the entry's kcal; what is left of its kcal goes to [unknownKcal]. [logged] false is an empty
+ * slot. [targetKcal] is that day's goal line.
  */
 data class DayBar(
     val dayKey: String,
@@ -48,10 +49,11 @@ private fun dayBar(dayKey: String, entries: List<MealEntry>, history: List<Targe
         val c = (n.carbohydrates ?: 0.0) * KCAL_PER_GRAM_CARBS
         val f = (n.fat ?: 0.0) * KCAL_PER_GRAM_FAT
         val total = p + c + f
-        if (total <= 0.0) { unknown += n.calories; continue }
-        protein += n.calories * p / total
-        carbs += n.calories * c / total
-        fat += n.calories * f / total
+        val scale = if (total > n.calories) n.calories / total else 1.0
+        protein += p * scale
+        carbs += c * scale
+        fat += f * scale
+        unknown += (n.calories - total).coerceAtLeast(0.0)
     }
     return DayBar(dayKey, entries.isNotEmpty(), nutritionTotalOf(entries).calories, protein, carbs, fat, unknown, targetOn(dayKey, history)?.kcal)
 }

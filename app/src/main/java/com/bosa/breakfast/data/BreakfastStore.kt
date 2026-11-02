@@ -186,10 +186,13 @@ class BreakfastStore internal constructor(
     /** The targets by the day they took effect. */
     fun targetHistory(): List<TargetRow> = model.targetHistory
 
-    /** Stores [row], in place of any on its day. */
+    /** Stores [row], in place of any on its day. Rows dated later (the clock moved back, an import) go, or they would shadow it. */
     suspend fun saveTargetRow(row: TargetRow) {
         requireReady()
-        write(TARGETS) { database.targetHistoryDao().put(row.toEntity()) }
+        write(TARGETS) {
+            database.targetHistoryDao().deleteAfter(row.dayKey)
+            database.targetHistoryDao().put(row.toEntity())
+        }
     }
 
     private var preferenceMapSource: List<Preference>? = null

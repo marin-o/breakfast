@@ -15,6 +15,7 @@ import com.bosa.breakfast.domain.MeasureUnit
 import com.bosa.breakfast.domain.NutritionBasis
 import com.bosa.breakfast.domain.NutritionValues
 import com.bosa.breakfast.domain.ReplacementResult
+import com.bosa.breakfast.domain.TargetRow
 import com.bosa.breakfast.domain.asFood
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -590,4 +591,59 @@ class BreakfastStoreTest {
         store.deleteAllData(alsoPreferences = false)
         assertTrue(store.weightPoints().isEmpty())
     }
+
+    private fun target(day: String, kcal: Double?) = TargetRow(day, kcal, 120.0, null, 60.5)
+
+    @Test
+    fun aSecondTargetOnADayReplacesItAndEveryNumberIsKept() = runBlocking {
+        store.saveTargetRow(target("2026-10-01", 2000.0))
+        store.saveTargetRow(target("2026-10-02", null))
+        store.saveTargetRow(target("2026-10-02", 1900.0))
+        assertEquals(listOf(target("2026-10-01", 2000.0), target("2026-10-02", 1900.0)), store.targetHistory())
+        assertEqualsTargetsOnDisk()
+    }
+
+    /** The clock moved back: a row dated later would shadow today's when its day comes. Earlier days stay. */
+    @Test
+    fun savingATargetDropsRowsDatedLaterAndKeepsEarlierOnes() = runBlocking {
+        store.saveTargetRow(target("2026-10-01", 2000.0))
+        store.saveTargetRow(target("2026-12-01", 1500.0))
+        store.saveTargetRow(target("2026-11-02", 1900.0))
+        assertEquals(listOf(target("2026-10-01", 2000.0), target("2026-11-02", 1900.0)), store.targetHistory())
+        assertEqualsTargetsOnDisk()
+    }
+
+    @Test
+    fun aReplaceWithTargetsReplacesThemNoneClearsThemAndOneWithoutKeepsThem() = runBlocking {
+        store.saveTargetRow(target("2026-10-01", 2000.0))
+        val rows = store.exportRows()
+        store.replaceDiary(rows.copy(targetHistory = null))
+        assertEquals(listOf(target("2026-10-01", 2000.0)), store.targetHistory())
+        store.replaceDiary(rows.copy(targetHistory = listOf(TargetHistoryEntity("2026-10-05", 1800.0, null, null, null))))
+        assertEquals(listOf(TargetRow("2026-10-05", 1800.0, null, null, null)), store.targetHistory())
+        store.replaceDiary(rows.copy(targetHistory = emptyList()))
+        assertTrue(store.targetHistory().isEmpty())
+        assertEqualsTargetsOnDisk()
+    }
+
+    @Test
+    fun deleteAllClearsTheTargets() = runBlocking {
+        store.saveTargetRow(target("2026-10-01", 2000.0))
+        store.deleteAllData(alsoPreferences = false)
+        assertTrue(store.targetHistory().isEmpty())
+        assertTrue(database.targetHistoryDao().all().isEmpty())
+    }
+
+    @Test
+    fun anExportCarriesTheTargets() = runBlocking {
+        store.saveTargetRow(target("2026-10-01", 2000.0))
+        store.saveTargetRow(target("2026-10-02", 1900.0))
+        assertEquals(
+            listOf(TargetHistoryEntity("2026-10-01", 2000.0, 120.0, null, 60.5), TargetHistoryEntity("2026-10-02", 1900.0, 120.0, null, 60.5)),
+            store.exportRows().targetHistory,
+        )
+    }
+
+    private suspend fun assertEqualsTargetsOnDisk() =
+        assertEquals(database.targetHistoryDao().all().map { it.toDomain() }, store.targetHistory())
 }

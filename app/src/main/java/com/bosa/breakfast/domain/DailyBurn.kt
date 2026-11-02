@@ -46,15 +46,16 @@ private fun femaleEquation(activity: Activity) = when (activity) {
     Activity.VERY_ACTIVE -> Equation(511.83, -7.01, 9.07, 12.56)
 }
 
-/** The equations alone, kcal a day; Not saying is the average of both. */
+/** The equations alone, kcal a day, never below zero; Not saying is the average of both. */
 fun formulaBurn(body: BurnBody): Double {
     val male = maleEquation(body.activity).of(body)
     val female = femaleEquation(body.activity).of(body)
-    return when (body.sex) {
+    val burn = when (body.sex) {
         Sex.MALE -> male
         Sex.FEMALE -> female
         Sex.NOT_SAYING, null -> (male + female) / 2
     }
+    return burn.coerceAtLeast(0.0)
 }
 
 /** How far the equations may be off (sigma). */
@@ -67,10 +68,14 @@ private fun priorSigma(sex: Sex?): Double = when (sex) {
 /** A weight's change by linear regression: kg a day, and its standard error. */
 data class WeightSlope(val kgPerDay: Double, val standardError: Double)
 
+/** The window's first day key. Day keys sort as dates, so years of rows are left out without parsing them. */
+private fun learningWindowStart(today: LocalDate): String = today.minusDays(LEARNING_WINDOW_DAYS - 1).toString()
+
 /** [points] in the last [LEARNING_WINDOW_DAYS] days to [today]. */
 internal fun inLearningWindow(points: List<WeightPoint>, today: LocalDate): List<WeightPoint> {
-    val first = today.minusDays(LEARNING_WINDOW_DAYS - 1)
-    return points.filter { point -> dayOf(point.dayKey)?.let { it in first..today } == true }
+    val first = learningWindowStart(today)
+    val last = today.toString()
+    return points.filter { it.dayKey >= first && it.dayKey <= last && dayOf(it.dayKey) != null }
 }
 
 internal fun dayOf(dayKey: String): LocalDate? = runCatching { LocalDate.parse(dayKey) }.getOrNull()
@@ -100,9 +105,10 @@ internal fun median(values: List<Double>): Double? {
 
 /** The mean intake of the window's eligible days, and how many there are. Today is still being logged, so it does not count. */
 private fun eligibleIntake(entries: List<MealEntry>, today: LocalDate): Pair<Double, Int>? {
-    val first = today.minusDays(LEARNING_WINDOW_DAYS - 1)
-    val days = entries.groupBy { it.dayKey }
-        .filterKeys { key -> dayOf(key)?.let { it >= first && it < today } == true }
+    val first = learningWindowStart(today)
+    val end = today.toString()
+    val days = entries.filter { it.dayKey >= first && it.dayKey < end }.groupBy { it.dayKey }
+        .filterKeys { dayOf(it) != null }
         .values.map { nutritionTotalOf(it).calories }
     val floor = (median(days) ?: return null) * ELIGIBLE_SHARE_OF_MEDIAN
     val eligible = days.filter { it >= floor }

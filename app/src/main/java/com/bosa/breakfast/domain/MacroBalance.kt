@@ -4,8 +4,11 @@ import kotlin.math.roundToInt
 
 // Macro percents and grams that share Daily kcal. See docs/profile-pages-spec.md, Macros.
 
-/** How a macro got its number: typed in one of its fields, or left [FOLLOWS]ing the others (never entered, or not set). */
-enum class MacroEntered { PERCENT, GRAMS, FOLLOWS }
+/**
+ * How a macro got its number: typed in one of its fields, or left [FOLLOWS]ing the others, which it goes on doing at zero
+ * grams, so it comes back when Daily kcal rises. [UNSET] was never entered, or cleared, and stays out of a kcal change.
+ */
+enum class MacroEntered { PERCENT, GRAMS, FOLLOWS, UNSET }
 
 /** One macro's part of Daily kcal; [percent] is its share of the kcal. */
 data class MacroShare(val grams: Double, val percent: Double, val entered: MacroEntered)
@@ -37,7 +40,7 @@ private fun shared(others: List<Macro>, restKcal: Double, weight: (Macro) -> Dou
 /**
  * [edited] set to [typed] (percent or grams, by [by]) within [kcal], capped at 100%; the other two share the rest in their
  * current ratio. Those keep how they were entered, unless all three were in grams, as targets from before this feature
- * are: then the two others follow from here on.
+ * are: then the two others follow from here on. One not set follows once it takes a share.
  */
 fun rebalanceMacros(shares: Map<Macro, MacroShare>, kcal: Double, edited: Macro, typed: Double, by: MacroEntered): Map<Macro, MacroShare> {
     val factor = kcalPerGram(edited)
@@ -50,23 +53,26 @@ fun rebalanceMacros(shares: Map<Macro, MacroShare>, kcal: Double, edited: Macro,
         if (macro == edited) MacroShare(grams, percent, by)
         else {
             val g = rest.getValue(macro)
-            MacroShare(g, percentOf(g, macro, kcal), if (allInGrams) MacroEntered.FOLLOWS else shares.getValue(macro).entered)
+            val entered = shares.getValue(macro).entered
+            val next = if (allInGrams || (entered == MacroEntered.UNSET && g > 0)) MacroEntered.FOLLOWS else entered
+            MacroShare(g, percentOf(g, macro, kcal), next)
         }
     }
 }
 
 /**
  * [shares] at a new [kcal]: a percent macro keeps its percent, a grams macro its grams, and those that follow share what
- * is left in their ratio. With none that follows the sum is left as it comes; followers with no grams stay unset.
+ * is left in their ratio. With none that follows the sum is left as it comes. Followers all at zero share equally; one at
+ * zero beside another counts as under a gram, its ratio having been rounded away. One not set stays so.
  */
 fun macrosAtKcal(shares: Map<Macro, MacroShare>, kcal: Double): Map<Macro, MacroShare> {
-    val fixedGrams = shares.filterValues { it.entered != MacroEntered.FOLLOWS }.mapValues { (macro, share) ->
+    val fixedGrams = shares.filterValues { it.entered == MacroEntered.PERCENT || it.entered == MacroEntered.GRAMS }.mapValues { (macro, share) ->
         if (share.entered == MacroEntered.PERCENT) (kcal * share.percent / 100 / kcalPerGram(macro)).roundToInt().toDouble() else share.grams
     }
     val followers = Macro.entries.filter { shares.getValue(it).entered == MacroEntered.FOLLOWS }
     val left = (kcal - fixedGrams.entries.sumOf { (macro, grams) -> grams * kcalPerGram(macro) }).coerceAtLeast(0.0)
-    val weight = { macro: Macro -> shares.getValue(macro).grams * kcalPerGram(macro) }
-    val followed = if (followers.sumOf(weight) <= 0.0) followers.associateWith { 0.0 } else shared(followers, left, weight)
+    val someGrams = followers.any { shares.getValue(it).grams > 0 }
+    val followed = shared(followers, left) { macro -> if (someGrams) shares.getValue(macro).grams.coerceAtLeast(1.0) * kcalPerGram(macro) else 0.0 }
     return Macro.entries.associateWith { macro ->
         val share = shares.getValue(macro)
         val grams = fixedGrams[macro] ?: followed[macro] ?: share.grams
@@ -80,15 +86,16 @@ private fun sharesOf(grams: (Macro) -> Double?, percents: (Macro) -> Double?, fo
         val p = percents(macro)
         val entered = when {
             p != null -> MacroEntered.PERCENT
-            g == null || macro in following -> MacroEntered.FOLLOWS
+            macro in following -> MacroEntered.FOLLOWS
+            g == null -> MacroEntered.UNSET
             else -> MacroEntered.GRAMS
         }
         MacroShare(g ?: 0.0, p ?: percentOf(g ?: 0.0, macro, kcal), entered)
     }
 
-/** The macros stored as following; one with no grams is simply not set. */
+/** The macros stored as following, at zero grams too. */
 private fun followingOf(shares: Map<Macro, MacroShare>): Set<Macro> =
-    shares.filterValues { it.entered == MacroEntered.FOLLOWS && it.grams > 0 }.keys
+    shares.filterValues { it.entered == MacroEntered.FOLLOWS }.keys
 
 private fun ProfileValues.gramsFor(macro: Macro): Double? = when (macro) {
     Macro.PROTEIN -> proteinTarget
@@ -102,7 +109,7 @@ private fun ProfileValues.percentFor(macro: Macro): Double? = when (macro) {
     Macro.FAT -> fatPercent
 }
 
-/** A target at zero grams is not set: the app keeps macro targets from 1 g. */
+/** A target at zero grams has no number: the app keeps macro targets from 1 g. A follower keeps following in [followingOf]. */
 private fun Map<Macro, MacroShare>.gramsSet(macro: Macro): Double? = getValue(macro).grams.takeIf { it > 0 }
 
 private fun Map<Macro, MacroShare>.percentSet(macro: Macro): Double? = getValue(macro).takeIf { it.entered == MacroEntered.PERCENT }?.percent

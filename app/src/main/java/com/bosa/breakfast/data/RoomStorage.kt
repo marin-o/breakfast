@@ -390,6 +390,9 @@ interface TargetHistoryDao {
 
     @Query("DELETE FROM target_history")
     suspend fun deleteAll()
+
+    @Query("DELETE FROM target_history WHERE day_key > :dayKey")
+    suspend fun deleteAfter(dayKey: String)
 }
 
 @Database(

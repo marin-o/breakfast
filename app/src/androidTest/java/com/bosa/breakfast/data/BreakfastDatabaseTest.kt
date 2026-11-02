@@ -398,17 +398,45 @@ class BreakfastDatabaseTest {
         migrated.close(); deleteTestDatabase(context, name)
     }
 
-    /** Additive: every other table keeps its rows, and the new one starts empty and takes one row a day. */
+    /** Additive: every other table keeps its rows and their values, and the new one starts empty and takes one row a day. */
     @Test
     fun migration11To12OnlyAddsTheTargetHistory() {
         val name = "migration-v12-${System.nanoTime()}.db".also(migrationNames::add)
         migrationHelper.createDatabase(name, 11).use { old ->
             old.execSQL("INSERT INTO recipes VALUES ('recipe-soup','Soup',NULL,NULL,1500.0)")
             old.execSQL("INSERT INTO weight_points (day_key, kg, saved_at_epoch_ms) VALUES ('2026-10-01',81.5,1761700000000)")
+            old.execSQL("INSERT INTO meal_entries VALUES ('entry','food','Soup',2.0,'PIECE',300.0,'GRAM',250.5,12.5,NULL,5.0,'2 x 150 g',1,1234,'2 soup','LUNCH','2026-10-01','bowl')")
         }
         val migrated = migrationHelper.runMigrationsAndValidate(name, 12, true, ROOM_MIGRATION_11_12)
-        assertEquals(1, migrated.query("SELECT COUNT(*) FROM recipes").use { it.moveToFirst(); it.getInt(0) })
-        assertEquals(1, migrated.query("SELECT COUNT(*) FROM weight_points").use { it.moveToFirst(); it.getInt(0) })
+        migrated.query("SELECT id, name, total_weight FROM recipes").use {
+            assertEquals(1, it.count)
+            it.moveToFirst()
+            assertEquals("recipe-soup", it.getString(0))
+            assertEquals("Soup", it.getString(1))
+            assertEquals(1500.0, it.getDouble(2), 0.0)
+        }
+        migrated.query("SELECT day_key, kg, saved_at_epoch_ms FROM weight_points").use {
+            assertEquals(1, it.count)
+            it.moveToFirst()
+            assertEquals("2026-10-01", it.getString(0))
+            assertEquals(81.5, it.getDouble(1), 0.0)
+            assertEquals(1761700000000L, it.getLong(2))
+        }
+        migrated.query("SELECT id, food_name, entered_amount, entered_unit, snapshot_calories, snapshot_protein, snapshot_carbohydrates, saved_at_epoch_ms, meal_slot, day_key, entered_unit_label FROM meal_entries").use {
+            assertEquals(1, it.count)
+            it.moveToFirst()
+            assertEquals("entry", it.getString(0))
+            assertEquals("Soup", it.getString(1))
+            assertEquals(2.0, it.getDouble(2), 0.0)
+            assertEquals("PIECE", it.getString(3))
+            assertEquals(250.5, it.getDouble(4), 0.0)
+            assertEquals(12.5, it.getDouble(5), 0.0)
+            assertTrue(it.isNull(6))
+            assertEquals(1234L, it.getLong(7))
+            assertEquals("LUNCH", it.getString(8))
+            assertEquals("2026-10-01", it.getString(9))
+            assertEquals("bowl", it.getString(10))
+        }
         assertEquals(0, migrated.query("SELECT COUNT(*) FROM target_history").use { it.moveToFirst(); it.getInt(0) })
         migrated.execSQL("INSERT INTO target_history VALUES ('2026-10-01',2000.0,NULL,NULL,NULL)")
         migrated.execSQL("INSERT OR REPLACE INTO target_history VALUES ('2026-10-01',1900.0,120.0,NULL,NULL)")

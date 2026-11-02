@@ -14,6 +14,7 @@ import com.bosa.breakfast.domain.LoseWarning
 import com.bosa.breakfast.domain.Macro
 import com.bosa.breakfast.domain.MacroPreset
 import com.bosa.breakfast.domain.TargetRow
+import com.bosa.breakfast.domain.ageOf
 import com.bosa.breakfast.domain.WeightProjection
 import com.bosa.breakfast.domain.burnBody
 import com.bosa.breakfast.domain.dailyAdjusted
@@ -21,14 +22,18 @@ import com.bosa.breakfast.domain.dailyBurn
 import com.bosa.breakfast.domain.goalKcal
 import com.bosa.breakfast.domain.loseWarnings
 import com.bosa.breakfast.domain.paceTooFast
-import com.bosa.breakfast.domain.parseDecimal
+import com.bosa.breakfast.domain.needsStartingRow
 import com.bosa.breakfast.domain.positiveAmountOf
 import com.bosa.breakfast.domain.targetsOf
+import com.bosa.breakfast.domain.validCurrentKg
+import com.bosa.breakfast.domain.validHeightCm
+import com.bosa.breakfast.domain.validTargetKg
 import com.bosa.breakfast.domain.weightProjection
 import com.bosa.breakfast.domain.withDailyKcal
 import com.bosa.breakfast.domain.withGoal
 import com.bosa.breakfast.domain.withMacroTyped
 import com.bosa.breakfast.domain.withPace
+import com.bosa.breakfast.domain.withTargetsOf
 import com.bosa.breakfast.domain.ProfileDraft
 import com.bosa.breakfast.domain.ProfileValues
 import com.bosa.breakfast.domain.WeightPoint
@@ -80,8 +85,10 @@ internal class ProfileState(
     private val store: WeightStore,
     private val prefs: ProfilePrefs,
     private val notices: Notices,
-    /** The diary day now, by the "Day starts at" setting. */
+    /** The diary day now, by the "Day starts at" setting: what a write stores under. */
     private val today: () -> String,
+    /** The diary day as snapshot state, moved by the day check: what the derived values below follow. */
+    private val shownDay: () -> String,
     private val clock: () -> Long,
 ) {
     var open by mutableStateOf(false); private set
@@ -106,7 +113,7 @@ internal class ProfileState(
 
     /** Daily burn from the draft's body; null until height, age, current weight and activity are valid. */
     val burn: DailyBurn? by derivedStateOf {
-        draft.burnBody()?.let { dailyBurn(it, session.weightPoints, session.entries, today()) }
+        draft.burnBody()?.let { dailyBurn(it, session.weightPoints, session.entries, shownDay()) }
     }
 
     /** What the draft's goal and pace give, with whether the lowest applied; null without both. */
@@ -117,20 +124,23 @@ internal class ProfileState(
     }
 
     val paceTooFast: Boolean by derivedStateOf {
-        paceTooFast(draft.goal, positiveAmountOf(draft.pace), positiveAmountOf(draft.current))
+        paceTooFast(draft.goal, positiveAmountOf(draft.pace), draft.validCurrentKg)
     }
 
     val loseWarnings: Set<LoseWarning> by derivedStateOf {
-        loseWarnings(draft.goal, parseDecimal(draft.height), draft.age.toIntOrNull(), parseDecimal(draft.current), parseDecimal(draft.target))
+        loseWarnings(draft.goal, draft.validHeightCm, ageOf(draft.age), draft.validCurrentKg, draft.validTargetKg)
     }
 
     /** What the Weight page says below its chart, from the saved target. */
     val projection: WeightProjection by derivedStateOf {
-        weightProjection(session.weightPoints, values.targetWeight, values.goal, today())
+        weightProjection(session.weightPoints, values.targetWeight, values.goal, shownDay())
     }
 
     /** The draft as it was when the kcal field's edit began, so a target passing through 2, 20, 200 on its way to 2000 loses nothing. */
     private var kcalBase: ProfileDraft? = null
+
+    /** The draft as it was when one macro field's edit began, so a number passing through the cap leaves the others' ratio as it was. */
+    private var macroEdit: MacroEdit? = null
 
     private val hasPointToday: Boolean get() = today().let { day -> session.weightPoints.any { it.dayKey == day } }
 
@@ -158,34 +168,48 @@ internal class ProfileState(
 
     fun savedPage(): SavedProfile? = if (open) SavedProfile(draft, addToCurve) else null
 
+    /** Any field. A changed Daily kcal counts as typed by hand, so it goes through [editKcal] and no screen keeps a goal over it. */
     fun edit(next: ProfileDraft) {
-        if (next.kcal != draft.kcal) kcalAsked = false
-        kcalBase = null
-        draft = next
+        val others = next.copy(kcal = draft.kcal)
+        if (others != draft) replaceDraft(others)
+        if (next.kcal != draft.kcal) editKcal(next.kcal)
     }
 
     /** Daily kcal typed by hand: the goal is cleared, and the macros follow by how each was entered. */
     fun editKcal(text: String) {
         val base = kcalBase ?: draft
         kcalAsked = false
+        macroEdit = null
         draft = base.withDailyKcal(text).copy(goal = null)
         kcalBase = base
     }
 
-    /** One macro field typed: the other two share the rest. */
-    fun editMacro(macro: Macro, text: String, byPercent: Boolean) = edit(draft.withMacroTyped(macro, text, byPercent))
+    /** One macro field typed: the other two share the rest, from where they stood when this field's edit began. */
+    fun editMacro(macro: Macro, text: String, byPercent: Boolean) {
+        val base = macroEdit?.takeIf { it.macro == macro && it.byPercent == byPercent }?.base ?: draft
+        replaceDraft(base.withMacroTyped(macro, text, byPercent))
+        macroEdit = MacroEdit(macro, byPercent, base)
+    }
 
     /** A goal chosen: Daily kcal fills in when the pace allows it. */
-    fun chooseGoal(goal: Goal) = edit(draft.withGoal(goal, burn?.kcal))
+    fun chooseGoal(goal: Goal) = replaceDraft(draft.withGoal(goal, burn?.kcal))
 
     /** Kg a week chosen or typed: Daily kcal fills in by the goal. */
-    fun choosePace(text: String, custom: Boolean) = edit(draft.withPace(text, custom, burn?.kcal))
+    fun choosePace(text: String, custom: Boolean) = replaceDraft(draft.withPace(text, custom, burn?.kcal))
 
     /** A preset that needs the kcal target has none: the field says so until it is typed in. */
     fun applyPreset(preset: MacroPreset) {
         val next = draft.withPreset(preset)
         kcalAsked = next == null
-        if (next != null) draft = next
+        if (next != null) replaceDraft(next)
+    }
+
+    /** A new draft that ends any edit under way. */
+    private fun replaceDraft(next: ProfileDraft) {
+        if (next.kcal != draft.kcal) kcalAsked = false
+        kcalBase = null
+        macroEdit = null
+        draft = next
     }
 
     fun toggleAddToCurve() { curveTick = !addToCurve }
@@ -216,23 +240,40 @@ internal class ProfileState(
 
     /**
      * Once a day, called when storage opens and on each return to the app: a saved goal's Daily kcal is recalculated
-     * ([dailyAdjusted]), and targets that have no history yet (saved before it existed, or from an older file) start one.
-     * Not the user's write: it takes no gate and refuses no tap, and while the page is open it waits, so a draft never
-     * moves under the user. Its row today is what makes a second call that day do nothing.
+     * ([dailyAdjusted]), and targets with no history yet start one, moving nothing until the next day ([needsStartingRow]).
+     * A row dated after today goes with today's write. While the page is open or a write runs it waits for the next
+     * call, so a draft never moves under the user; after an import that is the next return to the app. Its row today is
+     * what makes a second call that day do nothing.
+     *
+     * It holds the gate for its one row, so no save, import or Delete all falls between that row and the values. A row
+     * always commits before the values are applied, so a row today that differs from them is a write the process did not
+     * live to finish: the row is trusted, and the values follow it here.
      */
     fun adjustDaily() {
-        if (!session.ready || open) return
+        if (!session.canWrite || open) return
         val before = values
         val history = session.targetHistory
-        val after = dailyAdjusted(before, session.weightPoints, session.entries, history, today()) ?: before
-        val starts = history.isEmpty() && targetsOf(before, today()).hasAny
-        if (after == before && !starts) return
-        session.background(DiaryChange.WeightCurveChanged) {
-            writeTargets(after)
-            prefs.write(after)
-            if (values == before) { values = after; if (!open) resetDraft() }
-            true
+        val day = today()
+        val healed = history.firstOrNull { it.dayKey == day }?.let(before::withTargetsOf) ?: before
+        val after = dailyAdjusted(healed, session.weightPoints, session.entries, history, day) ?: healed
+        val writesRow = after != healed || needsStartingRow(after, history, day) || history.any { it.dayKey > day }
+        if (after == before && !writesRow) return
+        session.write(
+            change = DiaryChange.WeightCurveChanged,
+            // Nothing the user asked for failed; the next call tries again.
+            onFailure = {},
+            onSuccess = { _: Unit -> applyAdjusted(after) },
+        ) {
+            if (writesRow) writeTargets(after)
         }
+    }
+
+    /** The page may have opened while the row was written: a draft already typed in stays. */
+    private fun applyAdjusted(after: ProfileValues) {
+        val untouched = draft == ProfileDraft.of(values)
+        prefs.write(after)
+        values = after
+        if (untouched) resetDraft()
     }
 
     /** The one way targets are stored: today's row of the history, for [next], manual or automatic. */
@@ -262,6 +303,7 @@ internal class ProfileState(
     private fun resetDraft() {
         draft = ProfileDraft.of(values)
         kcalBase = null
+        macroEdit = null
         curveTick = null
         kcalAsked = false
         discardOpen = false
@@ -286,5 +328,7 @@ internal class ProfileState(
         )
     }
 }
+
+private class MacroEdit(val macro: Macro, val byPercent: Boolean, val base: ProfileDraft)
 
 private const val COULD_NOT_SAVE = "Could not save."

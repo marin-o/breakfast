@@ -191,6 +191,7 @@ internal class AppOwners<D>(
     val profile = ProfileState(
         session, stores.weights, stores.profilePrefs, notices,
         today = { dayKeyFor(clock(), zone(), settings.dayStartHour) },
+        shownDay = { day.todayKey },
         clock = clock,
     )
     /** The Open Food Facts results under the Log's unmatched foods and the part being typed (see [OffPartSearch]). */

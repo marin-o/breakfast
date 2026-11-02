@@ -9,9 +9,13 @@ import com.bosa.breakfast.domain.Sex
 import com.bosa.breakfast.domain.ProfileDraft
 import com.bosa.breakfast.domain.MacroPreset
 import com.bosa.breakfast.domain.ProfileValues
+import com.bosa.breakfast.domain.TargetRow
 import com.bosa.breakfast.domain.WeightPoint
+import com.bosa.breakfast.domain.WeightProjection
+import com.bosa.breakfast.domain.withMacroTyped
 import com.bosa.breakfast.profile.ProfilePrefs
 import com.bosa.breakfast.profile.weightPointLabel
+import kotlinx.coroutines.CompletableDeferred
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -202,8 +206,10 @@ internal class ProfileStateTest {
     }
 
     @Test fun typingKcalClearsTheGoalAndPassingThroughSmallNumbersLosesNothing() {
-        profile.edit(ProfileDraft(kcal = "2000", goal = Goal.LOSE))
+        profile.edit(ProfileDraft(kcal = "2000"))
+        profile.edit(profile.draft.copy(goal = Goal.LOSE))
         profile.editMacro(Macro.PROTEIN, "30", byPercent = true)
+        assertEquals(Goal.LOSE, profile.draft.goal)
         assertEquals("175", profile.draft.carbs)
         listOf("", "2", "24", "240", "2400").forEach(profile::editKcal)
         assertNull(profile.draft.goal)
@@ -223,15 +229,120 @@ internal class ProfileStateTest {
         assertEquals(2314, profile.goalResult?.kcal)
     }
 
+    /** The first run only records where the target stood, so the next day's move has it to count from. */
     @Test fun theDailyAdjustmentMovesASavedGoalAndWritesItsRowOnce() {
         ProfilePrefs(app.profileStore).write(goalValues)
         profile.reload()
-        assertEquals(2846.0, profile.values.kcalTarget)
-        assertEquals(2846.0, ProfilePrefs(app.profileStore).read().kcalTarget)
-        assertEquals(listOf(2846.0), app.diary.targets.map { it.kcal })
+        assertEquals(2946.0, profile.values.kcalTarget)
+        assertEquals(listOf(2946.0), app.diary.targets.map { it.kcal })
+        app.nowMs += DAY_MS
         profile.adjustDaily()
         assertEquals(2846.0, profile.values.kcalTarget)
-        assertEquals(1, app.diary.targets.size)
+        assertEquals(2846.0, ProfilePrefs(app.profileStore).read().kcalTarget)
+        assertEquals(listOf(2946.0, 2846.0), app.diary.targets.map { it.kcal })
+        profile.adjustDaily()
+        assertEquals(2846.0, profile.values.kcalTarget)
+        assertEquals(2, app.diary.targets.size)
+    }
+
+    @Test fun aKcalChangedThroughEditClearsTheGoal() {
+        profile.edit(ProfileDraft(kcal = "2000"))
+        profile.edit(profile.draft.copy(goal = Goal.LOSE))
+        profile.edit(profile.draft.copy(kcal = "2100", name = "Ana"))
+        assertNull(profile.draft.goal)
+        assertEquals("2100", profile.draft.kcal)
+        assertEquals("Ana", profile.draft.name)
+        profile.edit(profile.draft.copy(goal = Goal.GAIN, kcal = "2200"))
+        assertNull(profile.draft.goal)
+    }
+
+    @Test fun choosingAGoalKeepsItThoughItFillsKcal() {
+        profile.edit(ProfileDraft(height = "180", age = "30", current = "80", sex = Sex.MALE, activity = Activity.LOW_ACTIVE))
+        profile.chooseGoal(Goal.MAINTAIN)
+        assertEquals(Goal.MAINTAIN, profile.draft.goal)
+    }
+
+    @Test fun whileAWriteRunsTheAdjustmentWritesNothing() {
+        ProfilePrefs(app.profileStore).write(goalValues)
+        val held = CompletableDeferred<Unit>()
+        app.owners.session.write<Unit>(DiaryChange.WeightCurveChanged) { held.await() }
+        profile.reload()
+        assertTrue(app.diary.targets.isEmpty())
+        held.complete(Unit)
+        profile.adjustDaily()
+        assertEquals(listOf(2946.0), app.diary.targets.map { it.kcal })
+    }
+
+    /** The row is written first: a process killed before the values were applied leaves it ahead of them. */
+    @Test fun aRowTodayAheadOfTheValuesIsTrustedAndNothingSticks() {
+        ProfilePrefs(app.profileStore).write(goalValues)
+        app.diary.targets = listOf(TargetRow("2026-10-20", 2946.0, null, null, null), TargetRow("2026-10-28", 2846.0, null, null, null))
+        app.owners.session.refresh()
+        profile.reload()
+        assertEquals(2846.0, profile.values.kcalTarget)
+        assertEquals(2846.0, ProfilePrefs(app.profileStore).read().kcalTarget)
+        assertEquals(Goal.LOSE, profile.values.goal)
+        assertEquals(2, app.diary.targets.size)
+    }
+
+    @Test fun aRowDatedLaterGoesWithTodaysWriteAndPastDaysStay() {
+        ProfilePrefs(app.profileStore).write(ProfileValues(kcalTarget = 2000.0))
+        val past = TargetRow("2026-10-01", 2000.0, null, null, null)
+        app.diary.targets = listOf(past, TargetRow("2026-12-01", 1500.0, null, null, null))
+        app.owners.session.refresh()
+        profile.reload()
+        assertEquals(listOf(past, TargetRow("2026-10-28", 2000.0, null, null, null)), app.diary.targets)
+        assertEquals(2000.0, profile.values.kcalTarget)
+    }
+
+    @Test fun onlyARowDatedLaterIsNoHistory() {
+        ProfilePrefs(app.profileStore).write(goalValues)
+        app.diary.targets = listOf(TargetRow("2026-12-01", 2000.0, null, null, null))
+        app.owners.session.refresh()
+        profile.reload()
+        assertEquals(listOf(TargetRow("2026-10-28", 2946.0, null, null, null)), app.diary.targets)
+        assertEquals(2946.0, profile.values.kcalTarget)
+    }
+
+    @Test fun theProjectionFollowsTheDayCheck() {
+        ProfilePrefs(app.profileStore).write(ProfileValues(targetWeight = 70.0))
+        profile.reload()
+        app.diary.weights = listOf(WeightPoint("2026-10-28", 80.0, app.nowMs))
+        app.owners.session.refresh()
+        assertEquals(WeightProjection.NotEnoughData(13), profile.projection)
+        app.nowMs += 40 * DAY_MS
+        Snapshot.sendApplyNotifications()
+        assertEquals(WeightProjection.NotEnoughData(13), profile.projection)
+        app.day.check(returning = false)
+        Snapshot.sendApplyNotifications()
+        assertEquals(WeightProjection.NotEnoughData(14), profile.projection)
+    }
+
+    @Test fun warningsIgnoreWhatIsNotValid() {
+        profile.edit(ProfileDraft(goal = Goal.LOSE, height = "1", age = "0", current = "9000", target = "x", pace = "1"))
+        assertTrue(profile.loseWarnings.isEmpty())
+        assertFalse(profile.paceTooFast)
+        profile.edit(profile.draft.copy(height = "170", age = "17", current = "53"))
+        assertEquals(setOf(com.bosa.breakfast.domain.LoseWarning.UNDERWEIGHT, com.bosa.breakfast.domain.LoseWarning.UNDER_18), profile.loseWarnings)
+        assertTrue(profile.paceTooFast)
+    }
+
+    /** Typing past the cap takes the others to nothing on the way; the number it ends at finds them as they were. */
+    @Test fun typingThroughTheCapKeepsTheOthersRatio() {
+        profile.edit(ProfileDraft(kcal = "2000", carbs = "300", fat = "40", followingMacros = setOf(Macro.CARBS, Macro.FAT)))
+        val base = profile.draft
+        listOf("5", "50", "500", "5000").forEach { profile.editMacro(Macro.PROTEIN, it, byPercent = false) }
+        assertEquals("", profile.draft.carbs)
+        listOf("500", "50").forEach { profile.editMacro(Macro.PROTEIN, it, byPercent = false) }
+        assertEquals(base.withMacroTyped(Macro.PROTEIN, "50", byPercent = false), profile.draft)
+    }
+
+    @Test fun anotherFieldStartsItsOwnEdit() {
+        profile.edit(ProfileDraft(kcal = "2000", carbs = "300", fat = "40", followingMacros = setOf(Macro.CARBS, Macro.FAT)))
+        profile.editMacro(Macro.PROTEIN, "100", byPercent = false)
+        val before = profile.draft
+        profile.editMacro(Macro.FAT, "50", byPercent = false)
+        assertEquals(before.withMacroTyped(Macro.FAT, "50", byPercent = false), profile.draft)
     }
 
     @Test fun theDailyAdjustmentWaitsWhileThePageIsOpen() {

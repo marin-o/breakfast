@@ -31,11 +31,21 @@ private const val FEWEST_WEIGH_IN_DAYS = 3
 private const val SLOWEST_KG_A_WEEK = 0.05
 private const val LONGEST_YEARS = 2L
 
-/** The weigh-in nearest now has reached [target], by the [goal]'s direction; with no direction, only when it stands on it. */
-private fun reached(latestKg: Double, target: Double, goal: Goal?): Boolean = when (goal) {
+/**
+ * The weigh-in nearest now has reached [target], by the [goal]'s direction. With no direction, the earliest weigh-in in
+ * the window ([startKg]) gives it: the target is reached once crossed, or stood on when the weight started there.
+ */
+private fun reached(latestKg: Double, startKg: Double?, target: Double, goal: Goal?): Boolean = when (goal) {
     Goal.LOSE -> latestKg <= target
     Goal.GAIN -> latestKg >= target
-    Goal.MAINTAIN, null -> latestKg == target
+    Goal.MAINTAIN, null -> {
+        val start = startKg ?: latestKg
+        when {
+            start > target -> latestKg <= target
+            start < target -> latestKg >= target
+            else -> latestKg == target
+        }
+    }
 }
 
 /** The projection toward [targetKg] from the raw weigh-ins in [points]; distance is from the latest of them. */
@@ -43,9 +53,9 @@ fun weightProjection(points: List<WeightPoint>, targetKg: Double?, goal: Goal?, 
     val target = targetKg ?: return WeightProjection.Nothing
     val day = dayOf(today) ?: return WeightProjection.Nothing
     val latest = newestFirst(points).firstOrNull()
-    if (latest != null && reached(latest.kg, target, goal)) return WeightProjection.Nothing
-
     val window = inLearningWindow(points, day)
+    if (latest != null && reached(latest.kg, oldestFirst(window).firstOrNull()?.kg, target, goal)) return WeightProjection.Nothing
+
     val weighInDays = window.map { it.dayKey }.distinct().size
     val comeBack = (ENOUGH_WEIGH_IN_DAYS - weighInDays).coerceAtLeast(1)
     if (latest == null || weighInDays < FEWEST_WEIGH_IN_DAYS) return WeightProjection.NotEnoughData(comeBack)

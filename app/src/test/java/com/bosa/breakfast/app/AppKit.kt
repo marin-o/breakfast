@@ -210,7 +210,7 @@ internal class AppKit(
                     diary.weights = diary.weights.filterNot { it == latest } + stored(point)
                 }
                 override suspend fun delete(id: Long) { diary.weights = diary.weights.filterNot { it.id == id } }
-                override suspend fun saveTarget(row: TargetRow) { diary.targets = diary.targets.filterNot { it.dayKey == row.dayKey } + row }
+                override suspend fun saveTarget(row: TargetRow) { diary.targets = diary.targets.filter { it.dayKey < row.dayKey } + row }
             },
             profilePrefs = ProfilePrefs(profileStore),
             recipes = object : RecipeStore {

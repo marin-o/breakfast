@@ -97,7 +97,7 @@ private val WEIGHT_KG = 1.0..500.0
 private val MACRO_TARGET_G = 1.0..5000.0
 
 const val KCAL_RANGE_MESSAGE = "Enter 1 to 20000 kcal."
-private val KCAL_TARGET = 1.0..20000.0
+internal val KCAL_TARGET = 1.0..20000.0
 
 const val WEIGHT_RANGE_MESSAGE = "Enter 1 to 500 kg."
 const val MACRO_TARGET_RANGE_MESSAGE = "Enter 1 to 5000 g."
