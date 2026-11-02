@@ -92,8 +92,8 @@ object ShorthandLexicon {
     /** A regex alternation of the unit words, longest first. The parser and the segmenter both read it. */
     fun unitAlternation(): String = units.keys.sortedByDescending { it.length }.joinToString("|") { key -> key.split(' ').joinToString("\\s+") { Regex.escape(it) } }
 
-    /** Words that never name a food on their own. "a" is here so it can never be matched as a food token. */
-    val stopWords: Set<String> = setOf("a", "the", "with", "and", "of", "my")
+    /** Words that never name a food on their own. "a" and "an" are here so they can never be matched as a food token. */
+    val stopWords: Set<String> = setOf("a", "an", "the", "with", "and", "of", "my")
 
     /** Words that join two foods in one line. Only whole words count; "with" and "со" are food text. */
     val explicitSeparators: Set<String> = setOf("+", "&", "and", "и")

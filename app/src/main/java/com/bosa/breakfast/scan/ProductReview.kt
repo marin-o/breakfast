@@ -21,7 +21,9 @@ import com.bosa.breakfast.domain.Measure
 import com.bosa.breakfast.domain.MeasureUnit
 import com.bosa.breakfast.domain.SegmentSpan
 import com.bosa.breakfast.domain.isUsdaFoodId
+import com.bosa.breakfast.domain.articleMeasure
 import com.bosa.breakfast.domain.bareCountMeasure
+import com.bosa.breakfast.domain.typedMeasure
 import com.bosa.breakfast.domain.NutritionBasis
 import com.bosa.breakfast.domain.NutritionCalculator
 import com.bosa.breakfast.domain.NutritionValues
@@ -502,12 +504,19 @@ internal fun servingsToAdd(food: FoodRecord, full: FoodRecord): List<ServingConv
 internal data class ProductPrefill(val amount: Double, val unit: MeasureUnit, val servingName: String? = null)
 
 /**
- * A typed part's amount and unit, else 100 of the food's basis unit. A bare count starts on what the Log counts it as
- * ([bareCountMeasure]).
+ * A typed part's amount and unit, else 100 of the food's basis unit. It starts on what the Log counts it as: a unit word
+ * that names a serving counts that serving ("2 slices tomato"), and a bare count or "a" what it means for the food
+ * ([bareCountMeasure], [articleMeasure]).
  */
 internal fun productPrefill(food: FoodRecord, typed: TypedPart): ProductPrefill {
-    val counted = food.bareCountMeasure(typed.foodPhrase)?.takeIf { typed.amount != null && typed.unit == null }
-    return ProductPrefill(typed.amount ?: 100.0, counted?.unit ?: typed.unit ?: food.nutrition.unit, counted?.name)
+    val measure = when {
+        typed.unit != null -> food.typedMeasure(typed.unit, typed.unitWord)
+        typed.amount != null -> food.bareCountMeasure(typed.foodPhrase)
+        typed.article -> food.articleMeasure(typed.foodPhrase)
+        else -> null
+    }
+    val servingName = measure?.name?.takeIf { measure.unit == MeasureUnit.SERVING }
+    return ProductPrefill(typed.amount ?: if (measure != null) 1.0 else 100.0, measure?.unit ?: food.nutrition.unit, servingName)
 }
 
 internal fun parseProductUnit(value: String): MeasureUnit? = value.trim().toMeasureUnit()

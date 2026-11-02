@@ -436,7 +436,10 @@ class ShorthandParser {
             val amount = parseAmount(match.groupValues[1])
             return quantityWithUnit(if (isNegated(raw, match.range.first)) -amount else amount, match.groupValues[2], match.range)
         }
-        wordPattern.find(raw)?.let { match ->
+        // An article counts only at the very start of a part: mid-part it is words of the name ("chicken a la king").
+        wordPattern.findAll(raw).firstOrNull { match ->
+            match.range.first == 0 || match.groupValues[1].lowercase(Locale.ROOT) !in ARTICLES || match.groupValues[2].isNotBlank()
+        }?.let { match ->
             val unitText = match.groupValues[2]
             if (match.groupValues[1].lowercase(Locale.ROOT) in ARTICLES && unitText.isBlank()) {
                 return Quantity(null, null, match.range, fromWord = true, article = true)

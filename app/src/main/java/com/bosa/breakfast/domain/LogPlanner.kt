@@ -32,7 +32,15 @@ data class LogPlan(val entries: List<SegmentResolution>, val unresolved: List<St
 data class ChosenDraft(val input: String, val part: String?)
 
 /** A typed part as the library reads it: the food text, and the amount and unit typed (null when none). */
-data class TypedPart(val foodPhrase: String, val amount: Double?, val unit: MeasureUnit?)
+data class TypedPart(
+    val foodPhrase: String,
+    val amount: Double?,
+    val unit: MeasureUnit?,
+    /** The word typed as [unit], which may be a serving's name ("slices"). */
+    val unitWord: String? = null,
+    /** The amount is a leading "a" or "an", which counts one only for a counted food. */
+    val article: Boolean = false,
+)
 
 /** One line of the Log draft, in the order the parts were typed. */
 sealed interface DraftRow {
@@ -156,11 +164,25 @@ class LogPlanner(
         // it names ("2 cans coke", "coke 2 cans"). A food's name always wins.
         for (serving in servingReadings(reading)) {
             val word = serving.servingWord!!
+            sizeTheFoodLacks(raw, reading, serving)?.let { return it }
             onTopFood(raw, serving, flagged = matcher.hasServingNamed(word)) { it.servingNamed(word) != null }?.let { return it }
         }
         // Then "2 portions chili" may be portions of a recipe; a food the plain reading resolves is never read this way.
         val portions = portionReading(reading) ?: return plain
         return onTopFood(raw, portions, flagged = true, ::takesPortions) ?: plain
+    }
+
+    /**
+     * A size word on a counted food ("1 large tomato") logs what a tap on that food logs: its ordinary unit, shown in the
+     * row, or a serving that holds the word ("1 large bread"). Null for any other part.
+     */
+    private fun sizeTheFoodLacks(raw: String, reading: Reading, serving: Reading): SegmentResolution? {
+        val word = serving.servingWord!!
+        if (!isSizeWord(word)) return null
+        val ranked = matcher.suggestions(serving.phrase, preferences, SUGGESTION_LIMIT)
+        val top = ranked.firstOrNull()?.food ?: return null
+        if (top.servingNamed(word) != null) return null
+        return resolutionOf(raw, reading, ranked)?.takeIf { it.supported && !it.needsChoice && it.unit == MeasureUnit.SERVING }
     }
 
     /**
@@ -284,7 +306,9 @@ class LogPlanner(
      */
     private fun readingFor(raw: String, food: FoodRecord): Reading {
         val reading = reading(raw)
-        servingReadings(reading).firstOrNull { food.servingNamed(it.servingWord!!) != null }?.let { return it }
+        // The food's own word is no measure when the part asks for another serving: "1 chunk mango" is not "1 mango".
+        val asked = food.asksForServing(reading.parsed.foodPhrase)
+        servingReadings(reading).firstOrNull { food.servingNamed(it.servingWord!!) != null && !(asked && food.namesWord(it.servingWord)) }?.let { return it }
         return if (takesPortions(food)) portionReading(reading) ?: reading else reading
     }
 
@@ -294,11 +318,12 @@ class LogPlanner(
 
     private fun reading(raw: String): Reading {
         val parsed = parser.parse(raw, probe)
-        // A part that is exactly a food's name carries no amount: "Protein 2 bar" is one bar, not two. A number word or
-        // article is part of the name when a food covers the whole part: "Ten grain bread" is one food.
+        // A part that is exactly a food's name carries no amount: "Protein 2 bar" is one bar, not two. A number word
+        // is part of the name when a food covers the whole part: "Ten grain bread" is one food. A leading article isn't:
+        // matching skips it as a stop word, so "a beer" would be the name Beer and lose its count.
         // A glued part ("cow milk3.2") reads exactly like its spaced form, its name included.
-        val wholeName = matcher.isExactName(raw) || matcher.isExactName(parsed.spaced) ||
-            (parsed.wordQuantity && (matcher.covers(raw) || matcher.covers(parsed.spaced)))
+        val wholeName = !parsed.articleQuantity && (matcher.isExactName(raw) || matcher.isExactName(parsed.spaced) ||
+            (parsed.wordQuantity && (matcher.covers(raw) || matcher.covers(parsed.spaced))))
         return Reading(keepingNameUnit(parsed), wholeName)
     }
 
@@ -355,7 +380,7 @@ class LogPlanner(
     fun typed(raw: String): TypedPart {
         val reading = reading(raw)
         return if (reading.wholeName) TypedPart(reading.phrase, null, null)
-        else TypedPart(reading.parsed.foodPhrase, reading.parsed.amount, reading.parsed.unit)
+        else TypedPart(reading.parsed.foodPhrase, reading.parsed.amount, reading.parsed.unit, reading.parsed.unitWord, reading.parsed.articleQuantity)
     }
 
     /**
@@ -412,7 +437,9 @@ class LogPlanner(
      */
     fun pickedText(raw: String, food: FoodRecord): String {
         // A part that is a name carries no amount of its own, glued or not.
-        if (reading(raw).wholeName) return food.name
+        // Nor does a leading article: "a bananna" picked as Banana is Banana.
+        val reading = reading(raw)
+        if (reading.wholeName || reading.parsed.articleQuantity) return food.name
         val query = libraryQueryFor(raw)
         val amountText = if (query.isBlank()) "" else raw.replaceFirst(query, "", ignoreCase = true).trim()
         return listOf(food.name, amountText).filter { it.isNotBlank() }.joinToString(" ")

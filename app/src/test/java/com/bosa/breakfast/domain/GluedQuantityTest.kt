@@ -57,7 +57,7 @@ class GluedQuantityTest {
         assertEquals(listOf(Saved("custom_home_milk", 200.0, MeasureUnit.MILLILITER)), saved("млеко200мл"))
         assertEquals(listOf(Saved("custom_home_milk", 1500.0, MeasureUnit.MILLILITER)), saved("млеко1,5л"))
         // Домашно млеко has no gram conversion: "млеко200г" reads as "млеко 200г", which does not log either.
-        assertEquals(TypedPart("млеко", 200.0, MeasureUnit.GRAM), planner.typed("млеко200г"))
+        assertEquals(TypedPart("млеко", 200.0, MeasureUnit.GRAM, unitWord = "г"), planner.typed("млеко200г"))
         assertEquals(emptyList<Saved>(), saved("млеко 200г"))
         assertEquals(listOf("млеко200г"), planner.plan("млеко200г").unresolved)
     }
