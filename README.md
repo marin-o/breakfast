@@ -1,37 +1,48 @@
 # Breakfast
 
-Breakfast is an Android-first calorie and macro tracker built around fast natural-language logging. Enter shorthand such as `2 tbsp oats, half a tbsp peanut butter, banana` in a meal, and the app parses the portions and resolves familiar foods locally. Explicit aliases and personal history rank matches; automatic guesses never reinforce a preference. Submitted Open Food Facts search and barcode scanning cover foods outside the local catalogue.
+An Android calorie and macro tracker built around typing what you ate. Enter `2 tbsp oats, half a tbsp peanut butter, banana` and the app works out the portions, finds the foods and logs them.
 
-The Room-backed diary has Breakfast, Lunch, Dinner, and Snacks for each date. Swipe the main diary between dates, open a meal to inspect entries, or browse the local Food Library to manage personal foods. A logged entry keeps its amount, nutrition snapshot, and conversion provenance so later food edits do not silently rewrite history. Tap an entry for details, double-tap for amount-only quick edit, hold for full entry edit, or swipe left inside a meal to delete with Undo. Eligible saved barcode foods can be reviewed and optionally contributed to Open Food Facts from their detail view. Recipes, conversational parsing, cloud sync, and account-backed storage are outside the current app.
+It works offline and keeps your diary on your phone. There is no account and no cloud sync.
 
-## Build locally
+## Features
 
-Tool downloads and caches belong under `_stack`; the source tree and debug APK stay in normal project paths. Use JDK 21 at `<jdk21>` if the machine default is Java 8. An Android SDK can be placed at `_stack/android-sdk`. The Gradle wrapper is pinned to Gradle 8.9; with `GRADLE_USER_HOME` set as below, it downloads the distribution once into `_stack/gradle-home`.
+- **Natural logging:** several foods in one line, with amounts in grams, millilitres, servings or words like "half a tbsp".
+- **Ranking that learns:** foods you pick often and recently come first.
+- **Built-in foods:** a bundled USDA database that works with no connection.
+- **Barcodes and Open Food Facts:** scan a product or search for it, and contribute corrections if you want to.
+- **Recipes and personal foods:** save your own, with custom servings and aliases.
+- **Diary:** Breakfast, Lunch, Dinner and Snacks for each day. Editing a food later never rewrites what you already logged.
+- **Weight and targets:** a weight curve and daily macro targets.
+- **Colour-blind options:** macro colours for protanopia, deuteranopia and tritanopia, or monochrome.
+- **Export and import:** your whole diary as one file.
 
-```powershell
+English and Macedonian food names both work, and Latin and Cyrillic searches stay separate.
+
+## Build
+
+You need JDK 21 and the Android SDK (API 35). Android 8.0 (API 26) is the minimum.
+
+```sh
 git config core.hooksPath .githooks
-$env:JAVA_HOME = '<jdk21>'
-$env:ANDROID_HOME = './_stack/android-sdk'
-$env:GRADLE_USER_HOME = './_stack/gradle-home'
-.\gradlew.bat testDebugUnitTest assembleDebug assemblePerf
+./gradlew testDebugUnitTest assembleDebug
 ```
 
-The debug APK is produced at `app/build/outputs/apk/debug/app-debug.apk` and the `perf` APK (R8-minified, signed with the debug key) at `app/build/outputs/apk/perf/app-perf.apk`. Install with the existing platform-tools `adb install -r`, which keeps the app's local data. Bump `versionCode` in `app/build.gradle.kts` by 1 for every build installed on the phone; `versionName` stays `0.x` until a release. Signing, backup and recovery are in [`docs/architecture.md`](docs/architecture.md).
+The APK lands in `app/build/outputs/apk/debug/`. Install it with `adb install -r`, which keeps your data.
 
-Room uses version 2.8.5 with KAPT and the official Room Gradle plugin. Versioned schema JSON for migrations is exported under `app/schemas/debug`, which every variant uses. KAPT emits its standard Kotlin 2.0 language-version fallback warning, but the Room compiler and both variants build successfully.
+`assemblePerf` builds a minified version signed with the debug key, for trying out real speed. There is no release signing setup in this repository.
 
-## Fixture catalogue
+Device tests are in `app/src/androidTest`. Don't run `connectedDebugAndroidTest` on a phone with a diary you care about, because it uninstalls the app afterwards and takes the data with it. [`docs/architecture.md`](docs/architecture.md) has the safe way to run them, and explains how the app is put together.
 
-The prototype includes 31 additional generic records from USDA FoodData Central Foundation Foods (2026-04-30) and SR Legacy (2018-04). Each record keeps its FDC source ID, source release, preparation state, and per-100-gram calories, protein, carbohydrate, and fat values. The expansion covers raw chicken, beef, pork, salmon, drained tuna; raw broccoli, carrots, cucumber, Roma and grape tomatoes, bell peppers, spinach, onions, green and red cabbage, zucchini, lettuce, and eggplant; plus ketchup, prepared yellow mustard, canned tomato sauce, regular mayonnaise, shoyu soy sauce, and barbecue sauce. Meat records are explicitly raw because the user weighs meat before cooking, and unqualified meat queries therefore resolve to raw records. Household conversions are included only where the USDA source supplies a portion, such as mustard teaspoon, mayonnaise tablespoon, soy sauce tablespoon/teaspoon, and barbecue sauce tablespoon.
+The USDA database is rebuilt with `tools/build_usda_catalogue.py`, as described in [`docs/usda-catalogue-spec.md`](docs/usda-catalogue-spec.md).
 
-The pinned exports are small build-time source snapshots; the app has no runtime USDA dependency or API key. Turkey breast and a raw mushroom record remain omitted because the available exports did not provide matching records with an explicit preparation and complete macro set. Sources: [USDA FoodData Central downloads](https://fdc.nal.usda.gov/download-datasets/). Existing installs receive missing fixture IDs through an additive migration that preserves custom foods, aliases, preferences, and saved nutrition snapshots.
+## Licence
 
-## Focused checks
+Copyright (c) 2026 Marino Jakmoski ([marin-o](https://github.com/marin-o)).
 
-`BreakfastDomainTest` covers quantity-first and quantity-after parsing, fractions, comma segments, modifier-constrained matching in English and Cyrillic, and serving conversion and nutrition calculation. `RoomStorageMappingTest` covers stable-ID seeding, entity round trips, source metadata, and nullable-vs-zero snapshot columns. Core logging works locally; submitted OFF search, barcode lookup, and optional contribution require a connection.
+Breakfast is free software under the [GNU General Public License, version 3](LICENSE). You can use, change and share it, and you can even sell it, but anything you distribute based on it has to be released under the same licence, with its source code.
 
-`BreakfastDatabaseTest` is an Android test for additive seed idempotence, meal snapshots surviving a database close/reopen, transactional food upserts, and the Room migrations 1→5, 2→4 and 5→6 (the schema is at version 6). It runs only on a device; the JVM tests do not cover migrations. Compile it with `compileDebugAndroidTestKotlin`. Never run `connectedDebugAndroidTest` on the phone that holds the diary: AGP uninstalls the app afterwards. Use the manual procedure in [`docs/architecture.md`](docs/architecture.md).
+## Credits
 
-## Commit messages
+The ranking idea comes from [zoxide](https://github.com/ajeetdsouza/zoxide), which ranks directories by how often and how recently you visit them. Breakfast applies the same idea to foods, with its own formula and no zoxide code.
 
-The repository uses a local `commit-msg` hook at `.githooks/commit-msg`. Enable it once per clone with `git config core.hooksPath .githooks` (repository-local; no global Git configuration is changed). It accepts Conventional Commit prefixes such as `feat:`, `fix:`, `docs:`, `test:`, `chore:`, and `build:` with optional scopes or `!`, plus the subjects git writes itself for `git revert` (`Revert "…"`) and `git merge` (`Merge …`), and rejects other messages before commit creation.
+Food data comes from [USDA FoodData Central](https://fdc.nal.usda.gov/) and [Open Food Facts](https://world.openfoodfacts.org/). Full credits and third-party licences are in [NOTICE](NOTICE).
