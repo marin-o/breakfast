@@ -328,6 +328,8 @@ class BreakfastEngine(
         sourceDescription: String? = null,
         servings: List<ServingConversion> = emptyList(),
         density: Double? = null,
+        /** The serving's name for [MeasureUnit.SERVING] ("bar"). */
+        servingName: String? = null,
     ): MealEntry {
         require(name.isNotBlank()) { "Name is required" }
         require(basisAmount.isFinite() && basisAmount > 0.0) { "Nutrition basis must be positive" }
@@ -335,11 +337,11 @@ class BreakfastEngine(
         require(nutrition.calories.isFinite() && nutrition.calories >= 0.0) { "Calories are required" }
         val food = newCustomFoodRecord(
             "custom-" + UUID.randomUUID(), name, brand, barcode, alias, nutrition, basisAmount, basisUnit,
-            amount, amountUnit, sourceName, sourceDescription, servings, density,
+            basisAmount, basisUnit, sourceName, sourceDescription, servings, density,
         )
-        val calculation = calculator.calculate(food, amount, amountUnit)
+        val calculation = calculator.calculate(food, amount, amountUnit, servingName)
         require(calculation.supported) { "Amount unit is incompatible with the nutrition basis" }
-        val entry = entryOf(food, amount, amountUnit, calculation, mealSlot, dayKey, nowMs, name.trim())
+        val entry = entryOf(food, amount, amountUnit, calculation, mealSlot, dayKey, nowMs, name.trim(), servingName.takeIf { amountUnit == MeasureUnit.SERVING })
         store.addFoodAndEntry(food, entry)
         invalidateMatcher()
         return entry

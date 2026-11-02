@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import mk.bosa.breakfast.domain.FoodRecord
+import mk.bosa.breakfast.domain.TypedPart
 import mk.bosa.breakfast.log.UsdaRows
 import mk.bosa.breakfast.log.rememberUsdaRows
 import mk.bosa.breakfast.scan.ProductReview
@@ -53,22 +54,22 @@ import mk.bosa.breakfast.ui.screens.formatKcal
     SubScreen("Search", leave, scroll = false) {
         SearchCaption(Modifier.padding(top = 6.dp))
         SearchField(query, library::onQuery, onClear = clear, label = "Search library", modifier = Modifier.padding(top = 6.dp))
-        NoLocalMatchWithRows(usdaRows, query, search, foodForm, onPick = { review.choose(it, typed = library.typedPart()) })
+        NoLocalMatchWithRows(usdaRows, query, search, foodForm, typed = library.typedPart(), onPick = { review.choose(it, typed = library.typedPart()) })
     }
 }
 
 /** [NoLocalMatch] under the USDA foods [rows] that do answer [query], the two scrolling as one. */
-@Composable internal fun ColumnScope.NoLocalMatchWithRows(rows: List<FoodRecord>, query: String, search: OffSearch, foodForm: FoodForm, reviewOrigin: ProductReviewOrigin? = null, onPick: (FoodRecord) -> Unit) {
+@Composable internal fun ColumnScope.NoLocalMatchWithRows(rows: List<FoodRecord>, query: String, search: OffSearch, foodForm: FoodForm, reviewOrigin: ProductReviewOrigin? = null, onPick: (FoodRecord) -> Unit, typed: TypedPart? = null) {
     Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
         UsdaRows(rows, query, Modifier.padding(top = 8.dp), onPick)
-        NoLocalMatch(query, search, foodForm, reviewOrigin)
+        NoLocalMatch(query, search, foodForm, reviewOrigin, typed)
     }
 }
 
-/** A local search found nothing for [query]: it says so, and the way on is Open Food Facts or a personal food. */
-@Composable internal fun NoLocalMatch(query: String, search: OffSearch, foodForm: FoodForm, reviewOrigin: ProductReviewOrigin? = null) {
+/** A local search found nothing for [query]: it says so, and the way on is Open Food Facts or a personal food, which takes the amount [typed] with it. */
+@Composable internal fun NoLocalMatch(query: String, search: OffSearch, foodForm: FoodForm, reviewOrigin: ProductReviewOrigin? = null, typed: TypedPart? = null) {
     StatusBlock("No local match", listOf("Nothing in your foods matches \"$query\"."), top = 48.dp) {
-        SearchOrCreateButtons({ search.open(query.trim(), reviewOrigin = reviewOrigin) }, { foodForm.open(query.trim()) })
+        SearchOrCreateButtons({ search.open(query.trim(), reviewOrigin = reviewOrigin) }, { foodForm.open(query.trim(), typed = typed) })
     }
 }
 

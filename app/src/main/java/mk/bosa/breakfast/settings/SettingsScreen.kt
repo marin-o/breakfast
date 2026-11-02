@@ -178,7 +178,7 @@ private fun ColumnScope.AboutPage(settings: SettingsState, surfaces: Surfaces) {
     Hairline()
 }
 
-/** The bundled licence as plain scrolling text, read off the main thread. */
+/** The bundled notices as plain scrolling text, read off the main thread. */
 @Composable
 private fun LicencesPage(licenceText: suspend () -> String) {
     val colors = LocalBreakfastColors.current

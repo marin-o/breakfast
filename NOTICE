@@ -1,40 +1,33 @@
 Breakfast
 Copyright (c) 2026 Marino Jakmoski (marin-o)
-Licensed under the GNU General Public License, version 3 only. See LICENSE.
-
-That licence covers Breakfast's own code. The parts below keep their own
-licences.
+GNU General Public License, version 3 only, for Breakfast's own code. Full text in the LICENSE file of the source code. The parts below keep their own licences.
 
 
 IDEAS
 
 zoxide - https://github.com/ajeetdsouza/zoxide
 Copyright 2020 Ajeet D'Souza. MIT License.
-Breakfast's food ranking takes its idea from zoxide's "frecency" ranking,
-which scores by how often and how recently something was used. No zoxide
-code is included; the formula is Breakfast's own.
+The idea behind Breakfast's food ranking is zoxide's "frecency": a score from how often and how recently something was used. No zoxide code is included; the formula is Breakfast's own.
 
 
 DATA
 
 USDA Food and Nutrient Database for Dietary Studies (FNDDS) 2021-2023
-U.S. Department of Agriculture, Agricultural Research Service.
-FoodData Central, 2019. fdc.nal.usda.gov.
+U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, 2019. fdc.nal.usda.gov.
 CC0 1.0. Bundled with the app.
 
 Open Food Facts - https://world.openfoodfacts.org/
 (c) Open Food Facts contributors.
 Database: Open Database License (ODbL) 1.0.
 Product images: Creative Commons Attribution-ShareAlike.
-Not bundled. The app fetches product data when you scan or search, keeps the
-products you save on your phone, and can send your corrections back.
+Not bundled. You fetch product data when you scan or search, keep the products you save on your phone, and can send your corrections back.
 
 
 FONT
 
 Geologica - https://github.com/googlefonts/geologica
 Copyright 2020 The Geologica Project Authors.
-SIL Open Font License 1.1. Full text in app/src/main/assets/OFL.txt.
+SIL Open Font License 1.1. Full text after this notice in the app, and in app/src/main/assets/OFL.txt in the source code.
 
 
 LIBRARIES USED BY THE APP
@@ -44,6 +37,20 @@ Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0):
 - Kotlin and kotlinx.serialization (JetBrains)
 - Vico (Patryk Goworowski and Patrick Michalik)
 - zxing-cpp, for barcode scanning (https://github.com/zxing-cpp/zxing-cpp)
+- Guava, Dagger, AutoValue annotations, Error Prone annotations, J2ObjC annotations, JSR 305 annotations, JSpecify, javax.inject and Jakarta Inject, which come with the libraries above
+
+BSD 3-Clause License (https://opensource.org/licenses/BSD-3-Clause), beside Apache License 2.0:
+- CameraX core (androidx.camera:camera-core)
+
+MIT License:
+- Checker Framework qualifiers, which come with the libraries above
+Copyright 2004-present by the Checker Framework developers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
 LIBRARIES USED FOR TESTS ONLY

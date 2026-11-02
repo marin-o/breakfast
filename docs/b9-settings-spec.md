@@ -109,7 +109,7 @@ Within each page, rows run top to bottom. `[A] [B]` are choice chips; the chip i
 | # | Row | Content |
 |---|---|---|
 | 22a | Version | "0.1 (10)": versionName (versionCode) |
-| 22b | Licences | opens a plain text page with the bundled `OFL.txt` (owner: the convention, a plain text page), `TopBar` "Licences", scrolling `Body` text |
+| 22b | Licences | opens a plain text page with the repository's `NOTICE`, copied in by the build, then the bundled `OFL.txt` (owner: the convention, a plain text page), `TopBar` "Licences", scrolling `Body` text |
 
 ## Strings for approval
 

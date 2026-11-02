@@ -181,7 +181,7 @@ class SurfacesTest {
     }
 
     @Test fun aSavedNewFoodMovesTheQueueOnAndTheLastOneEndsIt() {
-        addLeavesParts("ayran", "kefir")
+        addLeavesParts("ayran 200 g", "kefir 100 g")
         app.foodForm.open(app.resolve.currentName(), fromResolver = true)
         app.foodForm.draft.calories = "40"
         app.foodForm.save()

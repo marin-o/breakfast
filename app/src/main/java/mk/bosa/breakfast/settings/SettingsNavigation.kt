@@ -17,12 +17,8 @@ internal fun settingsPageBack(page: SettingsPage): SettingsPage? = if (page == S
 /** About, Version: the versionName then the versionCode, as in "0.1 (13)". */
 internal fun versionLabel(versionName: String, versionCode: Int): String = "$versionName ($versionCode)"
 
-/** About, Licences: the bundled font licence, shown as plain text. */
-internal const val LICENCES_ASSET = "OFL.txt"
-
-/** About, Licences: USDA's suggested citation, word for word, then the data set and its licence on their own line. */
-internal const val USDA_LICENCE_LINES =
-    "U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, 2019. fdc.nal.usda.gov.\nFNDDS 2021-2023. CC0 1.0."
+/** About, Licences, shown as plain text: the repository's NOTICE, which the build copies in as an asset, then the font's licence. */
+internal val LICENCE_ASSETS = listOf("NOTICE.txt", "OFL.txt")
 
 /** How deep [page] lies, for the way a page change moves: the list, a group's page, Licences (opened from About). */
 internal fun pageDepth(page: SettingsPage?): Int = when (page) {

@@ -37,7 +37,6 @@ import mk.bosa.breakfast.search.OffSearch
 import mk.bosa.breakfast.search.OffSearchService
 import mk.bosa.breakfast.search.UsdaCatalogue
 import mk.bosa.breakfast.search.UsdaPartSearch
-import mk.bosa.breakfast.settings.USDA_LICENCE_LINES
 import mk.bosa.breakfast.settings.SettingsState
 import mk.bosa.breakfast.settings.undoWindowMs
 import mk.bosa.breakfast.today.DayState
@@ -81,7 +80,7 @@ internal class AppStores<D>(
     val offSearch: OffSearchService,
     val usda: UsdaCatalogue,
     val recipes: RecipeStore,
-    /** About, Licences: the bundled licence as text (an app asset); throws when it cannot be read. */
+    /** About, Licences: the bundled notices as text (app assets); throws when they cannot be read. */
     val licence: () -> String,
     val weights: WeightStore,
     val profilePrefs: ProfilePrefs,
@@ -316,7 +315,7 @@ internal class AppOwners<D>(
             if (forRecipe) recipeForm.pick(food)
         },
         confirmLogged = confirmations::logged,
-        onSavedToLog = { food, origin -> review.choose(food, origin = origin, fetchServings = false) },
+        onSavedToLog = { food, origin, typed -> review.choose(food, origin = origin, fetchServings = false, typed = typed) },
     )
     /** The scanner and its barcode lookup (see [ScanSession]); a found product goes to [review], an unknown one to [foodForm]. */
     val scan: ScanSession = ScanSession(
@@ -465,10 +464,8 @@ internal class AppOwners<D>(
         notices.show(DIARY_DAMAGED, onDismiss = session::damagedNoticeSeen, durationMs = null)
     }
 
-    /** About, Licences: USDA's lines, then the bundled licence, read on [AppThreads.io] (left out when it cannot be read). */
-    suspend fun licenceText(): String = withContext(threads.io) {
-        listOf(USDA_LICENCE_LINES, runCatching { stores.licence() }.getOrDefault("")).filter { it.isNotBlank() }.joinToString("\n\n")
-    }
+    /** About, Licences: the bundled notices, read on [AppThreads.io] (empty when they cannot be read). */
+    suspend fun licenceText(): String = withContext(threads.io) { runCatching { stores.licence() }.getOrDefault("") }
 
     /**
      * "Not right?" waits while what shows it is covered by foods left to match (the resolver, or the Log with its rows), or

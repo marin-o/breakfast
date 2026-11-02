@@ -383,6 +383,15 @@ class LogPlanner(
      */
     fun quantityOf(raw: String, food: FoodRecord): Pair<Double, Measure> = quantityFor(readingFor(raw, food), food)
 
+    /** See [newFoodQuantity]; this planner knows only [food]. */
+    internal fun typedQuantity(raw: String, food: FoodRecord): Pair<Double, Measure>? {
+        val reading = readingFor(raw, food)
+        if (reading.wholeName || (reading.parsed.amount == null && !articleMeansOne(reading, food))) return null
+        // A unit counts a food of any name; without one, the rest of the part has to read as this food.
+        val part = if (reading.parsed.unit != null) pickedResolution(raw, food) else resolve(raw)
+        return part?.takeIf { it.supported && !it.needsChoice }?.let { it.amount to Measure(it.unit, it.label) }
+    }
+
     /** The food text the Log shows for [raw]: the whole part when it is a name, else the part without its amount. */
     fun phraseOf(raw: String): String = reading(raw).phrase
 
@@ -697,3 +706,11 @@ internal fun joinDraft(left: String, right: String): String = when {
 
 /** What Add saves for the Log's [input]: the same plan the draft's sum uses. Done and Add never open library search. */
 internal fun draftLogPlan(input: String, planner: LogPlanner): LogPlan = planner.plan(input)
+
+/**
+ * What typed part [raw] logs of [food], a food made for it just now: the amount and measure typed, a serving of [food] counted
+ * ("1 bar Candybar" with a bar). Null when no amount was typed, or the food can't count it ("1 can Candybar" with no can,
+ * ml with no density), so nothing logs without the user seeing it.
+ */
+internal fun newFoodQuantity(raw: String, food: FoodRecord): Pair<Double, Measure>? =
+    LogPlanner(FoodMatcher(listOf(food))).typedQuantity(raw, food)

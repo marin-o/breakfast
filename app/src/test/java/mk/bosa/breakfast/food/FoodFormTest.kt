@@ -2,7 +2,6 @@ package mk.bosa.breakfast.food
 
 import mk.bosa.breakfast.testFood
 import androidx.lifecycle.SavedStateHandle
-import mk.bosa.breakfast.resolve.ReviewLogPlan
 import mk.bosa.breakfast.app.DiaryChange
 import mk.bosa.breakfast.app.Notices
 import mk.bosa.breakfast.app.restoreFoodForm
@@ -10,11 +9,13 @@ import mk.bosa.breakfast.app.saveFoodForm
 import mk.bosa.breakfast.data.OffContributionDraft
 import mk.bosa.breakfast.domain.FoodRecord
 import mk.bosa.breakfast.domain.MealSlot
+import mk.bosa.breakfast.domain.Measure
 import mk.bosa.breakfast.domain.MeasureUnit
 import mk.bosa.breakfast.domain.NutritionValues
 import mk.bosa.breakfast.domain.TypedPart
 import mk.bosa.breakfast.domain.servingNamed
 import mk.bosa.breakfast.resolve.ResolveQueueView
+import mk.bosa.breakfast.scan.ProductReviewOrigin
 import mk.bosa.breakfast.today.OpenDiary
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
@@ -31,8 +32,8 @@ class FoodFormTest {
         var hold: CompletableDeferred<Unit>? = null
         override suspend fun updateFood(food: FoodRecord) { hold?.await(); calls += "update ${food.id}"; updated += food }
         override suspend fun saveFood(food: NewFood): FoodRecord { hold?.await(); calls += "save ${food.name}"; saved += food; return stored(food) }
-        override suspend fun saveFoodAndLog(food: NewFood, meal: MealSlot, dayKey: String): FoodRecord {
-            hold?.await(); calls += "save and log ${food.name} to $meal on $dayKey"; saved += food; return stored(food)
+        override suspend fun saveFoodAndLog(food: NewFood, meal: MealSlot, dayKey: String, amount: Double, measure: Measure): FoodRecord {
+            hold?.await(); calls += "save and log ${food.name}: $amount ${measure.label} to $meal on $dayKey"; saved += food; return stored(food)
         }
         private fun stored(food: NewFood) = record("custom-${food.name}", food.name, food.barcode)
     }
@@ -61,7 +62,7 @@ class FoodFormTest {
         onClose = { events += "close" },
         onSaved = { food, newFood, advances -> events += "saved ${food.name} new=$newFood advances=$advances" },
         confirmLogged = { confirmed++ },
-        onSavedToLog = { food, origin -> events += "review ${food.name} $origin" },
+        onSavedToLog = { food, origin, typed -> events += "review ${food.name} $origin" + typed?.let { " from ${it.amount}" }.orEmpty() },
     )
 
     private val kefir = record("kefir", "Kefir", "4006381333931")
@@ -111,25 +112,72 @@ class FoodFormTest {
         assertEquals("a save that offers no candidate drops an earlier one", listOf<OffContributionDraft?>(null), offers)
     }
 
-    @Test fun aNewFoodWithAMealOpenIsSavedAndLoggedThere() {
+    @Test fun aNewFoodWithAMealOpenLogsNothingAndGoesToTheReview() {
         meal = MealSlot.LUNCH
         form.open()
         typeFood()
+        events.clear()
         form.save()
-        assertEquals(listOf("save and log Ayran to LUNCH on 2026-10-28"), store.calls)
-        assertEquals(listOf<DiaryChange>(DiaryChange.FoodsLogged), diary.published)
-        assertEquals(1, confirmed)
-        assertNull(notices.message)
+        assertEquals(listOf("save Ayran"), store.calls)
+        assertEquals("Undo is kept", listOf<DiaryChange>(DiaryChange.FoodsChanged), diary.published)
+        assertEquals("no \"Logged!\" before anything is logged", 0, confirmed)
+        assertNull("nothing covers the amount", notices.message)
+        assertEquals(listOf("saved Ayran new=true advances=false", "review Ayran MEAL"), events)
     }
 
-    @Test fun whileAQueueIsResolvedItsMealWinsAndTheQueueAdvances() {
+    @Test fun anAmountTypedBeforeTheFormGoesToTheReview() {
+        meal = MealSlot.LUNCH
+        form.open(typed = TypedPart("ayran", 200.0, MeasureUnit.GRAM))
+        typeFood()
+        form.save()
+        assertEquals("review Ayran MEAL from 200.0", events.last())
+    }
+
+    @Test fun whileAQueueIsResolvedATypedAmountLogsToItsMealAndTheQueueAdvances() {
         meal = MealSlot.LUNCH
         queue = ResolveQueueView(MealSlot.DINNER, listOf("ayran 200ml"), 1, TypedPart("ayran", 200.0, MeasureUnit.MILLILITER))
         form.open(fromResolver = true)
         typeFood()
+        form.draft.density = "103"
         form.save()
-        assertEquals(listOf("save and log Ayran to DINNER on 2026-10-28"), store.calls)
+        assertEquals(listOf("save and log Ayran: 200.0 ml to DINNER on 2026-10-28"), store.calls)
+        assertEquals(listOf<DiaryChange>(DiaryChange.FoodsLogged), diary.published)
+        assertEquals(1, confirmed)
         assertEquals("saved Ayran new=true advances=true", events.last())
+    }
+
+    @Test fun aServingAddedInTheFormIsWhatATypedPartLogs() {
+        queue = ResolveQueueView(MealSlot.DINNER, listOf("1 bar Candybar"), 1, TypedPart("bar Candybar", 1.0, null))
+        form.open("bar Candybar", fromResolver = true)
+        typeFood("Candybar", "534")
+        addBar()
+        form.save()
+        assertEquals(listOf("save and log Candybar: 1.0 bar to DINNER on 2026-10-28"), store.calls)
+    }
+
+    @Test fun aTypedAmountTheFoodCannotCountGoesToTheReview() {
+        // "1 can" with no can on the food, and ml on a food in g with no density.
+        for ((raw, typed) in listOf("1 can Ayran" to TypedPart("can Ayran", 1.0, null), "200 ml Ayran" to TypedPart("Ayran", 200.0, MeasureUnit.MILLILITER))) {
+            queue = ResolveQueueView(MealSlot.DINNER, listOf(raw), 1, typed)
+            form.open("Ayran", fromResolver = true)
+            typeFood()
+            store.calls.clear()
+            form.save()
+            assertEquals(raw, listOf("save Ayran"), store.calls)
+            assertEquals(raw, "review Ayran QUEUE", events.last())
+        }
+        assertEquals(0, confirmed)
+    }
+
+    @Test fun aQueuedPartWithNoAmountGoesToTheReviewAndWaits() {
+        queue = ResolveQueueView(MealSlot.DINNER, listOf("ayran"), 1, TypedPart("ayran", null, null))
+        form.open("ayran", fromResolver = true)
+        typeFood()
+        events.clear()
+        form.save()
+        assertEquals(listOf("save Ayran"), store.calls)
+        assertEquals(0, confirmed)
+        assertEquals(listOf("saved Ayran new=true advances=false", "review Ayran QUEUE"), events)
     }
 
     @Test fun aQueueWithoutAMealYetStoresTheFoodAloneAndGoesToTheReview() {
@@ -250,13 +298,20 @@ class FoodFormTest {
         assertEquals("saved Ayran new=true advances=false", events.last())
     }
 
-    @Test fun theSaveTargetFollowsThePartTheQueueAndTheOpenMeal() {
+    @Test fun theStepAfterSaveFollowsThePartTheQueueAndTheOpenMeal() {
         val queue = ResolveQueueView(MealSlot.DINNER, listOf("ayran"), 1, TypedPart("ayran", null, null))
-        assertNull(foodSaveTarget(resolvingPart = true, queue = null, openMeal = MealSlot.LUNCH))
-        assertEquals(ReviewLogPlan(MealSlot.DINNER, true), foodSaveTarget(false, queue, MealSlot.LUNCH))
-        assertNull("a queue without a meal", foodSaveTarget(false, queue.copy(meal = null), MealSlot.LUNCH))
-        assertEquals(ReviewLogPlan(MealSlot.LUNCH, false), foodSaveTarget(false, null, MealSlot.LUNCH))
-        assertNull(foodSaveTarget(false, null, null))
+        val grams = 200.0 to Measure(MeasureUnit.GRAM)
+        fun step(resolving: Boolean = false, origin: ProductReviewOrigin? = null, queued: ResolveQueueView? = null, open: MealSlot? = null, typed: Pair<Double, Measure>? = null) =
+            foodSaveStep(resolving, origin, queued, open) { typed }
+        assertEquals("a part takes it, typed or not", FoodSaveStep.Alone, step(resolving = true, origin = ProductReviewOrigin.LOG_PART, open = MealSlot.LUNCH, typed = grams))
+        assertEquals("the queue's meal wins", FoodSaveStep.LogTyped(MealSlot.DINNER, 200.0, Measure(MeasureUnit.GRAM)), step(queued = queue, open = MealSlot.LUNCH, typed = grams))
+        assertEquals("no amount typed", FoodSaveStep.Review(ProductReviewOrigin.QUEUE), step(queued = queue, open = MealSlot.LUNCH))
+        assertEquals("no meal to log to yet", FoodSaveStep.Review(ProductReviewOrigin.QUEUE), step(queued = queue.copy(meal = null), typed = grams))
+        assertEquals("a part of the draft whatever is queued", FoodSaveStep.Review(ProductReviewOrigin.LOG_PART), step(origin = ProductReviewOrigin.LOG_PART, queued = queue, typed = grams))
+        assertEquals("a correction whatever is queued", FoodSaveStep.Review(ProductReviewOrigin.CORRECTION), step(origin = ProductReviewOrigin.CORRECTION, queued = queue, typed = grams))
+        assertEquals("a logging scan with no meal open", FoodSaveStep.Review(ProductReviewOrigin.MEAL), step(origin = ProductReviewOrigin.MEAL))
+        assertEquals("a meal open beneath", FoodSaveStep.Review(ProductReviewOrigin.MEAL), step(open = MealSlot.LUNCH))
+        assertEquals("nothing to log to", FoodSaveStep.Alone, step())
     }
 
     @Test fun anOpenFormSurvivesProcessDeathButNotWhileResolving() {
@@ -347,12 +402,12 @@ class FoodFormTest {
         assertBarStored()
     }
 
-    @Test fun servingsAndDensityGoWithANewFoodLoggedToAMeal() {
+    @Test fun servingsAndDensityGoWithANewFoodForAnOpenMeal() {
         meal = MealSlot.LUNCH
         form.open()
         typeFoodWithBar()
         form.save()
-        assertEquals("save and log Ayran to LUNCH on 2026-10-28", store.calls.single())
+        assertEquals("the review takes it on", "save Ayran", store.calls.single())
         assertBarStored()
     }
 
@@ -375,11 +430,11 @@ class FoodFormTest {
     }
 
     @Test fun servingsAndDensityGoWithANewFoodForAQueue() {
-        queue = ResolveQueueView(MealSlot.DINNER, listOf("ayran"), 1, TypedPart("ayran", null, null))
+        queue = ResolveQueueView(MealSlot.DINNER, listOf("1 bar ayran"), 1, TypedPart("bar ayran", 1.0, null))
         form.open("Ayran")
         typeFoodWithBar()
         form.save()
-        assertEquals("save and log Ayran to DINNER on 2026-10-28", store.calls.single())
+        assertEquals("save and log Ayran: 1.0 bar to DINNER on 2026-10-28", store.calls.single())
         assertBarStored()
     }
 

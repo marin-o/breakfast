@@ -106,8 +106,8 @@ class ResolveFrameTest {
         object : FoodFormStore {
             override suspend fun updateFood(food: FoodRecord) { calls += "update ${food.id}" }
             override suspend fun saveFood(food: NewFood): FoodRecord { calls += "save food ${food.name}"; return stored(food) }
-            override suspend fun saveFoodAndLog(food: NewFood, meal: MealSlot, dayKey: String): FoodRecord {
-                calls += "save and log ${food.name} $meal"
+            override suspend fun saveFoodAndLog(food: NewFood, meal: MealSlot, dayKey: String, amount: Double, measure: mk.bosa.breakfast.domain.Measure): FoodRecord {
+                calls += "save and log ${food.name} $amount ${measure.label} $meal"
                 return stored(food)
             }
             private fun stored(new: NewFood) = food(new.name.lowercase(), new.name)
@@ -173,31 +173,31 @@ class ResolveFrameTest {
     }
 
     @Test fun addsLeftoversAreResolvedFromTheLogDraft() {
-        logSaved = SavedMeal(listOf(entry("e1")), NutritionValues.ZERO, unresolvedSegments = listOf("ayran", "kefir"))
+        logSaved = SavedMeal(listOf(entry("e1")), NutritionValues.ZERO, unresolvedSegments = listOf("ayran", "kefir 60 g"))
         log.open(MealSlot.DINNER)
-        log.onDraft("2 eggs, ayran, kefir")
+        log.onDraft("2 eggs, ayran, kefir 60 g")
         log.submit()
-        assertEquals("ayran, kefir", log.draft)
+        assertEquals("ayran, kefir 60 g", log.draft)
         assertTrue(resolve.queueActive)
         assertFalse("the Log shows them itself", resolve.resolverOpen)
         assertEquals("Some foods need a match.", log.error)
         resolve.resolve(food("ayran"))
         assertEquals("queue log ayran DINNER", calls.last())
-        assertEquals("kefir", log.draft)
-        // A New food made from the resolver resolves the next part and logs it to the queue's meal.
+        assertEquals("kefir 60 g", log.draft)
+        // A New food made from the resolver logs the next part's typed amount to the queue's meal.
         foodForm.open("kefir", fromResolver = true)
         foodForm.draft.name = "Kefir"
         foodForm.draft.calories = "60"
         foodForm.save()
-        assertEquals("save and log Kefir DINNER", calls.last())
+        assertEquals("save and log Kefir 60.0 g DINNER", calls.last())
         assertEquals("", log.draft)
         assertFalse(resolve.resolverOpen)
     }
 
     private fun addLeavesAyranAndKefir() {
-        logSaved = SavedMeal(listOf(entry("e1")), NutritionValues.ZERO, unresolvedSegments = listOf("ayran", "kefir"))
+        logSaved = SavedMeal(listOf(entry("e1")), NutritionValues.ZERO, unresolvedSegments = listOf("ayran", "kefir 60 g"))
         log.open(MealSlot.DINNER)
-        log.onDraft("2 eggs, ayran, kefir")
+        log.onDraft("2 eggs, ayran, kefir 60 g")
         log.submit()
         assertEquals("Some foods need a match.", log.error)
     }
@@ -224,7 +224,7 @@ class ResolveFrameTest {
         assertEquals("Some foods need a match.", log.error)
         addLeavesAyranAndKefir()
         resolve.close()
-        assertEquals("ayran, kefir", log.draft)
+        assertEquals("ayran, kefir 60 g", log.draft)
         assertEquals("Some foods need a match.", log.error)
     }
 

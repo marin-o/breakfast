@@ -1,3 +1,10 @@
+/** The repository's NOTICE as an app asset, for Settings, About, Licences: one text, in one place. */
+abstract class NoticeAsset : DefaultTask() {
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val notice: RegularFileProperty
+    @get:OutputDirectory abstract val assets: DirectoryProperty
+    @TaskAction fun copy() { notice.get().asFile.copyTo(assets.get().file("NOTICE.txt").asFile, overwrite = true) }
+}
+
 plugins {
     id("com.android.application")
     id("com.google.devtools.ksp")
@@ -55,6 +62,13 @@ android {
     sourceSets {
         getByName("test").kotlin.directories += "src/benchShared/java"
         getByName("androidTest").kotlin.directories += "src/benchShared/java"
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        val task = tasks.register<NoticeAsset>("${variant.name}NoticeAsset") { notice.set(rootProject.layout.projectDirectory.file("NOTICE")) }
+        variant.sources.assets?.addGeneratedSourceDirectory(task, NoticeAsset::assets)
     }
 }
 

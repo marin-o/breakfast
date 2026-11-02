@@ -476,10 +476,7 @@ class AppOwnersTest {
 
     /** About, Licences: read by the owners on their IO dispatcher, not by the screen. */
     @Test fun theLicenceIsReadByTheOwners() = kotlinx.coroutines.runBlocking {
-        assertEquals(
-            "U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, 2019. fdc.nal.usda.gov.\nFNDDS 2021-2023. CC0 1.0.\n\nSIL Open Font License",
-            AppKit().owners.licenceText(),
-        )
+        assertEquals("SIL Open Font License", AppKit().owners.licenceText())
     }
 
     @Test fun aLogAddOffersItsUndoAndANewDayStartMovesAFollowerOfToday() {

@@ -169,8 +169,8 @@ internal class AppKit(
             foodForm = object : FoodFormStore {
                 override suspend fun updateFood(food: FoodRecord) { calls += "update ${food.id}" }
                 override suspend fun saveFood(food: NewFood): FoodRecord { calls += "save food ${food.name}"; return food(food.name.lowercase(), food.name).copy(barcode = food.barcode.ifBlank { null }) }
-                override suspend fun saveFoodAndLog(food: NewFood, meal: MealSlot, dayKey: String): FoodRecord {
-                    calls += "save and log ${food.name} $meal"
+                override suspend fun saveFoodAndLog(food: NewFood, meal: MealSlot, dayKey: String, amount: Double, measure: mk.bosa.breakfast.domain.Measure): FoodRecord {
+                    calls += "save and log ${food.name} $amount ${measure.label} $meal"
                     return food(food.name.lowercase(), food.name)
                 }
             },

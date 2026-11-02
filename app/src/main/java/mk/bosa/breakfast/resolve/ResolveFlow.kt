@@ -237,9 +237,12 @@ internal class ResolveFlow(
         if (advancesQueue) advance() else if (source?.showsItsParts != true) continuation = false
     }
 
-    /** The food form saved: a queued part it resolved moves the queue on; a new food made for a Log part is its pick. */
+    /**
+     * The food form saved: a queued part it logged moves the queue on, and one it didn't stays for the review that follows;
+     * a new food made for a Log part is its pick.
+     */
     fun foodSaved(food: FoodRecord, newFood: Boolean, advancesQueue: Boolean) {
-        childLogged(advancesQueue)
+        if (advancesQueue) childLogged(true)
         if (resolvingPart && newFood) finishPart(food)
     }
 

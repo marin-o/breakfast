@@ -45,7 +45,7 @@ The same rows show in Library search, under a no-match part and in recipe ingred
 
 ## Wording (owner: as USDA asks)
 - Source in a food's details: "USDA FoodData Central".
-- Settings, Licences, added: USDA's suggested citation word for word, "U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, 2019. fdc.nal.usda.gov.", then on its own line "FNDDS 2021-2023. CC0 1.0." USDA doesn't endorse the app, and nothing may imply it.
+- Settings, Licences, through `NOTICE`: USDA's suggested citation word for word, "U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, 2019. fdc.nal.usda.gov.", then on its own line "FNDDS 2021-2023. CC0 1.0." USDA doesn't endorse the app, and nothing may imply it.
 
 ## Checks
 - Importer: 5,432 foods and 22,194 portions in, 9,647 additional descriptions, drops reported. FDC 2705975: 219 kcal, 24.6 g protein, 9.99 g fat, 6.01 g carbs; 165 g gives 361.35 kcal.

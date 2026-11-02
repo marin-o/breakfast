@@ -29,7 +29,7 @@ import mk.bosa.breakfast.entry.EntryEditStore
 import mk.bosa.breakfast.log.LogStore
 import mk.bosa.breakfast.library.LibraryStore
 import mk.bosa.breakfast.settings.SettingsState
-import mk.bosa.breakfast.settings.LICENCES_ASSET
+import mk.bosa.breakfast.settings.LICENCE_ASSETS
 import mk.bosa.breakfast.today.MatchStore
 import mk.bosa.breakfast.today.UndoStore
 import mk.bosa.breakfast.transfer.ContentDiaryFiles
@@ -117,11 +117,11 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
                     food.name, food.brand, food.barcode, food.aliases, food.nutrition, food.basisAmount, food.basisUnit,
                     sourceName = food.sourceName, sourceDescription = food.sourceDescription, servings = food.servings, density = food.density,
                 )
-                override suspend fun saveFoodAndLog(food: NewFood, meal: MealSlot, dayKey: String): FoodRecord {
+                override suspend fun saveFoodAndLog(food: NewFood, meal: MealSlot, dayKey: String, amount: Double, measure: mk.bosa.breakfast.domain.Measure): FoodRecord {
                     val entry = engine.saveCustomAndLog(
                         food.name, food.brand, food.barcode, food.aliases, food.nutrition, food.basisAmount, food.basisUnit, meal,
-                        food.basisAmount, food.basisUnit, dayKey = dayKey, sourceName = food.sourceName, sourceDescription = food.sourceDescription,
-                        servings = food.servings, density = food.density,
+                        amount, measure.unit, dayKey = dayKey, sourceName = food.sourceName, sourceDescription = food.sourceDescription,
+                        servings = food.servings, density = food.density, servingName = measure.name.takeIf { measure.unit == MeasureUnit.SERVING },
                     )
                     return engine.foodById(entry.foodId) ?: error("Saved food could not be reloaded.")
                 }
@@ -166,7 +166,7 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
                     engine.logRecipe(recipe, amount, unit, meal, dayKey)
                 }
             },
-            licence = { application.assets.open(LICENCES_ASSET).bufferedReader().use { it.readText() } },
+            licence = { LICENCE_ASSETS.joinToString("\n\n") { asset -> application.assets.open(asset).bufferedReader().use { it.readText().trim() } } },
             weights = object : WeightStore {
                 override suspend fun add(point: WeightPoint) = engine.addWeightPoint(point)
                 override suspend fun replaceLatest(point: WeightPoint) = engine.replaceLatestWeightPoint(point)

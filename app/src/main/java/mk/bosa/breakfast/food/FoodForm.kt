@@ -16,16 +16,18 @@ import mk.bosa.breakfast.data.OffContributionDraft
 import mk.bosa.breakfast.data.plausibleNutrition
 import mk.bosa.breakfast.domain.FoodRecord
 import mk.bosa.breakfast.domain.MealSlot
+import mk.bosa.breakfast.domain.Measure
 import mk.bosa.breakfast.domain.MeasureUnit
 import mk.bosa.breakfast.domain.NutritionValues
 import mk.bosa.breakfast.domain.ServingConversion
 import mk.bosa.breakfast.domain.canonicalBarcode
 import mk.bosa.breakfast.domain.editedCustomFoodRecord
+import mk.bosa.breakfast.domain.newCustomFoodRecord
+import mk.bosa.breakfast.domain.newFoodQuantity
 import mk.bosa.breakfast.domain.normalizeBarcode
 import mk.bosa.breakfast.domain.resolveNutrition
-import mk.bosa.breakfast.resolve.ReviewLogPlan
+import mk.bosa.breakfast.domain.TypedPart
 import mk.bosa.breakfast.resolve.ResolveQueueView
-import mk.bosa.breakfast.resolve.queueLogPlan
 
 /** The food writes the form makes; the view model adapts `BreakfastEngine`. */
 internal interface FoodFormStore {
@@ -33,8 +35,8 @@ internal interface FoodFormStore {
     suspend fun updateFood(food: FoodRecord)
     /** New food without a meal; returns the food as stored. */
     suspend fun saveFood(food: NewFood): FoodRecord
-    /** New food logged to [meal] on [dayKey] with its basis as the amount; returns the food as stored. */
-    suspend fun saveFoodAndLog(food: NewFood, meal: MealSlot, dayKey: String): FoodRecord
+    /** New food logged to [meal] on [dayKey] as [amount] of [measure]; returns the food as stored. */
+    suspend fun saveFoodAndLog(food: NewFood, meal: MealSlot, dayKey: String, amount: Double, measure: Measure): FoodRecord
 }
 
 /** A new personal food as the form saves it. [barcode] is the stored form ([canonicalBarcode]); [aliases] comma-joined. */
@@ -62,11 +64,12 @@ internal data class NewFood(
  *   their fields to, the baseline it opened with (Back asks before discarding only when the draft differs from it:
  *   [discardOpen]), and the field to move focus to after a refused save ([focus]). The barcode field's scan asks the
  *   scanner for one barcode ([startScanFor]); the scanner opens over the form and Back on it returns here.
- * - **Save targeting** ([foodSaveTarget]): an edit updates the food; a new food is logged too when there is a meal (the
- *   resolve queue's while one is being resolved, else the meal open beneath), and is saved alone otherwise, and always
- *   while a part is being resolved ([resolvingPart]: of the Log's draft, which logs it, or of a recipe's ingredients; the
- *   food becomes that part's pick, with no notice, so nothing covers the next step). A queue
- *   without a meal yet takes it through its review, which hands it to the Log's draft.
+ * - **Save targeting** ([foodSaveStep]): an edit updates the food. A new food is logged by Save only as a queued part's typed
+ *   amount, to the queue's meal. With no amount typed, while a meal is open beneath or a queue is being resolved, it is
+ *   stored alone and goes on to product review ([onSavedToLog]), the step a logging scan takes, for the amount and the meal;
+ *   Back there leaves it saved with nothing logged. It is saved alone otherwise, and always while a part is being
+ *   resolved ([resolvingPart]: of the Log's draft, which logs it, or of a recipe's ingredients; the food becomes that
+ *   part's pick, with no notice, so nothing covers the next step).
  * - **Process death:** [savedForm] is what the coordinator mirrors into `SavedStateHandle` and [restore] puts back; not
  *   while a part or a queue is being resolved, since what Save does there would not come back.
  *
@@ -94,11 +97,13 @@ internal class FoodForm(
     private val onSaved: (food: FoodRecord, newFood: Boolean, advancesQueue: Boolean) -> Unit,
     /** A new food was saved and logged to the meal the user chose: "Logged!" (see `Confirmations`). */
     private val confirmLogged: () -> Unit,
-    /** A food made for a logging scan or search was saved: it goes on to the review a known product gets. */
-    private val onSavedToLog: (FoodRecord, ProductReviewOrigin) -> Unit = { _, _ -> },
+    /** A food made while logging was saved with no amount to log: it goes on to the review a known product gets, starting on the amount typed, if any. */
+    private val onSavedToLog: (FoodRecord, ProductReviewOrigin, TypedPart?) -> Unit = { _, _, _ -> },
 ) {
     /** This New food is for a logging review ([open]): Save stores it alone and [onSavedToLog] takes it on. */
     private var reviewAfterSave: ProductReviewOrigin? = null
+    /** The amount typed where this New food was asked for, outside a queue: the review starts on it. */
+    private var typedBeforeForm: TypedPart? = null
     var open by mutableStateOf(false); private set
     var editingFoodId by mutableStateOf<String?>(null); private set
     val draft = FoodDraft()
@@ -110,9 +115,10 @@ internal class FoodForm(
     private var focusSerial = 0L
 
     /** New food, prefilled; [fromOff] when Open Food Facts had the product without usable nutrition. */
-    fun open(name: String = "", brand: String = "", barcode: String = "", fromResolver: Boolean = false, fromOff: Boolean = false, reviewAfterSave: ProductReviewOrigin? = null) {
+    fun open(name: String = "", brand: String = "", barcode: String = "", fromResolver: Boolean = false, fromOff: Boolean = false, reviewAfterSave: ProductReviewOrigin? = null, typed: TypedPart? = null) {
         onOpen(fromResolver)
         this.reviewAfterSave = reviewAfterSave
+        typedBeforeForm = typed
         editingFoodId = null
         draft.reset()
         draft.name = name
@@ -128,6 +134,7 @@ internal class FoodForm(
     /** Edit food for [food]. */
     fun openEdit(food: FoodRecord) {
         reviewAfterSave = null
+        typedBeforeForm = null
         editingFoodId = food.id
         draft.load(food)
         baseline = draft.fields()
@@ -212,17 +219,6 @@ internal class FoodForm(
         val basisAmount = resolved.basisAmount
         val basisUnit = resolved.basisUnit
         val nutrition = NutritionValues(kcal, resolved.protein, resolved.carbohydrates, resolved.fat)
-        val resolveQueue = queue()
-        val waitsForMeal = resolveQueue != null && resolveQueue.meal == null
-        val thenReview = (reviewAfterSave ?: ProductReviewOrigin.QUEUE.takeIf { waitsForMeal })
-            .takeIf { editingId == null && !resolvingPart() && (resolveQueue == null || waitsForMeal || it?.takesNoMeal == true) }
-        val plan = if (thenReview != null) null else foodSaveTarget(resolvingPart(), resolveQueue, openMeal())
-        val saveTarget = plan?.meal
-        val resolvesQueue = plan?.advancesQueue == true
-        if (resolveQueue != null && saveTarget == null && thenReview == null) {
-            notices.show("Choose a meal before saving this food.")
-            return
-        }
         val forPart = editingId == null && resolvingPart()
         val fromOff = draft.fromOff
         val candidate = if (fromOff) normalizeBarcode(barcode)?.let {
@@ -238,10 +234,12 @@ internal class FoodForm(
             servings = servingList,
             density = density,
         )
+        val step = if (editingId != null) FoodSaveStep.Alone else foodSaveStep(resolvingPart(), reviewAfterSave, queue(), openMeal()) { raw -> newFoodQuantity(raw, newFood.asRecord()) }
+        val typed = typedBeforeForm
         val day = selectedDay()
         session.write(
-            // A new food saved with a meal is a log (it ends Undo); a food saved or edited alone is not.
-            change = { _: FoodRecord -> if (editingId == null && saveTarget != null) DiaryChange.FoodsLogged else DiaryChange.FoodsChanged },
+            // A new food logged by Save is a log (it ends Undo); a food saved or edited alone is not.
+            change = { _: FoodRecord -> if (step is FoodSaveStep.LogTyped) DiaryChange.FoodsLogged else DiaryChange.FoodsChanged },
             onSuccess = { saved ->
                 open = false
                 discardOpen = false
@@ -250,13 +248,14 @@ internal class FoodForm(
                 offerContribution(candidate?.copy(languageCode = contributionLanguageFor(name), packageQuantityMl = null))
                 when {
                     editingId != null -> notices.show("Personal food updated for future logs.")
-                    saveTarget != null -> confirmLogged()
-                    thenReview != null || forPart -> Unit
+                    step is FoodSaveStep.LogTyped -> confirmLogged()
+                    step is FoodSaveStep.Review || forPart -> Unit
                     else -> notices.show("Saved to your food library.")
                 }
                 reviewAfterSave = null
-                onSaved(saved, editingId == null, resolvesQueue)
-                if (thenReview != null) onSavedToLog(saved, thenReview)
+                typedBeforeForm = null
+                onSaved(saved, editingId == null, step is FoodSaveStep.LogTyped)
+                if (step is FoodSaveStep.Review) onSavedToLog(saved, step.origin, typed)
             },
             onFailure = { notices.show(it.message ?: "Could not save this food.") },
         ) {
@@ -264,17 +263,45 @@ internal class FoodForm(
                 val original = session.foods.firstOrNull { it.id == editingId } ?: error("That personal food is no longer available.")
                 store.updateFood(editedCustomFoodRecord(original, name, brand, storedBarcode, newFood.aliases, nutrition, basisAmount, basisUnit, aliases = aliasList, servings = servingList, density = density))
                 original
-            } else if (saveTarget != null) store.saveFoodAndLog(newFood, saveTarget, day)
+            } else if (step is FoodSaveStep.LogTyped) store.saveFoodAndLog(newFood, step.meal, day, step.amount, step.measure)
             else store.saveFood(newFood)
         }
     }
 }
 
+/** What Save does with a new food once it is stored. */
+internal sealed interface FoodSaveStep {
+    /** Nothing more: it stands alone, or is the pick of the part being resolved. */
+    data object Alone : FoodSaveStep
+    /** The queued part's typed amount logs to the queue's [meal], and the queue moves on. */
+    data class LogTyped(val meal: MealSlot, val amount: Double, val measure: Measure) : FoodSaveStep
+    /** Nothing is logged: product review for [origin] takes the food on, for the amount and the meal. */
+    data class Review(val origin: ProductReviewOrigin) : FoodSaveStep
+}
+
 /**
- * Where Save logs a new food, or null to save it alone. While a part is being resolved ([resolvingPart]) it is never
- * logged: it becomes the part's pick, and the Log's Add or the recipe's Save takes it from there. Otherwise the rule product review follows too
- * ([queueLogPlan]): while a resolve [queue] is being resolved its meal wins and the queue advances; else the meal open
- * beneath, if any.
+ * The step after Save for a new food. A part being resolved takes it as its pick, and a review with no meal to choose keeps
+ * what it is for, whatever is queued. A queue's part with a meal logs what was typed ([typedQuantity], null when no amount
+ * was typed or it can't count this food); otherwise its review asks. With no queue, a logging scan or search keeps its
+ * review, a meal open beneath gets one, and with no meal the food stands alone.
  */
-internal fun foodSaveTarget(resolvingPart: Boolean, queue: ResolveQueueView?, openMeal: MealSlot?): ReviewLogPlan? =
-    if (resolvingPart) null else queueLogPlan(queueActive = queue != null, queue?.meal, openMeal)
+internal fun foodSaveStep(
+    resolvingPart: Boolean,
+    reviewAfterSave: ProductReviewOrigin?,
+    queue: ResolveQueueView?,
+    openMeal: MealSlot?,
+    typedQuantity: (raw: String) -> Pair<Double, Measure>?,
+): FoodSaveStep = when {
+    resolvingPart -> FoodSaveStep.Alone
+    reviewAfterSave?.takesNoMeal == true -> FoodSaveStep.Review(reviewAfterSave)
+    queue != null -> queue.meal?.let { meal -> typedQuantity(queue.parts.first())?.let { (amount, measure) -> FoodSaveStep.LogTyped(meal, amount, measure) } }
+        ?: FoodSaveStep.Review(ProductReviewOrigin.QUEUE)
+    reviewAfterSave != null -> FoodSaveStep.Review(reviewAfterSave)
+    openMeal != null -> FoodSaveStep.Review(ProductReviewOrigin.MEAL)
+    else -> FoodSaveStep.Alone
+}
+
+/** The food as the store will keep it, for reading a typed part against it before it is stored. */
+private fun NewFood.asRecord(): FoodRecord = newCustomFoodRecord(
+    "new", name, brand, barcode, aliases, nutrition, basisAmount, basisUnit, basisAmount, basisUnit, sourceName, sourceDescription, servings, density,
+)
