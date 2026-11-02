@@ -15,7 +15,7 @@ android {
         minSdk = 26
         targetSdk = 35
         // Bump versionCode by 1 for every build installed on the phone; versionName stays 0.x until a release.
-        versionCode = 52
+        versionCode = 53
         versionName = "0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
