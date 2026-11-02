@@ -1,6 +1,7 @@
 package com.bosa.breakfast.app
 
 import com.bosa.breakfast.profile.ProfileDiaryData
+import com.bosa.breakfast.domain.TargetRow
 import com.bosa.breakfast.domain.WeightPoint
 import com.bosa.breakfast.profile.WeightStore
 import com.bosa.breakfast.profile.ProfilePrefs
@@ -63,6 +64,7 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
                 override fun entries() = engine.persistedMeal().entries
                 override fun recipes() = engine.recipes()
                 override fun weightPoints() = engine.weightPoints()
+                override fun targetHistory() = engine.targetHistory()
                 override suspend fun reloadIfStale() = engine.reloadIfStale()
                 override fun damagedNoticePending() = engine.damagedNoticePending()
                 override fun damagedNoticeSeen() = engine.damagedNoticeSeen()
@@ -168,6 +170,7 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
                 override suspend fun add(point: WeightPoint) = engine.addWeightPoint(point)
                 override suspend fun replaceLatest(point: WeightPoint) = engine.replaceLatestWeightPoint(point)
                 override suspend fun delete(id: Long) = engine.deleteWeightPoint(id)
+                override suspend fun saveTarget(row: TargetRow) = engine.saveTargetRow(row)
             },
             profilePrefs = profilePrefs,
         ),
@@ -237,6 +240,7 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
         day.check(returning = true)
         if (ready) session.refresh()
         reminders.check()
+        profile.adjustDaily()
     }
     /** The meal the "Meal" setting gives a log now ([AppOwners.automaticMealNow]); null for Ask. */
     internal fun automaticMealNow(): MealSlot? = app.automaticMealNow()

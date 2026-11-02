@@ -1,5 +1,13 @@
 package com.bosa.breakfast.data
 
+import com.bosa.breakfast.domain.Activity
+import com.bosa.breakfast.domain.Goal
+import com.bosa.breakfast.domain.Macro
+import com.bosa.breakfast.domain.Sex
+import com.bosa.breakfast.domain.ageValid
+import com.bosa.breakfast.domain.heightValid
+import com.bosa.breakfast.domain.macroPercentValid
+import com.bosa.breakfast.domain.paceValid
 import com.bosa.breakfast.domain.weightValid
 import com.bosa.breakfast.domain.kcalTargetValid
 import com.bosa.breakfast.domain.macroTargetValid
@@ -38,9 +46,10 @@ internal const val DIARY_FORMAT = "breakfast-diary"
  * The layout of the file below. Bump it (and keep reading the old one) when a field changes. 2 added the recipes; a
  * version 1 file has none, and reads as a diary without recipes. 3 added the
  * profile and the weight curve; an older file has neither, and leaves the phone's profile and curve as they are; a file of 3 replaces both. 4 added "Several weights a day": a day can hold several
- * points, where up to 3 two on one day refuse the file, and a file of 3 reads with the setting off.
+ * points, where up to 3 two on one day refuse the file, and a file of 3 reads with the setting off. 5 added the target history and the
+ * profile's body, goal and macro percents, all optional; a file of 3 or 4 has no history, and its profile, which replaces the phone's, starts a new one.
  */
-internal const val DIARY_FORMAT_VERSION = 4
+internal const val DIARY_FORMAT_VERSION = 5
 
 /** The first format with the profile and the curve. */
 private const val PROFILE_FORMAT_VERSION = 3
@@ -49,7 +58,7 @@ private const val PROFILE_FORMAT_VERSION = 3
 private const val SEVERAL_WEIGHTS_FORMAT_VERSION = 4
 
 /** The Room schema the rows were read from; a file from a newer schema is refused. Keep equal to [BreakfastDatabase]. */
-internal const val DIARY_SCHEMA_VERSION = 11
+internal const val DIARY_SCHEMA_VERSION = 12
 
 /** A file bigger than this is refused before it is parsed. A year of logging is well under 5 MB. */
 internal const val DIARY_MAX_BYTES = 32L * 1024 * 1024
@@ -68,6 +77,8 @@ internal data class DiaryRows(
     val weightPoints: List<WeightPointEntity>? = null,
     /** Not a table's row: what the profile holds beside the curve. Null: a file from before it, which says nothing. */
     val profile: ProfileValues? = null,
+    /** Null: a file from before the profile, which says nothing about it. */
+    val targetHistory: List<TargetHistoryEntity>? = null,
 )
 
 /** The settings stored in the file; [longDraft] is a [LongDraft] name. */
@@ -96,6 +107,8 @@ internal data class DiaryFile(
     // Since format 3; an older file has neither.
     val profile: ProfileDto? = null,
     val weightPoints: List<WeightPointDto> = emptyList(),
+    // Since format 5.
+    val targetHistory: List<TargetHistoryDto> = emptyList(),
 )
 
 @Serializable
@@ -110,10 +123,25 @@ internal data class ProfileDto(
     val kcalTarget: Double? = null,
     // Since format 4; an older file has it off.
     val severalWeights: Boolean = false,
+    // Since format 5; an older file has none of these. Choices are stored by name.
+    val heightCm: Double? = null,
+    val age: Int? = null,
+    val sex: String? = null,
+    val activity: String? = null,
+    val goal: String? = null,
+    val paceKgPerWeek: Double? = null,
+    val trackingOnly: Boolean = false,
+    val proteinPercent: Double? = null,
+    val carbsPercent: Double? = null,
+    val fatPercent: Double? = null,
+    val followingMacros: List<String> = emptyList(),
 )
 
 @Serializable
 internal data class WeightPointDto(val dayKey: String, val kg: Double, val savedAtEpochMs: Long)
+
+@Serializable
+internal data class TargetHistoryDto(val dayKey: String, val kcal: Double?, val protein: Double?, val carbs: Double?, val fat: Double?)
 
 @Serializable
 internal data class FoodDto(
@@ -249,8 +277,9 @@ internal fun diaryFileOf(rows: DiaryRows, settings: DiarySettings, exportedAtEpo
             .map { RecipeAliasDto(it.recipeId, it.alias) },
         recipeIngredients = rows.recipeIngredients.filter { it.recipeId in recipeIds }.sortedWith(compareBy({ it.recipeId }, { it.position }))
             .map { it.toDto() },
-        profile = rows.profile?.let { ProfileDto(it.name, it.proteinTarget, it.carbsTarget, it.fatTarget, it.currentWeight, it.targetWeight, it.kcalTarget, it.severalWeights) },
+        profile = rows.profile?.toDto(),
         weightPoints = rows.weightPoints.orEmpty().sortedWith(compareBy({ it.dayKey }, { it.savedAtEpochMs }, { it.id })).map { WeightPointDto(it.dayKey, it.kg, it.savedAtEpochMs) },
+        targetHistory = rows.targetHistory.orEmpty().sortedBy { it.dayKey }.map { TargetHistoryDto(it.dayKey, it.kcal, it.protein, it.carbs, it.fat) },
     )
 }
 
@@ -286,10 +315,26 @@ internal fun validateDiary(file: DiaryFile): DiaryImport {
             recipeAliases = file.recipeAliases.map { RecipeAliasEntity(it.recipeId, it.alias) },
             recipeIngredients = file.recipeIngredients.map { it.toEntity() },
             weightPoints = file.weightPoints.map { WeightPointEntity(it.dayKey, it.kg, it.savedAtEpochMs) }.takeIf { speaksForProfile },
-            profile = (file.profile?.let { ProfileValues(it.name, it.proteinTarget, it.carbsTarget, it.fatTarget, it.currentWeight, it.targetWeight, it.kcalTarget, it.severalWeights) } ?: ProfileValues()).takeIf { speaksForProfile },
+            profile = (file.profile?.toValues() ?: ProfileValues()).takeIf { speaksForProfile },
+            targetHistory = file.targetHistory.map { TargetHistoryEntity(it.dayKey, it.kcal, it.protein, it.carbs, it.fat) }.takeIf { speaksForProfile },
         ),
     )
 }
+
+private fun ProfileValues.toDto() = ProfileDto(
+    name, proteinTarget, carbsTarget, fatTarget, currentWeight, targetWeight, kcalTarget, severalWeights,
+    heightCm, age, sex?.name, activity?.name, goal?.name, paceKgPerWeek, trackingOnly, proteinPercent, carbsPercent, fatPercent,
+    followingMacros.map { it.name }.sorted(),
+)
+
+/** [diaryProblem] has checked every name. */
+private fun ProfileDto.toValues() = ProfileValues(
+    name, proteinTarget, carbsTarget, fatTarget, currentWeight, targetWeight, kcalTarget, severalWeights,
+    heightCm, age, sex?.let { enumValueOf<Sex>(it) }, activity?.let { enumValueOf<Activity>(it) }, goal?.let { enumValueOf<Goal>(it) }, paceKgPerWeek, trackingOnly, proteinPercent, carbsPercent, fatPercent,
+    followingMacros.mapTo(LinkedHashSet()) { enumValueOf<Macro>(it) },
+)
+
+private inline fun <reified T : Enum<T>> String?.namesNone(): Boolean = this != null && enumValues<T>().none { it.name == this }
 
 private val UNIT_NAMES = MeasureUnit.entries.mapTo(HashSet()) { it.name }
 private val ORIGIN_NAMES = FoodOrigin.entries.mapTo(HashSet()) { it.name }
@@ -312,6 +357,14 @@ internal fun diaryProblem(file: DiaryFile): String? {
         if (listOf(p.proteinTarget, p.carbsTarget, p.fatTarget).any { it != null && !macroTargetValid(it) }) return "profile macro target"
         if (listOf(p.currentWeight, p.targetWeight).any { it != null && !weightValid(it) }) return "profile weight"
         if (p.kcalTarget != null && !kcalTargetValid(p.kcalTarget)) return "profile kcal target"
+        if (p.heightCm != null && !heightValid(p.heightCm)) return "profile height"
+        if (p.age != null && !ageValid(p.age)) return "profile age"
+        if (p.sex.namesNone<Sex>()) return "profile sex ${p.sex}"
+        if (p.activity.namesNone<Activity>()) return "profile activity ${p.activity}"
+        if (p.goal.namesNone<Goal>()) return "profile goal ${p.goal}"
+        if (p.paceKgPerWeek != null && !paceValid(p.paceKgPerWeek)) return "profile pace"
+        if (listOf(p.proteinPercent, p.carbsPercent, p.fatPercent).any { it != null && !macroPercentValid(it) }) return "profile macro percent"
+        if (p.followingMacros.any { name -> Macro.entries.none { it.name == name } }) return "profile following macros"
     }
     val oneADay = file.formatVersion < SEVERAL_WEIGHTS_FORMAT_VERSION
     val pointDays = HashSet<String>()
@@ -321,6 +374,16 @@ internal fun diaryProblem(file: DiaryFile): String? {
             !isDayKey(p.dayKey) -> return "$at: day ${p.dayKey}"
             !pointDays.add(p.dayKey) && oneADay -> return "$at: duplicate day ${p.dayKey}"
             !weightValid(p.kg) -> return "$at: kg ${p.kg}"
+        }
+    }
+    val targetDays = HashSet<String>()
+    file.targetHistory.forEachIndexed { i, t ->
+        val at = "target row $i"
+        when {
+            !isDayKey(t.dayKey) -> return "$at: day ${t.dayKey}"
+            !targetDays.add(t.dayKey) -> return "$at: duplicate day ${t.dayKey}"
+            t.kcal != null && !kcalTargetValid(t.kcal) -> return "$at: kcal ${t.kcal}"
+            listOf(t.protein, t.carbs, t.fat).any { it != null && !macroTargetValid(it) } -> return "$at: macros"
         }
     }
 

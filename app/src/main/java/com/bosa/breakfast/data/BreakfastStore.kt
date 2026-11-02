@@ -1,5 +1,6 @@
 package com.bosa.breakfast.data
 
+import com.bosa.breakfast.domain.TargetRow
 import com.bosa.breakfast.domain.WeightPoint
 import com.bosa.breakfast.domain.searchKey
 import com.bosa.breakfast.domain.searchFinds
@@ -29,6 +30,7 @@ private data class StoreSnapshot(
     val preferences: List<Preference> = emptyList(),
     val recipes: List<Recipe> = emptyList(),
     val weightPoints: List<WeightPoint> = emptyList(),
+    val targetHistory: List<TargetRow> = emptyList(),
 )
 
 /**
@@ -39,7 +41,7 @@ private data class StoreSnapshot(
 internal fun openBreakfastDatabase(context: Context, name: String, damaged: DamagedDiaries): BreakfastDatabase =
     Room.databaseBuilder(context.applicationContext, BreakfastDatabase::class.java, name)
         .openHelperFactory(DamageSafeOpenHelperFactory(damaged))
-        .addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6, ROOM_MIGRATION_6_7, ROOM_MIGRATION_7_8, ROOM_MIGRATION_8_9, ROOM_MIGRATION_9_10, ROOM_MIGRATION_10_11)
+        .addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6, ROOM_MIGRATION_6_7, ROOM_MIGRATION_7_8, ROOM_MIGRATION_8_9, ROOM_MIGRATION_9_10, ROOM_MIGRATION_10_11, ROOM_MIGRATION_11_12)
         .build()
 
 /** A write refused because the diary was found damaged and the fresh one is not open yet (see [BreakfastStore]). */
@@ -179,6 +181,15 @@ class BreakfastStore internal constructor(
     suspend fun deleteWeightPoint(id: Long) {
         requireReady()
         write(WEIGHTS) { database.weightPointDao().delete(id) }
+    }
+
+    /** The targets by the day they took effect. */
+    fun targetHistory(): List<TargetRow> = model.targetHistory
+
+    /** Stores [row], in place of any on its day. */
+    suspend fun saveTargetRow(row: TargetRow) {
+        requireReady()
+        write(TARGETS) { database.targetHistoryDao().put(row.toEntity()) }
     }
 
     private var preferenceMapSource: List<Preference>? = null
@@ -348,6 +359,7 @@ class BreakfastStore internal constructor(
                         recipeAliases = database.recipeAliasDao().all(),
                         recipeIngredients = database.recipeIngredientDao().all(),
                         weightPoints = database.weightPointDao().all(),
+                        targetHistory = database.targetHistoryDao().all(),
                     )
                 }
             }
@@ -381,6 +393,10 @@ class BreakfastStore internal constructor(
                 database.weightPointDao().deleteAll()
                 database.weightPointDao().insertAllOrAbort(points)
             }
+            rows.targetHistory?.let { history ->
+                database.targetHistoryDao().deleteAll()
+                database.targetHistoryDao().insertAllOrAbort(history)
+            }
             deleteArchivedFoods()
         }
     }
@@ -400,6 +416,7 @@ class BreakfastStore internal constructor(
             database.foodAliasDao().deleteAll()
             database.foodDao().deleteAll()
             database.weightPointDao().deleteAll()
+            database.targetHistoryDao().deleteAll()
             afterDeletes()
         }
     }
@@ -507,6 +524,7 @@ class BreakfastStore internal constructor(
         preferences = if (StoreTable.PREFERENCES in tables) database.preferenceDao().all().map { it.toDomain() } else current.preferences,
         recipes = if (StoreTable.RECIPES in tables) readRecipes() else current.recipes,
         weightPoints = if (StoreTable.WEIGHTS in tables) database.weightPointDao().all().map { it.toDomain() } else current.weightPoints,
+        targetHistory = if (StoreTable.TARGETS in tables) database.targetHistoryDao().all().map { it.toDomain() } else current.targetHistory,
     )
 
     private suspend fun readRecipes(): List<Recipe> = recipesOf(
@@ -533,9 +551,10 @@ class BreakfastStore internal constructor(
 }
 
 /** The groups of tables a write can touch: foods (with aliases and conversions), entries, preferences, recipes (with theirs). */
-internal enum class StoreTable { FOODS, ENTRIES, PREFERENCES, RECIPES, WEIGHTS }
+internal enum class StoreTable { FOODS, ENTRIES, PREFERENCES, RECIPES, WEIGHTS, TARGETS }
 
 private val WEIGHTS = setOf(StoreTable.WEIGHTS)
+private val TARGETS = setOf(StoreTable.TARGETS)
 private val FOODS = setOf(StoreTable.FOODS)
 private val ENTRIES = setOf(StoreTable.ENTRIES)
 private val PREFERENCES = setOf(StoreTable.PREFERENCES)

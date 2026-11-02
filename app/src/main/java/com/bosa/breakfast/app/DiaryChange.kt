@@ -96,7 +96,7 @@ internal sealed interface DiaryChange {
         override val refreshesLibrary get() = false
     }
 
-    /** A point of the profile's weight curve saved or deleted: nothing logged, so a pending Undo stays. */
+    /** A point of the profile's weight curve or a row of its target history written: nothing logged, so a pending Undo stays. */
     data object WeightCurveChanged : DiaryChange {
         override val kind get() = DiaryChangeKind.FOOD_EDIT
         override val refreshesLibrary get() = false

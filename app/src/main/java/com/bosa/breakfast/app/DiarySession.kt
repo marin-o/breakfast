@@ -1,5 +1,6 @@
 package com.bosa.breakfast.app
 
+import com.bosa.breakfast.domain.TargetRow
 import com.bosa.breakfast.domain.WeightPoint
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +28,8 @@ internal interface DiarySource {
     fun recipes(): List<Recipe> = emptyList()
     /** The profile's weight curve. */
     fun weightPoints(): List<WeightPoint> = emptyList()
+    /** The targets by the day they took effect. */
+    fun targetHistory(): List<TargetRow> = emptyList()
     /** Reloads the snapshot a committed write could not reload; true when it did. */
     suspend fun reloadIfStale(): Boolean
     /** A damaged diary was set aside (D15) and the user has not seen the notice yet. */
@@ -73,6 +76,7 @@ internal class DiarySession(
     var entries by mutableStateOf<List<MealEntry>>(emptyList()); private set
     var recipes by mutableStateOf<List<Recipe>>(emptyList()); private set
     var weightPoints by mutableStateOf<List<WeightPoint>>(emptyList()); private set
+    var targetHistory by mutableStateOf<List<TargetRow>>(emptyList()); private set
 
     private val listeners = mutableListOf<(DiaryChange) -> Unit>()
     private var opening = false
@@ -112,6 +116,7 @@ internal class DiarySession(
         entries = source.entries()
         recipes = source.recipes()
         weightPoints = source.weightPoints()
+        targetHistory = source.targetHistory()
         onRefreshed()
         checkStale()
     }

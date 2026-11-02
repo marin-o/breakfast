@@ -14,8 +14,8 @@ data class BreakfastColors(
     val protein: Color, val carbs: Color, val fat: Color,
 )
 
-/** The three macros that have a colour of their own. */
-enum class Macro { PROTEIN, CARBS, FAT }
+/** The three macros that have a colour of their own; the type is the domain's. */
+typealias Macro = com.bosa.breakfast.domain.Macro
 
 /** The one place a macro meets its colour. */
 fun BreakfastColors.macroColor(macro: Macro): Color = when (macro) {

@@ -2,6 +2,10 @@ package com.bosa.breakfast.app
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.compose.runtime.snapshots.Snapshot
+import com.bosa.breakfast.domain.Activity
+import com.bosa.breakfast.domain.Goal
+import com.bosa.breakfast.domain.Macro
+import com.bosa.breakfast.domain.Sex
 import com.bosa.breakfast.domain.ProfileDraft
 import com.bosa.breakfast.domain.MacroPreset
 import com.bosa.breakfast.domain.ProfileValues
@@ -167,6 +171,89 @@ internal class ProfileStateTest {
         profile.edit(ProfileDraft(kcal = "2100"))
         profile.save()
         assertEquals(ProfileValues(kcalTarget = 2100.0), ProfilePrefs(app.profileStore).read())
+    }
+
+    private val goalValues = ProfileValues(
+        kcalTarget = 2946.0, currentWeight = 80.0, heightCm = 180.0, age = 30, sex = Sex.MALE, activity = Activity.LOW_ACTIVE, goal = Goal.LOSE, paceKgPerWeek = 0.5,
+    )
+
+    @Test fun everyNewFieldIsKeptInPrefs() {
+        val values = goalValues.copy(trackingOnly = true, proteinPercent = 30.0, carbsPercent = 0.0, followingMacros = setOf(Macro.FAT))
+        val prefs = ProfilePrefs(app.profileStore)
+        prefs.write(values)
+        assertEquals(values, prefs.read())
+    }
+
+    @Test fun aSavedTargetWritesARowAndASecondSaveThatDayReplacesIt() {
+        profile.edit(ProfileDraft(kcal = "2100"))
+        profile.save()
+        assertEquals(listOf(2100.0), app.diary.targets.map { it.kcal })
+        profile.edit(profile.draft.copy(kcal = "2000"))
+        profile.save()
+        assertEquals(listOf(2000.0), app.diary.targets.map { it.kcal })
+        assertEquals(2000.0, app.owners.session.targetHistory.single().kcal)
+    }
+
+    @Test fun aSaveThatChangesNoTargetWritesNoRow() {
+        profile.edit(ProfileDraft(name = "Ana"))
+        profile.save()
+        assertEquals("Ana", profile.values.name)
+        assertTrue(app.diary.targets.isEmpty())
+    }
+
+    @Test fun typingKcalClearsTheGoalAndPassingThroughSmallNumbersLosesNothing() {
+        profile.edit(ProfileDraft(kcal = "2000", goal = Goal.LOSE))
+        profile.editMacro(Macro.PROTEIN, "30", byPercent = true)
+        assertEquals("175", profile.draft.carbs)
+        listOf("", "2", "24", "240", "2400").forEach(profile::editKcal)
+        assertNull(profile.draft.goal)
+        assertEquals("180", profile.draft.protein)
+        // 2400 less 720: 1680, carbs at 700/702 of it.
+        assertEquals("210", profile.draft.carbs)
+    }
+
+    @Test fun choosingAGoalFillsKcalFromTheBurn() {
+        profile.edit(ProfileDraft(height = "180", age = "30", current = "80", sex = Sex.MALE, activity = Activity.LOW_ACTIVE))
+        assertEquals(2945.77, profile.burn!!.kcal, 0.01)
+        profile.chooseGoal(Goal.MAINTAIN)
+        assertEquals("2946", profile.draft.kcal)
+        profile.chooseGoal(Goal.LOSE)
+        profile.choosePace("0.5", custom = false)
+        assertEquals("2314", profile.draft.kcal)
+        assertEquals(2314, profile.goalResult?.kcal)
+    }
+
+    @Test fun theDailyAdjustmentMovesASavedGoalAndWritesItsRowOnce() {
+        ProfilePrefs(app.profileStore).write(goalValues)
+        profile.reload()
+        assertEquals(2846.0, profile.values.kcalTarget)
+        assertEquals(2846.0, ProfilePrefs(app.profileStore).read().kcalTarget)
+        assertEquals(listOf(2846.0), app.diary.targets.map { it.kcal })
+        profile.adjustDaily()
+        assertEquals(2846.0, profile.values.kcalTarget)
+        assertEquals(1, app.diary.targets.size)
+    }
+
+    @Test fun theDailyAdjustmentWaitsWhileThePageIsOpen() {
+        ProfilePrefs(app.profileStore).write(goalValues)
+        profile.reload()
+        app.diary.targets = emptyList()
+        app.owners.session.refresh()
+        app.surfaces.openProfile()
+        profile.adjustDaily()
+        assertTrue(app.diary.targets.isEmpty())
+    }
+
+    @Test fun targetsFromBeforeTheHistoryStartOne() {
+        ProfilePrefs(app.profileStore).write(ProfileValues(kcalTarget = 2000.0, proteinTarget = 120.0))
+        profile.reload()
+        assertEquals(listOf(2000.0), app.diary.targets.map { it.kcal })
+        assertEquals(2000.0, profile.values.kcalTarget)
+    }
+
+    @Test fun noTargetsStartNoHistory() {
+        profile.adjustDaily()
+        assertTrue(app.diary.targets.isEmpty())
     }
 
     @Test fun aBadNumberCannotBeSaved() {

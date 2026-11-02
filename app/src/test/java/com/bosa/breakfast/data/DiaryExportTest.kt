@@ -1,5 +1,10 @@
 package com.bosa.breakfast.data
 
+import com.bosa.breakfast.domain.Activity
+import com.bosa.breakfast.domain.Goal
+import com.bosa.breakfast.domain.Macro
+import com.bosa.breakfast.domain.Sex
+
 import kotlin.test.assertFalse
 import com.bosa.breakfast.domain.ProfileValues
 import com.bosa.breakfast.domain.TestFoods
@@ -120,6 +125,46 @@ class DiaryExportTest {
         assertEquals(profile, valid(without).rows.profile)
     }
 
+    @Test fun theNewProfileFieldsAndTheTargetHistoryComeBack() {
+        val profile = ProfileValues(
+            "Ana", 150.0, 175.0, 78.0, 80.0, 75.0, 2000.0, false, 165.5, 30, Sex.FEMALE, Activity.ACTIVE, Goal.LOSE, 0.5, true, 30.0, null, null, setOf(Macro.CARBS, Macro.FAT),
+        )
+        val history = listOf(TargetHistoryEntity("2026-10-01", 2000.0, 150.0, null, null), TargetHistoryEntity("2026-10-02", 1900.0, null, null, null))
+        val imported = valid(encodeDiary(diaryFileOf(rows().copy(profile = profile, targetHistory = history.reversed()), settings, 5_000L)))
+        assertEquals(profile, imported.rows.profile)
+        assertEquals(history, imported.rows.targetHistory)
+    }
+
+    /** A file of format 4 as it was written has none of the new fields: it imports, and its profile starts a new history. */
+    @Test fun aFormat4FileImportsWithNoneOfTheNewFields() {
+        val encoded = encodeDiary(diaryFileOf(rows().copy(profile = ProfileValues("Ana", kcalTarget = 2000.0), weightPoints = emptyList()), settings, 5_000L))
+        val old = encoded.replace("\"formatVersion\":$DIARY_FORMAT_VERSION,\"schemaVersion\":$DIARY_SCHEMA_VERSION,", "\"formatVersion\":4,\"schemaVersion\":11,")
+            .replace(Regex(",\"heightCm\":null.*?\"followingMacros\":\\[\\]"), "")
+            .replace(",\"targetHistory\":[]", "")
+        assertFalse("targetHistory" in old)
+        assertFalse("heightCm" in old)
+        val imported = valid(old)
+        assertEquals(ProfileValues("Ana", kcalTarget = 2000.0), imported.rows.profile)
+        assertEquals(emptyList(), imported.rows.targetHistory)
+    }
+
+    @Test fun badNewProfileFieldsAndTargetRowsAreRefused() {
+        val empty = ProfileDto("", null, null, null, null, null)
+        refused(file().copy(profile = empty.copy(heightCm = 49.0)))
+        refused(file().copy(profile = empty.copy(age = 0)))
+        refused(file().copy(profile = empty.copy(age = 121)))
+        refused(file().copy(profile = empty.copy(sex = "OTHER")))
+        refused(file().copy(profile = empty.copy(activity = "LAZY")))
+        refused(file().copy(profile = empty.copy(goal = "BULK")))
+        refused(file().copy(profile = empty.copy(paceKgPerWeek = 0.0)))
+        refused(file().copy(profile = empty.copy(fatPercent = 101.0)))
+        refused(file().copy(profile = empty.copy(followingMacros = listOf("FIBRE"))))
+        refused(file().copy(targetHistory = listOf(TargetHistoryDto("not a day", 2000.0, null, null, null))))
+        refused(file().copy(targetHistory = listOf(TargetHistoryDto("2026-10-01", 0.5, null, null, null))))
+        refused(file().copy(targetHistory = listOf(TargetHistoryDto("2026-10-01", 2000.0, 0.0, null, null))))
+        refused(file().copy(targetHistory = List(2) { TargetHistoryDto("2026-10-01", 2000.0, null, null, null) }))
+    }
+
     @Test fun aKcalTargetOutOfRangeIsRefused() {
         refused(file().copy(profile = ProfileDto("", null, null, null, null, null, kcalTarget = 0.5)))
         refused(file().copy(profile = ProfileDto("", null, null, null, null, null, kcalTarget = 20001.0)))
@@ -142,7 +187,7 @@ class DiaryExportTest {
     @Test fun twoPointsOnADayAreRefusedOnlyInFormatsOfOneADay() {
         refused(file().copy(formatVersion = 3, schemaVersion = 10, weightPoints = twoOnADay))
         refused(file().copy(formatVersion = 2, schemaVersion = 9, weightPoints = twoOnADay))
-        assertEquals(4, DIARY_FORMAT_VERSION)
+        assertEquals(5, DIARY_FORMAT_VERSION)
         val imported = valid(encodeDiary(file().copy(weightPoints = twoOnADay)))
         assertEquals(listOf(1L, 2L), imported.rows.weightPoints?.map { it.savedAtEpochMs })
     }
@@ -186,7 +231,7 @@ class DiaryExportTest {
 
     @Test fun theFileNamesItsVersionsAndFields() {
         val text = encodeDiary(file())
-        assertTrue(text.startsWith("{\"format\":\"breakfast-diary\",\"formatVersion\":4,\"schemaVersion\":11,\"exportedAtEpochMs\":5000,"))
+        assertTrue(text.startsWith("{\"format\":\"breakfast-diary\",\"formatVersion\":5,\"schemaVersion\":12,\"exportedAtEpochMs\":5000,"))
         assertTrue("\"foodName\":\"Snapshot name e-1\"" in text)
         assertTrue("\"settings\":{\"dayStartHour\":4,\"longDraft\":\"TWO_LINES\"}" in text)
         assertTrue("\"snapshotCarbohydrates\":null" in text)
@@ -269,7 +314,7 @@ class DiaryExportTest {
         val schema = Json.parseToJsonElement(File(dir, "$latest.json").readText()).jsonObject
         val tables = schema["database"]!!.jsonObject["entities"]!!.jsonArray.map { it.jsonObject["tableName"]!!.jsonPrimitive.content }.toSet()
         assertEquals(
-            setOf("foods", "food_aliases", "serving_conversions", "preferences", "meal_entries", "recipes", "recipe_aliases", "recipe_ingredients", "weight_points"),
+            setOf("foods", "food_aliases", "serving_conversions", "preferences", "meal_entries", "recipes", "recipe_aliases", "recipe_ingredients", "weight_points", "target_history"),
             tables,
         )
     }

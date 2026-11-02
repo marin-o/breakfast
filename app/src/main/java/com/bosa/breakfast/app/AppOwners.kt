@@ -443,6 +443,7 @@ internal class AppOwners<D>(
         reminders.check()
         foodForm.closeIfFoodGone()
         recipeForm.closeIfRecipeGone()
+        profile.adjustDaily()
     }
 
     /**

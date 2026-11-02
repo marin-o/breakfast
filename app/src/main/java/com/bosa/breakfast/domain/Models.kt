@@ -68,6 +68,9 @@ data class MacroTotal(val sum: Double, val known: Int, val unknown: Int) {
     val allUnknown: Boolean get() = known == 0 && unknown > 0
 }
 
+/** The three macros. */
+enum class Macro { PROTEIN, CARBS, FAT }
+
 const val KCAL_PER_GRAM_PROTEIN = 4.0
 const val KCAL_PER_GRAM_CARBS = 4.0
 const val KCAL_PER_GRAM_FAT = 9.0

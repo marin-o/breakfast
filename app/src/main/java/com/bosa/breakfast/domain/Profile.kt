@@ -20,6 +20,22 @@ data class ProfileValues(
     val kcalTarget: Double? = null,
     /** "Several weights a day": each save adds a point, rather than replacing the day's latest. */
     val severalWeights: Boolean = false,
+    val heightCm: Double? = null,
+    val age: Int? = null,
+    /** Null reads as Not saying. */
+    val sex: Sex? = null,
+    val activity: Activity? = null,
+    /** Set by choosing a goal; typing Daily kcal by hand clears it, and the daily adjustment stops ([dailyAdjusted]). */
+    val goal: Goal? = null,
+    val paceKgPerWeek: Double? = null,
+    /** Hides the goal and the targets on screen; they are kept. */
+    val trackingOnly: Boolean = false,
+    // Each macro's percent when it was entered by percent; null when it was not.
+    val proteinPercent: Double? = null,
+    val carbsPercent: Double? = null,
+    val fatPercent: Double? = null,
+    /** The macros last set by a rebalance and never entered: these follow when Daily kcal changes ([macrosAtKcal]). */
+    val followingMacros: Set<Macro> = emptySet(),
 )
 
 /** One point of the weight curve. [id] tells apart points of one day; 0 until stored. */
@@ -36,6 +52,20 @@ data class ProfileDraft(
     val target: String = "",
     val kcal: String = "",
     val severalWeights: Boolean = false,
+    val height: String = "",
+    val age: String = "",
+    val sex: Sex? = null,
+    val activity: Activity? = null,
+    val goal: Goal? = null,
+    val pace: String = "",
+    /** The Custom choice of Kg a week is on. */
+    val paceCustom: Boolean = false,
+    val trackingOnly: Boolean = false,
+    // Not blank: this macro is entered by percent. Otherwise its percent is only shown ([percentShown]).
+    val proteinPercent: String = "",
+    val carbsPercent: String = "",
+    val fatPercent: String = "",
+    val followingMacros: Set<Macro> = emptySet(),
 ) {
     companion object {
         fun of(values: ProfileValues) = ProfileDraft(
@@ -47,6 +77,18 @@ data class ProfileDraft(
             editableNumber(values.targetWeight),
             editableNumber(values.kcalTarget),
             values.severalWeights,
+            editableNumber(values.heightCm),
+            values.age?.toString().orEmpty(),
+            values.sex,
+            values.activity,
+            values.goal,
+            editableNumber(values.paceKgPerWeek),
+            values.paceKgPerWeek != null && values.paceKgPerWeek !in PACE_CHOICES,
+            values.trackingOnly,
+            editableNumber(values.proteinPercent),
+            editableNumber(values.carbsPercent),
+            editableNumber(values.fatPercent),
+            values.followingMacros,
         )
     }
 }
@@ -60,6 +102,30 @@ private val KCAL_TARGET = 1.0..20000.0
 const val WEIGHT_RANGE_MESSAGE = "Enter 1 to 500 kg."
 const val MACRO_TARGET_RANGE_MESSAGE = "Enter 1 to 5000 g."
 const val KCAL_FIRST_MESSAGE = "Enter your daily kcal first."
+
+/** The Kg a week choices beside Custom. */
+val PACE_CHOICES = listOf(0.25, 0.5, 1.0)
+
+private val AGE_YEARS = 1..120
+private val HEIGHT_CM = 50.0..300.0
+
+/** An age the app keeps, in whole years. */
+fun ageValid(years: Int): Boolean = years in AGE_YEARS
+
+/** A height the app keeps, in cm. */
+fun heightValid(cm: Double): Boolean = cm in HEIGHT_CM
+
+/** A macro's percent the app keeps; zero is a choice, unlike zero grams. */
+fun macroPercentValid(percent: Double): Boolean = percent.isFinite() && percent in 0.0..100.0
+
+/** A pace the app keeps, in kg a week. */
+fun paceValid(kgPerWeek: Double): Boolean = isPositiveAmount(kgPerWeek)
+
+/** Age as typed: whole years. */
+fun ageOf(text: String): Int? = text.trim().toIntOrNull()?.takeIf(::ageValid)
+
+/** A height as typed: empty is not set, otherwise in range with either decimal mark. */
+fun heightTextValid(text: String): Boolean = text.isBlank() || positiveAmountOf(text)?.let(::heightValid) == true
 
 /** A weight the app keeps, in kg. */
 fun weightValid(kg: Double): Boolean = kg in WEIGHT_KG
@@ -84,6 +150,10 @@ fun profileOf(draft: ProfileDraft, saved: ProfileValues): ProfileValues? {
     if (!listOf(draft.protein, draft.carbs, draft.fat).all(::macroTargetTextValid)) return null
     if (!listOf(draft.current, draft.target).all(::weightTextValid)) return null
     if (!kcalTargetTextValid(draft.kcal)) return null
+    if (!heightTextValid(draft.height)) return null
+    if (draft.age.isNotBlank() && ageOf(draft.age) == null) return null
+    if (draft.pace.isNotBlank() && positiveAmountOf(draft.pace)?.let(::paceValid) != true) return null
+    if (!listOf(draft.proteinPercent, draft.carbsPercent, draft.fatPercent).all { it.isBlank() || parseDecimal(it)?.let(::macroPercentValid) == true }) return null
     return ProfileValues(
         draft.name.trim(),
         fieldNumber(draft.protein, saved.proteinTarget),
@@ -93,6 +163,17 @@ fun profileOf(draft: ProfileDraft, saved: ProfileValues): ProfileValues? {
         fieldNumber(draft.target, saved.targetWeight),
         fieldNumber(draft.kcal, saved.kcalTarget),
         draft.severalWeights,
+        fieldNumber(draft.height, saved.heightCm),
+        ageOf(draft.age),
+        draft.sex,
+        draft.activity,
+        draft.goal,
+        fieldNumber(draft.pace, saved.paceKgPerWeek),
+        draft.trackingOnly,
+        fieldNumber(draft.proteinPercent, saved.proteinPercent),
+        fieldNumber(draft.carbsPercent, saved.carbsPercent),
+        fieldNumber(draft.fatPercent, saved.fatPercent),
+        draft.followingMacros,
     )
 }
 
@@ -169,5 +250,5 @@ fun ProfileDraft.withPreset(preset: MacroPreset): ProfileDraft? {
         positiveAmountOf(kcal)?.takeIf(::kcalTargetValid),
         positiveAmountOf(current)?.takeIf(::weightValid),
     ) ?: return null
-    return copy(protein = grams.protein.toString(), carbs = grams.carbs?.toString().orEmpty(), fat = grams.fat?.toString().orEmpty())
+    return copy(protein = grams.protein.toString(), carbs = grams.carbs?.toString().orEmpty(), fat = grams.fat?.toString().orEmpty(), proteinPercent = "", carbsPercent = "", fatPercent = "", followingMacros = emptySet())
 }

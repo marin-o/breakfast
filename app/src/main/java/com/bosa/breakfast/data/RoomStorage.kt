@@ -1,5 +1,6 @@
 package com.bosa.breakfast.data
 
+import com.bosa.breakfast.domain.TargetRow
 import com.bosa.breakfast.domain.WeightPoint
 import androidx.room.ColumnInfo
 import androidx.room.Dao
@@ -362,6 +363,35 @@ interface WeightPointDao {
     suspend fun deleteAll()
 }
 
+/** The targets in effect from [dayKey]; one row per day a target took effect. */
+@Entity(tableName = "target_history")
+data class TargetHistoryEntity(
+    @PrimaryKey @ColumnInfo(name = "day_key") val dayKey: String,
+    val kcal: Double?,
+    val protein: Double?,
+    val carbs: Double?,
+    val fat: Double?,
+)
+
+fun TargetHistoryEntity.toDomain() = TargetRow(dayKey, kcal, protein, carbs, fat)
+fun TargetRow.toEntity() = TargetHistoryEntity(dayKey, kcal, protein, carbs, fat)
+
+@Dao
+interface TargetHistoryDao {
+    @Query("SELECT * FROM target_history ORDER BY day_key")
+    suspend fun all(): List<TargetHistoryEntity>
+
+    /** A second save on one day replaces that day's row. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(row: TargetHistoryEntity)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAllOrAbort(rows: List<TargetHistoryEntity>)
+
+    @Query("DELETE FROM target_history")
+    suspend fun deleteAll()
+}
+
 @Database(
     entities = [
         FoodEntity::class,
@@ -373,8 +403,9 @@ interface WeightPointDao {
         RecipeAliasEntity::class,
         RecipeIngredientEntity::class,
         WeightPointEntity::class,
+        TargetHistoryEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true
 )
 abstract class BreakfastDatabase : RoomDatabase() {
@@ -387,6 +418,7 @@ abstract class BreakfastDatabase : RoomDatabase() {
     abstract fun recipeAliasDao(): RecipeAliasDao
     abstract fun recipeIngredientDao(): RecipeIngredientDao
     abstract fun weightPointDao(): WeightPointDao
+    abstract fun targetHistoryDao(): TargetHistoryDao
 }
 
 val ROOM_MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
@@ -499,6 +531,13 @@ val ROOM_MIGRATION_10_11 = object : androidx.room.migration.Migration(10, 11) {
         db.execSQL("INSERT INTO `weight_points_new` (`day_key`, `kg`, `saved_at_epoch_ms`) SELECT `day_key`, `kg`, `saved_at_epoch_ms` FROM `weight_points` ORDER BY `day_key`")
         db.execSQL("DROP TABLE `weight_points`")
         db.execSQL("ALTER TABLE `weight_points_new` RENAME TO `weight_points`")
+    }
+}
+
+/** Additive: one new table for the targets by day; nothing that exists is touched. */
+val ROOM_MIGRATION_11_12 = object : androidx.room.migration.Migration(11, 12) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `target_history` (`day_key` TEXT NOT NULL, `kcal` REAL, `protein` REAL, `carbs` REAL, `fat` REAL, PRIMARY KEY(`day_key`))")
     }
 }
 

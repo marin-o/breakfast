@@ -2,6 +2,7 @@ package com.bosa.breakfast.app
 
 import com.bosa.breakfast.profile.WeightStore
 import com.bosa.breakfast.profile.ProfilePrefs
+import com.bosa.breakfast.domain.TargetRow
 import com.bosa.breakfast.domain.WeightPoint
 import com.bosa.breakfast.domain.newestFirst
 import androidx.lifecycle.SavedStateHandle
@@ -209,6 +210,7 @@ internal class AppKit(
                     diary.weights = diary.weights.filterNot { it == latest } + stored(point)
                 }
                 override suspend fun delete(id: Long) { diary.weights = diary.weights.filterNot { it.id == id } }
+                override suspend fun saveTarget(row: TargetRow) { diary.targets = diary.targets.filterNot { it.dayKey == row.dayKey } + row }
             },
             profilePrefs = ProfilePrefs(profileStore),
             recipes = object : RecipeStore {
@@ -308,6 +310,7 @@ internal class KitDiary {
     var foods: List<FoodRecord> = emptyList()
     var recipes: List<Recipe> = emptyList()
     var weights: List<WeightPoint> = emptyList()
+    var targets: List<TargetRow> = emptyList()
     val scope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
     val source = object : DiarySource {
         override suspend fun open() {}
@@ -315,6 +318,7 @@ internal class KitDiary {
         override fun entries(): List<MealEntry> = rows
         override fun recipes(): List<Recipe> = recipes
         override fun weightPoints(): List<WeightPoint> = weights
+        override fun targetHistory(): List<TargetRow> = targets
         override suspend fun reloadIfStale() = false
         override fun damagedNoticePending() = damaged
         override fun damagedNoticeSeen() { damaged = false }
