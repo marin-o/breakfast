@@ -155,16 +155,33 @@ fun macroTargetTextValid(text: String): Boolean = text.isBlank() || positiveAmou
 /** A kcal target as typed: empty is not set, otherwise in range with either decimal mark. */
 fun kcalTargetTextValid(text: String): Boolean = text.isBlank() || positiveAmountOf(text)?.let(::kcalTargetValid) == true
 
-/** [draft] as values, a field left as it was keeping its exact number in [saved]; null while a number is not valid. */
+/** Kg a week shows: for Lose and Gain, with a body the burn can be worked out from, outside Tracking only. */
+val ProfileDraft.paceShown: Boolean get() = !trackingOnly && burnBody() != null && (goal == Goal.LOSE || goal == Goal.GAIN)
+
+/** The macros' % fields show: with a valid Daily kcal, outside Tracking only. */
+val ProfileDraft.percentsShown: Boolean get() = !trackingOnly && validDailyKcal != null
+
+private val ProfileDraft.percentsTextValid: Boolean get() = listOf(proteinPercent, carbsPercent, fatPercent).all(::macroPercentTextValid)
+
+private val ProfileDraft.kcalAndGramsTextValid: Boolean get() = kcalTargetTextValid(kcal) && listOf(protein, carbs, fat).all(::macroTargetTextValid)
+
+/** A hidden field holding what is not valid reads as [exact]; one on show has already stopped [profileOf]. */
+private fun shownOrSaved(text: String, valid: (String) -> Boolean, exact: Double?): Double? =
+    if (valid(text)) fieldNumber(text, exact) else exact
+
+/**
+ * [draft] as values, a field left as it was keeping its exact number in [saved]; null while a number on show is not valid.
+ * A hidden field that is not valid takes its saved value, and under Tracking only one such target keeps every saved target,
+ * with the goal and pace they came from, as they belong together.
+ */
 fun profileOf(draft: ProfileDraft, saved: ProfileValues): ProfileValues? {
-    if (!listOf(draft.protein, draft.carbs, draft.fat).all(::macroTargetTextValid)) return null
     if (!listOf(draft.current, draft.target).all(::weightTextValid)) return null
-    if (!kcalTargetTextValid(draft.kcal)) return null
     if (!heightTextValid(draft.height)) return null
     if (!ageTextValid(draft.age)) return null
-    if (!paceTextValid(draft.pace)) return null
-    if (!listOf(draft.proteinPercent, draft.carbsPercent, draft.fatPercent).all(::macroPercentTextValid)) return null
-    return ProfileValues(
+    if (draft.paceShown && !paceTextValid(draft.pace)) return null
+    if (!draft.trackingOnly && !draft.kcalAndGramsTextValid) return null
+    if (draft.percentsShown && !draft.percentsTextValid) return null
+    val values = ProfileValues(
         draft.name.trim(),
         fieldNumber(draft.protein, saved.proteinTarget),
         fieldNumber(draft.carbs, saved.carbsTarget),
@@ -178,14 +195,29 @@ fun profileOf(draft: ProfileDraft, saved: ProfileValues): ProfileValues? {
         draft.sex,
         draft.activity,
         draft.goal,
-        fieldNumber(draft.pace, saved.paceKgPerWeek),
+        shownOrSaved(draft.pace, ::paceTextValid, saved.paceKgPerWeek),
         draft.trackingOnly,
-        fieldNumber(draft.proteinPercent, saved.proteinPercent),
-        fieldNumber(draft.carbsPercent, saved.carbsPercent),
-        fieldNumber(draft.fatPercent, saved.fatPercent),
+        shownOrSaved(draft.proteinPercent, ::macroPercentTextValid, saved.proteinPercent),
+        shownOrSaved(draft.carbsPercent, ::macroPercentTextValid, saved.carbsPercent),
+        shownOrSaved(draft.fatPercent, ::macroPercentTextValid, saved.fatPercent),
         draft.followingMacros,
     )
+    val keepTargets = draft.trackingOnly && !(draft.kcalAndGramsTextValid && draft.percentsTextValid)
+    return if (keepTargets) values.withSavedTargets(saved) else values
 }
+
+private fun ProfileValues.withSavedTargets(saved: ProfileValues) = copy(
+    kcalTarget = saved.kcalTarget,
+    proteinTarget = saved.proteinTarget,
+    carbsTarget = saved.carbsTarget,
+    fatTarget = saved.fatTarget,
+    proteinPercent = saved.proteinPercent,
+    carbsPercent = saved.carbsPercent,
+    fatPercent = saved.fatPercent,
+    followingMacros = saved.followingMacros,
+    goal = saved.goal,
+    paceKgPerWeek = saved.paceKgPerWeek,
+)
 
 /** "Add to curve" shows: with several weights a day, for any valid weight; else a weight is typed, and it is another one or today has no point yet, so a steady weight can be recorded. */
 fun curveOffered(draft: ProfileDraft, saved: ProfileValues, hasPointToday: Boolean): Boolean = when {

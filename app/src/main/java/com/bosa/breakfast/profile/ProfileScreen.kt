@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.bosa.breakfast.domain.AGE_RANGE_MESSAGE
 import com.bosa.breakfast.domain.Activity
@@ -60,9 +61,10 @@ import com.bosa.breakfast.domain.lowestLine
 import com.bosa.breakfast.domain.macroPercentTextValid
 import com.bosa.breakfast.domain.macroTargetTextValid
 import com.bosa.breakfast.domain.paceTextValid
+import com.bosa.breakfast.domain.paceShown
 import com.bosa.breakfast.domain.percentShown
+import com.bosa.breakfast.domain.percentsShown
 import com.bosa.breakfast.domain.positiveAmountOf
-import com.bosa.breakfast.domain.validDailyKcal
 import com.bosa.breakfast.domain.weightTextValid
 import com.bosa.breakfast.settings.DisplayDecimal
 import com.bosa.breakfast.settings.markDecimals
@@ -87,13 +89,13 @@ import com.bosa.breakfast.ui.components.SubScreen
 import com.bosa.breakfast.ui.components.TabWords
 import com.bosa.breakfast.ui.components.TotalRow
 import com.bosa.breakfast.ui.components.WeightChart
+import com.bosa.breakfast.ui.components.curveHeight
 import com.bosa.breakfast.ui.components.inert
 import com.bosa.breakfast.ui.components.isLargeFont
 import com.bosa.breakfast.ui.components.rememberMotion
 import com.bosa.breakfast.ui.countLabel
 import com.bosa.breakfast.ui.pretty
 import com.bosa.breakfast.ui.theme.BreakfastType
-import com.bosa.breakfast.ui.theme.CurveHeight
 import com.bosa.breakfast.ui.theme.Gutter
 import com.bosa.breakfast.ui.theme.IconTarget
 import com.bosa.breakfast.ui.theme.LocalBreakfastColors
@@ -200,9 +202,9 @@ private fun GoalSection(profile: ProfileState) {
             style = BreakfastType.Body,
         )
     }
-    if (draft.goal != Goal.MAINTAIN) PaceControls(profile)
+    if (draft.paceShown) PaceControls(profile)
     profile.goalResult?.let(::lowestLine)?.let { SoftLine(markDecimals(it, DisplayDecimal.mark)) }
-    if (draft.goal != Goal.MAINTAIN) {
+    if (draft.goal != null) {
         SoftLine("Daily burn is an estimate, so your real pace may differ.")
         SoftLine("We'll adjust daily kcal a little if your weight isn't keeping to this pace.")
     }
@@ -214,7 +216,7 @@ private fun PaceControls(profile: ProfileState) {
     val numbers = PACE_CHOICES.map { editableNumber(it) }
     ChoiceGrid(
         options = numbers + CUSTOM,
-        text = { it },
+        text = { markDecimals(it, DisplayDecimal.mark) },
         selected = if (draft.paceCustom) CUSTOM else editableNumber(positiveAmountOf(draft.pace)),
         onSelect = { if (it == CUSTOM) profile.choosePace(draft.pace, custom = true) else profile.choosePace(it, custom = false) },
         label = "Kg a week",
@@ -237,7 +239,7 @@ private fun KcalField(profile: ProfileState) {
 private fun MacroFields(profile: ProfileState) {
     val draft = profile.draft
     val large = isLargeFont(LocalDensity.current.fontScale)
-    if (draft.validDailyKcal == null) {
+    if (!draft.percentsShown) {
         NutrientFields(MACRO_NAMES.map { (macro, name) -> gramsField(profile, macro, name, dotted = true) }, gap = 12.dp, columns = if (large) 1 else 3, oneColumnWhenLabelsWrap = true)
         return
     }
@@ -283,7 +285,7 @@ private fun WeightPage(profile: ProfileState, list: LazyListState) {
     val points = profile.points
     LazyColumn(Modifier.fillMaxSize(), list, contentPadding = PaddingValues(top = 16.dp, bottom = 12.dp)) {
         item(key = "ranges") { Choices(null, RANGE_CHOICES, profile.weightRange, onSelect = profile::chooseRange) }
-        if (points.isNotEmpty()) item(key = "chart") {
+        if (profile.series.dots.isNotEmpty()) item(key = "chart") {
             Box(Modifier.padding(top = 16.dp)) {
                 WeightChart(profile.series, profile.values.targetWeight)
                 ChartCornerIcon(Icons.Outlined.Fullscreen, "Maximise chart", profile::liftChart)
@@ -323,7 +325,8 @@ private val LiftedPadding = 8.dp
 
 /**
  * The chart over everything, drag and pinch working: the scrim behind, the app's one shadow, the width less 8dp each side and
- * the page chart's aspect ratio. A tap on the scrim closes it, as Back and its close icon do.
+ * the page chart's aspect ratio. A tap on the scrim closes it, as Back and its close icon do. The scrim's empty semantics node
+ * says nothing to TalkBack and covers all beneath it, the page and the screens under the page.
  */
 @Composable
 private fun LiftedChart(profile: ProfileState) {
@@ -331,11 +334,11 @@ private fun LiftedChart(profile: ProfileState) {
     val colors = LocalBreakfastColors.current
     val lifted = profile.chartLifted
     AnimatedVisibility(lifted, Modifier.fillMaxSize(), enter = motion.scrimIn(), exit = motion.scrimOut()) {
-        Box(Modifier.fillMaxSize().background(colors.scrim).pointerInput(Unit) { detectTapGestures { profile.closeChart() } })
+        Box(Modifier.fillMaxSize().background(colors.scrim).semantics(mergeDescendants = true) {}.pointerInput(Unit) { detectTapGestures { profile.closeChart() } })
     }
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         val width = maxWidth - LiftedSideGap * 2
-        val height = CurveHeight * (width / (maxWidth - Gutter * 2))
+        val height = (curveHeight() * (width / (maxWidth - Gutter * 2))).coerceAtMost(maxHeight - LiftedSideGap * 2)
         Reveal(Unit.takeIf { lifted }) {
             // Its own margin takes touches too, so only the scrim closes it.
             Box(Modifier.width(width).height(height).shadow(16.dp, PrimaryShape).clip(PrimaryShape).background(colors.bg).pointerInput(Unit) {}.padding(LiftedPadding)) {
@@ -357,7 +360,7 @@ private fun NutritionPage(profile: ProfileState, scroll: ScrollState) {
             previousDescription = "Previous week",
             nextDescription = "Next week",
         )
-        MacroBarsChart(week.days, showGoal = !profile.draft.trackingOnly, Modifier.fillMaxWidth().padding(top = 8.dp).height(CurveHeight))
+        MacroBarsChart(week.days, showGoal = !profile.draft.trackingOnly, Modifier.fillMaxWidth().padding(top = 8.dp).height(curveHeight()))
         week.averageKcal?.let { kcal -> TotalRow("Daily average", "${kcal.roundToInt()} kcal", Modifier.padding(top = 16.dp)) }
         if (week.loggedDays > 0) {
             MacroLine(

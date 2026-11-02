@@ -28,12 +28,12 @@ class WeightChartTest {
         target,
     )
 
-    private fun assertAxisHolds(axis: KgAxis, vararg values: Double) {
-        values.forEach { assertTrue(it > axis.min && it < axis.max, "$it in $axis") }
+    private fun assertAxisHolds(axis: RoundAxis, vararg values: Double) {
+        values.forEach { assertTrue(it >= axis.min && it <= axis.max, "$it in $axis") }
         assertEquals(0.0, axis.min % axis.step, "$axis")
         assertEquals(0.0, axis.max % axis.step, "$axis")
         assertTrue(axis.max > axis.min, "$axis")
-        assertTrue((axis.max - axis.min) / axis.step <= 6, "$axis")
+        assertTrue(axis.stepCount <= 5, "$axis")
     }
 
     @Test fun noPointsHaveNoChart() {
@@ -61,8 +61,7 @@ class WeightChartTest {
     }
 
     @Test fun equalValuesGetARange() {
-        val axis = kgAxis(listOf(80.0, 80.0))
-        assertEquals(KgAxis(79.0, 81.0, 1.0), axis)
+        assertEquals(RoundAxis(79.0, 81.0, 1.0), weightAxis(listOf(80.0, 80.0)))
     }
 
     @Test fun theAxisIncludesATargetOutsideThePoints() {
@@ -71,16 +70,46 @@ class WeightChartTest {
     }
 
     @Test fun ticksAreRoundWhateverTheValues() {
-        assertAxisHolds(kgAxis(listOf(82.3, 82.7)), 82.3, 82.7)
-        assertAxisHolds(kgAxis(listOf(60.0, 140.0)), 60.0, 140.0)
-        assertAxisHolds(kgAxis(listOf(495.0, 500.0)), 495.0, 500.0)
-        assertAxisHolds(kgAxis(listOf(20.0, 500.0)), 20.0, 500.0)
-        assertEquals(1.0, kgAxis(listOf(82.3, 82.7)).step)
+        assertAxisHolds(weightAxis(listOf(82.3, 82.7)), 82.3, 82.7)
+        assertAxisHolds(weightAxis(listOf(60.0, 140.0)), 60.0, 140.0)
+        assertAxisHolds(weightAxis(listOf(495.0, 500.0)), 495.0, 500.0)
+        assertAxisHolds(weightAxis(listOf(20.0, 500.0)), 20.0, 500.0)
+        assertEquals(1.0, weightAxis(listOf(82.3, 82.7)).step)
+    }
+
+    @Test fun fiveRoundStepsAreAllowedWhenTheyFit() {
+        assertEquals(RoundAxis(78.0, 88.0, 2.0), weightAxis(listOf(78.0, 88.0)))
+        assertEquals(RoundAxis(78.0, 88.0, 2.0), weightAxis(listOf(78.5, 87.5)))
+    }
+
+    @Test fun aZoomedChartLabelsWhatIsInViewAtAnyPlaceInALongSpan() {
+        val day = 1440.0
+        for (start in listOf(20000.0, 20003.5, 20400.0)) for ((viewDays, across) in listOf(7.0 to 3f, 7.0 to 20f, 30.0 to 4f, 59.0 to 3f)) {
+            val from = start * day
+            val to = from + viewDays * day
+            val ticks = visibleDateTicks(from, to, across)
+            assertTrue(ticks.isNotEmpty(), "$start $viewDays $across")
+            assertTrue(ticks.all { it in from..to && it % day == 0.0 }, "$ticks")
+            ticks.zipWithNext().forEach { (a, b) -> assertTrue((b - a) / (to - from) * across >= 1f, "$ticks") }
+        }
+    }
+
+    @Test fun aLabelStaysOnItsDayAsTheChartIsDragged() {
+        val day = 1440.0
+        val before = visibleDateTicks(20000 * day, 20030 * day, 4f)
+        val after = visibleDateTicks(20003 * day, 20033 * day, 4f)
+        assertEquals(before.filter { it in after.first()..after.last() }, after.filter { it in before.first()..before.last() })
+    }
+
+    @Test fun talkBackReadsTheFirstAndLastWeight() {
+        val data = assertNotNull(weightChartData(listOf(point("2026-10-01", 86.0), point("2026-10-20", 85.0), point("2026-10-28", 84.44)), null))
+        assertEquals("From 86.0 to 84.4 kg", weightChartDescription(data))
+        assertEquals("86.0 kg", weightChartDescription(assertNotNull(weightChartData(listOf(point("2026-10-01", 86.0)), null))))
     }
 
     @Test fun theAxisNeverGoesBelowZero() {
-        assertEquals(0.0, kgAxis(listOf(1.0, 500.0)).min)
-        assertEquals(0.0, kgAxis(listOf(1.0)).min)
+        assertEquals(0.0, weightAxis(listOf(1.0, 500.0)).min)
+        assertEquals(0.0, weightAxis(listOf(1.0)).min)
     }
 
     @Test fun dateTicksIncludeBothEndsAreWholeDaysAndNeverExceedTheRoom() {

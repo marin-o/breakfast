@@ -6,7 +6,7 @@ Owner-approved 2026-11-02. Reuse shared components; no duplicated layout or logi
 Profile becomes three swipeable pages, with the tappable words Profile, Weight, Nutrition in the top bar (BottomNav's text-tab style). Back with unsaved changes still asks. Save (primary button) shows on Profile only; a draft survives swiping between pages. Charts on a page take no drag or pinch, so a swipe always changes the page.
 
 ## Profile page, in order
-Name; Height, cm + Age; Current weight, kg + Target weight, kg; "Add to curve"; "Several weights a day"; Sex (Female, Male, Not saying); Activity (Inactive, Low active, Active, Very active); "Tracking only"; "Daily burn" row with kcal; Goal (Lose, Maintain, Gain); Kg a week (0.25, 0.5, 1, Custom, with a "Kg a week" field for Custom; hidden on Maintain); two soft lines; Daily kcal; macro rows. These replace the old macro preset chips. No sex selected counts as Not saying. Daily burn, Goal and Kg a week show only when height, age, current weight and activity are valid.
+Name; Height, cm + Age; Current weight, kg + Target weight, kg; "Add to curve"; "Several weights a day"; Sex (Female, Male, Not saying); Activity (Inactive, Low active, Active, Very active); "Tracking only"; "Daily burn" row with kcal; Goal (Lose, Maintain, Gain); Kg a week (0.25, 0.5, 1, Custom, with a "Kg a week" field for Custom; shown only on Lose and Gain); two soft lines, shown only with a goal chosen; Daily kcal; macro rows. These replace the old macro preset chips. No sex selected counts as Not saying. Daily burn, Goal and Kg a week show only when height, age, current weight and activity are valid.
 
 Soft lines under the pace controls:
 - "Daily burn is an estimate, so your real pace may differ."

@@ -22,6 +22,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 internal class ProfileStateTest {
@@ -320,6 +321,52 @@ internal class ProfileStateTest {
         val before = profile.draft
         profile.editMacro(Macro.FAT, "50", byPercent = false)
         assertEquals(before.withMacroTyped(Macro.FAT, "50", byPercent = false), profile.draft)
+    }
+
+    @Test fun aKcalInvalidThenTrackingOnlySavesAndKeepsTheTarget() {
+        ProfilePrefs(app.profileStore).write(ProfileValues(kcalTarget = 2000.0))
+        profile.reload()
+        profile.editKcal("0")
+        assertFalse(profile.canSave)
+        profile.edit(profile.draft.copy(trackingOnly = true))
+        assertTrue(profile.canSave)
+        profile.save()
+        assertEquals(ProfileValues(kcalTarget = 2000.0, trackingOnly = true), profile.values)
+    }
+
+    @Test fun aRefusedKeyLeavesTheGoal() {
+        profile.edit(ProfileDraft(kcal = "2000", protein = "100"))
+        profile.edit(profile.draft.copy(goal = Goal.LOSE))
+        profile.editKcal("2000")
+        assertEquals(Goal.LOSE, profile.draft.goal)
+        val before = profile.draft
+        profile.editMacro(Macro.PROTEIN, "100", byPercent = false)
+        profile.editMacro(Macro.PROTEIN, "20", byPercent = true)
+        assertEquals(before, profile.draft)
+    }
+
+    @Test fun tappingCustomAtASavedPaceAsksNothing() {
+        ProfilePrefs(app.profileStore).write(goalValues.copy(kcalTarget = 2314.0))
+        profile.reload()
+        app.surfaces.openProfile()
+        profile.choosePace("0.5", custom = true)
+        assertTrue(profile.draft.paceCustom)
+        app.back()
+        assertEquals(listOf("DAILY"), app.shown())
+    }
+
+    @Test fun anInvalidNumberOnShowCountsAsAChange() {
+        app.surfaces.openProfile()
+        profile.editKcal("0")
+        app.back()
+        assertEquals(listOf("DAILY", "PROFILE", "DISCARD_PROFILE"), app.shown())
+    }
+
+    @Test fun typingANameDoesNotWorkTheBurnOutAgain() {
+        profile.edit(ProfileDraft(height = "180", age = "30", current = "80", sex = Sex.MALE, activity = Activity.LOW_ACTIVE))
+        val burn = profile.burn
+        profile.edit(profile.draft.copy(name = "Ana"))
+        assertSame(burn, profile.burn)
     }
 
     @Test fun theDailyAdjustmentWaitsWhileThePageIsOpen() {

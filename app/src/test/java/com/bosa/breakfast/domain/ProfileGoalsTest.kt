@@ -503,7 +503,59 @@ internal class MacroDraftTest {
         assertEquals(typed, ProfileDraft.of(saved))
     }
 
-    @Test fun aPercentOutOfRangeDoesNotSave() = assertNull(profileOf(ProfileDraft(fatPercent = "101"), ProfileValues()))
+    @Test fun aPercentOutOfRangeOnShowDoesNotSave() = assertNull(profileOf(ProfileDraft(kcal = "2000", fatPercent = "101"), ProfileValues()))
+
+    private val shownBody = ProfileDraft(height = "180", age = "30", current = "80", activity = Activity.ACTIVE)
+
+    @Test fun whatShowsFollowsOneRule() {
+        assertTrue(shownBody.copy(goal = Goal.LOSE).paceShown)
+        assertTrue(shownBody.copy(goal = Goal.GAIN).paceShown)
+        assertFalse(shownBody.copy(goal = Goal.MAINTAIN).paceShown)
+        assertFalse(shownBody.paceShown)
+        assertFalse(shownBody.copy(goal = Goal.LOSE, height = "").paceShown)
+        assertFalse(shownBody.copy(goal = Goal.LOSE, trackingOnly = true).paceShown)
+        assertTrue(ProfileDraft(kcal = "2000").percentsShown)
+        assertFalse(ProfileDraft(kcal = "").percentsShown)
+        assertFalse(ProfileDraft(kcal = "2000", trackingOnly = true).percentsShown)
+    }
+
+    @Test fun aBadKcalUnderTrackingOnlyKeepsAllSavedTargetsTogether() {
+        val saved = ProfileValues(kcalTarget = 2000.0, proteinTarget = 120.0, proteinPercent = 24.0, goal = Goal.LOSE, paceKgPerWeek = 0.5)
+        val typed = ProfileDraft.of(saved).copy(kcal = "0", protein = "150", proteinPercent = "", goal = null, trackingOnly = true)
+        assertEquals(saved.copy(trackingOnly = true), profileOf(typed, saved))
+        assertEquals(ProfileValues(trackingOnly = true), profileOf(ProfileDraft(kcal = "0", trackingOnly = true), ProfileValues()))
+    }
+
+    @Test fun aBadMacroUnderTrackingOnlyKeepsAllSavedTargetsToo() {
+        val saved = ProfileValues(kcalTarget = 2000.0, proteinTarget = 120.0)
+        assertEquals(saved.copy(trackingOnly = true), profileOf(ProfileDraft.of(saved).copy(kcal = "2100", fat = "x", trackingOnly = true), saved))
+        assertEquals(saved.copy(trackingOnly = true), profileOf(ProfileDraft.of(saved).copy(kcal = "2100", fatPercent = ".", trackingOnly = true), saved))
+    }
+
+    @Test fun validTargetsUnderTrackingOnlyAreSaved() {
+        val saved = ProfileValues(kcalTarget = 2000.0)
+        assertEquals(2100.0, profileOf(ProfileDraft.of(saved).copy(kcal = "2100", trackingOnly = true), saved)?.kcalTarget)
+    }
+
+    @Test fun aBadPaceHiddenOnMaintainTakesTheSavedOne() {
+        val typed = shownBody.copy(goal = Goal.MAINTAIN, pace = "0", paceCustom = true)
+        assertEquals(0.5, profileOf(typed, ProfileValues(paceKgPerWeek = 0.5))?.paceKgPerWeek)
+        assertNull(profileOf(typed, ProfileValues())?.paceKgPerWeek)
+        assertEquals(Goal.MAINTAIN, profileOf(typed, ProfileValues())?.goal)
+    }
+
+    @Test fun aBadPaceHiddenByAClearedHeightTakesTheSavedOne() {
+        val shown = shownBody.copy(goal = Goal.LOSE, pace = "0", paceCustom = true)
+        assertNull(profileOf(shown, ProfileValues(paceKgPerWeek = 0.5)))
+        assertEquals(0.5, profileOf(shown.copy(height = ""), ProfileValues(paceKgPerWeek = 0.5))?.paceKgPerWeek)
+    }
+
+    @Test fun aBadPercentHiddenByAClearedKcalTakesTheSavedOne() {
+        assertNull(profileOf(ProfileDraft(kcal = "2000", proteinPercent = "."), ProfileValues(proteinPercent = 30.0)))
+        val out = profileOf(ProfileDraft(kcal = "", proteinPercent = "."), ProfileValues(proteinPercent = 30.0))
+        assertEquals(30.0, out?.proteinPercent)
+        assertNull(out?.kcalTarget)
+    }
 
     @Test fun ageAndHeightRanges() {
         assertNull(profileOf(ProfileDraft(age = "0"), ProfileValues()))

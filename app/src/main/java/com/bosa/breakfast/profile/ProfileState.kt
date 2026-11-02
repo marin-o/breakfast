@@ -4,6 +4,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.structuralEqualityPolicy
 import com.bosa.breakfast.app.DiaryChange
 import com.bosa.breakfast.app.DiarySession
 import com.bosa.breakfast.app.Notices
@@ -25,6 +26,9 @@ import com.bosa.breakfast.domain.projectionLines
 import com.bosa.breakfast.domain.weekStartOf
 import com.bosa.breakfast.domain.weightSeries
 import com.bosa.breakfast.domain.burnBody
+import com.bosa.breakfast.domain.dayOf
+import com.bosa.breakfast.domain.gramsText
+import com.bosa.breakfast.domain.percentShown
 import com.bosa.breakfast.domain.dailyAdjusted
 import com.bosa.breakfast.domain.dailyBurn
 import com.bosa.breakfast.domain.goalKcal
@@ -161,9 +165,12 @@ internal class ProfileState(
     /** What tells [point] from any other: the delete question and its button's TalkBack label. */
     fun pointSummary(point: WeightPoint): String = "${pointLabel(point)}, ${point.kg.pretty()} kg"
 
+    /** Compared by value, so a key typed anywhere else does not work the burn out again. */
+    private val burnBody by derivedStateOf(structuralEqualityPolicy()) { draft.burnBody() }
+
     /** Daily burn from the draft's body; null until height, age, current weight and activity are valid. */
     val burn: DailyBurn? by derivedStateOf {
-        draft.burnBody()?.let { dailyBurn(it, session.weightPoints, session.entries, shownDay()) }
+        burnBody?.let { dailyBurn(it, session.weightPoints, session.entries, shownDay()) }
     }
 
     /** What the draft's goal and pace give, with whether the lowest applied; null without both. */
@@ -188,7 +195,7 @@ internal class ProfileState(
 
     /** The projection as the page writes it. */
     val projectionText: List<String> by derivedStateOf {
-        runCatching { LocalDate.parse(shownDay()) }.getOrNull()?.let { projectionLines(projection, it) }.orEmpty()
+        dayOf(shownDay())?.let { projectionLines(projection, it) }.orEmpty()
     }
 
     /** The draft as it was when the kcal field's edit began, so a target passing through 2, 20, 200 on its way to 2000 loses nothing. */
@@ -233,6 +240,8 @@ internal class ProfileState(
 
     /** Daily kcal typed by hand: the goal is cleared, and the macros follow by how each was entered. */
     fun editKcal(text: String) {
+        // A key the field refused: nothing was typed, so the goal stays.
+        if (text == draft.kcal) return
         val base = kcalBase ?: draft
         clearedPercent = null
         macroEdit = null
@@ -242,6 +251,12 @@ internal class ProfileState(
 
     /** One macro field typed: the other two share the rest, from where they stood when this field's edit began. */
     fun editMacro(macro: Macro, text: String, byPercent: Boolean) {
+        val shown = when {
+            !byPercent -> draft.gramsText(macro)
+            clearedPercent == macro -> ""
+            else -> draft.percentShown(macro)
+        }
+        if (text == shown) return
         val base = macroEdit?.takeIf { it.macro == macro && it.byPercent == byPercent }?.base ?: draft
         replaceDraft(base.withMacroTyped(macro, text, byPercent))
         macroEdit = MacroEdit(macro, byPercent, base)
@@ -267,7 +282,7 @@ internal class ProfileState(
     /** Back or the arrow: a lifted chart closes first; a changed draft asks before it is dropped; while a save runs, nothing happens. */
     fun leave() {
         if (chartLifted) { closeChart(); return }
-        when (formBack(saving = session.busy, dirty = draft != ProfileDraft.of(values))) {
+        when (formBack(saving = session.busy, dirty = profileOf(draft, values) != values)) {
             FormBack.IGNORE -> Unit
             FormBack.ASK -> discardOpen = true
             FormBack.CLOSE -> close()

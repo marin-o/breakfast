@@ -17,24 +17,31 @@ internal fun Double.plain() = if (this % 1 == 0.0) "%.0f".format(Locale.ROOT, th
 /** [plain] as shown on screen: with the "Decimal mark" setting's mark. */
 internal fun Double.pretty() = markDecimals(plain(), DisplayDecimal.mark)
 
+private val SHORT_DATE = DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH)
+private val DAY_MONTH = DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)
+private val DAY_MONTH_YEAR = DateTimeFormatter.ofPattern("d MMM yy", Locale.ENGLISH)
+private val WEEKDAY = DateTimeFormatter.ofPattern("EEE", Locale.ENGLISH)
+private val MONTH = DateTimeFormatter.ofPattern("MMM", Locale.ENGLISH)
+private val MONTH_YEAR = DateTimeFormatter.ofPattern("MMM yy", Locale.ENGLISH)
+
 /** "Wed 14 Oct", English: every day label in the app. */
 internal fun shortDateLabel(dayKey: String): String =
-    runCatching { LocalDate.parse(dayKey).format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH)) }.getOrDefault(dayKey)
+    runCatching { LocalDate.parse(dayKey).format(SHORT_DATE) }.getOrDefault(dayKey)
 
 /** "12 Oct", or "12 Oct 26" [withYear]: where the same day could otherwise read twice. */
 internal fun dayMonthLabel(date: LocalDate, withYear: Boolean = false): String =
-    date.format(DateTimeFormatter.ofPattern(if (withYear) "d MMM yy" else "d MMM", Locale.ENGLISH))
+    date.format(if (withYear) DAY_MONTH_YEAR else DAY_MONTH)
 
 /** "26 Oct to 1 Nov", a week's title. */
 internal fun weekLabel(start: LocalDate, end: LocalDate): String = "${dayMonthLabel(start)} to ${dayMonthLabel(end)}"
 
 /** "Mon", a weekday along the Nutrition chart. */
 internal fun weekdayLabel(dayKey: String): String =
-    runCatching { LocalDate.parse(dayKey).format(DateTimeFormatter.ofPattern("EEE", Locale.ENGLISH)) }.getOrDefault(dayKey)
+    runCatching { LocalDate.parse(dayKey).format(WEEKDAY) }.getOrDefault(dayKey)
 
 /** "Aug", or "Aug 26" [withYear]: along a weight chart that spans months. */
 internal fun monthLabel(date: LocalDate, withYear: Boolean = false): String =
-    date.format(DateTimeFormatter.ofPattern(if (withYear) "MMM yy" else "MMM", Locale.ENGLISH))
+    date.format(if (withYear) MONTH_YEAR else MONTH)
 
 /** "07:52", the time of a moment on this phone. */
 internal fun clockLabel(epochMs: Long, zone: ZoneId = ZoneId.systemDefault()): String =
