@@ -1,0 +1,990 @@
+package mk.bosa.breakfast.domain
+
+import java.time.LocalDate
+import java.time.ZoneOffset
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+private val UTC = ZoneOffset.UTC
+private const val NOON_MS = 43_200_000L
+private const val TODAY = "2026-11-02"
+private val TODAY_DATE = LocalDate.parse(TODAY)
+private const val DELTA = 0.01
+
+private fun daysAgo(n: Int): String = TODAY_DATE.minusDays(n.toLong()).toString()
+
+/** A weigh-in at noon on [day]. */
+private fun weighIn(day: String, kg: Double) = WeightPoint(day, kg, LocalDate.parse(day).toEpochDay() * 86_400_000L + NOON_MS)
+
+/** A weigh-in every day for [days] days to today, starting at [startKg] and moving by [perDay]. */
+private fun line(days: Int, startKg: Double, perDay: Double) =
+    (0 until days).map { i -> weighIn(daysAgo(days - 1 - i), startKg + perDay * i) }
+
+private fun meal(day: String, kcal: Double, protein: Double? = null, carbs: Double? = null, fat: Double? = null) = MealEntry(
+    id = "$day-$kcal", foodId = "f", foodName = "f", enteredAmount = 1.0, enteredUnit = MeasureUnit.GRAM, resolvedBaseAmount = 1.0,
+    nutritionSnapshot = NutritionValues(kcal, protein, carbs, fat), conversionProvenance = "", approximateConversion = false, savedAtEpochMs = 0L, dayKey = day,
+)
+
+private val MAN = BurnBody(30, 180.0, 80.0, Sex.MALE, Activity.LOW_ACTIVE)
+
+internal class DailyBurnTest {
+    // (800 + 1125 - 150 + 5) x 1.375
+    @Test fun theMaleEquation() = assertEquals(2447.5, formulaBurn(MAN), DELTA)
+
+    // (600 + 1031.25 - 150 - 161) x 1.2
+    @Test fun theFemaleEquation() = assertEquals(1584.3, formulaBurn(BurnBody(30, 165.0, 60.0, Sex.FEMALE, Activity.INACTIVE)), DELTA)
+
+    // (800 + 1125 - 150 - 78) x 1.725
+    @Test fun notSayingAndNoSexAreTheAverage() {
+        val very = BurnBody(30, 180.0, 80.0, Sex.NOT_SAYING, Activity.VERY_ACTIVE)
+        assertEquals(2927.33, formulaBurn(very), DELTA)
+        // The owner's example: (880 + 1050 - 120 + 5) x 1.2, not the 3031 the old equations gave on Low active.
+        assertEquals(2178.0, formulaBurn(BurnBody(24, 168.0, 88.0, Sex.MALE, Activity.INACTIVE)), DELTA)
+        assertEquals(formulaBurn(very), formulaBurn(very.copy(sex = null)), DELTA)
+    }
+
+    @Test fun nothingLoggedOrWeighedIsTheFormula() {
+        val burn = dailyBurn(MAN, emptyList(), emptyList(), TODAY, UTC)
+        assertEquals(DailyBurn(formulaBurn(MAN), formulaBurn(MAN), 0.0, false), burn)
+    }
+
+    // slope -0.05 kg/day, SE 0, EI 2000: adaptive = 2000 + 442 = 2442. sigmaA^2 = 100^2. w = 339^2 / (339^2 + 100^2) = 114921 / 124921.
+    @Test fun aPerfectLineLearns() {
+        val entries = (1..27).map { meal(daysAgo(it), 2000.0) }
+        val burn = dailyBurn(MAN, line(28, 82.0, -0.05), entries, TODAY, UTC)
+        assertEquals(0.91995, burn.learned, 0.0001)
+        assertEquals(2447.5 + 0.91995 * (2442 - 2447.5), burn.kcal, 0.1)
+        assertFalse(burn.loggingMismatch)
+    }
+
+    @Test fun tooFewWeighInsOrASpanTooShortOrTooFewDaysLearnNothing() {
+        val entries = (1..27).map { meal(daysAgo(it), 2000.0) }
+        // 13 weigh-ins
+        assertEquals(0.0, dailyBurn(MAN, line(28, 82.0, -0.05).takeLast(13), entries, TODAY, UTC).learned)
+        // 21 weigh-ins span 20 days
+        assertEquals(0.0, dailyBurn(MAN, line(21, 82.0, -0.05), entries, TODAY, UTC).learned)
+        // 22 weigh-ins span 21 days: enough
+        assertTrue(dailyBurn(MAN, line(22, 82.0, -0.05), entries, TODAY, UTC).learned > 0)
+        // 20 eligible days
+        assertEquals(0.0, dailyBurn(MAN, line(28, 82.0, -0.05), entries.take(20), TODAY, UTC).learned)
+    }
+
+    /** A low day under half the median is left out, so it neither counts nor lowers the mean. */
+    @Test fun aDayUnderHalfTheMedianIsNotEligible() {
+        val entries = (1..26).map { meal(daysAgo(it), 2000.0) } + meal(daysAgo(27), 900.0)
+        assertEquals(dailyBurn(MAN, line(28, 82.0, -0.05), (1..26).map { meal(daysAgo(it), 2000.0) }, TODAY, UTC), dailyBurn(MAN, line(28, 82.0, -0.05), entries, TODAY, UTC))
+    }
+
+    /** Today is still being logged. */
+    @Test fun todayDoesNotCountAsIntake() {
+        val entries = (1..27).map { meal(daysAgo(it), 2000.0) }
+        assertEquals(dailyBurn(MAN, line(28, 82.0, -0.05), entries, TODAY, UTC), dailyBurn(MAN, line(28, 82.0, -0.05), entries + meal(TODAY, 300.0), TODAY, UTC))
+    }
+
+    // adaptive 1000 + 0 under 0.75 x 2447.5 = 1835.
+    @Test fun anAdaptiveOutOfRangeIsAMismatchAndCountsForNothing() {
+        val burn = dailyBurn(MAN, line(28, 80.0, 0.0), (1..27).map { meal(daysAgo(it), 1000.0) }, TODAY, UTC)
+        assertTrue(burn.loggingMismatch)
+        assertEquals(0.0, burn.learned)
+        assertEquals(formulaBurn(MAN), burn.kcal)
+    }
+
+    /** Several weigh-ins on identical days and times: no variance, so no slope and no division by zero. */
+    @Test fun identicalMomentsGiveNoSlope() {
+        assertNull(weightSlope(List(5) { weighIn(TODAY, 80.0 + it) }, UTC))
+        assertNull(weightSlope(emptyList(), UTC))
+        assertNull(weightSlope(line(2, 80.0, 0.1), UTC))
+    }
+
+    // x 0,1,2; y 80,81,83: mean 81.33, Sxx 2, Sxy 3, slope 1.5; residuals 1/6,-1/3,1/6: SSE 1/6; SE sqrt((1/6)/1/2) = sqrt(1/12).
+    @Test fun theRegressionByHand() {
+        val slope = weightSlope(listOf(weighIn(daysAgo(2), 80.0), weighIn(daysAgo(1), 81.0), weighIn(TODAY, 83.0)), UTC)!!
+        assertEquals(1.5, slope.kgPerDay, 0.0001)
+        assertEquals(0.2887, slope.standardError, 0.0001)
+    }
+
+    @Test fun aBurnIsNeverBelowZero() = assertEquals(0.0, formulaBurn(BurnBody(120, 50.0, 1.0, Sex.MALE, Activity.VERY_ACTIVE)))
+
+    @Test fun theMedianOfOddAndEven() {
+        assertNull(median(emptyList()))
+        assertEquals(2.0, median(listOf(3.0, 1.0, 2.0)))
+        assertEquals(2.5, median(listOf(4.0, 1.0, 2.0, 3.0)))
+    }
+}
+
+internal class GoalKcalTest {
+    // 0.5 x 8840 / 7 = 631.43
+    @Test fun loseGainAndMaintain() {
+        assertEquals(GoalKcal(1869), goalKcal(2500.0, Goal.LOSE, 0.5, Sex.FEMALE))
+        assertEquals(GoalKcal(3131), goalKcal(2500.0, Goal.GAIN, 0.5, Sex.FEMALE))
+        assertEquals(GoalKcal(2500), goalKcal(2500.0, Goal.MAINTAIN, null, Sex.FEMALE))
+        assertNull(goalKcal(2500.0, Goal.LOSE, null, Sex.FEMALE))
+    }
+
+    // (2000 - 1500) x 7 / 8840 = 0.396 kg a week.
+    @Test fun theLowestSaysTheRealPace() {
+        val result = goalKcal(2000.0, Goal.LOSE, 1.0, null)!!
+        assertEquals(1500, result.kcal)
+        assertEquals(1500, result.lowest)
+        assertEquals(0.396, result.paceAtLowest!!, 0.001)
+        assertEquals(GoalKcal(1369), goalKcal(2000.0, Goal.LOSE, 0.5, Sex.FEMALE))
+        assertEquals(1200, goalKcal(1500.0, Goal.LOSE, 1.0, Sex.FEMALE)!!.kcal)
+        assertEquals(1500, goalKcal(2000.0, Goal.LOSE, 1.0, Sex.MALE)!!.kcal)
+        assertEquals(1500, goalKcal(2000.0, Goal.LOSE, 1.0, Sex.NOT_SAYING)!!.kcal)
+    }
+
+    @Test fun aBurnUnderTheLowestHasNoNegativePace() {
+        assertEquals(GoalKcal(1500, 1500, null), goalKcal(1400.0, Goal.MAINTAIN, null, Sex.MALE))
+        assertEquals(GoalKcal(1500, 1500, null), goalKcal(1400.0, Goal.GAIN, 0.01, Sex.MALE))
+        assertEquals(GoalKcal(1500, 1500, null), goalKcal(1400.0, Goal.LOSE, 0.5, Sex.MALE))
+    }
+
+    @Test fun aPaceAboveOnePercentIsFast() {
+        assertTrue(paceTooFast(Goal.LOSE, 1.0, 80.0))
+        assertTrue(paceTooFast(Goal.GAIN, 1.0, 80.0))
+        assertFalse(paceTooFast(Goal.LOSE, 0.8, 80.0))
+        assertFalse(paceTooFast(Goal.MAINTAIN, 1.0, 80.0))
+        assertFalse(paceTooFast(Goal.LOSE, null, 80.0))
+        assertFalse(paceTooFast(Goal.LOSE, 1.0, null))
+    }
+
+    // 53 kg at 170 cm: BMI 18.34. 54 kg: 18.69.
+    @Test fun loseWarnsOnBmiCurrentOrTargetAndOnAge() {
+        assertEquals(setOf(LoseWarning.UNDERWEIGHT), loseWarnings(Goal.LOSE, 170.0, 30, 53.0, null))
+        assertEquals(setOf(LoseWarning.UNDERWEIGHT), loseWarnings(Goal.LOSE, 170.0, 30, 60.0, 53.0))
+        assertEquals(emptySet(), loseWarnings(Goal.LOSE, 170.0, 30, 54.0, 54.0))
+        assertEquals(setOf(LoseWarning.UNDER_18), loseWarnings(Goal.LOSE, null, 17, 60.0, null))
+        assertEquals(emptySet(), loseWarnings(Goal.LOSE, null, 18, 60.0, null))
+        assertEquals(emptySet(), loseWarnings(Goal.GAIN, 170.0, 15, 40.0, null))
+        assertEquals(emptySet(), loseWarnings(null, 170.0, 15, 40.0, null))
+    }
+
+    @Test fun theTargetOnADayIsTheLatestAtOrBeforeIt() {
+        val history = listOf(TargetRow("2026-10-10", 1900.0, null, null, null), TargetRow("2026-10-01", 2000.0, null, null, null))
+        assertEquals(2000.0, targetOn("2026-09-01", history)?.kcal)
+        assertEquals(2000.0, targetOn("2026-10-09", history)?.kcal)
+        assertEquals(1900.0, targetOn("2026-10-10", history)?.kcal)
+        assertEquals(1900.0, targetOn("2026-12-01", history)?.kcal)
+        assertNull(targetOn("2026-10-10", emptyList()))
+    }
+}
+
+internal class LimitedKcalTest {
+    private fun row(daysBefore: Int, kcal: Double) = TargetRow(daysAgo(daysBefore), kcal, null, null, null)
+
+    @Test fun aMoveIsAtMost100() {
+        assertEquals(1900.0, limitedKcal(1500, 2000.0, listOf(row(30, 2000.0)), TODAY))
+        assertEquals(2100.0, limitedKcal(2500, 2000.0, listOf(row(30, 2000.0)), TODAY))
+        assertEquals(1950.0, limitedKcal(1950, 2000.0, listOf(row(30, 2000.0)), TODAY))
+    }
+
+    @Test fun anEarlierMoveInTheWeekCounts() {
+        // 2000 was in effect until 3 days ago, 1950 since. Down only to 1900, 100 under the highest seen.
+        assertEquals(1900.0, limitedKcal(1500, 1950.0, listOf(row(30, 2000.0), row(3, 1950.0)), TODAY))
+        // Up only to 2050, 100 over the lowest seen.
+        assertEquals(2050.0, limitedKcal(2500, 1950.0, listOf(row(30, 2000.0), row(3, 1950.0)), TODAY))
+    }
+
+    @Test fun aMoveSevenDaysLaterIsFree() {
+        // The 2000 ended 6 days ago: the window starts at that row, 1900.
+        assertEquals(1800.0, limitedKcal(1500, 1900.0, listOf(row(30, 2000.0), row(6, 1900.0)), TODAY))
+        // One day later, 2000 is still in the window.
+        assertEquals(1900.0, limitedKcal(1500, 1900.0, listOf(row(30, 2000.0), row(5, 1900.0)), TODAY))
+    }
+
+    @Test fun aBigStepTheUserSavedHoldsTheTargetForTheWeek() {
+        assertEquals(1500.0, limitedKcal(1400, 1500.0, listOf(row(30, 2000.0), row(2, 1500.0)), TODAY))
+    }
+
+    /** The value before a first move is not recorded yet, so a move now would let the week's range reach 200. */
+    @Test fun noHistoryMovesFromCurrent() {
+        assertEquals(2000.0, limitedKcal(1500, 2000.0, emptyList(), TODAY))
+        assertEquals(2000.0, limitedKcal(1500, 2000.0, listOf(TargetRow(daysAgo(30), null, 100.0, null, null)), TODAY))
+    }
+
+    /** 2000 until yesterday, a goal saved at 1850 since: the band's low of 1900 must not lift it away from the goal. */
+    @Test fun aTargetOutsideTheBandNeverMovesAwayFromWhatIsWanted() {
+        val rows = listOf(row(30, 2000.0), row(1, 1850.0))
+        assertEquals(1850.0, limitedKcal(1850, 1850.0, rows, TODAY))
+        assertEquals(1850.0, limitedKcal(1800, 1850.0, rows, TODAY))
+        assertEquals(1950.0, limitedKcal(2100, 1850.0, rows, TODAY))
+    }
+
+    @Test fun aMoveStaysInTheRangeTheAppKeeps() {
+        assertEquals(20000.0, limitedKcal(30000, 19950.0, listOf(row(30, 19950.0)), TODAY))
+        assertEquals(1.0, limitedKcal(-500, 50.0, listOf(row(30, 50.0)), TODAY))
+    }
+
+    @Test fun aRowDatedLaterDoesNotCount() {
+        val later = TargetRow(TODAY_DATE.plusDays(5).toString(), 1000.0, null, null, null)
+        assertEquals(1900.0, limitedKcal(1500, 2000.0, listOf(row(30, 2000.0), later), TODAY))
+        // Only a later row: no day up to today has a row, and the window's start must not borrow it.
+        assertEquals(2000.0, limitedKcal(1500, 2000.0, listOf(later), TODAY))
+    }
+
+    @Test fun aStartingRowIsNeededOnlyWithNoKcalBehindTheTargets() {
+        val values = ProfileValues(kcalTarget = 2000.0)
+        assertTrue(needsStartingRow(values, emptyList(), TODAY))
+        assertTrue(needsStartingRow(values, listOf(TargetRow(TODAY_DATE.plusDays(1).toString(), 2000.0, null, null, null)), TODAY))
+        assertTrue(needsStartingRow(values, listOf(TargetRow(daysAgo(3), null, 100.0, null, null)), TODAY))
+        assertFalse(needsStartingRow(values, listOf(row(3, 2000.0)), TODAY))
+        assertFalse(needsStartingRow(ProfileValues(), emptyList(), TODAY))
+        assertFalse(needsStartingRow(ProfileValues(proteinTarget = 100.0), listOf(TargetRow(daysAgo(3), null, 100.0, null, null)), TODAY))
+    }
+}
+
+/** What the daily adjustment does day after day, read back as the target in effect on each day. */
+internal class DailyAdjustmentSimulationTest {
+    // Burn 2447.5, less 631.43: the goal gives 1816.
+    private val goal = ProfileValues(
+        kcalTarget = 2447.5, currentWeight = 80.0, heightCm = 180.0, age = 30, sex = Sex.MALE, activity = Activity.LOW_ACTIVE, goal = Goal.LOSE, paceKgPerWeek = 0.5,
+    )
+    private val start: LocalDate = LocalDate.parse("2026-01-01")
+
+    /** [days] days from [from], with [startRows] already stored; the days' targets in effect. */
+    private fun run(startValues: ProfileValues, startRows: List<TargetRow>, from: LocalDate, days: Int): List<Double> {
+        var values = startValues
+        var rows = startRows
+        return (0 until days).map { i ->
+            val day = from.plusDays(i.toLong()).toString()
+            val next = dailyAdjusted(values, emptyList(), emptyList(), rows, day, UTC)
+            if (next != null) values = next
+            if (next != null || needsStartingRow(values, rows, day)) rows = rows + targetsOf(values, day)
+            targetOn(day, rows)!!.kcal!!
+        }
+    }
+
+    private fun assertEveryWeekWithin100(kcal: List<Double>) = kcal.windowed(7).forEach { week ->
+        assertTrue(week.max() - week.min() <= 100.0, "$week")
+    }
+
+    @Test fun fromNoHistory() {
+        val kcal = run(goal, emptyList(), start, 90)
+        assertEquals(2447.5, kcal[0])
+        assertEquals(2348.0, kcal[1])
+        assertEveryWeekWithin100(kcal)
+        assertEquals(1816.0, kcal.last())
+    }
+
+    /** A step the user saved is theirs; from the day it took effect, every week the adjustment touches stays within 100. */
+    @Test fun fromABigManualStep() {
+        val stepDay = start.plusDays(10)
+        val rows = listOf(TargetRow(start.toString(), 2447.5, null, null, null), TargetRow(stepDay.toString(), 1500.0, null, null, null))
+        val kcal = run(goal.copy(kcalTarget = 1500.0), rows, stepDay, 90)
+        assertEquals(List(6) { 1500.0 }, kcal.take(6))
+        assertEquals(1600.0, kcal[6])
+        assertEveryWeekWithin100(kcal)
+        assertEquals(1816.0, kcal.last())
+    }
+}
+
+internal class DailyAdjustedTest {
+    private val goalValues = ProfileValues(
+        kcalTarget = 2447.5, currentWeight = 80.0, heightCm = 180.0, age = 30, sex = Sex.MALE, activity = Activity.LOW_ACTIVE, goal = Goal.LOSE, paceKgPerWeek = 0.5,
+    )
+    private val old = listOf(TargetRow(daysAgo(30), 2447.5, null, null, null))
+
+    // Burn 2447.5, less 631.43 is 1816: the first day moves 100.
+    @Test fun aSavedGoalMovesAt100() {
+        val next = dailyAdjusted(goalValues, emptyList(), emptyList(), old, TODAY, UTC)!!
+        assertEquals(2348.0, next.kcalTarget)
+    }
+
+    @Test fun nothingWithoutAGoalAKcalABodyOrWhenTrackingOnly() {
+        assertNull(dailyAdjusted(goalValues.copy(goal = null), emptyList(), emptyList(), old, TODAY, UTC))
+        assertNull(dailyAdjusted(goalValues.copy(kcalTarget = null), emptyList(), emptyList(), old, TODAY, UTC))
+        assertNull(dailyAdjusted(goalValues.copy(age = null), emptyList(), emptyList(), old, TODAY, UTC))
+        assertNull(dailyAdjusted(goalValues.copy(trackingOnly = true), emptyList(), emptyList(), old, TODAY, UTC))
+        assertNull(dailyAdjusted(goalValues.copy(paceKgPerWeek = null), emptyList(), emptyList(), old, TODAY, UTC))
+    }
+
+    @Test fun aRowTodayMeansItAlreadyRan() =
+        assertNull(dailyAdjusted(goalValues, emptyList(), emptyList(), old + TargetRow(TODAY, 2447.5, null, null, null), TODAY, UTC))
+
+    @Test fun onTargetIsNoChange() = assertNull(dailyAdjusted(goalValues.copy(kcalTarget = 1816.0), emptyList(), emptyList(), listOf(TargetRow(daysAgo(30), 1816.0, null, null, null)), TODAY, UTC))
+
+    @Test fun macrosFollowTheMove() {
+        val next = dailyAdjusted(goalValues.copy(proteinTarget = 200.0, proteinPercent = 25.0, fatTarget = 50.0), emptyList(), emptyList(), old, TODAY, UTC)!!
+        // 25% of 2348 / 4 = 146.75
+        assertEquals(147.0, next.proteinTarget)
+        assertEquals(25.0, next.proteinPercent)
+        assertEquals(50.0, next.fatTarget)
+    }
+}
+
+internal class MacroBalanceTest {
+    private val unset = MacroShare(0.0, 0.0, MacroEntered.UNSET)
+    private val noMacros = mapOf(Macro.PROTEIN to unset, Macro.CARBS to unset, Macro.FAT to unset)
+
+    private fun edited(macro: Macro, share: MacroShare) = noMacros + (macro to share)
+
+    // 30% of 2000 = 600 kcal = 150 g. 1400 left, 50/50: carbs 700 / 4 = 175, fat 700 / 9 = 77.8.
+    @Test fun aPercentWithBothOthersZeroSharesEvenly() {
+        val protein = MacroShare(150.0, 30.0, MacroEntered.PERCENT)
+        val out = macrosWithRestShared(edited(Macro.PROTEIN, protein), 2000.0, setOf(Macro.PROTEIN))
+        assertEquals(protein, out.getValue(Macro.PROTEIN))
+        assertEquals(175.0, out.getValue(Macro.CARBS).grams)
+        assertEquals(78.0, out.getValue(Macro.FAT).grams)
+        assertEquals(MacroEntered.FOLLOWS, out.getValue(Macro.FAT).entered)
+    }
+
+    // Protein 100 g = 400 kcal. 1600 left. Carbs 40% and fat 18%: carbs get 40/58, 1103.4 kcal = 275.9 g, so 276. Fat: (1600 - 1104) / 9 = 55.1.
+    @Test fun gramsKeepTheOthersRatio() {
+        val current = mapOf(
+            Macro.PROTEIN to MacroShare(100.0, 20.0, MacroEntered.GRAMS),
+            Macro.CARBS to MacroShare(200.0, 40.0, MacroEntered.FOLLOWS),
+            Macro.FAT to MacroShare(40.0, 18.0, MacroEntered.FOLLOWS),
+        )
+        val out = macrosWithRestShared(current, 2000.0, setOf(Macro.PROTEIN))
+        assertEquals(100.0, out.getValue(Macro.PROTEIN).grams)
+        assertEquals(276.0, out.getValue(Macro.CARBS).grams)
+        assertEquals(55.0, out.getValue(Macro.FAT).grams)
+    }
+
+    // 50.5 g fat = 454.5 kcal. 1545.5 left, half 772.75 = 193 g protein; carbs (1545.5 - 772) / 4 = 193.4.
+    @Test fun theEditedFatKeepsWhatWasTypedAndCarbsTakeTheRemainder() {
+        val out = macrosWithRestShared(edited(Macro.FAT, MacroShare(50.5, 22.7, MacroEntered.GRAMS)), 2000.0, setOf(Macro.FAT))
+        assertEquals(50.5, out.getValue(Macro.FAT).grams)
+        assertEquals(193.0, out.getValue(Macro.PROTEIN).grams)
+        assertEquals(193.0, out.getValue(Macro.CARBS).grams)
+    }
+
+    // 300 g + 300 g = 2400 kcal, over the 2000: nothing left, never below zero. Fat had a share, so it stays a follower at zero.
+    @Test fun moreEditedThanTheKcalLeavesTheRestAtZero() {
+        val current = mapOf(
+            Macro.PROTEIN to MacroShare(300.0, 60.0, MacroEntered.GRAMS),
+            Macro.CARBS to MacroShare(300.0, 60.0, MacroEntered.GRAMS),
+            Macro.FAT to MacroShare(67.0, 30.0, MacroEntered.GRAMS),
+        )
+        val out = macrosWithRestShared(current, 2000.0, setOf(Macro.PROTEIN, Macro.CARBS))
+        assertEquals(listOf(300.0, 300.0, 0.0), Macro.entries.map { out.getValue(it).grams })
+        assertEquals(MacroEntered.FOLLOWS, out.getValue(Macro.FAT).entered)
+    }
+
+    // 900 kcal each: 225 g carbs, 100 g fat.
+    @Test fun zeroPercentGivesTheOthersEverything() {
+        val out = macrosWithRestShared(edited(Macro.PROTEIN, MacroShare(0.0, 0.0, MacroEntered.PERCENT)), 1800.0, setOf(Macro.PROTEIN))
+        assertEquals(0.0, out.getValue(Macro.PROTEIN).grams)
+        assertEquals(225.0, out.getValue(Macro.CARBS).grams)
+        assertEquals(100.0, out.getValue(Macro.FAT).grams)
+    }
+
+    @Test fun oldTargetsInGramsFollowOnceApplied() {
+        val old = mapOf(
+            Macro.PROTEIN to MacroShare(150.0, 30.0, MacroEntered.GRAMS),
+            Macro.CARBS to MacroShare(200.0, 40.0, MacroEntered.GRAMS),
+            Macro.FAT to MacroShare(67.0, 30.0, MacroEntered.GRAMS),
+        )
+        val out = macrosWithRestShared(old, 2000.0, setOf(Macro.PROTEIN))
+        assertEquals(MacroEntered.GRAMS, out.getValue(Macro.PROTEIN).entered)
+        assertEquals(MacroEntered.FOLLOWS, out.getValue(Macro.CARBS).entered)
+    }
+
+    // Protein 30% stays: 2400 x .3 / 4 = 180. Carbs 100 g stay: 400 kcal. Fat follows: 2400 - 720 - 400 = 1280 / 9 = 142.2.
+    @Test fun atANewKcalEachKeepsHowItWasEntered() {
+        val shares = mapOf(
+            Macro.PROTEIN to MacroShare(150.0, 30.0, MacroEntered.PERCENT),
+            Macro.CARBS to MacroShare(100.0, 20.0, MacroEntered.GRAMS),
+            Macro.FAT to MacroShare(111.0, 50.0, MacroEntered.FOLLOWS),
+        )
+        val out = macrosAtKcal(shares, 2400.0)
+        assertEquals(180.0, out.getValue(Macro.PROTEIN).grams)
+        assertEquals(30.0, out.getValue(Macro.PROTEIN).percent)
+        assertEquals(100.0, out.getValue(Macro.CARBS).grams)
+        assertEquals(16.67, out.getValue(Macro.CARBS).percent, DELTA)
+        assertEquals(142.0, out.getValue(Macro.FAT).grams)
+    }
+
+    @Test fun atANewKcalNothingFollowsWithoutAFollower() {
+        val old = mapOf(
+            Macro.PROTEIN to MacroShare(150.0, 30.0, MacroEntered.GRAMS),
+            Macro.CARBS to MacroShare(200.0, 40.0, MacroEntered.GRAMS),
+            Macro.FAT to MacroShare(67.0, 30.0, MacroEntered.GRAMS),
+        )
+        val out = macrosAtKcal(old, 2500.0)
+        assertEquals(listOf(150.0, 200.0, 67.0), Macro.entries.map { out.getValue(it).grams })
+    }
+
+    @Test fun atANewKcalUnsetStaysUnsetAndTooLittleLeavesZero() {
+        val partly = noMacros + (Macro.PROTEIN to MacroShare(120.0, 24.0, MacroEntered.GRAMS))
+        assertEquals(listOf(120.0, 0.0, 0.0), Macro.entries.map { macrosAtKcal(partly, 2000.0).getValue(it).grams })
+        val over = mapOf(
+            Macro.PROTEIN to MacroShare(500.0, 100.0, MacroEntered.GRAMS),
+            Macro.CARBS to MacroShare(50.0, 10.0, MacroEntered.FOLLOWS),
+            Macro.FAT to MacroShare(50.0, 20.0, MacroEntered.FOLLOWS),
+        )
+        assertEquals(listOf(500.0, 0.0, 0.0), Macro.entries.map { macrosAtKcal(over, 1000.0).getValue(it).grams })
+    }
+
+    /** Pushed to nothing by a kcal too low, followers come back when it rises: equally, their ratio being gone. */
+    @Test fun aFollowerAtZeroKeepsFollowing() {
+        val values = ProfileValues(kcalTarget = 2000.0, proteinTarget = 500.0, carbsTarget = 0.5, fatTarget = 0.5, followingMacros = setOf(Macro.CARBS, Macro.FAT))
+        val low = values.withKcalFollowing(1000.0)
+        assertNull(low.carbsTarget)
+        assertNull(low.fatTarget)
+        assertEquals(setOf(Macro.CARBS, Macro.FAT), low.followingMacros)
+        // 3000 less 2000 from protein: 500 kcal each, 125 g carbs and 55.6 g fat.
+        val back = low.withKcalFollowing(3000.0)
+        assertEquals(125.0, back.carbsTarget)
+        assertEquals(56.0, back.fatTarget)
+    }
+
+    /** Rounded to nothing beside another follower, it counts as under a gram: it takes a little, not its old share. */
+    @Test fun aFollowerRoundedAwayBesideAnotherComesBack() {
+        val shares = mapOf(
+            Macro.PROTEIN to MacroShare(100.0, 20.0, MacroEntered.GRAMS),
+            Macro.CARBS to MacroShare(200.0, 40.0, MacroEntered.FOLLOWS),
+            Macro.FAT to MacroShare(0.0, 0.0, MacroEntered.FOLLOWS),
+        )
+        val out = macrosAtKcal(shares, 2000.0)
+        assertTrue(out.getValue(Macro.FAT).grams > 0)
+        assertTrue(out.getValue(Macro.CARBS).grams > out.getValue(Macro.FAT).grams)
+    }
+
+    @Test fun aMacroClearedStaysOutOfALaterEdit() {
+        val shares = mapOf(
+            Macro.PROTEIN to MacroShare(100.0, 20.0, MacroEntered.GRAMS),
+            Macro.CARBS to MacroShare(200.0, 40.0, MacroEntered.FOLLOWS),
+            Macro.FAT to unset,
+        )
+        assertEquals(MacroEntered.UNSET, macrosWithRestShared(shares, 2000.0, setOf(Macro.PROTEIN)).getValue(Macro.FAT).entered)
+    }
+
+    @Test fun zeroMacrosAtZeroKcalDoNotDivideByZero() {
+        val out = macrosAtKcal(noMacros, 0.0)
+        assertEquals(listOf(0.0, 0.0, 0.0), Macro.entries.map { out.getValue(it).percent })
+    }
+}
+
+internal class MacroDraftTest {
+    private val set = ProfileDraft(kcal = "2000", protein = "150", carbs = "200", fat = "67")
+
+    // 40% of 2000 = 800 kcal = 200 g.
+    @Test fun typingAPercentChangesOnlyThatMacro() {
+        val out = set.withMacroTyped(Macro.PROTEIN, "40", byPercent = true)
+        assertEquals("40", out.proteinPercent)
+        assertEquals("200", out.protein)
+        assertEquals("200", out.carbs)
+        assertEquals("67", out.fat)
+        assertEquals(setOf(Macro.PROTEIN), out.handEditedMacros)
+        assertTrue(out.macrosPending)
+    }
+
+    // 100 g = 400 kcal = 20% of 2000.
+    @Test fun typingGramsChangesOnlyThatMacro() {
+        val out = set.withMacroTyped(Macro.PROTEIN, "100", byPercent = false)
+        assertEquals("100", out.protein)
+        assertEquals("20", out.percentShown(Macro.PROTEIN))
+        assertEquals("200", out.carbs)
+        assertEquals("67", out.fat)
+    }
+
+    @Test fun aMarkedMacroStopsFollowing() {
+        val out = set.copy(followingMacros = setOf(Macro.PROTEIN, Macro.FAT)).withMacroTyped(Macro.PROTEIN, "100", byPercent = false)
+        assertEquals(setOf(Macro.FAT), out.followingMacros)
+    }
+
+    // 30%: 150 g protein, 1400 kcal left, 50/50: 175 g carbs, 78 g fat, 35% and 35%.
+    @Test fun applyWithOneEditedSharesTheRest() {
+        val typed = ProfileDraft(kcal = "2000").withMacroTyped(Macro.PROTEIN, "30", byPercent = true)
+        assertTrue(typed.macroApplyOffered)
+        val out = typed.withMacrosApplied()
+        assertEquals("30", out.proteinPercent)
+        assertEquals("150", out.protein)
+        assertEquals("175", out.carbs)
+        assertEquals("78", out.fat)
+        assertEquals("35", out.percentShown(Macro.CARBS))
+        assertEquals(setOf(Macro.CARBS, Macro.FAT), out.followingMacros)
+        assertEquals(setOf(Macro.PROTEIN), out.handEditedMacros)
+        assertFalse(out.macroApplyOffered)
+    }
+
+    // Protein 600 kcal, carbs 800: 600 left, all fat: 66.7 g.
+    private val twoApplied = ProfileDraft(kcal = "2000")
+        .withMacroTyped(Macro.PROTEIN, "30", byPercent = true).withMacrosApplied()
+        .withMacroTyped(Macro.CARBS, "200", byPercent = false).withMacrosApplied()
+
+    @Test fun applyWithTwoEditedPutsTheRestInTheThird() {
+        assertEquals("30", twoApplied.proteinPercent)
+        assertEquals("150", twoApplied.protein)
+        assertEquals("200", twoApplied.carbs)
+        assertEquals("67", twoApplied.fat)
+        assertEquals(setOf(Macro.FAT), twoApplied.followingMacros)
+    }
+
+    // Protein 30% of 2400 = 180 g, 720 kcal; carbs stay 200 g, 800 kcal; 880 left: fat 97.8 g.
+    @Test fun aKcalChangeAfterApplyKeepsPercentAndGramsAndFollowersTakeTheRest() {
+        val out = twoApplied.withDailyKcal("2400")
+        assertEquals("30", out.proteinPercent)
+        assertEquals("180", out.protein)
+        assertEquals("200", out.carbs)
+        assertEquals("98", out.fat)
+        assertEquals(setOf(Macro.PROTEIN, Macro.CARBS), out.handEditedMacros)
+    }
+
+    @Test fun aKcalChangeLeavesAPendingEditPending() = assertTrue(set.withMacroTyped(Macro.PROTEIN, "100", byPercent = false).withDailyKcal("2400").macrosPending)
+
+    // 50% each: 1000 kcal, 250 g, 250 g, 111 g.
+    @Test fun allThreeEditedHasNoApplyAndSavesAsTyped() {
+        val typed = ProfileDraft(kcal = "2000")
+            .withMacroTyped(Macro.PROTEIN, "50", byPercent = true)
+            .withMacroTyped(Macro.CARBS, "50", byPercent = true)
+            .withMacroTyped(Macro.FAT, "50", byPercent = true)
+        assertFalse(typed.macroApplyOffered)
+        assertEquals(typed, typed.withMacrosApplied())
+        val saved = profileOf(typed, ProfileValues())!!
+        assertEquals(listOf(50.0, 50.0, 50.0), listOf(saved.proteinPercent, saved.carbsPercent, saved.fatPercent))
+        assertEquals(listOf(250.0, 250.0, 111.0), listOf(saved.proteinTarget, saved.carbsTarget, saved.fatTarget))
+    }
+
+    @Test fun saveWithAPendingEditStoresWhatIsTyped() {
+        val saved = profileOf(set.withMacroTyped(Macro.PROTEIN, "100", byPercent = false), ProfileValues())!!
+        assertEquals(listOf(100.0, 200.0, 67.0), listOf(saved.proteinTarget, saved.carbsTarget, saved.fatTarget))
+    }
+
+    @Test fun applyLeavesAnEditedTextExactlyAsTyped() {
+        val out = set.withMacroTyped(Macro.CARBS, "120,5", byPercent = false).withMacrosApplied()
+        assertEquals("120,5", out.carbs)
+    }
+
+    @Test fun anEmptiedFieldUnsetsTheMacroInBothAndApplyLeavesItSo() {
+        val typed = ProfileDraft(kcal = "2000").withMacroTyped(Macro.PROTEIN, "30", byPercent = true).withMacroTyped(Macro.PROTEIN, "", byPercent = true)
+        assertEquals("", typed.protein)
+        assertEquals("", typed.percentShown(Macro.PROTEIN))
+        assertEquals(setOf(Macro.PROTEIN), typed.handEditedMacros)
+        // 1000 kcal each: 250 g carbs, 111 g fat.
+        val out = typed.withMacrosApplied()
+        assertEquals("", out.protein)
+        assertEquals("250", out.carbs)
+        assertEquals("111", out.fat)
+    }
+
+    // 300 g + 300 g = 2400 kcal, over the 2000. At 3000, 600 kcal comes back to fat: 66.7 g.
+    @Test fun applyPastTheKcalLeavesTheRestEmptyAndItComesBack() {
+        val out = set.withMacroTyped(Macro.PROTEIN, "300", byPercent = false).withMacroTyped(Macro.CARBS, "300", byPercent = false).withMacrosApplied()
+        assertEquals("300", out.protein)
+        assertEquals("300", out.carbs)
+        assertEquals("", out.fat)
+        assertEquals("67", out.withDailyKcal("3000").fat)
+    }
+
+    @Test fun applyWaitsForValidFields() {
+        val typed = set.withMacroTyped(Macro.PROTEIN, "100", byPercent = false)
+        assertTrue(typed.macroApplyOffered)
+        assertFalse(set.macroApplyOffered)
+        assertFalse(typed.copy(kcal = "0").macroApplyOffered)
+        assertFalse(typed.copy(kcal = "").macroApplyOffered)
+        assertFalse(typed.copy(trackingOnly = true).macroApplyOffered)
+        assertFalse(typed.copy(carbs = "x").macroApplyOffered)
+        assertFalse(typed.copy(fatPercent = ".").macroApplyOffered)
+        // 500 g carbs is 200% of 1000 kcal: the % field on show is in error.
+        assertFalse(typed.copy(kcal = "1000", carbs = "500").macroApplyOffered)
+        assertFalse(set.withMacroTyped(Macro.PROTEIN, "x", byPercent = false).macroApplyOffered)
+    }
+
+    // 2000 kcal / 9 = 222.2 g of fat at most; carbs stay.
+    @Test fun aNumberPastTheCapIsCapped() {
+        val out = set.withMacroTyped(Macro.FAT, "900", byPercent = false)
+        assertEquals(2000.0 / 9, positiveAmountOf(out.fat)!!, 0.001)
+        assertEquals("200", out.carbs)
+    }
+
+    @Test fun aHundredPercentLeavesTheOthersNotSetSoTheDraftSaves() {
+        val out = ProfileDraft(kcal = "2000").withMacroTyped(Macro.PROTEIN, "150", byPercent = true)
+        assertEquals("100", out.proteinPercent)
+        assertEquals("", out.carbs)
+        assertEquals("", out.fat)
+        assertEquals(500.0, profileOf(out, ProfileValues())?.proteinTarget)
+        assertNull(profileOf(out, ProfileValues())?.fatTarget)
+    }
+
+    @Test fun withoutAValidKcalOnlyTheFieldChanges() {
+        val out = ProfileDraft(carbs = "200").withMacroTyped(Macro.PROTEIN, "100", byPercent = false)
+        assertEquals("100", out.protein)
+        assertEquals("200", out.carbs)
+        assertEquals("", out.percentShown(Macro.PROTEIN))
+    }
+
+    @Test fun aPartlyTypedNumberDoesNotRebalance() {
+        val draft = ProfileDraft(kcal = "2000", carbs = "200")
+        assertEquals("200", draft.withMacroTyped(Macro.PROTEIN, "", byPercent = false).carbs)
+        assertEquals("200", draft.withMacroTyped(Macro.PROTEIN, "x", byPercent = false).carbs)
+    }
+
+    @Test fun anOldProfileIsNotRebalancedUntilAnEdit() {
+        val saved = ProfileValues(kcalTarget = 2000.0, proteinTarget = 120.0, carbsTarget = 100.0, fatTarget = 10.0)
+        val draft = ProfileDraft.of(saved)
+        assertEquals(saved, profileOf(draft, saved))
+        assertEquals(draft.copy(kcal = "2100"), draft.withDailyKcal("2100"))
+    }
+
+    @Test fun aSavedDraftKeepsItsPercentAndFollowersAndNoMarks() {
+        val typed = ProfileDraft(kcal = "2000").withMacroTyped(Macro.PROTEIN, "30", byPercent = true).withMacrosApplied()
+        val saved = profileOf(typed, ProfileValues())!!
+        assertEquals(30.0, saved.proteinPercent)
+        assertEquals(setOf(Macro.CARBS, Macro.FAT), saved.followingMacros)
+        assertEquals(typed.copy(handEditedMacros = emptySet()), ProfileDraft.of(saved))
+    }
+
+    @Test fun aPercentOutOfRangeOnShowDoesNotSave() = assertNull(profileOf(ProfileDraft(kcal = "2000", fatPercent = "101"), ProfileValues()))
+
+    private val shownBody = ProfileDraft(height = "180", age = "30", current = "80", activity = Activity.ACTIVE)
+
+    @Test fun whatShowsFollowsOneRule() {
+        assertTrue(shownBody.copy(goal = Goal.LOSE).paceShown)
+        assertTrue(shownBody.copy(goal = Goal.GAIN).paceShown)
+        assertFalse(shownBody.copy(goal = Goal.MAINTAIN).paceShown)
+        assertFalse(shownBody.paceShown)
+        assertFalse(shownBody.copy(goal = Goal.LOSE, height = "").paceShown)
+        assertFalse(shownBody.copy(goal = Goal.LOSE, trackingOnly = true).paceShown)
+        assertTrue(ProfileDraft(kcal = "2000").percentsShown)
+        assertFalse(ProfileDraft(kcal = "").percentsShown)
+        assertFalse(ProfileDraft(kcal = "2000", trackingOnly = true).percentsShown)
+    }
+
+    @Test fun aBadKcalUnderTrackingOnlyKeepsAllSavedTargetsTogether() {
+        val saved = ProfileValues(kcalTarget = 2000.0, proteinTarget = 120.0, proteinPercent = 24.0, goal = Goal.LOSE, paceKgPerWeek = 0.5)
+        val typed = ProfileDraft.of(saved).copy(kcal = "0", protein = "150", proteinPercent = "", goal = null, trackingOnly = true)
+        assertEquals(saved.copy(trackingOnly = true), profileOf(typed, saved))
+        assertEquals(ProfileValues(trackingOnly = true), profileOf(ProfileDraft(kcal = "0", trackingOnly = true), ProfileValues()))
+    }
+
+    @Test fun aBadMacroUnderTrackingOnlyKeepsAllSavedTargetsToo() {
+        val saved = ProfileValues(kcalTarget = 2000.0, proteinTarget = 120.0)
+        assertEquals(saved.copy(trackingOnly = true), profileOf(ProfileDraft.of(saved).copy(kcal = "2100", fat = "x", trackingOnly = true), saved))
+        assertEquals(saved.copy(trackingOnly = true), profileOf(ProfileDraft.of(saved).copy(kcal = "2100", fatPercent = ".", trackingOnly = true), saved))
+    }
+
+    @Test fun validTargetsUnderTrackingOnlyAreSaved() {
+        val saved = ProfileValues(kcalTarget = 2000.0)
+        assertEquals(2100.0, profileOf(ProfileDraft.of(saved).copy(kcal = "2100", trackingOnly = true), saved)?.kcalTarget)
+    }
+
+    @Test fun aBadPaceHiddenOnMaintainTakesTheSavedOne() {
+        val typed = shownBody.copy(goal = Goal.MAINTAIN, pace = "0", paceCustom = true)
+        assertEquals(0.5, profileOf(typed, ProfileValues(paceKgPerWeek = 0.5))?.paceKgPerWeek)
+        assertNull(profileOf(typed, ProfileValues())?.paceKgPerWeek)
+        assertEquals(Goal.MAINTAIN, profileOf(typed, ProfileValues())?.goal)
+    }
+
+    @Test fun aBadPaceHiddenByAClearedHeightTakesTheSavedOne() {
+        val shown = shownBody.copy(goal = Goal.LOSE, pace = "0", paceCustom = true)
+        assertNull(profileOf(shown, ProfileValues(paceKgPerWeek = 0.5)))
+        assertEquals(0.5, profileOf(shown.copy(height = ""), ProfileValues(paceKgPerWeek = 0.5))?.paceKgPerWeek)
+    }
+
+    @Test fun aBadPercentHiddenByAClearedKcalTakesTheSavedOne() {
+        assertNull(profileOf(ProfileDraft(kcal = "2000", proteinPercent = "."), ProfileValues(proteinPercent = 30.0)))
+        val out = profileOf(ProfileDraft(kcal = "", proteinPercent = "."), ProfileValues(proteinPercent = 30.0))
+        assertEquals(30.0, out?.proteinPercent)
+        assertNull(out?.kcalTarget)
+    }
+
+    @Test fun ageAndHeightRanges() {
+        assertNull(profileOf(ProfileDraft(age = "0"), ProfileValues()))
+        assertNull(profileOf(ProfileDraft(age = "121"), ProfileValues()))
+        assertNull(profileOf(ProfileDraft(height = "49"), ProfileValues()))
+        assertEquals(120, profileOf(ProfileDraft(age = "120", height = "300"), ProfileValues())?.age)
+    }
+
+    @Test fun choosingAGoalFillsKcalButNotWithoutAPace() {
+        val draft = ProfileDraft(sex = Sex.FEMALE)
+        assertEquals("", draft.withGoal(Goal.LOSE, 2500.0).kcal)
+        assertEquals("2500", draft.withGoal(Goal.MAINTAIN, 2500.0).kcal)
+        assertEquals("1869", draft.withGoal(Goal.LOSE, 2500.0).withPace("0.5", false, 2500.0).kcal)
+        assertEquals(Goal.LOSE, draft.withGoal(Goal.LOSE, 2500.0).withPace("0.5", false, 2500.0).goal)
+    }
+
+    @Test fun theBurnBodyNeedsEveryValidValue() {
+        val whole = ProfileDraft(height = "180", age = "30", current = "80", activity = Activity.ACTIVE)
+        assertEquals(BurnBody(30, 180.0, 80.0, null, Activity.ACTIVE), whole.burnBody())
+        assertNull(whole.copy(height = "20").burnBody())
+        assertNull(whole.copy(age = "").burnBody())
+        assertNull(whole.copy(current = "x").burnBody())
+        assertNull(whole.copy(activity = null).burnBody())
+    }
+}
+
+internal class WeightProjectionTest {
+    private val target = 78.0
+
+    @Test fun noTargetOrReachedIsNothing() {
+        assertEquals(WeightProjection.Nothing, weightProjection(line(28, 82.0, -0.1), null, null, TODAY, UTC))
+        assertEquals(WeightProjection.Nothing, weightProjection(listOf(weighIn(TODAY, 77.0)), target, Goal.LOSE, TODAY, UTC))
+        assertEquals(WeightProjection.Nothing, weightProjection(listOf(weighIn(TODAY, 79.0)), target, Goal.GAIN, TODAY, UTC))
+        assertEquals(WeightProjection.Nothing, weightProjection(listOf(weighIn(TODAY, 78.0)), target, null, TODAY, UTC))
+    }
+
+    @Test fun withNoDirectionTheEarliestWeighInSaysWhenTheTargetIsCrossed() {
+        val down = listOf(weighIn(daysAgo(10), 80.0), weighIn(daysAgo(5), 79.0), weighIn(TODAY, 77.0))
+        assertEquals(WeightProjection.Nothing, weightProjection(down, target, null, TODAY, UTC))
+        assertEquals(WeightProjection.Nothing, weightProjection(down, target, Goal.MAINTAIN, TODAY, UTC))
+        val up = listOf(weighIn(daysAgo(10), 76.0), weighIn(daysAgo(5), 77.0), weighIn(TODAY, 79.0))
+        assertEquals(WeightProjection.Nothing, weightProjection(up, target, null, TODAY, UTC))
+        assertIs<WeightProjection.Dated>(weightProjection(line(10, 80.0, -0.1), target, null, TODAY, UTC))
+        // Started on it and moved away: not crossed.
+        assertTrue(weightProjection(listOf(weighIn(daysAgo(10), 78.0), weighIn(daysAgo(5), 79.0), weighIn(TODAY, 80.0)), target, null, TODAY, UTC) != WeightProjection.Nothing)
+    }
+
+    @Test fun noPointsAndFewDaysAreNotEnoughData() {
+        assertEquals(WeightProjection.NotEnoughData(14), weightProjection(emptyList(), target, null, TODAY, UTC))
+        assertEquals(WeightProjection.NotEnoughData(12), weightProjection(line(2, 82.0, -0.1), target, null, TODAY, UTC))
+    }
+
+    /** Three on one day, identical or not, are one weigh-in day and no variance. */
+    @Test fun identicalDaysAreNotEnoughData() =
+        assertEquals(WeightProjection.NotEnoughData(13), weightProjection(List(3) { weighIn(TODAY, 80.0) }, target, null, TODAY, UTC))
+
+    @Test fun weighInsOutOfTheWindowDoNotCount() {
+        val old = (30..50).map { weighIn(daysAgo(it), 90.0) }
+        assertEquals(WeightProjection.NotEnoughData(14), weightProjection(old, target, null, TODAY, UTC))
+    }
+
+    // Slope -0.1, SE 0; the line ends at 82 - 2.7 = 79.3, so D = 1.3. Earliest 1.3 / 0.1 = 13 days. Latest 343 ln(34.3 / 33) = 13.25, so 13.
+    @Test fun aSteadyLossHasDates() {
+        val result = assertIs<WeightProjection.Dated>(weightProjection(line(28, 82.0, -0.1), target, Goal.LOSE, TODAY, UTC))
+        assertEquals(0.7, result.kgPerWeek, 0.001)
+        assertEquals(78.0, result.targetKg)
+        assertEquals(TODAY_DATE.plusDays(13), result.earliest)
+        assertEquals(TODAY_DATE.plusDays(13), result.latest)
+        assertNull(result.comeBackInDays)
+    }
+
+    @Test fun datesUnder14DaysCarryTheComeBackLine() {
+        val result = assertIs<WeightProjection.Dated>(weightProjection(line(10, 80.0, -0.1), target, Goal.LOSE, TODAY, UTC))
+        assertEquals(4, result.comeBackInDays)
+    }
+
+    @Test fun movingAwayIsNoDate() {
+        assertEquals(WeightProjection.NoDate, weightProjection(line(28, 80.0, 0.1), target, Goal.LOSE, TODAY, UTC))
+    }
+
+    /** 0.04 kg a week on a clean line: the latest date is defined only if near, so a target 0.01 kg off gets past that test. */
+    @Test fun underTheSlowestIsNoDate() {
+        val slow = line(28, 80.0, -0.04 / 7)
+        assertEquals(WeightProjection.NoDate, weightProjection(slow, slow.last().kg - 0.01, Goal.LOSE, TODAY, UTC))
+    }
+
+    @Test fun aFlatLineIsNoDateWithEnoughDaysAndNotEnoughDataWithFew() {
+        assertEquals(WeightProjection.NoDate, weightProjection(line(14, 80.0, 0.0), target, Goal.LOSE, TODAY, UTC))
+        assertEquals(WeightProjection.NotEnoughData(1), weightProjection(line(13, 80.0, 0.0), target, Goal.LOSE, TODAY, UTC))
+    }
+
+    // 0.1 kg/day but tau x r = 34.3 < D = 50.
+    @Test fun farBeyondWhatThePaceCanReachIsNoDate() {
+        assertEquals(WeightProjection.MayLevelOff, weightProjection(line(28, 150.0, -0.1), 100.0, Goal.LOSE, TODAY, UTC))
+    }
+}
+
+internal class WeightSeriesTest {
+    @Test fun theDefaultRange() {
+        assertEquals(WeightRange.ALL, defaultWeightRange(emptyList(), TODAY))
+        assertEquals(WeightRange.ALL, defaultWeightRange(listOf(weighIn(daysAgo(30), 80.0)), TODAY))
+        assertEquals(WeightRange.THREE_MONTHS, defaultWeightRange(listOf(weighIn(daysAgo(120), 80.0)), TODAY))
+    }
+
+    @Test fun noPointsDrawNothing() = assertEquals(WeightSeries(emptyList(), emptyList()), weightSeries(emptyList(), WeightRange.ALL, TODAY, UTC))
+
+    // 80, then 0.1 x 90 + 0.9 x 80 = 81, then 0.1 x 70 + 0.9 x 81 = 79.9.
+    @Test fun theTrendByHand() {
+        val series = weightSeries(listOf(weighIn(daysAgo(2), 80.0), weighIn(daysAgo(1), 90.0), weighIn(TODAY, 70.0)), WeightRange.THREE_MONTHS, TODAY, UTC)
+        assertEquals(listOf(80.0, 90.0, 70.0), series.dots.map { it.kg })
+        assertEquals(listOf(80.0, 81.0, 79.9), series.trend.single().map { it.kg }.map { Math.round(it * 100) / 100.0 })
+    }
+
+    @Test fun theTrendBreaksOverAGapOfMoreThan14Days() {
+        val at14 = weightSeries(listOf(weighIn(daysAgo(14), 80.0), weighIn(TODAY, 70.0)), WeightRange.THREE_MONTHS, TODAY, UTC)
+        assertEquals(1, at14.trend.size)
+        val at15 = weightSeries(listOf(weighIn(daysAgo(15), 80.0), weighIn(TODAY, 70.0)), WeightRange.THREE_MONTHS, TODAY, UTC)
+        assertEquals(listOf(listOf(80.0), listOf(70.0)), at15.trend.map { line -> line.map { it.kg } })
+    }
+
+    /** The range cuts what is drawn, not the smoothing: the first point shown keeps what came before it. */
+    @Test fun aRangeDoesNotRestartTheTrend() {
+        val series = weightSeries(listOf(weighIn(daysAgo(40), 80.0), weighIn(daysAgo(30), 90.0), weighIn(TODAY, 90.0)), WeightRange.ONE_MONTH, TODAY, UTC)
+        assertEquals(listOf(90.0, 90.0), series.dots.map { it.kg })
+        assertEquals(81.0, series.trend.flatten().first().kg, DELTA)
+    }
+
+    // 2026-11-02 is a Monday; so 2026-10-26 starts the week before. Weeks: (80 + 82) / 2 and 70.
+    @Test fun oneYearAndAllAreWeeklyAverages() {
+        val points = listOf(weighIn("2026-10-26", 80.0), weighIn("2026-11-01", 82.0), weighIn("2026-11-02", 70.0))
+        val series = weightSeries(points, WeightRange.ONE_YEAR, TODAY, UTC)
+        assertEquals(listOf(81.0, 70.0), series.dots.map { it.kg })
+        assertEquals(2, series.trend.single().size)
+        assertEquals(3, weightSeries(points, WeightRange.SIX_MONTHS, TODAY, UTC).dots.size)
+        assertEquals(2, weightSeries(points, WeightRange.ALL, TODAY, UTC).dots.size)
+    }
+}
+
+internal class NutritionWeekTest {
+    private val monday: LocalDate = LocalDate.parse("2026-10-26")
+
+    @Test fun theWeekStartsMondayAndStopsAtTheCurrentOne() {
+        assertEquals(monday, weekStartOf("2026-11-01"))
+        assertEquals(LocalDate.parse("2026-11-02"), weekStartOf("2026-11-02"))
+        assertNull(weekStartOf("nope"))
+        assertTrue(hasNextWeek(monday, TODAY))
+        assertFalse(hasNextWeek(LocalDate.parse("2026-11-02"), TODAY))
+    }
+
+    @Test fun anEmptyWeekHasEmptySlotsAndNoAverages() {
+        val week = nutritionWeek(monday, emptyList(), emptyList())
+        assertEquals(7, week.days.size)
+        assertEquals(LocalDate.parse("2026-11-01"), week.end)
+        assertEquals(0, week.loggedDays)
+        assertNull(week.averageKcal)
+        assertNull(week.averageFat)
+        assertTrue(week.days.none { it.logged })
+    }
+
+    // 10 g protein, 10 g carbs, 10 g fat = 40 + 40 + 90 = 170. An entry of 340 kcal leaves 170 soft.
+    @Test fun segmentsAreTheKnownGramsAndTheRestIsSoft() {
+        val bar = nutritionWeek(monday, listOf(meal("2026-10-26", 340.0, 10.0, 10.0, 10.0)), emptyList()).days.first()
+        assertEquals(40.0, bar.proteinKcal, DELTA)
+        assertEquals(40.0, bar.carbsKcal, DELTA)
+        assertEquals(90.0, bar.fatKcal, DELTA)
+        assertEquals(170.0, bar.unknownKcal, DELTA)
+        assertEquals(340.0, bar.kcal)
+    }
+
+    @Test fun aPartlyKnownEntryDrawsItsGramsAndTheRestSoft() {
+        val bar = nutritionWeek(monday, listOf(meal("2026-10-26", 500.0, 5.0)), emptyList()).days.first()
+        assertEquals(20.0, bar.proteinKcal, DELTA)
+        assertEquals(480.0, bar.unknownKcal, DELTA)
+    }
+
+    // 170 kcal of macros in a 100 kcal entry: scaled by 100/170.
+    @Test fun macrosOverTheEntrysKcalScaleDownToIt() {
+        val bar = nutritionWeek(monday, listOf(meal("2026-10-26", 100.0, 10.0, 10.0, 10.0)), emptyList()).days.first()
+        assertEquals(23.53, bar.proteinKcal, DELTA)
+        assertEquals(23.53, bar.carbsKcal, DELTA)
+        assertEquals(52.94, bar.fatKcal, DELTA)
+        assertEquals(0.0, bar.unknownKcal)
+    }
+
+    @Test fun noOrZeroMacrosAreOneSoftSegmentAndAddUp() {
+        val bar = nutritionWeek(monday, listOf(meal("2026-10-26", 100.0), meal("2026-10-26", 50.0, 0.0, 0.0, 0.0), meal("2026-10-26", 40.0, 10.0)), emptyList()).days.first()
+        assertEquals(150.0, bar.unknownKcal)
+        assertEquals(40.0, bar.proteinKcal, DELTA)
+        assertEquals(190.0, bar.kcal)
+    }
+
+    @Test fun aZeroKcalDayIsStillLogged() {
+        val week = nutritionWeek(monday, listOf(meal("2026-10-26", 0.0)), emptyList())
+        assertTrue(week.days.first().logged)
+        assertEquals(1, week.loggedDays)
+    }
+
+    @Test fun averagesCountLoggedDaysOnlyAndEntriesOutsideAreLeftOut() {
+        val week = nutritionWeek(monday, listOf(meal("2026-10-26", 1000.0, 50.0), meal("2026-10-28", 2000.0, 100.0, 30.0), meal("2026-11-02", 9000.0)), emptyList())
+        assertEquals(2, week.loggedDays)
+        assertEquals(1500.0, week.averageKcal)
+        assertEquals(75.0, week.averageProtein)
+        assertEquals(15.0, week.averageCarbs)
+        assertEquals(0.0, week.averageFat)
+    }
+
+    @Test fun eachDayHasItsTarget() {
+        val history = listOf(TargetRow("2026-10-28", 1800.0, null, null, null), TargetRow("2026-10-01", 2000.0, null, null, null))
+        val days = nutritionWeek(monday, emptyList(), history).days
+        assertEquals(2000.0, days[1].targetKcal)
+        assertEquals(1800.0, days[2].targetKcal)
+        assertEquals(1800.0, days[6].targetKcal)
+        assertNull(nutritionWeek(monday, emptyList(), emptyList()).days[0].targetKcal)
+    }
+
+    @Test fun oldGramTargetsEditedByPercentFollowOnceApplied() {
+        val typed = ProfileDraft(kcal = "2000", protein = "150", carbs = "200", fat = "67").withMacroTyped(Macro.PROTEIN, "30", byPercent = true)
+        assertEquals(emptySet(), typed.followingMacros)
+        val edited = typed.withMacrosApplied()
+        assertEquals(setOf(Macro.CARBS, Macro.FAT), edited.followingMacros)
+        val more = edited.withDailyKcal("3000")
+        assertEquals("225", more.protein)
+        assertTrue(positiveAmountOf(more.carbs)!! > 200.0, more.carbs)
+        assertTrue(positiveAmountOf(more.fat)!! > 67.0, more.fat)
+    }
+
+    @Test fun aPercentMacroEditedBesideGramMacrosMakesThemFollowOnceApplied() {
+        val draft = ProfileDraft(kcal = "2000", protein = "150", proteinPercent = "30", carbs = "200", fat = "67")
+        val typed = draft.withMacroTyped(Macro.PROTEIN, "40", byPercent = true)
+        assertEquals(emptySet(), typed.followingMacros)
+        assertEquals(setOf(Macro.CARBS, Macro.FAT), typed.withMacrosApplied().followingMacros)
+    }
+
+    @Test fun aPercentMacroEditedInGramsLeavesTheOthersGramsUntilApply() {
+        val draft = ProfileDraft(kcal = "2000", protein = "150", proteinPercent = "30", carbs = "200", fat = "67")
+        assertEquals(emptySet(), draft.withMacroTyped(Macro.PROTEIN, "100", byPercent = false).followingMacros)
+    }
+
+    @Test fun trackingOnlyHidesTheTargetsFromMealsAndKeepsThem() {
+        val saved = ProfileValues(kcalTarget = 2000.0, proteinTarget = 100.0, carbsTarget = 200.0, fatTarget = 50.0, trackingOnly = true)
+        val shown = saved.targetsShown()
+        assertNull(shown.kcalTarget)
+        assertNull(shown.proteinTarget)
+        assertNull(shown.carbsTarget)
+        assertNull(shown.fatTarget)
+        assertEquals(2000.0, saved.kcalTarget)
+        val tracking = saved.copy(trackingOnly = false)
+        assertEquals(tracking, tracking.targetsShown())
+    }
+
+    @Test fun theLowestLineNeedsARealPace() {
+        assertEquals("1500 kcal is the lowest here. That's about 0.4 kg a week.", lowestLine(GoalKcal(1500, 1500, 0.42)))
+        assertNull(lowestLine(GoalKcal(1500, 1500, null)))
+        assertNull(lowestLine(GoalKcal(2100)))
+    }
+
+    private val projectionDay: LocalDate = LocalDate.parse("2026-11-02")
+    private fun dated(earliest: String, latest: String, comeBack: Int? = null, kg: Double = 0.42, target: Double = 78.0) =
+        WeightProjection.Dated(kg, target, LocalDate.parse(earliest), LocalDate.parse(latest), comeBack)
+
+    @Test fun projectionBetweenTwoMonths() {
+        assertEquals(
+            listOf("At about 0.4 kg a week, you reach 78 kg between February and April."),
+            projectionLines(dated("2027-02-10", "2027-04-20"), projectionDay),
+        )
+    }
+
+    @Test fun projectionInOneMonth() {
+        assertEquals(listOf("At about 0.4 kg a week, you reach 78.5 kg in March."), projectionLines(dated("2027-03-01", "2027-03-30", target = 78.5), projectionDay))
+    }
+
+    @Test fun aYearFollowsOnlyAMonthPastTheNextTwelve() {
+        assertEquals(
+            listOf("At about 1 kg a week, you reach 78 kg between October and November 2027."),
+            projectionLines(dated("2027-10-10", "2027-11-02", kg = 1.04), projectionDay),
+        )
+        assertEquals(
+            listOf("At about 0.4 kg a week, you reach 78 kg in January 2028."),
+            projectionLines(dated("2028-01-02", "2028-01-20"), projectionDay),
+        )
+    }
+
+    @Test fun underFourteenDaysTheComeBackLineFollows() {
+        assertEquals(
+            listOf("At about 0.4 kg a week, you reach 78 kg in March.", "Not enough data yet. Come back in 9 days."),
+            projectionLines(dated("2027-03-01", "2027-03-30", comeBack = 9), projectionDay),
+        )
+    }
+
+    @Test fun theOtherProjections() {
+        assertEquals(emptyList(), projectionLines(WeightProjection.Nothing, projectionDay))
+        assertEquals(listOf("Not enough data yet. Come back in 9 days."), projectionLines(WeightProjection.NotEnoughData(9), projectionDay))
+        assertEquals(listOf("Not enough data yet. Come back in 1 day."), projectionLines(WeightProjection.NotEnoughData(1), projectionDay))
+        assertEquals(listOf("No date yet. Your weight isn't moving toward your target."), projectionLines(WeightProjection.NoDate, projectionDay))
+        assertEquals(listOf("No date yet. At this pace, your weight may level off before your target."), projectionLines(WeightProjection.MayLevelOff, projectionDay))
+    }
+
+    @Test fun aPaceIsWrittenPlainly() {
+        assertEquals("0.4", kgAWeekText(0.42))
+        assertEquals("1", kgAWeekText(1.04))
+        assertEquals("0.06", kgAWeekText(0.06))
+        assertEquals("0.1", kgAWeekText(0.095))
+        assertEquals("10", kgAWeekText(10.0))
+    }
+}

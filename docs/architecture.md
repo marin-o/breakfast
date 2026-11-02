@@ -1,10 +1,10 @@
 # Architecture
 
-A single-module Android app (`app/`, package `com.bosa.breakfast`): Kotlin, Jetpack Compose, Material 3, Room. There is no DI framework, no navigation library and no repository layer; this is deliberate for a one-person, local-only app. Read `PRODUCT.md` for product rules and `DESIGN.md` for the locked Monochrome design.
+A single-module Android app (`app/`, package `mk.bosa.breakfast`): Kotlin, Jetpack Compose, Material 3, Room. There is no DI framework, no navigation library and no repository layer; this is deliberate for a one-person, local-only app. Read `PRODUCT.md` for product rules and `DESIGN.md` for the locked Monochrome design.
 
 ## Package map
 
-Packages under `com.bosa.breakfast`. Feature packages hold that feature's screens and the types and pure helpers only it uses (its pure decisions in a `<Feature>Rules.kt` beside its owner, tested beside it), and each feature has an owner, built and wired once by `AppOwners`: `settings/` (`SettingsState`), `today/` (`DayState`, `UndoController`, `MatchFeedback`), `contribution/` (`ContributionFlow`), `search/` (`OffSearch`), `transfer/` (`DiaryTransfer`, `ExportReminders`), `scan/` (`ScanSession`, `ProductReview`), `food/` (`FoodForm`), `entry/` (`EntryEdit`), `log/` (`LogComposer`), `library/` (`LibraryState`), `resolve/` (`ResolveFlow`) and `recipes/` (`RecipeBook`, `RecipeForm`) (see State owners).
+Packages under `mk.bosa.breakfast`. Feature packages hold that feature's screens and the types and pure helpers only it uses (its pure decisions in a `<Feature>Rules.kt` beside its owner, tested beside it), and each feature has an owner, built and wired once by `AppOwners`: `settings/` (`SettingsState`), `today/` (`DayState`, `UndoController`, `MatchFeedback`), `contribution/` (`ContributionFlow`), `search/` (`OffSearch`), `transfer/` (`DiaryTransfer`, `ExportReminders`), `scan/` (`ScanSession`, `ProductReview`), `food/` (`FoodForm`), `entry/` (`EntryEdit`), `log/` (`LogComposer`), `library/` (`LibraryState`), `resolve/` (`ResolveFlow`) and `recipes/` (`RecipeBook`, `RecipeForm`) (see State owners).
 
 | Package / file | Responsibility |
 | --- | --- |
@@ -206,7 +206,7 @@ Permissions: `INTERNET` and `CAMERA` only; the camera is declared optional. No a
 
 Every build, including `perf`, is signed with the machine's Android debug key, `%USERPROFILE%\.android\debug.keystore` (SHA-256 `98:93:7B:8D:95:25:A4:58:E1:71:55:F7:67:DB:0F:6A:26:09:3D:4A:23:74:7C:11:6E:D6:E4:5D:4B:AE:4B:1D`). **Back this file up.** A build signed with a different key cannot be installed over the current one: Android forces an uninstall first, and the uninstall deletes the diary.
 
-Decided 2026-10-26 (P10): this key stays the permanent signing key, and the owner keeps a copy off this machine. There is no separate debug `applicationId`, so debug and perf share `com.bosa.breakfast` and `breakfast.db`. The recovery path for the diary is Export diary: if the key is ever lost or replaced, export the diary first (or use the latest exported file), uninstall, install the new build, then Import diary and Replace diary.
+Decided 2026-10-26 (P10): this key stays the permanent signing key, and the owner keeps a copy off this machine. There is no separate debug `applicationId`, so debug and perf share `mk.bosa.breakfast` and `breakfast.db`. The recovery path for the diary is Export diary: if the key is ever lost or replaced, export the diary first (or use the latest exported file), uninstall, install the new build, then Import diary and Replace diary.
 
 ## Backup
 
@@ -225,25 +225,25 @@ Bump `versionCode` by 1 for every build installed on the phone. `versionName` st
 
 ## Recovery and testing on the phone
 
-- Safety copy: every Replace diary (unless Settings, Safety copy is Don't keep) and every Delete all data first saves the diary as it was to `/data/user/0/com.bosa.breakfast/no_backup/diary-before-import.json` (`noBackupFilesDir`; only the latest, written to a temp file and renamed). It is never backed up and has no UI. On the non-debuggable perf build it cannot be read without root. To get it: install the debug build over perf (`adb install -r app-debug.apk`, same key and data), then `adb exec-out run-as com.bosa.breakfast cat no_backup/diary-before-import.json > diary-before-import.json`, then put perf back. That file can be imported with Import diary.
+- Safety copy: every Replace diary (unless Settings, Safety copy is Don't keep) and every Delete all data first saves the diary as it was to `/data/user/0/mk.bosa.breakfast/no_backup/diary-before-import.json` (`noBackupFilesDir`; only the latest, written to a temp file and renamed). It is never backed up and has no UI. On the non-debuggable perf build it cannot be read without root. To get it: install the debug build over perf (`adb install -r app-debug.apk`, same key and data), then `adb exec-out run-as mk.bosa.breakfast cat no_backup/diary-before-import.json > diary-before-import.json`, then put perf back. That file can be imported with Import diary.
 - Update in place only: `adb install -r app/build/outputs/apk/perf/app-perf.apk`. `-r` keeps the app's data. Never uninstall; never install a build signed with another key.
-- **Never run `connectedDebugAndroidTest` against the owner's phone.** AGP uninstalls the app under test afterwards, and `debug` shares the `com.bosa.breakfast` applicationId with `perf`, so it would wipe the diary.
+- **Never run `connectedDebugAndroidTest` against the owner's phone.** AGP uninstalls the app under test afterwards, and `debug` shares the `mk.bosa.breakfast` applicationId with `perf`, so it would wipe the diary.
 - Safe manual run of the instrumented tests (`BreakfastDatabaseTest`, `BreakfastStoreTest`, `DiaryImportTest`, `DamagedDatabaseTest`, `BreakfastBenchmark`; they use their own throwaway or in-memory databases, never `breakfast.db`, delete their files after each test, Room's `.lck` locks included (`deleteTestDatabase`), and sweep what is left after each class (`sweepTestDatabases`)):
 
   ```powershell
   .\gradlew.bat assembleDebug assembleDebugAndroidTest
   adb install -r app/build/outputs/apk/debug/app-debug.apk
   adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-  adb shell am instrument -w com.bosa.breakfast.test/androidx.test.runner.AndroidJUnitRunner
+  adb shell am instrument -w mk.bosa.breakfast.test/androidx.test.runner.AndroidJUnitRunner
   adb install -r app/build/outputs/apk/perf/app-perf.apk
   ```
 
-  The last step puts the perf build back. The test APK (`com.bosa.breakfast.test`) can stay installed or be removed with `adb uninstall com.bosa.breakfast.test`; that never touches the app's data.
+  The last step puts the perf build back. The test APK (`mk.bosa.breakfast.test`) can stay installed or be removed with `adb uninstall mk.bosa.breakfast.test`; that never touches the app's data.
 - If storage fails to open, the app shows "Storage unavailable" with Try again, which runs the same open once more (`openStorage` in `app/DiarySession.kt`); the cause goes to logcat (tag `Breakfast`), not to the screen. The database file is untouched. That is for a failure that is not damage.
-- A damaged diary (D15) is never deleted. Each one gets a folder `/data/user/0/com.bosa.breakfast/no_backup/damaged/<yyyyMMdd-HHmmss>/` (`DamagedDiaries`, `data/DamagedDiaries.kt`) holding `breakfast.db` with its `-wal`, `-shm` and `-journal` exactly as found, and the app goes on with a fresh diary:
+- A damaged diary (D15) is never deleted. Each one gets a folder `/data/user/0/mk.bosa.breakfast/no_backup/damaged/<yyyyMMdd-HHmmss>/` (`DamagedDiaries`, `data/DamagedDiaries.kt`) holding `breakfast.db` with its `-wal`, `-shm` and `-journal` exactly as found, and the app goes on with a fresh diary:
   - **A header SQLite cannot read** is found before SQLite opens the file (`setAsideIfUnreadable`, SQLite's own header rules), so nothing can checkpoint a stale WAL into it first; the files are moved as they are.
   - **Found while opening**: `DamageSafeOpenHelperFactory` (`data/DamageSafeOpenHelper.kt`) replaces only the open helper's `onCorruption`, which would delete the file; no connection is open, so the files move, and SQLite opens a fresh one. (What the failed open itself did to the files before reporting is SQLite's.)
   - **Found by a statement during the session**: that statement still runs on an open connection, so nothing is closed or moved under it: the files are copied as found. The call fails; the session then refreshes, and the store, under its write lock, closes the whole database (every connection), moves what is left into the folder's `after-close/`, opens the fresh diary and loads it; the session then resets as after an import (`DiaryChange.DiaryReplaced`: Undo, pins, the resolve queue, the entry detail, an Edit food of a food that is gone).
   - A move that fails puts back what it moved and throws; nothing is left half moved.
   - Every database access, reads included, runs under the store's write lock, so none is still running on the damaged file when it closes; until the fresh diary is open, a write is refused (`DiaryDamagedException`), so nothing commits into the damaged file.
-  - The user sees, as a dialog, "The diary could not be read. Import an export to restore it." The folder's `notice-pending` marker keeps it coming back until it is dismissed, also after the app was killed. The app never deletes a damaged copy; they are not backed up. To get one, as for the safety copy: the debug build and `run-as com.bosa.breakfast`.
+  - The user sees, as a dialog, "The diary could not be read. Import an export to restore it." The folder's `notice-pending` marker keeps it coming back until it is dismissed, also after the app was killed. The app never deletes a damaged copy; they are not backed up. To get one, as for the safety copy: the debug build and `run-as mk.bosa.breakfast`.
