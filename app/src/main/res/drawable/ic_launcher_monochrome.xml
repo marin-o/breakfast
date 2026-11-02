@@ -4,15 +4,10 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Themed icons: one colour, so the rim and the foods' outlines only. -->
-    <path android:strokeColor="#FFFFFF" android:strokeWidth="2" android:pathData="M54,21.799999999999997a32.2,32.2 0 1,1 0,64.4a32.2,32.2 0 1,1 0,-64.4z" />
-    <group android:translateX="60" android:translateY="38" android:rotation="12" android:scaleX="0.92" android:scaleY="0.92">
-        <path android:fillColor="#FFFFFF" android:pathData="M-7 -14H7C12 -14 14 -10 14 -7C14 -4 13 -3 11 -2V11C11 13 10 14 8 14H-8C-10 14 -11 13 -11 11V-2C-13 -3 -14 -4 -14 -7C-14 -10 -12 -14 -7 -14Z" />
+    <!-- Themed icons: one colour, so the toast's outline and its face. -->
+    <group android:translateX="54" android:translateY="54" android:scaleX="1.85" android:scaleY="1.85">
+        <path android:strokeColor="#FFFFFF" android:strokeWidth="1.5" android:pathData="M-7 -14H7C12 -14 14 -10 14 -7C14 -4 13 -3 11 -2V11C11 13 10 14 8 14H-8C-10 14 -11 13 -11 11V-2C-13 -3 -14 -4 -14 -7C-14 -10 -12 -14 -7 -14Z" />
     </group>
-    <group android:translateX="71" android:translateY="63" android:rotation="18" android:scaleX="0.92" android:scaleY="0.92">
-        <path android:fillColor="#FFFFFF" android:pathData="M0 -17C5 -17 7 -11 9 -6C12 0 13 3 13 6C13 13 7 17 0 17C-7 17 -13 13 -13 6C-13 3 -12 0 -9 -6C-7 -11 -5 -17 0 -17Z" />
-    </group>
-    <group android:translateX="42" android:translateY="60" android:rotation="0" android:scaleX="0.92" android:scaleY="0.92">
-        <path android:fillColor="#FFFFFF" android:pathData="M-3 -16C2 -17 6 -13 10 -11C15 -9 17 -4 16 1C15 5 13 7 13 11C12 15 7 17 2 15C-2 14 -5 17 -10 15C-14 13 -14 9 -16 6C-19 2 -18 -4 -15 -8C-12 -12 -8 -14 -3 -16Z" />
-    </group>
+    <path android:fillColor="#FFFFFF" android:pathData="M45,46.8a3.2,3.2 0 1,1 0,6.4a3.2,3.2 0 1,1 0,-6.4zM63,46.8a3.2,3.2 0 1,1 0,6.4a3.2,3.2 0 1,1 0,-6.4z" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="3" android:strokeLineCap="round" android:pathData="M46,60c3,6 13,6 16,0" />
 </vector>
