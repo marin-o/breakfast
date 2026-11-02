@@ -21,12 +21,12 @@ Resting = 10W + 6.25H - 5A, plus 5 for Male, -161 for Female, -78 (their average
 
 | Activity | Factor | Line on the option |
 | --- | --- | --- |
-| Inactive | 1.4 | Mostly sitting, little walking |
-| Low active | 1.55 | Some walking most days |
-| Active | 1.7 | On your feet or exercising most days |
-| Very active | 1.9 | Hard exercise or physical work daily |
+| Inactive | 1.2 | Mostly sitting, little walking |
+| Low active | 1.375 | Some walking most days |
+| Active | 1.55 | On your feet or exercising most days |
+| Very active | 1.725 | Hard exercise or physical work daily |
 
-Owner's decision, 2026-11-02. The National Academies 2023 equations gave 3031 kcal for 88 kg, 168 cm, age 24, Low active, which the owner knows would gain weight. These factors sit low on purpose and are judgement, not measured values; logging corrects them. Prior sigma: male 339, female 246, not saying 300.
+Owner's decision, 2026-11-02. The National Academies 2023 equations gave 3031 kcal for 88 kg, 168 cm, age 24, Low active, which the owner knows would gain weight. These are the factors common calculators use, so the numbers match what people see elsewhere. They sit low on purpose: measured sedentary adults are nearer 1.45, and logging corrects a low start. Prior sigma: male 339, female 246, not saying 300.
 
 Learning from logging, recomputed once a day and on save:
 - Window: last 28 days. Slope and its standard error SE: linear regression on raw weigh-ins, kg/day.

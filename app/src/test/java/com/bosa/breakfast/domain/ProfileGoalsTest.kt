@@ -32,18 +32,18 @@ private fun meal(day: String, kcal: Double, protein: Double? = null, carbs: Doub
 private val MAN = BurnBody(30, 180.0, 80.0, Sex.MALE, Activity.LOW_ACTIVE)
 
 internal class DailyBurnTest {
-    // (800 + 1125 - 150 + 5) x 1.55
-    @Test fun theMaleEquation() = assertEquals(2759.0, formulaBurn(MAN), DELTA)
+    // (800 + 1125 - 150 + 5) x 1.375
+    @Test fun theMaleEquation() = assertEquals(2447.5, formulaBurn(MAN), DELTA)
 
-    // (600 + 1031.25 - 150 - 161) x 1.4
-    @Test fun theFemaleEquation() = assertEquals(1848.35, formulaBurn(BurnBody(30, 165.0, 60.0, Sex.FEMALE, Activity.INACTIVE)), DELTA)
+    // (600 + 1031.25 - 150 - 161) x 1.2
+    @Test fun theFemaleEquation() = assertEquals(1584.3, formulaBurn(BurnBody(30, 165.0, 60.0, Sex.FEMALE, Activity.INACTIVE)), DELTA)
 
-    // (800 + 1125 - 150 - 78) x 1.9
+    // (800 + 1125 - 150 - 78) x 1.725
     @Test fun notSayingAndNoSexAreTheAverage() {
         val very = BurnBody(30, 180.0, 80.0, Sex.NOT_SAYING, Activity.VERY_ACTIVE)
-        assertEquals(3224.3, formulaBurn(very), DELTA)
-        // The owner's example: (880 + 1050 - 120 + 5) x 1.4, not the 3031 the old equations gave on Low active.
-        assertEquals(2541.0, formulaBurn(BurnBody(24, 168.0, 88.0, Sex.MALE, Activity.INACTIVE)), DELTA)
+        assertEquals(2927.33, formulaBurn(very), DELTA)
+        // The owner's example: (880 + 1050 - 120 + 5) x 1.2, not the 3031 the old equations gave on Low active.
+        assertEquals(2178.0, formulaBurn(BurnBody(24, 168.0, 88.0, Sex.MALE, Activity.INACTIVE)), DELTA)
         assertEquals(formulaBurn(very), formulaBurn(very.copy(sex = null)), DELTA)
     }
 
@@ -57,7 +57,7 @@ internal class DailyBurnTest {
         val entries = (1..27).map { meal(daysAgo(it), 2000.0) }
         val burn = dailyBurn(MAN, line(28, 82.0, -0.05), entries, TODAY, UTC)
         assertEquals(0.91995, burn.learned, 0.0001)
-        assertEquals(2759.0 + 0.91995 * (2442 - 2759.0), burn.kcal, 0.1)
+        assertEquals(2447.5 + 0.91995 * (2442 - 2447.5), burn.kcal, 0.1)
         assertFalse(burn.loggingMismatch)
     }
 
@@ -85,7 +85,7 @@ internal class DailyBurnTest {
         assertEquals(dailyBurn(MAN, line(28, 82.0, -0.05), entries, TODAY, UTC), dailyBurn(MAN, line(28, 82.0, -0.05), entries + meal(TODAY, 300.0), TODAY, UTC))
     }
 
-    // adaptive 1000 + 0 under 0.75 x 2759.0 = 2069.
+    // adaptive 1000 + 0 under 0.75 x 2447.5 = 1835.
     @Test fun anAdaptiveOutOfRangeIsAMismatchAndCountsForNothing() {
         val burn = dailyBurn(MAN, line(28, 80.0, 0.0), (1..27).map { meal(daysAgo(it), 1000.0) }, TODAY, UTC)
         assertTrue(burn.loggingMismatch)
@@ -239,9 +239,9 @@ internal class LimitedKcalTest {
 
 /** What the daily adjustment does day after day, read back as the target in effect on each day. */
 internal class DailyAdjustmentSimulationTest {
-    // Burn 2759.0, less 631.43: the goal gives 2128.
+    // Burn 2447.5, less 631.43: the goal gives 1816.
     private val goal = ProfileValues(
-        kcalTarget = 2759.0, currentWeight = 80.0, heightCm = 180.0, age = 30, sex = Sex.MALE, activity = Activity.LOW_ACTIVE, goal = Goal.LOSE, paceKgPerWeek = 0.5,
+        kcalTarget = 2447.5, currentWeight = 80.0, heightCm = 180.0, age = 30, sex = Sex.MALE, activity = Activity.LOW_ACTIVE, goal = Goal.LOSE, paceKgPerWeek = 0.5,
     )
     private val start: LocalDate = LocalDate.parse("2026-01-01")
 
@@ -264,34 +264,34 @@ internal class DailyAdjustmentSimulationTest {
 
     @Test fun fromNoHistory() {
         val kcal = run(goal, emptyList(), start, 90)
-        assertEquals(2759.0, kcal[0])
-        assertEquals(2659.0, kcal[1])
+        assertEquals(2447.5, kcal[0])
+        assertEquals(2348.0, kcal[1])
         assertEveryWeekWithin100(kcal)
-        assertEquals(2128.0, kcal.last())
+        assertEquals(1816.0, kcal.last())
     }
 
     /** A step the user saved is theirs; from the day it took effect, every week the adjustment touches stays within 100. */
     @Test fun fromABigManualStep() {
         val stepDay = start.plusDays(10)
-        val rows = listOf(TargetRow(start.toString(), 2759.0, null, null, null), TargetRow(stepDay.toString(), 1500.0, null, null, null))
+        val rows = listOf(TargetRow(start.toString(), 2447.5, null, null, null), TargetRow(stepDay.toString(), 1500.0, null, null, null))
         val kcal = run(goal.copy(kcalTarget = 1500.0), rows, stepDay, 90)
         assertEquals(List(6) { 1500.0 }, kcal.take(6))
         assertEquals(1600.0, kcal[6])
         assertEveryWeekWithin100(kcal)
-        assertEquals(2128.0, kcal.last())
+        assertEquals(1816.0, kcal.last())
     }
 }
 
 internal class DailyAdjustedTest {
     private val goalValues = ProfileValues(
-        kcalTarget = 2759.0, currentWeight = 80.0, heightCm = 180.0, age = 30, sex = Sex.MALE, activity = Activity.LOW_ACTIVE, goal = Goal.LOSE, paceKgPerWeek = 0.5,
+        kcalTarget = 2447.5, currentWeight = 80.0, heightCm = 180.0, age = 30, sex = Sex.MALE, activity = Activity.LOW_ACTIVE, goal = Goal.LOSE, paceKgPerWeek = 0.5,
     )
-    private val old = listOf(TargetRow(daysAgo(30), 2759.0, null, null, null))
+    private val old = listOf(TargetRow(daysAgo(30), 2447.5, null, null, null))
 
-    // Burn 2759.0, less 631.43 is 2128: the first day moves 100.
+    // Burn 2447.5, less 631.43 is 1816: the first day moves 100.
     @Test fun aSavedGoalMovesAt100() {
         val next = dailyAdjusted(goalValues, emptyList(), emptyList(), old, TODAY, UTC)!!
-        assertEquals(2659.0, next.kcalTarget)
+        assertEquals(2348.0, next.kcalTarget)
     }
 
     @Test fun nothingWithoutAGoalAKcalABodyOrWhenTrackingOnly() {
@@ -303,14 +303,14 @@ internal class DailyAdjustedTest {
     }
 
     @Test fun aRowTodayMeansItAlreadyRan() =
-        assertNull(dailyAdjusted(goalValues, emptyList(), emptyList(), old + TargetRow(TODAY, 2759.0, null, null, null), TODAY, UTC))
+        assertNull(dailyAdjusted(goalValues, emptyList(), emptyList(), old + TargetRow(TODAY, 2447.5, null, null, null), TODAY, UTC))
 
-    @Test fun onTargetIsNoChange() = assertNull(dailyAdjusted(goalValues.copy(kcalTarget = 2128.0), emptyList(), emptyList(), listOf(TargetRow(daysAgo(30), 2128.0, null, null, null)), TODAY, UTC))
+    @Test fun onTargetIsNoChange() = assertNull(dailyAdjusted(goalValues.copy(kcalTarget = 1816.0), emptyList(), emptyList(), listOf(TargetRow(daysAgo(30), 1816.0, null, null, null)), TODAY, UTC))
 
     @Test fun macrosFollowTheMove() {
         val next = dailyAdjusted(goalValues.copy(proteinTarget = 200.0, proteinPercent = 25.0, fatTarget = 50.0), emptyList(), emptyList(), old, TODAY, UTC)!!
-        // 25% of 2659 / 4 = 166.19
-        assertEquals(166.0, next.proteinTarget)
+        // 25% of 2348 / 4 = 146.75
+        assertEquals(147.0, next.proteinTarget)
         assertEquals(25.0, next.proteinPercent)
         assertEquals(50.0, next.fatTarget)
     }

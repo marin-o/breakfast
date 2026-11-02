@@ -37,12 +37,12 @@ private fun sexTerm(sex: Sex?) = when (sex) {
     Sex.NOT_SAYING, null -> -78.0
 }
 
-/** Set low on purpose: too high a burn means a target that gains weight, and logging corrects a low one. */
+/** The usual calculators' factors, set low on purpose: too high a burn means a target that gains weight, and logging corrects a low one. */
 private fun activityFactor(activity: Activity) = when (activity) {
-    Activity.INACTIVE -> 1.4
-    Activity.LOW_ACTIVE -> 1.55
-    Activity.ACTIVE -> 1.7
-    Activity.VERY_ACTIVE -> 1.9
+    Activity.INACTIVE -> 1.2
+    Activity.LOW_ACTIVE -> 1.375
+    Activity.ACTIVE -> 1.55
+    Activity.VERY_ACTIVE -> 1.725
 }
 
 /** The equation alone, kcal a day, never below zero; Not saying is the average of both. */
