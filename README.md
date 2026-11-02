@@ -4,6 +4,16 @@ An Android calorie and macro tracker built around typing what you ate. Enter `2 
 
 It works offline and keeps your diary on your phone. There is no account and no cloud sync.
 
+<p>
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" width="18%" alt="Meals: a day's total, macros and meals">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" width="18%" alt="Log: foods typed on one line and matched">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3.png" width="18%" alt="Weight: chart, trend and projected date range">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/4.png" width="18%" alt="Nutrition: a week of stacked macro bars and a goal line">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/5.png" width="18%" alt="Profile: activity, daily burn and goal">
+</p>
+
+The screenshots use made-up sample data.
+
 ## Features
 
 - **Natural logging:** several foods in one line, with amounts in grams, millilitres, servings or words like "half a tbsp".
@@ -12,15 +22,17 @@ It works offline and keeps your diary on your phone. There is no account and no 
 - **Barcodes and Open Food Facts:** scan a product or search for it, and contribute corrections if you want to.
 - **Recipes and personal foods:** save your own, with custom servings and aliases.
 - **Diary:** Breakfast, Lunch, Dinner and Snacks for each day. Editing a food later never rewrites what you already logged.
-- **Weight and targets:** a weight curve and daily macro targets.
+- **Daily burn and goals:** an estimate from your details, adjusted over time by your logging and weigh-ins, with a pace to lose, maintain or gain and macro targets in percent or grams.
+- **Weight and nutrition:** a weight chart with a trend line and a projected date range, and weekly macro bars against your goal.
+- **Tracking only:** a mode with no targets or weights.
 - **Colour-blind options:** macro colours for protanopia, deuteranopia and tritanopia, or monochrome.
 - **Export and import:** your whole diary as one file.
 
-English and Macedonian food names both work, and Latin and Cyrillic searches stay separate.
+Latin and Cyrillic food names both work, and their searches stay separate.
 
 ## Build
 
-You need JDK 21 and the Android SDK (API 35). Android 8.0 (API 26) is the minimum.
+You need JDK 21 and the Android SDK (API 37). Android 8.0 (API 26) is the minimum.
 
 ```sh
 git config core.hooksPath .githooks
