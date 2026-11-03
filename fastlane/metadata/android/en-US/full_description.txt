@@ -19,6 +19,6 @@ Features:
 
 Latin and Cyrillic food names are both supported and searched separately.
 
-Open Food Facts is the only online service in the app. Search words or a barcode reach it only on a submitted search, "Find more matches", Add with foods that have no match, or a scan of a barcode not in the Library. Barcode lookups can be turned off in Settings, and searching as you type stays off unless turned on after a warning. Contributing to Open Food Facts is a separate, optional action that needs an Open Food Facts account, and the password is never saved.
+Open Food Facts is the only online service in the app. Search words or a barcode reach it only on a submitted search, "Find more matches", Add with foods that have no match, or a scan of a barcode not in the Library. Barcode lookups can be turned off in Settings, and searching as you type stays off unless turned on after a warning. Contributing to Open Food Facts is a separate, optional action that needs an Open Food Facts account, and the password is saved, encrypted, only if you choose.
 
 The bundled food data comes from USDA FoodData Central (FNDDS 2021-2023, CC0). Product data comes from Open Food Facts contributors under the Open Database License.

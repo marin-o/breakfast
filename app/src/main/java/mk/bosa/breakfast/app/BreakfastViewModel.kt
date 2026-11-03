@@ -9,6 +9,7 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
+import mk.bosa.breakfast.contribution.rememberedLogin
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import java.time.ZoneId
@@ -154,6 +155,7 @@ class BreakfastViewModel(application: Application, savedState: SavedStateHandle)
                 override fun warn(message: String) { Log.w(LOG_TAG, message) }
             },
             contributions = off,
+            offLogin = rememberedLogin(application),
             offSearch = off,
             usda = mk.bosa.breakfast.data.UsdaCatalogueReader(application),
             recipes = object : RecipeStore {

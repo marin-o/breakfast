@@ -70,7 +70,7 @@ There are no tracked `.so`, `.aar`, `.apk`, `.dex` or `.class` files, and `tools
 - The only hosts in the app's code are `world.openfoodfacts.org` and `search.openfoodfacts.org`. There is no USDA network use at runtime.
 - Permissions: `INTERNET` and `CAMERA`, with the camera optional.
 - Search terms go out on a press, or as you type only after opting in. "Look up unknown barcodes" is on by default, and a barcode goes out only when the user scans one.
-- The optional contribution sends the user's Open Food Facts login to that service and doesn't keep the password.
+- The optional contribution sends the user's Open Food Facts login to that service. The password is saved, encrypted, only if the user chooses "Remember password".
 - No analytics, crash reporting or update check was found.
 
 ### Anti-Features

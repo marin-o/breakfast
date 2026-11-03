@@ -84,6 +84,8 @@ internal class DiaryTransfer<D>(
     private val log: TransferLog,
     /** A diary file was written and checked (the export reminder goes). */
     private val onExported: () -> Unit,
+    /** Delete all data went through (the remembered Open Food Facts login goes). */
+    private val onDeletedAll: () -> Unit,
 ) {
     /** The picker Settings asked for, until the root launched it. */
     var pickerRequest by mutableStateOf<DiaryPicker?>(null); private set
@@ -197,7 +199,10 @@ internal class DiaryTransfer<D>(
             change = { deleted: Boolean -> DiaryChange.DiaryReplaced.takeIf { deleted } },
             onSuccess = { deleted ->
                 if (!deleted) notices.show(DIARY_DELETE_FAILED)
-                else if (alsoSettings) settings.resetToDefaults()
+                else {
+                    onDeletedAll()
+                    if (alsoSettings) settings.resetToDefaults()
+                }
             },
         ) {
             withContext(NonCancellable) {

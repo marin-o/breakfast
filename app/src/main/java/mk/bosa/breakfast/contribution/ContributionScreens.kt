@@ -1,5 +1,6 @@
 package mk.bosa.breakfast.contribution
 
+import mk.bosa.breakfast.ui.components.CheckboxRow
 import mk.bosa.breakfast.ui.components.DecimalField
 import mk.bosa.breakfast.ui.components.NutritionFacts
 import mk.bosa.breakfast.ui.components.FactRow
@@ -112,7 +113,7 @@ import mk.bosa.breakfast.ui.components.TertiaryButton
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { contribution.submit() }),
         )
-        Text("Password is not saved.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 12.dp))
+        CheckboxRow("Remember password", contribution.rememberLogin, contribution::toggleRememberLogin, Modifier.padding(top = 8.dp))
         PrimaryButton(if (contribution.busy) "Submitting" else "Submit", contribution::submit, Modifier.padding(top = 24.dp), enabled = !contribution.busy, kind = ButtonKind.Neutral)
         // The arrow, Cancel and system Back are one action, also while it submits ([ContributionFlow.dismissAuth]).
         TertiaryButton("Cancel", contribution::dismissAuth, Modifier.fillMaxWidth().padding(top = 4.dp), soft = true)

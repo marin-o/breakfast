@@ -9,6 +9,7 @@ import mk.bosa.breakfast.data.OffPreflightResult
 import mk.bosa.breakfast.domain.FoodRecord
 import mk.bosa.breakfast.domain.MeasureUnit
 import mk.bosa.breakfast.domain.NutritionValues
+import mk.bosa.breakfast.settings.FakeSettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -40,7 +41,7 @@ class ContributionFlowTest {
     private val io = QueueDispatcher()
     /** "Contribute" in Settings. */
     private var showContribute = true
-    private val flow = ContributionFlow(off, notices, CoroutineScope(Dispatchers.Unconfined + SupervisorJob()), io, showContribute = { showContribute })
+    private val flow = ContributionFlow(off, RememberedLogin(FakeSettingsStore(), FakeSecretCipher()), notices, CoroutineScope(Dispatchers.Unconfined + SupervisorJob()), io, showContribute = { showContribute })
 
     private fun food(barcode: String?, name: String = "Kefir", unit: MeasureUnit = MeasureUnit.GRAM) =
         testFood("f-$barcode", name, category = "dairy", unit = unit, values = NutritionValues(60.0, 3.0, 4.0, 3.0), barcode = barcode)

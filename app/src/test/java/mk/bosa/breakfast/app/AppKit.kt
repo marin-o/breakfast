@@ -44,6 +44,8 @@ import mk.bosa.breakfast.today.UndoStore
 import mk.bosa.breakfast.transfer.FakeData
 import mk.bosa.breakfast.transfer.FakeFiles
 import mk.bosa.breakfast.transfer.RecordingLog
+import mk.bosa.breakfast.contribution.FakeSecretCipher
+import mk.bosa.breakfast.contribution.RememberedLogin
 import mk.bosa.breakfast.transfer.exportReminderOnScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -114,6 +116,8 @@ internal class AppKit(
     private val now get() = nowMs
     /** Where the profile's values are kept. */
     val profileStore = FakeSettingsStore()
+    /** Where the remembered Open Food Facts login is kept. */
+    val offLoginStore = FakeSettingsStore()
 
     val owners = AppOwners(
         stores = AppStores(
@@ -198,6 +202,7 @@ internal class AppKit(
                 override fun preflight(draft: OffContributionDraft) = OffPreflightResult.Existing
                 override fun contribute(draft: OffContributionDraft, username: String, password: String) = OffContributionResult.Success
             },
+            offLogin = RememberedLogin(offLoginStore, FakeSecretCipher()),
             offSearch = object : OffSearchService { override suspend fun search(query: String): OffSearchResult { offSearched += query; return if (offOffline) OffSearchResult.Unavailable else OffSearchResult.Success(offFoods) } },
             usda = object : mk.bosa.breakfast.search.UsdaCatalogue { override suspend fun search(text: String) = usdaFoods },
             licence = { "SIL Open Font License" },

@@ -35,8 +35,12 @@ interface OffContributions {
  *   Food Facts product ([offerAfterLocalSave]); Daily and Meal then show Contribute ([review]).
  * - A preflight runs before the review; only the latest one counts (a token), so a result for an older candidate is
  *   dropped. After an answer was lost ([uncertain]), Retry reads the product again before anything is sent.
- * - The password lives only here, in memory, and is cleared when the submit starts and when the sign-in is
- *   dismissed. It is never saved.
+ * - The typed password lives only here, in memory, and is cleared when the submit starts and when the sign-in is
+ *   dismissed. Never in saved state.
+ * - "Remember password" ([rememberLogin], off by default) keeps the login in [rememberedLogin]: written only after a
+ *   contribution succeeds with it, read each time the sign-in opens. Unticking forgets it at once, and so does Delete
+ *   all ([forgetLogin]). Open Food Facts rejecting the saved password forgets the password and keeps the username.
+ *   Data that cannot be read counts as nothing saved, with an empty form and no message.
  * - Leaving the sign-in ([dismissAuth], Back included) while it submits cancels the submit: its answer, whenever it
  *   comes, is not applied and opens nothing. Like a lost answer, the product is read again before the next review,
  *   and no new submit starts while the cancelled call is still out.
@@ -47,6 +51,7 @@ interface OffContributions {
  */
 internal class ContributionFlow(
     private val off: OffContributions,
+    private val rememberedLogin: RememberedLogin,
     private val notices: Notices,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
@@ -61,11 +66,16 @@ internal class ContributionFlow(
     var uncertain by mutableStateOf(false); private set
     var username by mutableStateOf(""); private set
     var password by mutableStateOf(""); private set
+    var rememberLogin by mutableStateOf(false); private set
     var busy by mutableStateOf(false); private set
     var preflightBusy by mutableStateOf(false); private set
     private var preflightComplete by mutableStateOf(false)
     private var preflightToken = 0L
     private var submitting: Job? = null
+    /** The login that filled the form, while the form holds it. */
+    private var prefilled: SavedLogin? = null
+    /** Only the latest read of the remembered login counts, and only while the form is untouched. */
+    private var recallToken = 0L
     /** Contribute calls still running on [io], a cancelled one included. */
     private val callsOut = AtomicInteger(0)
     var languageCode by mutableStateOf("en"); private set
@@ -131,8 +141,35 @@ internal class ContributionFlow(
         }
         if (draft != null) {
             reviewOpen = false
-            authOpen = true
+            openSignIn()
         }
+    }
+
+    private fun openSignIn() {
+        authOpen = true
+        val token = ++recallToken
+        scope.launch {
+            val recalled = withContext(io) { rememberedLogin.recall() }
+            if (token != recallToken) return@launch
+            when (recalled) {
+                RecalledLogin.Nothing -> Unit
+                RecalledLogin.Unreadable -> clearForm()
+                is RecalledLogin.Found -> {
+                    val login = recalled.login
+                    if (login.password != null) { username = login.username; password = login.password }
+                    else if (username.isBlank()) username = login.username
+                    prefilled = login
+                    rememberLogin = true
+                }
+            }
+        }
+    }
+
+    private fun clearForm() {
+        username = ""
+        password = ""
+        rememberLogin = false
+        prefilled = null
     }
 
     /**
@@ -147,6 +184,8 @@ internal class ContributionFlow(
         busy = false
         authOpen = false
         password = ""
+        prefilled = null
+        recallToken++
     }
 
     fun dismissFailure() { failure = null; uncertain = false; pending = null }
@@ -158,11 +197,32 @@ internal class ContributionFlow(
         uncertain = false
         val draft = pending
         if (wasUncertain && draft != null) { preflightComplete = false; preflight(draft) }
-        else authOpen = true
+        else openSignIn()
     }
 
-    fun onUsername(value: String) { username = value }
-    fun onPassword(value: String) { password = value }
+    fun onUsername(value: String) { recallToken++; username = value }
+    fun onPassword(value: String) { recallToken++; password = value }
+
+    /** Unticking forgets the saved login, and takes it out of the form; what the user typed instead stays. */
+    fun toggleRememberLogin() {
+        recallToken++
+        rememberLogin = !rememberLogin
+        if (rememberLogin) return
+        rememberedLogin.forget()
+        prefilled?.let { login ->
+            if (username.trim() == login.username) username = ""
+            if (password == login.password) password = ""
+        }
+        prefilled = null
+    }
+
+    /** Delete all data: the saved login and the one in memory go, the box with them. */
+    fun forgetLogin() {
+        recallToken++
+        rememberedLogin.forget()
+        clearForm()
+    }
+
     fun onLanguage(value: String) {
         languageCode = value
         pending = pending?.copy(languageCode = value.trim().lowercase())
@@ -187,6 +247,9 @@ internal class ContributionFlow(
         }
         val user = username.trim()
         val secret = password
+        val sentSavedLogin = prefilled?.let { it.username == user && it.password == secret } == true
+        recallToken++
+        prefilled = null
         password = ""
         busy = true
         submitting = scope.launch {
@@ -197,12 +260,13 @@ internal class ContributionFlow(
             }
             when (result) {
                 OffContributionResult.Success -> {
+                    keepLogin(user, secret)
                     pending = null
                     authOpen = false
                     failure = null
                     notices.show("Contribution sent to Open Food Facts.")
                 }
-                OffContributionResult.AuthFailed -> { authOpen = false; failure = "Open Food Facts could not authenticate that account. Check the username and password, then retry." }
+                OffContributionResult.AuthFailed -> { if (sentSavedLogin) rememberedLogin.forgetPassword(); authOpen = false; failure = "Open Food Facts could not authenticate that account. Check the username and password, then retry." }
                 is OffContributionResult.Ineligible -> { authOpen = false; failure = result.message }
                 is OffContributionResult.Rejected -> { authOpen = false; failure = result.message }
                 is OffContributionResult.PreflightChanged -> { authOpen = false; failure = result.message }
@@ -214,6 +278,15 @@ internal class ContributionFlow(
             busy = false
             submitting = null
         }
+    }
+
+    /** After a success with the box ticked; the box is read again as sealing ends, as it can be unticked meanwhile. */
+    private suspend fun keepLogin(user: String, secret: String) {
+        if (!rememberLogin) return
+        val sealed = withContext(io) { rememberedLogin.seal(user, secret) }
+        if (!rememberLogin) return
+        if (sealed != null) rememberedLogin.store(sealed)
+        else { rememberedLogin.forget(); rememberLogin = false }
     }
 
     private fun preflight(draft: OffContributionDraft) {

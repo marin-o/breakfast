@@ -12,6 +12,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.SavedStateHandle
 import mk.bosa.breakfast.contribution.ContributionFlow
 import mk.bosa.breakfast.contribution.OffContributions
+import mk.bosa.breakfast.contribution.RememberedLogin
 import mk.bosa.breakfast.data.DIARY_DAMAGED
 import mk.bosa.breakfast.domain.MealSlot
 import mk.bosa.breakfast.entry.EntryEdit
@@ -77,6 +78,7 @@ internal class AppStores<D>(
     val diaryFiles: DiaryFiles<D>,
     val transferLog: TransferLog,
     val contributions: OffContributions,
+    val offLogin: RememberedLogin,
     val offSearch: OffSearchService,
     val usda: UsdaCatalogue,
     val recipes: RecipeStore,
@@ -172,7 +174,7 @@ internal class AppOwners<D>(
         initialCorrectingId = savedState[CORRECTING_ID_KEY],
     )
     /** The Open Food Facts contribution flow (see [ContributionFlow]). */
-    val contribution = ContributionFlow(stores.contributions, notices, threads.scope, threads.io, showContribute = { settings.showContribute })
+    val contribution = ContributionFlow(stores.contributions, stores.offLogin, notices, threads.scope, threads.io, showContribute = { settings.showContribute })
     /** The USDA rows on "Not right?"'s search, one apart from the others': that search may lie over either's screen. */
     val usdaCorrection = UsdaPartSearch(stores.usda, threads.scope, threads.io, threads.main, threads.sleep)
     /** The Open Food Facts search (see [OffSearch]); what it opens over and returns to stays with the resolve flow. */
@@ -211,6 +213,7 @@ internal class AppOwners<D>(
         io = threads.io,
         log = stores.transferLog,
         onExported = { reminders.hide() },
+        onDeletedAll = contribution::forgetLogin,
     )
     /** "Export your diary." on Daily (see [ExportReminders]). */
     val reminders: ExportReminders = ExportReminders(settings, session, clock, requestExport = { transfer.requestPicker(DiaryPicker.EXPORT) })

@@ -27,8 +27,9 @@ class DiaryTransferTest {
     private val notices = Notices()
     private val log = RecordingLog()
     private var exported = 0
+    private var deletedAll = 0
     private val transfer = DiaryTransfer(
-        diary.session, data, files, settings, notices, { now }, diary.scope, Dispatchers.Unconfined, log, onExported = { exported++ },
+        diary.session, data, files, settings, notices, { now }, diary.scope, Dispatchers.Unconfined, log, onExported = { exported++ }, onDeletedAll = { deletedAll++ },
     )
 
     @Test fun anExportIsWrittenReadBackAndCountedAsTheLastExport() {
@@ -113,6 +114,7 @@ class DiaryTransferTest {
         transfer.openDeleteAll()
         transfer.confirmDeleteAll()
         assertEquals(listOf("safety copy", "delete all alsoPreferences=false"), events)
+        assertEquals(1, deletedAll)
         assertFalse(transfer.deleteAllOpen)
         assertEquals(listOf<DiaryChange>(DiaryChange.DiaryReplaced), diary.published)
         assertFalse(settings.keepSafetyCopy)
@@ -139,6 +141,7 @@ class DiaryTransferTest {
         transfer.confirmDeleteAll()
         assertEquals("Could not delete the diary.", notices.message)
         assertTrue(diary.published.isEmpty())
+        assertEquals(0, deletedAll)
         assertEquals(UndoWindow.entries.last(), settings.undoWindow)
     }
 

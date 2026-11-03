@@ -6,6 +6,7 @@ import mk.bosa.breakfast.domain.TestFoods
 import mk.bosa.breakfast.domain.FoodOrigin
 import mk.bosa.breakfast.domain.MealSlot
 import mk.bosa.breakfast.resolve.food
+import mk.bosa.breakfast.transfer.validDiaryText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -446,6 +447,59 @@ class AppOwnersTest {
         assertEquals("Logged!", app.confirmations.message)
         assertNull(app.notices.message)
         assertEquals(listOf("LIBRARY"), app.shown())
+    }
+
+    /** A contribution from a Library food that remembers its login; the sign-in is open again afterwards when [reopen]. */
+    private fun rememberALogin(app: AppKit, reopen: Boolean = false) {
+        val kefir = food("kefir", "Kefir").copy(barcode = "4006381333931")
+        app.contribution.openForFood(kefir)
+        app.contribution.confirm()
+        app.contribution.onUsername("off-account")
+        app.contribution.onPassword("off-secret")
+        app.contribution.toggleRememberLogin()
+        assertTrue("the password never reaches the process-death state", app.savedState.keys().none { app.savedState.get<Any?>(it).toString().contains("off-secret") })
+        app.contribution.submit()
+        assertEquals(2, app.offLoginStore.values.size)
+        if (reopen) {
+            app.contribution.openForFood(kefir)
+            app.contribution.confirm()
+            assertEquals("off-secret", app.contribution.password)
+        }
+    }
+
+    @Test fun deleteAllForgetsTheRememberedLoginWithOrWithoutItsChip() {
+        listOf(false, true).forEach { chip ->
+            val app = AppKit()
+            rememberALogin(app, reopen = true)
+            app.contribution.dismissAuth()
+            app.transfer.openDeleteAll()
+            if (chip) app.transfer.toggleDeleteAllAlsoSettings()
+            app.transfer.confirmDeleteAll()
+            assertTrue(app.offLoginStore.values.isEmpty())
+            assertEquals("", app.contribution.username)
+            assertFalse(app.contribution.rememberLogin)
+        }
+    }
+
+    @Test fun importLeavesTheRememberedLogin() {
+        val app = AppKit()
+        rememberALogin(app)
+        val before = app.offLoginStore.values.toMap()
+        app.documents.documents["in.json"] = validDiaryText()
+        app.transfer.import("in.json")
+        app.transfer.confirmImport()
+        assertEquals(before, app.offLoginStore.values)
+        assertTrue(app.contribution.rememberLogin)
+    }
+
+    @Test fun theExportLeavesTheRememberedLoginOut() {
+        val app = AppKit()
+        rememberALogin(app)
+        app.transfer.export("out.json")
+        val text = app.documents.documents.getValue("out.json")
+        assertFalse(text.contains("off-account"))
+        assertFalse(text.contains("off-secret"))
+        assertFalse(text.contains(app.offLoginStore.values.values.first().toString()))
     }
 
     /** The wiring half of `SettingsStateTest.aResetIsNotAChoice`: the safety copy's removal follows only a choice. */
