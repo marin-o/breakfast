@@ -61,7 +61,7 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 ## Rules
 
 - Colours are only the tokens above and the macro palettes below. Interactive elements are ink. Green (`ok`) is only for constructive actions (add, save, log). Red (`bad`) is only for delete and error. Green and red are the only colours of actions; besides them, only the macro marks are coloured.
-- Macro colours (`protein`, `carbs`, `fat`) mark protein, carbs and fat and nothing else, on small marks only: bars and dots (8dp, 5dp before the label, on its first line). Numbers and text stay ink or soft. They appear on the DayTotal bars (Daily, entry detail, the tutorial's sample), as dots in a text line of macros (the scan review's line, the amount sheet, Edit entry), before the macro lines of a food's or recipe's page (`NutritionFacts`; Contribute's "Will send" stays monochrome) and before the macro field labels (Profile, New food, Edit food, the scan review's details). They also fill the stacked bars of Profile's Nutrition page (`MacroBarsChart`), 1dp apart, which is what tells Monochrome's three inks apart. They stay out of the big kcal figure, food rows and lists, tabs, buttons, chips, the Log and the weight chart, and no meal has a line of its own. The light `fat` mustard's low contrast on `bg` (about 2.25:1) is the owner's choice. `macroColor` in `ui/theme/Color.kt` is the one map and `MacroLabel` in `Components.kt` the one dot and label.
+- Macro colours (`protein`, `carbs`, `fat`) mark protein, carbs and fat and nothing else, on small marks only: bars and dots (8dp, 5dp before the label, on its first line). Numbers and text stay ink or soft. They appear on the DayTotal bars (Daily, entry detail, the tutorial's sample), as dots in a text line of macros (the scan review's line, the amount sheet, Edit entry), before the macro lines of a food's or recipe's page (`NutritionFacts`; Contribute's "Will send" stays monochrome) and before the macro field labels (Profile, New food, Edit food, the scan review's details). They also fill the stacked bars of Profile's Nutrition page (`MacroBarsChart`), 1dp apart, which is what tells Monochrome's three inks apart. They stay out of the big kcal figure, food rows and lists, tabs, buttons, chips, the Log and the weight chart, and no meal has a line of its own. The light `fat` mustard's low contrast on `bg` (about 2.25:1) is the owner's choice. `macroColor` in `ui/theme/Color.kt` is the one map and `MacroLabel` in `ui/components/Macros.kt` the one dot and label.
 - Settings, Accessibility, "Macro colours" picks the macro colours, Standard by default, and a change shows at once on every screen. Only the three macro colours change: `ok`, `bad` and every other token stay as they are in every palette, so green and red keep their meaning. Protanopia and Deuteranopia are one palette; Monochrome is the theme's `ink` for all three. `breakfastColors` in `ui/theme/Color.kt` is the one table.
 
   | Palette, as protein, carbs, fat | Light | Dark |
@@ -132,7 +132,7 @@ Breakfast is a calm, content-first calorie log. Numbers and food names carry eac
 
 - Gutters are 24dp. The status bar is 40dp as the system gives it. The header is 52dp.
 - Regions are separated by 30dp of space, a 1dp `line` hairline, and 16dp.
-- Large font: the layouts switch at a font scale of 1.8 (`isLargeFont` in `Components.kt`). 1.3 keeps the standard layout. Fixed-width controls keep a minimum width and grow with their text; nothing shrinks below the type scale.
+- Large font: the layouts switch at a font scale of 1.8 (`isLargeFont` in `ui/components/Text.kt`). 1.3 keeps the standard layout. Fixed-width controls keep a minimum width and grow with their text; nothing shrinks below the type scale.
 
 ## Motion
 
@@ -152,7 +152,7 @@ Quiet: short and smooth, standard easing (`FastOutSlowInEasing`), no bounce or o
 
 ## Shared components
 
-The single implementation of each control lives in `ui/components/Components.kt`. Screens build their controls from those components; no screen draws its own copy of a control.
+The single implementation of each control lives in `ui/components/`, one file per kind: `Buttons.kt`, `Fields.kt`, `Choices.kt`, `Rows.kt`, `Macros.kt`, `BottomBar.kt`, `Screens.kt` and `Text.kt`, beside the larger parts in files of their own. Screens build their controls from those components; no screen draws its own copy of a control.
 
 ## Source of truth
 
