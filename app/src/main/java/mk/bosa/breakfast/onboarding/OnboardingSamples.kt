@@ -23,7 +23,7 @@ internal data class OnboardingPage(val title: String, val body: String, val poin
 internal val ONBOARDING_PAGES = listOf(
     OnboardingPage("Type what you ate.", "Your entry is just a comma separated list."),
     OnboardingPage("The green one is what the app would log.", "Partial searches also work.", pointsAtExample = true),
-    OnboardingPage("Not in your foods?", "Tap Find matches to look it up on Open Food Facts."),
+    OnboardingPage("Not in your foods?", "Tap Find matches to look it up on Open Food Facts. Type \"1 bar Candybar\" and a new food starts with \"bar\" as its serving."),
     OnboardingPage("We remember what you pick.", "You can also scan barcodes."),
     OnboardingPage("Your goals.", "Enter your details in Profile to get your daily burn, then pick a goal."),
     OnboardingPage("See how it's going.", "Swipe in Profile to see your weight and nutrition."),

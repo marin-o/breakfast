@@ -477,8 +477,11 @@ class FoodFormTest {
         assertEquals("Candybar", form.draft.name)
     }
 
-    @Test fun aCapitalWordStaysInTheNameWithNoForm() {
+    @Test fun aCapitalWordSplitsAndCancelPutsTheNameBack() {
         openFromLogPart(TypedPart("Bar One", 1.0, null), "1 Bar One")
+        assertEquals("One", form.draft.name)
+        assertTrue(form.draft.servingFormOpen)
+        form.draft.cancelServing()
         assertEquals("Bar One", form.draft.name)
         assertFalse(form.draft.servingFormOpen)
     }

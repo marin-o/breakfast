@@ -11,7 +11,7 @@ current,new,where
 "ban","this one is fine","Page 2, example, typed line"
 "Banana","this one is fine","Page 2, example, green chip"
 "Not in your foods?","this one is fine","Page 3, title"
-"Find matches looks it up on Open Food Facts. Tap a result and carry on.","Tap Find matches to look it up on Open Food Facts.","Page 3, text under the title"
+"Tap Find matches to look it up on Open Food Facts. Type ""1 bar Candybar"" and a new food starts with ""bar"" as its serving.","this one is fine","Page 3, text under the title"
 "100 g kefyr","this one is fine","Page 3, example, row, typed food"
 "Not in your foods","this one is fine","Page 3, example, row, line under the food (same label in the Log)"
 "Find matches","this one is fine","Page 3, example, button (same label in the Log)"

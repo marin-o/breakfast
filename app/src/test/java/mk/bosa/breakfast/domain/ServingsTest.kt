@@ -52,9 +52,10 @@ class ServingsTest {
         assertEquals(TypedFoodName("bar Candybar", null), newFoodName("bar Candybar"))
     }
 
-    @Test fun aCapitalServingWordIsPartOfANewFoodsName() {
-        assertEquals(TypedFoodName("Bar One", null), newFoodName("1 Bar One"))
-        assertEquals(TypedFoodName("Piece Candybar", null), newFoodName("1 Piece Candybar"))
+    @Test fun aCapitalServingWordSplitsLikeALowerCaseOne() {
+        assertEquals(TypedFoodName("One", "bar", "Bar One"), newFoodName("1 Bar One"))
+        assertEquals(TypedFoodName("Candybar", "piece", "Piece Candybar"), newFoodName("1 Piece Candybar"))
+        assertEquals(TypedFoodName("Milk", "cup", "Cups Milk"), newFoodName("2 Cups Milk"))
     }
 
     @Test fun aNewFoodsServingWordKeepsToItsScript() {

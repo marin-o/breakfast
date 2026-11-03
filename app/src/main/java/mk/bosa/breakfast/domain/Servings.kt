@@ -132,9 +132,9 @@ internal data class TypedFoodName(val name: String, val servingWord: String?, va
 
 /**
  * Reads a part with an amount whose words start with a serving or container word and go on: "1 bar Candybar" is Candybar
- * with a bar, "2 bars of Candybar" too, whether the parser took the word as a unit or not ("2 slices Candybar"). The word
- * typed with a capital is part of the name ("1 Bar One"); a script without case counts as lower case. Without an amount,
- * or with nothing after the word, the name is what was typed.
+ * with a bar, "2 bars of Candybar" too, whether the parser took the word as a unit or not ("2 slices Candybar"), in any
+ * case. A name that really starts with the word ("1 Bar One") comes back through Cancel on the serving's form. Without an
+ * amount, or with nothing after the word, the name is what was typed.
  */
 internal fun typedFoodName(part: TypedPart): TypedFoodName {
     val phrase = part.foodPhrase.trim()
@@ -144,14 +144,13 @@ internal fun typedFoodName(part: TypedPart): TypedFoodName {
         val word = part.unitWord?.trim().orEmpty()
         val serving = newFoodServingWord(word)
         if (serving == null || phrase.isEmpty()) return asTyped
-        val typed = "$word $phrase"
-        return if (word.first().isUpperCase()) TypedFoodName(typed, null) else TypedFoodName(phrase, serving, typed)
+        return TypedFoodName(phrase, serving, "$word $phrase")
     }
     val words = phrase.split(WORD_GAP)
     val word = words.first()
     val serving = newFoodServingWord(word) ?: return asTyped
     val rest = words.drop(1).dropWhile { it.equals("of", ignoreCase = true) }
-    if (rest.isEmpty() || word.first().isUpperCase()) return asTyped
+    if (rest.isEmpty()) return asTyped
     return TypedFoodName(rest.joinToString(" "), serving, phrase)
 }
 
