@@ -13,6 +13,7 @@ import mk.bosa.breakfast.domain.MeasureUnit
 import mk.bosa.breakfast.domain.NutritionInput
 import mk.bosa.breakfast.domain.POSITIVE_AMOUNT_MESSAGE
 import mk.bosa.breakfast.domain.ServingConversion
+import mk.bosa.breakfast.domain.TypedFoodName
 import mk.bosa.breakfast.domain.resolveNutrition
 import mk.bosa.breakfast.domain.splitAliases
 import kotlinx.serialization.Serializable
@@ -56,6 +57,10 @@ class FoodDraft {
     private var servingsBasis by mutableStateOf<MeasureUnit?>(null)
     /** What the serving form showed when Add serving opened it; until it changes, nothing was typed there. */
     private var servingOpenedWith by mutableStateOf<PendingServing?>(null)
+    /** The name a serving word was split off and the serving's form is still open for: Cancel undoes the split. */
+    private var nameSplit by mutableStateOf<NameSplit?>(null)
+    /** The split Cancel undid: the name it put back is no edit. */
+    private var splitUndone by mutableStateOf<NameSplit?>(null)
 
     fun reset() = load(null)
 
@@ -86,6 +91,7 @@ class FoodDraft {
         density = food?.density.let(::editableNumber)
         servingFormOpen = false; servingUnit = MeasureUnit.PIECE; servingAmount = ""; servingLabel = ""; servingOpenedWith = null
         servingsBasis = null
+        nameSplit = null; splitUndone = null
     }
 
     /** The basis Save stores: New food's shorthand ("per 100 ml") counts until the Basis field is changed. */
@@ -170,11 +176,24 @@ class FoodDraft {
         servingOpenedWith = PendingServing(unit, "0", "")
     }
 
-    /** Cancel puts the serving inputs back as the form loaded them. */
-    fun cancelServing() = closeServing()
+    /** A typed part's serving word: the name is the rest, and the form opens on the word with the amount left to type. */
+    internal fun splitServing(split: TypedFoodName, word: String) {
+        name = split.name
+        val unit = basis()
+        servingUnit = unit; servingAmount = ""; servingLabel = word; servingFormOpen = true
+        servingOpenedWith = PendingServing(unit, "", word)
+        nameSplit = NameSplit(split.name, split.typed)
+    }
+
+    /** Cancel puts the serving inputs back as the form loaded them, and a split name as it was typed, unless it was edited since. */
+    fun cancelServing() {
+        nameSplit?.takeIf { it.name == name }?.let { name = it.typed; splitUndone = it }
+        closeServing()
+    }
 
     private fun closeServing() {
         servingFormOpen = false; servingUnit = MeasureUnit.PIECE; servingAmount = ""; servingLabel = ""; servingOpenedWith = null
+        nameSplit = null
     }
 
     /** The open serving form holds input the user typed or chose, not just what Add serving put there. */
@@ -191,13 +210,17 @@ class FoodDraft {
      * True when any typed value differs from [baseline], the form as it opened. Opening a field changes nothing:
      * the pending serving inputs count only once typed into; an added serving counts through [servings].
      */
-    fun isDirty(baseline: FoodDraftFields): Boolean =
-        fields().withoutPendingServing() != baseline.withoutPendingServing() || servingTyped()
+    fun isDirty(baseline: FoodDraftFields): Boolean {
+        val now = fields().withoutPendingServing()
+        val opened = baseline.withoutPendingServing()
+        val afterUndo = splitUndone?.takeIf { it.name == baseline.name }?.let { opened.copy(name = it.typed) }
+        return (now != opened && now != afterUndo) || servingTyped()
+    }
 
     /** The whole form, values and flags, so it can be put back as it was after the process is killed. */
     fun state() = FoodDraftState(
         fields(), barcodeFromScan, fromOff, caloriesEdited, proteinEdited, carbsEdited, fatEdited, basisEdited,
-        aliasFieldOpen, servingFormOpen, servingOpenedWith, servingsBasis,
+        aliasFieldOpen, servingFormOpen, servingOpenedWith, servingsBasis, nameSplit, splitUndone,
     )
 
     fun restore(state: FoodDraftState) {
@@ -213,8 +236,13 @@ class FoodDraft {
         fatEdited = state.fatEdited; basisEdited = state.basisEdited
         aliasFieldOpen = state.aliasFieldOpen; servingFormOpen = state.servingFormOpen; servingOpenedWith = state.servingOpenedWith
         servingsBasis = state.servingsBasis
+        nameSplit = state.nameSplit; splitUndone = state.splitUndone
     }
 }
+
+/** A serving word split off a typed name: the [name] left, and the name as [typed]. */
+@Serializable
+data class NameSplit(val name: String, val typed: String)
 
 /** The serving form's three inputs, as Add serving filled them. */
 @Serializable
@@ -270,4 +298,6 @@ data class FoodDraftState(
     val servingFormOpen: Boolean = false,
     val servingOpenedWith: PendingServing? = null,
     val servingsBasis: MeasureUnit? = null,
+    val nameSplit: NameSplit? = null,
+    val splitUndone: NameSplit? = null,
 )

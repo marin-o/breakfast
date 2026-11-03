@@ -315,7 +315,7 @@ internal class AppOwners<D>(
             if (forRecipe) recipeForm.pick(food)
         },
         confirmLogged = confirmations::logged,
-        onSavedToLog = { food, origin, typed -> review.choose(food, origin = origin, fetchServings = false, typed = typed) },
+        onSavedToLog = { food, origin, typed, offers -> review.choose(food, origin = origin, fetchServings = false, typed = typed, offersContribution = offers) },
     )
     /** The scanner and its barcode lookup (see [ScanSession]); a found product goes to [review], an unknown one to [foodForm]. */
     val scan: ScanSession = ScanSession(

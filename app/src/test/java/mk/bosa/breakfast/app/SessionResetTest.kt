@@ -54,6 +54,27 @@ class SessionResetTest {
         assertEquals(egg, app.entryEdit.selectedEntry)
     }
 
+    /** Wired as the view model wires it: the form's offer stands after its review's Add, and after Back from it. */
+    private fun saveAnIncompleteOffProductForAMeal() {
+        app.foodForm.open("Ayran", barcode = "4006381333931", fromOff = true, reviewAfterSave = mk.bosa.breakfast.scan.ProductReviewOrigin.MEAL)
+        app.foodForm.draft.calories = "40"
+        app.foodForm.save()
+        assertNotNull("the review took it on", app.review.product)
+    }
+
+    @Test fun anOffFormsOfferOutlivesItsReviewsAdd() {
+        saveAnIncompleteOffProductForAMeal()
+        app.review.add(MealSlot.LUNCH)
+        assertNull(app.review.product)
+        assertEquals("4006381333931", app.contribution.pending?.barcode)
+    }
+
+    @Test fun anOffFormsOfferOutlivesBackFromItsReview() {
+        saveAnIncompleteOffProductForAMeal()
+        app.review.dismiss()
+        assertEquals("4006381333931", app.contribution.pending?.barcode)
+    }
+
     private fun assertTheSessionWasReset() {
         assertEquals("pins", emptyMap<String, FoodRecord>(), app.log.pinsSnapshot())
         assertNull("the Log's error", app.log.error)

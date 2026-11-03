@@ -27,6 +27,7 @@ import mk.bosa.breakfast.domain.newFoodQuantity
 import mk.bosa.breakfast.domain.normalizeBarcode
 import mk.bosa.breakfast.domain.resolveNutrition
 import mk.bosa.breakfast.domain.TypedPart
+import mk.bosa.breakfast.domain.typedFoodName
 import mk.bosa.breakfast.resolve.ResolveQueueView
 
 /** The food writes the form makes; the view model adapts `BreakfastEngine`. */
@@ -97,8 +98,8 @@ internal class FoodForm(
     private val onSaved: (food: FoodRecord, newFood: Boolean, advancesQueue: Boolean) -> Unit,
     /** A new food was saved and logged to the meal the user chose: "Logged!" (see `Confirmations`). */
     private val confirmLogged: () -> Unit,
-    /** A food made while logging was saved with no amount to log: it goes on to the review a known product gets, starting on the amount typed, if any. */
-    private val onSavedToLog: (FoodRecord, ProductReviewOrigin, TypedPart?) -> Unit = { _, _, _ -> },
+    /** A food made while logging was saved with no amount to log: it goes on to the review a known product gets, starting on the amount typed, if any; the last argument keeps this save's contribution offer through that review's write. */
+    private val onSavedToLog: (FoodRecord, ProductReviewOrigin, TypedPart?, Boolean) -> Unit = { _, _, _, _ -> },
 ) {
     /** This New food is for a logging review ([open]): Save stores it alone and [onSavedToLog] takes it on. */
     private var reviewAfterSave: ProductReviewOrigin? = null
@@ -114,7 +115,10 @@ internal class FoodForm(
     var focus by mutableStateOf<FoodFormFocus?>(null); private set
     private var focusSerial = 0L
 
-    /** New food, prefilled; [fromOff] when Open Food Facts had the product without usable nutrition. */
+    /**
+     * New food, prefilled; [fromOff] when Open Food Facts had the product without usable nutrition. A [name] that is the
+     * food text of the part it was asked for may start with a serving word, which goes to the Servings form ([typedFoodName]).
+     */
     fun open(name: String = "", brand: String = "", barcode: String = "", fromResolver: Boolean = false, fromOff: Boolean = false, reviewAfterSave: ProductReviewOrigin? = null, typed: TypedPart? = null) {
         onOpen(fromResolver)
         this.reviewAfterSave = reviewAfterSave
@@ -126,6 +130,9 @@ internal class FoodForm(
         draft.barcode = normalizeBarcode(barcode).orEmpty()
         draft.barcodeFromScan = draft.barcode.isNotEmpty()
         draft.fromOff = fromOff
+        (typed ?: queue()?.current)?.takeIf { it.foodPhrase.trim() == name.trim() }?.let(::typedFoodName)?.let { read ->
+            if (read.servingWord != null) draft.splitServing(read, read.servingWord) else draft.name = read.name
+        }
         baseline = draft.fields()
         discardOpen = false
         open = true
@@ -255,7 +262,7 @@ internal class FoodForm(
                 reviewAfterSave = null
                 typedBeforeForm = null
                 onSaved(saved, editingId == null, step is FoodSaveStep.LogTyped)
-                if (step is FoodSaveStep.Review) onSavedToLog(saved, step.origin, typed)
+                if (step is FoodSaveStep.Review) onSavedToLog(saved, step.origin, typed, candidate != null)
             },
             onFailure = { notices.show(it.message ?: "Could not save this food.") },
         ) {

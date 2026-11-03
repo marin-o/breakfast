@@ -97,6 +97,35 @@ class ProductReviewTest {
         NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(539.0, 6.3, 57.5, 30.9)), barcode = "3017620422003",
     )
 
+    // ---- A food form's contribution offer ----
+
+    private val saved = nutella.copy(id = "custom-ayran", name = "Ayran")
+
+    @Test fun addKeepsTheOfferOfTheFoodFormThatCameHere() {
+        review.choose(saved, origin = ProductReviewOrigin.MEAL, fetchServings = false, offersContribution = true)
+        assertFalse("not a scan: the screens beneath stay", review.fromScan)
+        review.add(MealSlot.LUNCH)
+        assertEquals(saved.barcode, offers.single()!!.barcode)
+    }
+
+    @Test fun addToTheLogKeepsTheOfferToo() {
+        review.choose(saved, origin = ProductReviewOrigin.LOG_PART, fetchServings = false, offersContribution = true)
+        review.addToLog()
+        assertEquals(saved.barcode, offers.single()!!.barcode)
+    }
+
+    @Test fun backTouchesNoOffer() {
+        review.choose(saved, origin = ProductReviewOrigin.MEAL, fetchServings = false, offersContribution = true)
+        review.dismiss()
+        assertEquals(emptyList<OffContributionDraft?>(), offers)
+    }
+
+    @Test fun aReviewThatOffersNothingStillDropsAnEarlierCandidate() {
+        review.choose(saved, origin = ProductReviewOrigin.MEAL, fetchServings = false)
+        review.add(MealSlot.LUNCH)
+        assertEquals(listOf<OffContributionDraft?>(null), offers)
+    }
+
     // ---- A USDA row ----
 
     private val chicken = FoodRecord(

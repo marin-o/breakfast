@@ -62,7 +62,7 @@ class FoodFormTest {
         onClose = { events += "close" },
         onSaved = { food, newFood, advances -> events += "saved ${food.name} new=$newFood advances=$advances" },
         confirmLogged = { confirmed++ },
-        onSavedToLog = { food, origin, typed -> events += "review ${food.name} $origin" + typed?.let { " from ${it.amount}" }.orEmpty() },
+        onSavedToLog = { food, origin, typed, offers -> events += "review ${food.name} $origin" + typed?.let { " from ${it.amount}" }.orEmpty() + (if (offers) " offering" else "") },
     )
 
     private val kefir = record("kefir", "Kefir", "4006381333931")
@@ -370,6 +370,133 @@ class FoodFormTest {
         assertEquals("Ayran", candidate.name)
         assertEquals("en", candidate.languageCode)
         assertEquals("Open Food Facts", store.saved.single().sourceName)
+    }
+
+    @Test fun anOpenFoodFactsProductGoingToTheReviewTellsItToKeepTheOffer() {
+        meal = MealSlot.LUNCH
+        form.open("Ayran", "Dukat", "036000291452", fromOff = true)
+        form.draft.calories = "40"
+        form.save()
+        assertEquals("036000291452", offers.single()!!.barcode)
+        assertEquals("review Ayran MEAL offering", events.last())
+    }
+
+    // ---- A serving word typed before the name ----
+
+    private val barPart = TypedPart("bar Candybar", 1.0, null)
+
+    private fun openFromLogPart(part: TypedPart, raw: String) {
+        queue = ResolveQueueView(MealSlot.LUNCH, listOf(raw), 1, part)
+        form.open(part.foodPhrase, fromResolver = true)
+    }
+
+    /** The form as it opened, read as it is saved: only with no queue. */
+    private fun openedFields(): FoodDraftFields {
+        val under = queue
+        queue = null
+        return form.savedForm()!!.baseline.also { queue = under }
+    }
+
+    @Test fun aServingWordOpensItsFormAndSavingLogsThatServing() {
+        openFromLogPart(barPart, "1 bar Candybar")
+        assertEquals("Candybar", form.draft.name)
+        assertTrue(form.draft.servingFormOpen)
+        assertEquals("bar", form.draft.servingLabel)
+        assertEquals("the amount is left to type", "", form.draft.servingAmount)
+        assertFalse("nothing was typed yet", form.draft.isDirty(openedFields()))
+        form.draft.calories = "450"
+        form.draft.servingAmount = "20"
+        form.save()
+        assertEquals(listOf("save and log Candybar: 1.0 bar to LUNCH on 2026-10-28"), store.calls)
+        assertEquals(20.0, store.saved.single().servings.single().baseUnitsPerServing, 0.0)
+    }
+
+    @Test fun thePluralLogsItsCountOfTheSingularServing() {
+        openFromLogPart(TypedPart("bars Candybar", 2.0, null), "2 bars Candybar")
+        assertEquals("Candybar", form.draft.name)
+        assertEquals("bar", form.draft.servingLabel)
+        form.draft.calories = "450"
+        form.draft.servingAmount = "20"
+        form.save()
+        assertEquals(listOf("save and log Candybar: 2.0 bar to LUNCH on 2026-10-28"), store.calls)
+    }
+
+    @Test fun aWordTheParserTookAsAUnitIsTheServingToo() {
+        openFromLogPart(TypedPart("Candybar", 2.0, MeasureUnit.PIECE, "slices"), "2 slices Candybar")
+        assertEquals("Candybar", form.draft.name)
+        assertEquals("slice", form.draft.servingLabel)
+        form.draft.calories = "450"
+        form.draft.servingAmount = "20"
+        form.save()
+        assertEquals(listOf("save and log Candybar: 2.0 slice to LUNCH on 2026-10-28"), store.calls)
+    }
+
+    @Test fun saveWithTheServingUnfilledIsRefusedAndKeepsEverything() {
+        openFromLogPart(barPart, "1 bar Candybar")
+        form.draft.calories = "450"
+        form.save()
+        assertEquals(emptyList<String>(), store.calls)
+        assertEquals(mk.bosa.breakfast.domain.POSITIVE_AMOUNT_MESSAGE, notices.message)
+        assertTrue(form.open)
+        assertEquals("Candybar", form.draft.name)
+        assertEquals("bar", form.draft.servingLabel)
+        assertEquals("450", form.draft.calories)
+    }
+
+    @Test fun cancelPutsTheWordBackAndTheDraftDoesNotLookEdited() {
+        openFromLogPart(barPart, "1 bar Candybar")
+        val baseline = openedFields()
+        form.draft.cancelServing()
+        assertEquals("bar Candybar", form.draft.name)
+        assertFalse(form.draft.servingFormOpen)
+        assertFalse(form.draft.isDirty(baseline))
+        form.draft.name = "bar Candybars"
+        assertTrue("a later edit still counts", form.draft.isDirty(baseline))
+    }
+
+    @Test fun cancelLeavesANameTheUserEditedAlone() {
+        openFromLogPart(barPart, "1 bar Candybar")
+        val baseline = openedFields()
+        form.draft.name = "Candy"
+        form.draft.cancelServing()
+        assertEquals("Candy", form.draft.name)
+        assertTrue(form.draft.isDirty(baseline))
+    }
+
+    @Test fun addingTheServingThenRemovingItKeepsTheNameAndLooksUnedited() {
+        openFromLogPart(barPart, "1 bar Candybar")
+        val baseline = openedFields()
+        form.draft.servingAmount = "20"
+        assertTrue(form.draft.commitServing())
+        form.draft.removeServing(0)
+        assertEquals("Candybar", form.draft.name)
+        assertFalse(form.draft.isDirty(baseline))
+        // Adding it settled the split: a later form's Cancel touches nothing.
+        form.draft.openServing(form.draft.basis())
+        form.draft.cancelServing()
+        assertEquals("Candybar", form.draft.name)
+    }
+
+    @Test fun aCapitalWordStaysInTheNameWithNoForm() {
+        openFromLogPart(TypedPart("Bar One", 1.0, null), "1 Bar One")
+        assertEquals("Bar One", form.draft.name)
+        assertFalse(form.draft.servingFormOpen)
+    }
+
+    @Test fun aNameThatIsNotThePartsTextIsNotRead() {
+        queue = ResolveQueueView(MealSlot.LUNCH, listOf("1 bar Candybar"), 1, barPart)
+        form.open("bar soap")
+        assertEquals("bar soap", form.draft.name)
+        assertFalse(form.draft.servingFormOpen)
+    }
+
+    @Test fun theSplitAndItsUndoComeBackAfterProcessDeath() {
+        form.open(barPart.foodPhrase, typed = barPart)
+        val baseline = openedFields()
+        val back = FoodDraft().apply { restore(form.draft.state()) }
+        back.cancelServing()
+        assertEquals("bar Candybar", back.name)
+        assertFalse(back.isDirty(baseline))
     }
 
     // ---- Servings on the first add ----

@@ -125,6 +125,8 @@ internal class ProductReview(
 ) {
     var product by mutableStateOf<FoodRecord?>(null); private set
     var fromScan by mutableStateOf(false); private set
+    /** A write here makes this product a contribution candidate: scanned, or an incomplete Open Food Facts result saved on the way here. */
+    private var offersContribution = false
     var origin by mutableStateOf(ProductReviewOrigin.LIBRARY); private set
     var amount by mutableStateOf("100"); private set
     var unit by mutableStateOf("g"); private set
@@ -168,11 +170,12 @@ internal class ProductReview(
      * [typed] amount, and the part it [replaces]; one reached through "Find better match" or "Rescan" takes those on from
      * the review it follows. A USDA food already stored is reviewed as stored, so what shows is what Add logs.
      */
-    fun choose(picked: FoodRecord, fromScan: Boolean = false, origin: ProductReviewOrigin? = null, fetchServings: Boolean = true, typed: TypedPart? = null, replaces: SegmentSpan? = null) {
+    fun choose(picked: FoodRecord, fromScan: Boolean = false, origin: ProductReviewOrigin? = null, fetchServings: Boolean = true, typed: TypedPart? = null, replaces: SegmentSpan? = null, offersContribution: Boolean = fromScan) {
         val resolveQueue = queue()
         val food = storedFood(picked.id)?.takeIf { isUsdaFoodId(picked.id) } ?: picked
         product = food
         this.fromScan = fromScan
+        this.offersContribution = offersContribution
         val opened = origin ?: productReviewOrigin(libraryTab = openMeal() == null, queueActive = resolveQueue != null)
         // No meal to log a queued part to yet: the pick goes to the draft in that part's place.
         val waiting = resolveQueue?.takeIf { it.meal == null && !opened.takesNoMeal }
@@ -373,14 +376,14 @@ internal class ProductReview(
         val plan = queueLogPlan(queueActive = resolveQueue != null, resolveQueue?.meal, chosen)
             ?: error("Resolve queue is active but has no meal")
         val target = plan.meal
-        val scanned = fromScan
+        val offers = offersContribution
         val day = selectedDay()
         session.write(
             change = DiaryChange.FoodsLogged,
             onSuccess = {
                 fetchSaved(storedFood(draft.food.id))
                 product = null
-                offerContribution(contributionDraftAfterLocalSave(draft.food, scanned))
+                offerContribution(contributionDraftAfterLocalSave(draft.food, offers))
                 fromScan = false
                 origin = ProductReviewOrigin.LIBRARY
                 onLogged(plan.advancesQueue)
@@ -424,16 +427,16 @@ internal class ProductReview(
         if (resolvingPart()) { resolvePart(); return }
         if (!session.canWrite) return
         val draft = writable(food) ?: return
-        val scanned = fromScan
+        val offers = offersContribution
         val measure = Measure(draft.unit, draft.servingName)
         if (origin == ProductReviewOrigin.CORRECTION) {
             // [correct] learns the pick when the entry took it, so a USDA food isn't learned a second time here.
-            correct({ storeIt(draft.food) }, draft.amount, measure, ::close) { stored -> finish(stored, draft.food, scanned, learnsPick = false) {} }
+            correct({ storeIt(draft.food) }, draft.amount, measure, ::close) { stored -> finish(stored, draft.food, offers, learnsPick = false) {} }
             return
         }
         session.write(
             change = DiaryChange.FoodsChanged,
-            onSuccess = { stored -> finish(stored, draft.food, scanned) { onLogPart(stored, draft.amount, measure, replaces) } },
+            onSuccess = { stored -> finish(stored, draft.food, offers) { onLogPart(stored, draft.amount, measure, replaces) } },
             onFailure = { notices.show(it.message ?: "Could not save this food.") },
         ) { storeIt(draft.food) }
     }
@@ -445,13 +448,13 @@ internal class ProductReview(
      * [food] was stored as [stored]: the review is over, unless [keepsProduct] leaves it on screen for what comes next,
      * and what comes next is the caller's. A USDA food counts as picked, unless [learnsPick] says that is already seen to.
      */
-    private fun finish(stored: FoodRecord, food: FoodRecord, scanned: Boolean, keepsProduct: Boolean = false, learnsPick: Boolean = true, next: () -> Unit) {
+    private fun finish(stored: FoodRecord, food: FoodRecord, offers: Boolean, keepsProduct: Boolean = false, learnsPick: Boolean = true, next: () -> Unit) {
         fetchSaved(storedFood(stored.id))
         if (!keepsProduct) {
             product = null
             origin = ProductReviewOrigin.LIBRARY
         }
-        offerContribution(contributionDraftAfterLocalSave(food, scanned))
+        offerContribution(contributionDraftAfterLocalSave(food, offers))
         fromScan = false
         next()
         if (learnsPick && isUsdaFoodId(food.id)) onCataloguePicked(stored.id)
@@ -462,10 +465,10 @@ internal class ProductReview(
         val food = product ?: return
         if (!session.canWrite) return
         val draft = writable(food) ?: return
-        val scanned = fromScan
+        val offers = offersContribution
         session.write(
             change = DiaryChange.FoodsChanged,
-            onSuccess = { stored -> finish(stored, draft.food, scanned, keepsProduct = true) { onPartResolved(stored) } },
+            onSuccess = { stored -> finish(stored, draft.food, offers, keepsProduct = true) { onPartResolved(stored) } },
             onFailure = { notices.show(it.message ?: "Could not save this food.") },
         ) { storeIt(draft.food) }
     }

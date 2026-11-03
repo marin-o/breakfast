@@ -124,6 +124,45 @@ private fun pluralOf(text: String): String {
     }
 }
 
+/**
+ * What a New food starts on for a typed part: its [name], the [servingWord] to offer as its serving ("bar"), and the name
+ * as [typed], which Cancel on that serving's form goes back to.
+ */
+internal data class TypedFoodName(val name: String, val servingWord: String?, val typed: String = name)
+
+/**
+ * Reads a part with an amount whose words start with a serving or container word and go on: "1 bar Candybar" is Candybar
+ * with a bar, "2 bars of Candybar" too, whether the parser took the word as a unit or not ("2 slices Candybar"). The word
+ * typed with a capital is part of the name ("1 Bar One"); a script without case counts as lower case. Without an amount,
+ * or with nothing after the word, the name is what was typed.
+ */
+internal fun typedFoodName(part: TypedPart): TypedFoodName {
+    val phrase = part.foodPhrase.trim()
+    val asTyped = TypedFoodName(phrase, null)
+    if (!part.article && part.amount?.let(::isPositiveAmount) != true) return asTyped
+    if (part.unit != null) {
+        val word = part.unitWord?.trim().orEmpty()
+        val serving = newFoodServingWord(word)
+        if (serving == null || phrase.isEmpty()) return asTyped
+        val typed = "$word $phrase"
+        return if (word.first().isUpperCase()) TypedFoodName(typed, null) else TypedFoodName(phrase, serving, typed)
+    }
+    val words = phrase.split(WORD_GAP)
+    val word = words.first()
+    val serving = newFoodServingWord(word) ?: return asTyped
+    val rest = words.drop(1).dropWhile { it.equals("of", ignoreCase = true) }
+    if (rest.isEmpty() || word.first().isUpperCase()) return asTyped
+    return TypedFoodName(rest.joinToString(" "), serving, phrase)
+}
+
+/** The word of [NEW_FOOD_SERVING_WORDS] that [word] is, in the singular and in its own script; null for any other. */
+private fun newFoodServingWord(word: String): String? = NEW_FOOD_SERVING_WORDS.firstOrNull { servingNameMatches(word, it) }
+
+/** Words a new food's name is not taken to start with after an amount. [CONTAINER_WORDS] has no bar or scoop, and has "meal" and "drink". */
+private val NEW_FOOD_SERVING_WORDS = listOf("bar", "can", "bottle", "slice", "scoop", "packet", "piece", "cup", "bowl", "box")
+
+private val WORD_GAP = Regex("\\s+")
+
 /** The serving of [food] that [typed] names ([servingNameMatches]); null when it has none by that name. */
 fun FoodRecord.servingNamed(typed: String): ServingConversion? =
     conversions.firstOrNull { it.isServing() && servingNameMatches(typed, it.name!!) }

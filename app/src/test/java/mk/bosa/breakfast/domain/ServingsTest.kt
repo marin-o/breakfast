@@ -32,6 +32,42 @@ class ServingsTest {
 
     private fun planner(vararg extra: FoodRecord) = LogPlanner(FoodMatcher(TestFoods.fixtures + extra))
 
+    private fun newFoodName(raw: String) = typedFoodName(LogPlanner(FoodMatcher(emptyList())).typed(raw))
+
+    @Test fun aNewFoodsNameLeavesALeadingServingWordOut() {
+        assertEquals(TypedFoodName("Candybar", "bar", "bar Candybar"), newFoodName("1 bar Candybar"))
+        assertEquals(TypedFoodName("Candybar", "bar", "bars Candybar"), newFoodName("2 bars Candybar"))
+        assertEquals(TypedFoodName("coke", "can", "can of coke"), newFoodName("1 can of coke"))
+        assertEquals(TypedFoodName("coke", "can", "can of coke"), newFoodName("a can of coke"))
+        assertEquals(TypedFoodName("Candybar", "slice", "slices Candybar"), newFoodName("2 slices Candybar"))
+        assertEquals(TypedFoodName("Candybar", "piece", "piece Candybar"), newFoodName("1 piece Candybar"))
+        assertEquals(TypedFoodName("cereal", "bowl", "bowl cereal"), newFoodName("1 bowl cereal"))
+        assertEquals(TypedFoodName("soap", "bar", "bar soap"), newFoodName("1 bar soap"))
+    }
+
+    @Test fun aNewFoodsNameStaysWhenItStartsWithNoServingWordOrHasNoAmount() {
+        assertEquals(TypedFoodName("protein bar", null), newFoodName("1 protein bar"))
+        assertEquals(TypedFoodName("bar", null), newFoodName("1 bar"))
+        assertEquals(TypedFoodName("bar of", null), newFoodName("1 bar of"))
+        assertEquals(TypedFoodName("bar Candybar", null), newFoodName("bar Candybar"))
+    }
+
+    @Test fun aCapitalServingWordIsPartOfANewFoodsName() {
+        assertEquals(TypedFoodName("Bar One", null), newFoodName("1 Bar One"))
+        assertEquals(TypedFoodName("Piece Candybar", null), newFoodName("1 Piece Candybar"))
+    }
+
+    @Test fun aNewFoodsServingWordKeepsToItsScript() {
+        assertEquals(TypedFoodName("бар Кандибар", null), newFoodName("1 бар Кандибар"))
+        assertEquals("a word that mixes scripts", TypedFoodName("bаr Candybar", null), typedFoodName(TypedPart("bаr Candybar", 1.0, null)))
+    }
+
+    @Test fun textThatMatchesASavedFoodWholeLogsThatFoodAndNeverAsksForANewOne() {
+        val plan = planner(food("custom-bar-soap", "Bar soap")).plan("1 bar soap")
+        assertEquals(listOf("custom-bar-soap"), plan.entries.map { it.food.id })
+        assertEquals(emptyList<String>(), plan.unresolved)
+    }
+
     @Test fun aServingNameMatchesInAnyCaseSingularOrPluralWithinItsScript() {
         assertTrue(servingNameMatches("slices", "slice"))
         assertTrue(servingNameMatches("SLICE", "Slice"))
