@@ -27,6 +27,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import mk.bosa.breakfast.ui.label
 import mk.bosa.breakfast.ui.theme.Macro
+import mk.bosa.breakfast.ui.theme.Mark
+import mk.bosa.breakfast.ui.theme.mark
+import mk.bosa.breakfast.ui.theme.PartInset
+import mk.bosa.breakfast.domain.NutritionValues
+import mk.bosa.breakfast.ui.macroText
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import mk.bosa.breakfast.ui.theme.BreakfastType
@@ -141,9 +146,12 @@ fun DayHeader(
     }
 }
 
-/** One line of facts: the label, with its [macro]'s dot if any, then the value in ink with its [unit] in soft, or, with no unit, the value in soft. */
+/**
+ * One line of facts: the label, with its [mark]'s dot if any (a macro's, or fibre's), then the value in ink with its [unit] in soft, or, with no
+ * unit, the value in soft. [inset] sets the line in by that much, under the line before, as a label's "of which" line.
+ */
 @Composable
-internal fun FactRow(label: String, value: String, unit: String? = null, macro: Macro? = null) {
+internal fun FactRow(label: String, value: String, unit: String? = null, mark: Mark? = null, inset: Dp = 0.dp) {
     val colors = LocalBreakfastColors.current
     val shownValue: @Composable () -> Unit = {
         Row(verticalAlignment = Alignment.Bottom) {
@@ -152,13 +160,13 @@ internal fun FactRow(label: String, value: String, unit: String? = null, macro: 
         }
     }
     if (unit != null && isLargeFont(LocalDensity.current.fontScale.coerceAtLeast(1f))) {
-        Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            MacroLabel(label, macro, colors.ink, BreakfastType.Body)
+        Column(Modifier.fillMaxWidth().padding(start = inset, top = 8.dp)) {
+            MacroLabel(label, mark, colors.ink, BreakfastType.Body)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { shownValue() }
         }
     } else {
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
-            MacroLabel(label, macro, colors.ink, BreakfastType.Body, Modifier.weight(1f))
+        Row(Modifier.fillMaxWidth().padding(start = inset, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
+            MacroLabel(label, mark, colors.ink, BreakfastType.Body, Modifier.weight(1f))
             shownValue()
         }
     }
@@ -175,11 +183,52 @@ internal fun TotalRow(label: String, value: String, modifier: Modifier = Modifie
     }
 }
 
-/** The nutrition lines of a page, in the design's order: Energy, then the macros when there are any, each a value and unit; [marked] gives the macros their dots. */
+/**
+ * The nutrition lines of a page, in the label's order: Energy, then the macros when there are any, each a value and unit,
+ * saturated fat set in under Fat and sugars under Carbohydrate, fibre before Protein and salt last, each of those four
+ * only when given; [marked] gives the macros their dots, and fibre its own while fibre is shown.
+ */
 @Composable
-internal fun NutritionFacts(energy: String, fat: Pair<String, String>? = null, carbs: Pair<String, String>? = null, protein: Pair<String, String>? = null, marked: Boolean = true) {
+internal fun NutritionFacts(
+    energy: String,
+    fat: Pair<String, String>? = null,
+    carbs: Pair<String, String>? = null,
+    protein: Pair<String, String>? = null,
+    marked: Boolean = true,
+    saturatedFat: Pair<String, String>? = null,
+    sugars: Pair<String, String>? = null,
+    fibre: Pair<String, String>? = null,
+    salt: Pair<String, String>? = null,
+) {
     FactRow("Energy", energy, "kcal")
-    listOf(Triple("Fat", Macro.FAT, fat), Triple("Carbohydrate", Macro.CARBS, carbs), Triple("Protein", Macro.PROTEIN, protein)).forEach { (label, macro, fact) ->
-        if (fact != null) FactRow(label, fact.first, fact.second, macro.takeIf { marked })
-    }
+    // A sub-line starts 16dp in from its parent's label text, which a dot moves along.
+    val subInset = PartInset + if (marked) MacroDotSize + MacroDotGap else 0.dp
+    fun mark(of: Macro) = of.mark.takeIf { marked }
+    fat?.let { FactRow("Fat", it.first, it.second, mark(Macro.FAT)) }
+    saturatedFat?.let { FactRow("Saturated fat", it.first, it.second, inset = subInset) }
+    carbs?.let { FactRow("Carbohydrate", it.first, it.second, mark(Macro.CARBS)) }
+    sugars?.let { FactRow("Sugars", it.first, it.second, inset = subInset) }
+    fibre?.let { FactRow("Fibre", it.first, it.second, Mark.Fibre.takeIf { marked }) }
+    protein?.let { FactRow("Protein", it.first, it.second, mark(Macro.PROTEIN)) }
+    salt?.let { FactRow("Salt", it.first, it.second) }
+}
+
+/**
+ * A food's [values] as its page shows them: each macro, "—" when unknown, and the other four only when known.
+ */
+@Composable
+internal fun NutritionFacts(energy: String, values: NutritionValues, marked: Boolean = true) {
+    fun grams(value: Double?) = macroText(value) to "g"
+    fun known(value: Double?) = value?.let(::grams)
+    NutritionFacts(
+        energy,
+        fat = grams(values.fat),
+        carbs = grams(values.carbohydrates),
+        protein = grams(values.protein),
+        marked = marked,
+        saturatedFat = known(values.saturatedFat),
+        sugars = known(values.sugars),
+        fibre = known(values.fibre),
+        salt = known(values.salt),
+    )
 }

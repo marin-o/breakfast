@@ -35,6 +35,10 @@ data class ProfileValues(
     val fatPercent: Double? = null,
     /** The macros last set by "Apply" and never entered: these follow when Daily kcal changes ([macrosAtKcal]). */
     val followingMacros: Set<Macro> = emptySet(),
+    /** Grams of fibre a day; not part of the kcal split, the percents or Apply. */
+    val fibreTarget: Double? = null,
+    /** "Track fibre": fibre beside the macros ([fibreShown]); off keeps [fibreTarget]. */
+    val trackFibre: Boolean = false,
 )
 
 /** One point of the weight curve. [id] tells apart points of one day; 0 until stored. */
@@ -69,6 +73,8 @@ data class ProfileDraft(
     val handEditedMacros: Set<Macro> = emptySet(),
     /** A macro was typed in since the last "Apply". */
     val macrosPending: Boolean = false,
+    val fibre: String = "",
+    val trackFibre: Boolean = false,
 ) {
     companion object {
         fun of(values: ProfileValues) = ProfileDraft(
@@ -92,6 +98,8 @@ data class ProfileDraft(
             editableNumber(values.carbsPercent),
             editableNumber(values.fatPercent),
             values.followingMacros,
+            fibre = editableNumber(values.fibreTarget),
+            trackFibre = values.trackFibre,
         )
     }
 }
@@ -167,7 +175,11 @@ val ProfileDraft.percentsShown: Boolean get() = !trackingOnly && validDailyKcal 
 
 private val ProfileDraft.percentsTextValid: Boolean get() = listOf(proteinPercent, carbsPercent, fatPercent).all(::macroPercentTextValid)
 
-private val ProfileDraft.kcalAndGramsTextValid: Boolean get() = kcalTargetTextValid(kcal) && listOf(protein, carbs, fat).all(::macroTargetTextValid)
+/** The fibre target field shows: with Track fibre on, outside Tracking only. */
+val ProfileDraft.fibreTargetShown: Boolean get() = trackFibre && !trackingOnly
+
+private val ProfileDraft.kcalAndGramsTextValid: Boolean get() =
+    kcalTargetTextValid(kcal) && listOf(protein, carbs, fat).all(::macroTargetTextValid) && (!trackFibre || macroTargetTextValid(fibre))
 
 /** A hidden field holding what is not valid reads as [exact]; one on show has already stopped [profileOf]. */
 private fun shownOrSaved(text: String, valid: (String) -> Boolean, exact: Double?): Double? =
@@ -205,6 +217,8 @@ fun profileOf(draft: ProfileDraft, saved: ProfileValues): ProfileValues? {
         shownOrSaved(draft.carbsPercent, ::macroPercentTextValid, saved.carbsPercent),
         shownOrSaved(draft.fatPercent, ::macroPercentTextValid, saved.fatPercent),
         draft.followingMacros,
+        fibreTarget = if (draft.trackFibre) fieldNumber(draft.fibre, saved.fibreTarget) else shownOrSaved(draft.fibre, ::macroTargetTextValid, saved.fibreTarget),
+        trackFibre = draft.trackFibre,
     )
     val keepTargets = draft.trackingOnly && !(draft.kcalAndGramsTextValid && draft.percentsTextValid)
     return if (keepTargets) values.withSavedTargets(saved) else values
@@ -215,6 +229,7 @@ private fun ProfileValues.withSavedTargets(saved: ProfileValues) = copy(
     proteinTarget = saved.proteinTarget,
     carbsTarget = saved.carbsTarget,
     fatTarget = saved.fatTarget,
+    fibreTarget = saved.fibreTarget,
     proteinPercent = saved.proteinPercent,
     carbsPercent = saved.carbsPercent,
     fatPercent = saved.fatPercent,

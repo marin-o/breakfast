@@ -73,6 +73,7 @@ data class OffContributionDraft(
         normalizedNutrition.protein?.let { add("Protein: ${prettyNumber(it)} g") }
         normalizedNutrition.carbohydrates?.let { add("Carbohydrates: ${prettyNumber(it)} g") }
         normalizedNutrition.fat?.let { add("Fat: ${prettyNumber(it)} g") }
+        OFF_EXTRA_NUTRIENTS.forEach { (_, name, value) -> plausibleExtra(value(normalizedNutrition))?.let { add("$name: ${prettyNumber(it)} g") } }
     }
 
     fun asFormFields(): Map<String, String> = buildMap {
@@ -95,6 +96,13 @@ data class OffContributionDraft(
         normalizedNutrition.fat?.let {
             put("nutriment_fat", prettyNumber(it))
             put("nutriment_fat_unit", "g")
+        }
+        // Sent only when entered and plausible: an unknown one is left as Open Food Facts has it.
+        OFF_EXTRA_NUTRIENTS.forEach { (key, _, value) ->
+            plausibleExtra(value(normalizedNutrition))?.let {
+                put("nutriment_$key", prettyNumber(it))
+                put("nutriment_${key}_unit", "g")
+            }
         }
         if (createNewProduct) {
             val language = languageCode.trim().lowercase()
@@ -136,6 +144,20 @@ internal fun plausibleNutrition(per100: NutritionValues): Boolean {
     return per100.calories.isFinite() && per100.calories in 0.0..1000.0 + PlausibleTolerance &&
         macro(per100.protein) && macro(per100.carbohydrates) && macro(per100.fat)
 }
+
+/**
+ * Saturated fat, sugars, fibre and salt as Open Food Facts names them (`saturated-fat_100g` read, `nutriment_saturated-fat`
+ * sent), with their name in the public fields and the value they are read from. Salt, never sodium.
+ */
+internal val OFF_EXTRA_NUTRIENTS: List<Triple<String, String, (NutritionValues) -> Double?>> = listOf(
+    Triple("saturated-fat", "Saturated fat", NutritionValues::saturatedFat),
+    Triple("sugars", "Sugars", NutritionValues::sugars),
+    Triple("fiber", "Fibre", NutritionValues::fibre),
+    Triple("salt", "Salt", NutritionValues::salt),
+)
+
+/** One of those four per 100 g or ml: 0 to 100 g and finite, else unknown. It never rules a product out. */
+internal fun plausibleExtra(value: Double?): Double? = value?.takeIf { it.isFinite() && it in 0.0..100.0 + PlausibleTolerance }
 
 /** Far below the 0.01 that is sent, far above the rounding of scaling a basis to 100. */
 private const val PlausibleTolerance = 1e-9
@@ -497,13 +519,16 @@ class OpenFoodFactsClient(
         fun macro(key: String): Double? = if (!n.containsKey(key)) null else n.number(key) ?: Double.NaN
         val values = NutritionValues(calories, macro("proteins_100g"), macro("carbohydrates_100g"), macro("fat_100g"))
         if (!plausibleNutrition(values)) return null
+        // The other four are optional extras: one that is missing or not plausible is unknown, and the product still reads.
+        fun extra(key: String): Double? = plausibleExtra(n.number("${key}_100g"))
+        val withExtras = values.copy(saturatedFat = extra("saturated-fat"), sugars = extra("sugars"), fibre = extra("fiber"), salt = extra("salt"))
         // A blank code is no code: it must not become the shared id "off-" or a stored empty barcode.
         val barcode = p.string("code")?.trim()?.ifBlank { null } ?: fallbackBarcode?.trim()?.ifBlank { null }
         return FoodRecord(
             id = "off-" + (barcode ?: name.lowercase().replace(" ", "-")), name = name,
             aliases = emptyList(), category = "Open Food Facts",
             origin = FoodOrigin.GENERIC,
-            nutrition = NutritionBasis(100.0, basisUnit, values),
+            nutrition = NutritionBasis(100.0, basisUnit, withExtras),
             conversions = listOf(mk.bosa.breakfast.domain.ServingConversion(basisUnit, 1.0, "Open Food Facts per 100 ${basisUnit.label}")) +
                 productServings(p, basisUnit),
             defaultAmount = 100.0, defaultUnit = basisUnit,

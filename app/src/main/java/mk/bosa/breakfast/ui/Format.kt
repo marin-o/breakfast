@@ -10,6 +10,8 @@ import mk.bosa.breakfast.domain.NutritionValues
 import mk.bosa.breakfast.settings.markDecimals
 import mk.bosa.breakfast.settings.DisplayDecimal
 import mk.bosa.breakfast.ui.theme.Macro
+import mk.bosa.breakfast.ui.theme.Mark
+import mk.bosa.breakfast.ui.theme.mark
 
 internal fun MealSlot.label() = name.lowercase().replaceFirstChar { it.titlecase() }
 /** A number as a row reads it: whole without ".0", else one decimal, with a point; [pretty] marks it. A field pre-fills with `domain/editableNumber`. */
@@ -53,14 +55,20 @@ internal fun countLabel(count: Int, one: String, many: String): String = if (cou
 /** A macro's amount as shown: "—" when it is not known, never 0. */
 internal fun macroText(grams: Double?): String = grams?.pretty() ?: "—"
 
-/** One piece of a line of macros: its [text] and the [macro] its dot marks, if it has one. */
-internal data class MacroPart(val text: String, val macro: Macro? = null)
+/** One piece of a line of macros: its [text] and the [mark] (a macro, or fibre) its dot stands for, if it has one. */
+internal data class MacroPart(val text: String, val mark: Mark? = null) {
+    constructor(text: String, macro: Macro) : this(text, macro.mark)
+}
 
 /** The parts as one string, as TalkBack says them; on screen they have no commas. */
 internal fun List<MacroPart>.lineText(): String = joinToString(", ") { it.text }
 
-/** "Protein 8 g", "carbs 40 g", "fat 4 g", under a kcal figure (M-Library-AmountSheet, M-Entry-FullEdit). */
-internal fun macroLineParts(values: NutritionValues): List<MacroPart> = macroParts(values, "Protein", "carbs", "fat", " g")
+/**
+ * "Protein 8 g", "carbs 40 g", "fat 4 g", under a kcal figure (M-Library-AmountSheet, M-Entry-FullEdit); with [fibre]
+ * (fibre is shown), "fibre 3 g" after fat, its amount "—" when unknown as a macro's is.
+ */
+internal fun macroLineParts(values: NutritionValues, fibre: Boolean = false): List<MacroPart> =
+    macroParts(values, "Protein", "carbs", "fat", " g") + listOfNotNull(MacroPart("fibre ${macroText(values.fibre)} g", Mark.Fibre).takeIf { fibre })
 
 /** "P 2", "C 9", "F 8", inside the scan review's line. */
 internal fun macroLetterParts(values: NutritionValues): List<MacroPart> = macroParts(values, "P", "C", "F", "")

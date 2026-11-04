@@ -29,14 +29,25 @@ import mk.bosa.breakfast.ui.MacroPart
 import mk.bosa.breakfast.ui.label
 import mk.bosa.breakfast.ui.lineText
 import mk.bosa.breakfast.ui.theme.Macro
-import mk.bosa.breakfast.ui.theme.macroColor
+import mk.bosa.breakfast.ui.theme.Mark
+import mk.bosa.breakfast.ui.theme.markColor
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import mk.bosa.breakfast.ui.theme.BreakfastType
 import mk.bosa.breakfast.ui.theme.LocalBreakfastColors
 
-/** One macro column: [share] is its fraction of the 4dp track, in [kind]'s colour; [value] is ink and [unit] soft. */
-data class MacroStat(val kind: Macro, val label: String, val value: String, val unit: String, val share: Float, val target: String? = null)
+/**
+ * Whether fibre is shown beside the macros ([mk.bosa.breakfast.domain.fibreShown]): its Meals column, its dots and its
+ * part of the macro lines. `MainActivity` provides it; off where nothing does.
+ */
+internal val LocalFibreShown = compositionLocalOf { false }
+
+/** One macro column (or fibre's): [share] is its fraction of the 4dp track, in [kind]'s colour; [value] is ink and [unit] soft. */
+data class MacroStat(val kind: Mark, val label: String, val value: String, val unit: String, val share: Float, val target: String? = null) {
+    constructor(kind: Macro, label: String, value: String, unit: String, share: Float, target: String? = null) :
+        this(Mark.OfMacro(kind), label, value, unit, share, target)
+}
 
 /** The one big figure of a screen: 72sp kcal, its caption, and three macro columns (none when [macros] is empty). */
 @Composable
@@ -94,12 +105,12 @@ fun DayTotal(
     }
 }
 
-/** 4dp `line` track, its corners 2dp, with the macro's share as a fill in its colour, clipped to the track. */
+/** 4dp `line` track, its corners 2dp, with the macro's (or fibre's) share as a fill in its colour, clipped to the track. */
 @Composable
-internal fun MacroTrack(share: Float, macro: Macro) {
+internal fun MacroTrack(share: Float, mark: Mark) {
     val colors = LocalBreakfastColors.current
     Box(Modifier.fillMaxWidth().height(MacroTrackHeight).clip(MacroTrackShape).background(colors.line)) {
-        Box(Modifier.fillMaxWidth(share.coerceIn(0f, 1f)).height(MacroTrackHeight).background(colors.macroColor(macro)))
+        Box(Modifier.fillMaxWidth(share.coerceIn(0f, 1f)).height(MacroTrackHeight).background(colors.markColor(mark)))
     }
 }
 
@@ -109,15 +120,15 @@ internal val MacroDotSize = 8.dp
 internal val MacroDotGap = 5.dp
 private val MacroLinePartGap = 10.dp
 
-/** A label with the [macro]'s dot centred on its first line, or the label alone with none. The dot says nothing to TalkBack. */
+/** A label with the [mark]'s dot centred on its first line, or the label alone with none. The dot says nothing to TalkBack. */
 @Composable
-internal fun MacroLabel(text: String, macro: Macro?, color: Color, style: TextStyle, modifier: Modifier = Modifier) {
+internal fun MacroLabel(text: String, mark: Mark?, color: Color, style: TextStyle, modifier: Modifier = Modifier) {
     Row(modifier) {
-        if (macro != null) {
+        if (mark != null) {
             val measurer = rememberTextMeasurer()
             val firstLine = remember(measurer, style) { measurer.measure("0", style).size.height }
             Box(Modifier.padding(end = MacroDotGap).height(with(LocalDensity.current) { firstLine.toDp() }), contentAlignment = Alignment.Center) {
-                Box(Modifier.size(MacroDotSize).background(LocalBreakfastColors.current.macroColor(macro), CircleShape))
+                Box(Modifier.size(MacroDotSize).background(LocalBreakfastColors.current.markColor(mark), CircleShape))
             }
         }
         Text(text, color = color, style = style)
@@ -133,6 +144,6 @@ internal fun MacroLabel(text: String, macro: Macro?, color: Color, style: TextSt
 internal fun MacroLine(parts: List<MacroPart>, style: TextStyle, modifier: Modifier = Modifier, alignment: Alignment.Horizontal = Alignment.Start, color: Color = LocalBreakfastColors.current.soft) {
     val spoken = parts.lineText()
     FlowRow(modifier.clearAndSetSemantics { text = AnnotatedString(spoken) }, horizontalArrangement = Arrangement.spacedBy(MacroLinePartGap, alignment)) {
-        parts.forEach { MacroLabel(it.text, it.macro, color, style) }
+        parts.forEach { MacroLabel(it.text, it.mark, color, style) }
     }
 }

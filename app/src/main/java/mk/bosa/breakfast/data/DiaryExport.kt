@@ -48,8 +48,10 @@ internal const val DIARY_FORMAT = "breakfast-diary"
  * profile and the weight curve; an older file has neither, and leaves the phone's profile and curve as they are; a file of 3 replaces both. 4 added "Several weights a day": a day can hold several
  * points, where up to 3 two on one day refuse the file, and a file of 3 reads with the setting off. 5 added the target history and the
  * profile's body, goal and macro percents, all optional; a file of 3 or 4 has no history, and its profile, which replaces the phone's, starts a new one.
+ * 6 added saturated fat, sugars, fibre and salt to foods, entries and ingredients, and the profile's fibre target, all
+ * optional; an older file reads them as unknown and as no target.
  */
-internal const val DIARY_FORMAT_VERSION = 5
+internal const val DIARY_FORMAT_VERSION = 6
 
 /** The first format with the profile and the curve. */
 private const val PROFILE_FORMAT_VERSION = 3
@@ -58,7 +60,7 @@ private const val PROFILE_FORMAT_VERSION = 3
 private const val SEVERAL_WEIGHTS_FORMAT_VERSION = 4
 
 /** The Room schema the rows were read from; a file from a newer schema is refused. Keep equal to [BreakfastDatabase]. */
-internal const val DIARY_SCHEMA_VERSION = 12
+internal const val DIARY_SCHEMA_VERSION = 13
 
 /** A file bigger than this is refused before it is parsed. A year of logging is well under 5 MB. */
 internal const val DIARY_MAX_BYTES = 32L * 1024 * 1024
@@ -135,6 +137,9 @@ internal data class ProfileDto(
     val carbsPercent: Double? = null,
     val fatPercent: Double? = null,
     val followingMacros: List<String> = emptyList(),
+    // Since format 6; an older file has no fibre target and no Track fibre.
+    val fibreTarget: Double? = null,
+    val trackFibre: Boolean = false,
 )
 
 @Serializable
@@ -168,6 +173,11 @@ internal data class FoodDto(
     val personalOverride: Boolean,
     // Since schema 9; an older file has none and reads as no density.
     val density: Double? = null,
+    // Since schema 13; an older file has none and reads them as unknown.
+    val saturatedFat: Double? = null,
+    val sugars: Double? = null,
+    val fibre: Double? = null,
+    val salt: Double? = null,
 )
 
 @Serializable
@@ -207,6 +217,11 @@ internal data class MealEntryDto(
     val dayKey: String,
     // Since schema 9; an older file has none and reads as a plain unit.
     val enteredUnitLabel: String? = null,
+    // Since schema 13; an older file has none and reads them as unknown.
+    val snapshotSaturatedFat: Double? = null,
+    val snapshotSugars: Double? = null,
+    val snapshotFibre: Double? = null,
+    val snapshotSalt: Double? = null,
 )
 
 @Serializable
@@ -236,6 +251,11 @@ internal data class RecipeIngredientDto(
     val snapshotProtein: Double?,
     val snapshotCarbohydrates: Double?,
     val snapshotFat: Double?,
+    // Since schema 13; an older file has none and reads them as unknown.
+    val snapshotSaturatedFat: Double? = null,
+    val snapshotSugars: Double? = null,
+    val snapshotFibre: Double? = null,
+    val snapshotSalt: Double? = null,
 )
 
 /** Strict: an unknown or missing field, or a null where a value is required, fails the parse. */
@@ -324,14 +344,14 @@ internal fun validateDiary(file: DiaryFile): DiaryImport {
 private fun ProfileValues.toDto() = ProfileDto(
     name, proteinTarget, carbsTarget, fatTarget, currentWeight, targetWeight, kcalTarget, severalWeights,
     heightCm, age, sex?.name, activity?.name, goal?.name, paceKgPerWeek, trackingOnly, proteinPercent, carbsPercent, fatPercent,
-    followingMacros.map { it.name }.sorted(),
+    followingMacros.map { it.name }.sorted(), fibreTarget, trackFibre,
 )
 
 /** [diaryProblem] has checked every name. */
 private fun ProfileDto.toValues() = ProfileValues(
     name, proteinTarget, carbsTarget, fatTarget, currentWeight, targetWeight, kcalTarget, severalWeights,
     heightCm, age, sex?.let { enumValueOf<Sex>(it) }, activity?.let { enumValueOf<Activity>(it) }, goal?.let { enumValueOf<Goal>(it) }, paceKgPerWeek, trackingOnly, proteinPercent, carbsPercent, fatPercent,
-    followingMacros.mapTo(LinkedHashSet()) { enumValueOf<Macro>(it) },
+    followingMacros.mapTo(LinkedHashSet()) { enumValueOf<Macro>(it) }, fibreTarget, trackFibre,
 )
 
 private inline fun <reified T : Enum<T>> String?.namesNone(): Boolean = this != null && enumValues<T>().none { it.name == this }
@@ -355,6 +375,7 @@ internal fun diaryProblem(file: DiaryFile): String? {
     if (file.settings.longDraft !in LONG_DRAFT_NAMES) return "long draft ${file.settings.longDraft}"
     file.profile?.let { p ->
         if (listOf(p.proteinTarget, p.carbsTarget, p.fatTarget).any { it != null && !macroTargetValid(it) }) return "profile macro target"
+        if (p.fibreTarget != null && !macroTargetValid(p.fibreTarget)) return "profile fibre target"
         if (listOf(p.currentWeight, p.targetWeight).any { it != null && !weightValid(it) }) return "profile weight"
         if (p.kcalTarget != null && !kcalTargetValid(p.kcalTarget)) return "profile kcal target"
         if (p.heightCm != null && !heightValid(p.heightCm)) return "profile height"
@@ -402,6 +423,7 @@ internal fun diaryProblem(file: DiaryFile): String? {
             !f.nutritionAmount.positive() -> return "$at: nutrition amount ${f.nutritionAmount}"
             !f.calories.nonNegative() -> return "$at: calories ${f.calories}"
             !f.protein.nonNegativeOrUnknown() || !f.carbohydrates.nonNegativeOrUnknown() || !f.fat.nonNegativeOrUnknown() -> return "$at: macros"
+            !listOf(f.saturatedFat, f.sugars, f.fibre, f.salt).all { it.nonNegativeOrUnknown() } -> return "$at: nutrients"
             !f.defaultAmount.nonNegative() -> return "$at: default amount ${f.defaultAmount}"
             f.density != null && !f.density.positive() -> return "$at: density ${f.density}"
         }
@@ -468,6 +490,7 @@ internal fun diaryProblem(file: DiaryFile): String? {
             !g.resolvedBaseAmount.nonNegative() -> return "$at: base amount ${g.resolvedBaseAmount}"
             !g.snapshotCalories.nonNegative() -> return "$at: calories ${g.snapshotCalories}"
             !g.snapshotProtein.nonNegativeOrUnknown() || !g.snapshotCarbohydrates.nonNegativeOrUnknown() || !g.snapshotFat.nonNegativeOrUnknown() -> return "$at: macros"
+            !listOf(g.snapshotSaturatedFat, g.snapshotSugars, g.snapshotFibre, g.snapshotSalt).all { it.nonNegativeOrUnknown() } -> return "$at: nutrients"
         }
     }
 
@@ -498,6 +521,7 @@ internal fun diaryProblem(file: DiaryFile): String? {
             !e.resolvedBaseAmount.nonNegative() -> return "$at: base amount ${e.resolvedBaseAmount}"
             !e.snapshotCalories.nonNegative() -> return "$at: calories ${e.snapshotCalories}"
             !e.snapshotProtein.nonNegativeOrUnknown() || !e.snapshotCarbohydrates.nonNegativeOrUnknown() || !e.snapshotFat.nonNegativeOrUnknown() -> return "$at: macros"
+            !listOf(e.snapshotSaturatedFat, e.snapshotSugars, e.snapshotFibre, e.snapshotSalt).all { it.nonNegativeOrUnknown() } -> return "$at: nutrients"
             e.savedAtEpochMs < 0 -> return "$at: time ${e.savedAtEpochMs}"
             e.enteredUnitLabel != null && e.enteredUnitLabel.isBlank() -> return "$at: blank unit label"
             e.enteredUnit == MeasureUnit.SERVING.name && e.enteredUnitLabel == null -> return "$at: serving without a name"
@@ -570,13 +594,13 @@ internal fun diaryFileName(date: LocalDate): String = "breakfast-$date.json"
 private fun FoodEntity.toDto() = FoodDto(
     id, name, category, origin, nutritionAmount, nutritionUnit, calories, protein, carbohydrates, fat, defaultAmount,
     defaultUnit, sourceId, sourceName, sourceRelease, preparation, sourceDescription, brand, barcode, archived, personalOverride,
-    density,
+    density, saturatedFat, sugars, fibre, salt,
 )
 
 private fun FoodDto.toEntity() = FoodEntity(
     id, name, category, origin, nutritionAmount, nutritionUnit, calories, protein, carbohydrates, fat, defaultAmount,
     defaultUnit, sourceId, sourceName, sourceRelease, preparation, sourceDescription, brand, barcode, archived, personalOverride,
-    density,
+    density, saturatedFat, sugars, fibre, salt,
 )
 
 private fun ServingConversionEntity.toDto() = ServingConversionDto(foodId, unit, baseUnitsPerServing, provenance, approximate, label)
@@ -586,21 +610,21 @@ private fun ServingConversionDto.toEntity() = ServingConversionEntity(foodId, un
 private fun MealEntryEntity.toDto() = MealEntryDto(
     id, foodId, foodName, enteredAmount, enteredUnit, resolvedBaseAmount, resolvedBaseUnit, snapshotCalories, snapshotProtein,
     snapshotCarbohydrates, snapshotFat, conversionProvenance, approximateConversion, savedAtEpochMs, sourcePhrase, mealSlot, dayKey,
-    enteredUnitLabel,
+    enteredUnitLabel, snapshotSaturatedFat, snapshotSugars, snapshotFibre, snapshotSalt,
 )
 
 private fun MealEntryDto.toEntity() = MealEntryEntity(
     id, foodId, foodName, enteredAmount, enteredUnit, resolvedBaseAmount, resolvedBaseUnit, snapshotCalories, snapshotProtein,
     snapshotCarbohydrates, snapshotFat, conversionProvenance, approximateConversion, savedAtEpochMs, sourcePhrase, mealSlot, dayKey,
-    enteredUnitLabel,
+    enteredUnitLabel, snapshotSaturatedFat, snapshotSugars, snapshotFibre, snapshotSalt,
 )
 
 private fun RecipeIngredientEntity.toDto() = RecipeIngredientDto(
     recipeId, position, foodId, foodName, enteredAmount, enteredUnit, resolvedBaseAmount, resolvedBaseUnit, snapshotCalories,
-    snapshotProtein, snapshotCarbohydrates, snapshotFat,
+    snapshotProtein, snapshotCarbohydrates, snapshotFat, snapshotSaturatedFat, snapshotSugars, snapshotFibre, snapshotSalt,
 )
 
 private fun RecipeIngredientDto.toEntity() = RecipeIngredientEntity(
     recipeId, position, foodId, foodName, enteredAmount, enteredUnit, resolvedBaseAmount, resolvedBaseUnit, snapshotCalories,
-    snapshotProtein, snapshotCarbohydrates, snapshotFat,
+    snapshotProtein, snapshotCarbohydrates, snapshotFat, snapshotSaturatedFat, snapshotSugars, snapshotFibre, snapshotSalt,
 )

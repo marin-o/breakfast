@@ -54,6 +54,11 @@ data class FoodEntity(
     @ColumnInfo(name = "personal_override") val personalOverride: Boolean = false,
     /** Grams in 100 ml; null when unknown (every food before schema 9). */
     @ColumnInfo(name = "density_g_per_100ml") val density: Double? = null,
+    // Since schema 13; null is unknown, as it is for every food before.
+    @ColumnInfo(name = "saturated_fat") val saturatedFat: Double? = null,
+    val sugars: Double? = null,
+    val fibre: Double? = null,
+    val salt: Double? = null,
 )
 
 @Entity(tableName = "food_aliases", primaryKeys = ["foodId", "alias"])
@@ -109,6 +114,11 @@ data class MealEntryEntity(
     @ColumnInfo(name = "day_key") val dayKey: String,
     /** The serving name or converted unit the entry was logged in (since schema 9); null for a plain unit. */
     @ColumnInfo(name = "entered_unit_label") val enteredUnitLabel: String? = null,
+    // Since schema 13; null is unknown, as it is for every entry before.
+    @ColumnInfo(name = "snapshot_saturated_fat") val snapshotSaturatedFat: Double? = null,
+    @ColumnInfo(name = "snapshot_sugars") val snapshotSugars: Double? = null,
+    @ColumnInfo(name = "snapshot_fibre") val snapshotFibre: Double? = null,
+    @ColumnInfo(name = "snapshot_salt") val snapshotSalt: Double? = null,
 )
 
 /** A recipe: its yield in portions, grams or millilitres of the finished dish (at least one; see `domain/Recipes.kt`). */
@@ -150,6 +160,11 @@ data class RecipeIngredientEntity(
     @ColumnInfo(name = "snapshot_protein") val snapshotProtein: Double?,
     @ColumnInfo(name = "snapshot_carbohydrates") val snapshotCarbohydrates: Double?,
     @ColumnInfo(name = "snapshot_fat") val snapshotFat: Double?,
+    // Since schema 13; null is unknown, as it is for every ingredient before.
+    @ColumnInfo(name = "snapshot_saturated_fat") val snapshotSaturatedFat: Double? = null,
+    @ColumnInfo(name = "snapshot_sugars") val snapshotSugars: Double? = null,
+    @ColumnInfo(name = "snapshot_fibre") val snapshotFibre: Double? = null,
+    @ColumnInfo(name = "snapshot_salt") val snapshotSalt: Double? = null,
 )
 
 @Dao
@@ -408,7 +423,7 @@ interface TargetHistoryDao {
         WeightPointEntity::class,
         TargetHistoryEntity::class,
     ],
-    version = 12,
+    version = 13,
     exportSchema = true
 )
 abstract class BreakfastDatabase : RoomDatabase() {
@@ -544,6 +559,16 @@ val ROOM_MIGRATION_11_12 = object : androidx.room.migration.Migration(11, 12) {
     }
 }
 
+/** Additive: saturated fat, sugars, fibre and salt, four nullable columns on each table that keeps nutrition; every row there is reads them as unknown. */
+val ROOM_MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        listOf("saturated_fat", "sugars", "fibre", "salt").forEach { db.execSQL("ALTER TABLE `foods` ADD COLUMN `$it` REAL") }
+        listOf("meal_entries", "recipe_ingredients").forEach { table ->
+            listOf("saturated_fat", "sugars", "fibre", "salt").forEach { db.execSQL("ALTER TABLE `$table` ADD COLUMN `snapshot_$it` REAL") }
+        }
+    }
+}
+
 fun FoodRecord.toEntity(): FoodEntity = FoodEntity(
     id = id,
     name = name,
@@ -566,6 +591,10 @@ fun FoodRecord.toEntity(): FoodEntity = FoodEntity(
     barcode = barcode,
     personalOverride = personalOverride,
     density = density,
+    saturatedFat = nutrition.values.saturatedFat,
+    sugars = nutrition.values.sugars,
+    fibre = nutrition.values.fibre,
+    salt = nutrition.values.salt,
 )
 
 fun FoodRecord.toAliasEntities(): List<FoodAliasEntity> = aliases.distinct().map { alias ->
@@ -599,7 +628,11 @@ fun FoodEntity.toDomain(
             calories = calories,
             protein = protein,
             carbohydrates = carbohydrates,
-            fat = fat
+            fat = fat,
+            saturatedFat = saturatedFat,
+            sugars = sugars,
+            fibre = fibre,
+            salt = salt,
         )
     ),
     conversions = conversions,
@@ -639,6 +672,10 @@ fun MealEntry.toEntity() = MealEntryEntity(
     mealSlot = mealSlot.name,
     dayKey = dayKey.ifBlank { dayKeyForEpochMs(savedAtEpochMs) },
     enteredUnitLabel = enteredUnitLabel,
+    snapshotSaturatedFat = nutritionSnapshot.saturatedFat,
+    snapshotSugars = nutritionSnapshot.sugars,
+    snapshotFibre = nutritionSnapshot.fibre,
+    snapshotSalt = nutritionSnapshot.salt,
 )
 
 fun MealEntryEntity.toDomain() = MealEntry(
@@ -653,7 +690,11 @@ fun MealEntryEntity.toDomain() = MealEntry(
         calories = snapshotCalories,
         protein = snapshotProtein,
         carbohydrates = snapshotCarbohydrates,
-        fat = snapshotFat
+        fat = snapshotFat,
+        saturatedFat = snapshotSaturatedFat,
+        sugars = snapshotSugars,
+        fibre = snapshotFibre,
+        salt = snapshotSalt,
     ),
     conversionProvenance = conversionProvenance,
     approximateConversion = approximateConversion,
@@ -685,6 +726,10 @@ fun RecipeIngredient.toEntity(recipeId: String, position: Int) = RecipeIngredien
     snapshotProtein = nutritionSnapshot.protein,
     snapshotCarbohydrates = nutritionSnapshot.carbohydrates,
     snapshotFat = nutritionSnapshot.fat,
+    snapshotSaturatedFat = nutritionSnapshot.saturatedFat,
+    snapshotSugars = nutritionSnapshot.sugars,
+    snapshotFibre = nutritionSnapshot.fibre,
+    snapshotSalt = nutritionSnapshot.salt,
 )
 
 fun RecipeIngredientEntity.toDomain() = RecipeIngredient(
@@ -694,7 +739,7 @@ fun RecipeIngredientEntity.toDomain() = RecipeIngredient(
     enteredUnit = runCatching { MeasureUnit.valueOf(enteredUnit) }.getOrDefault(MeasureUnit.UNKNOWN),
     resolvedBaseAmount = resolvedBaseAmount,
     resolvedBaseUnit = runCatching { MeasureUnit.valueOf(resolvedBaseUnit) }.getOrDefault(MeasureUnit.UNKNOWN),
-    nutritionSnapshot = NutritionValues(snapshotCalories, snapshotProtein, snapshotCarbohydrates, snapshotFat),
+    nutritionSnapshot = NutritionValues(snapshotCalories, snapshotProtein, snapshotCarbohydrates, snapshotFat, snapshotSaturatedFat, snapshotSugars, snapshotFibre, snapshotSalt),
 )
 
 /** The recipes with their aliases and ingredients (in typed order), in the order the recipes are stored. */

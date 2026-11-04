@@ -13,7 +13,6 @@ import mk.bosa.breakfast.ui.components.NutritionFacts
 import mk.bosa.breakfast.ui.components.ItemPage
 import mk.bosa.breakfast.ui.screens.previewQuantityLine
 import mk.bosa.breakfast.contribution.contributionAvailable
-import mk.bosa.breakfast.ui.macroText
 import mk.bosa.breakfast.ui.shortDateLabel
 import mk.bosa.breakfast.ui.countLabel
 import androidx.compose.runtime.setValue
@@ -213,12 +212,7 @@ internal fun LibraryFoodDetailDialog(
         Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Secondary)
         food.barcode?.let { Text("Barcode $it", color = colors.soft, style = BreakfastType.Secondary) }
         PageSection(basisLabel(food.nutrition.amount, food.nutrition.unit))
-        NutritionFacts(
-            formatKcal(food.nutrition.values.calories),
-            fat = macroText(food.nutrition.values.fat) to "g",
-            carbs = macroText(food.nutrition.values.carbohydrates) to "g",
-            protein = macroText(food.nutrition.values.protein) to "g",
-        )
+        NutritionFacts(formatKcal(food.nutrition.values.calories), food.nutrition.values)
         if (servings.isNotEmpty()) {
             PageSection("Servings")
             servings.forEach { conversion ->

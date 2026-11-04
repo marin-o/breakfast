@@ -143,6 +143,10 @@ internal class ProductReview(
     var protein by mutableStateOf(""); private set
     var carbs by mutableStateOf(""); private set
     var fat by mutableStateOf(""); private set
+    var saturatedFat by mutableStateOf(""); private set
+    var sugars by mutableStateOf(""); private set
+    var fibre by mutableStateOf(""); private set
+    var salt by mutableStateOf(""); private set
     /** The Servings section's form: only its servings and density are used here. */
     val servingForm = FoodDraft()
     private val calculator = NutritionCalculator()
@@ -197,6 +201,10 @@ internal class ProductReview(
         protein = editableNumber(food.nutrition.values.protein)
         carbs = editableNumber(food.nutrition.values.carbohydrates)
         fat = editableNumber(food.nutrition.values.fat)
+        saturatedFat = editableNumber(food.nutrition.values.saturatedFat)
+        sugars = editableNumber(food.nutrition.values.sugars)
+        fibre = editableNumber(food.nutrition.values.fibre)
+        salt = editableNumber(food.nutrition.values.salt)
         servingForm.load(food)
         leaveFetch()
         // A scanned product is already the full one; a search result is fetched by its barcode for its servings.
@@ -343,6 +351,10 @@ internal class ProductReview(
     fun onProtein(value: String) { protein = value }
     fun onCarbs(value: String) { carbs = value }
     fun onFat(value: String) { fat = value }
+    fun onSaturatedFat(value: String) { saturatedFat = value }
+    fun onSugars(value: String) { sugars = value }
+    fun onFibre(value: String) { fibre = value }
+    fun onSalt(value: String) { salt = value }
 
     /** The queue's meal, shown as a line rather than a choice, when this review is for a queued part. */
     fun queueMeal(): MealSlot? = queue()?.meal?.takeIf { origin == ProductReviewOrigin.QUEUE }
@@ -498,7 +510,12 @@ internal class ProductReview(
             nutrition = NutritionBasis(
                 food.nutrition.amount,
                 food.nutrition.unit,
-                NutritionValues(kcal, fieldNumber(protein, food.nutrition.values.protein), fieldNumber(carbs, food.nutrition.values.carbohydrates), fieldNumber(fat, food.nutrition.values.fat)),
+                food.nutrition.values.let { stored ->
+                    NutritionValues(
+                        kcal, fieldNumber(protein, stored.protein), fieldNumber(carbs, stored.carbohydrates), fieldNumber(fat, stored.fat),
+                        fieldNumber(saturatedFat, stored.saturatedFat), fieldNumber(sugars, stored.sugars), fieldNumber(fibre, stored.fibre), fieldNumber(salt, stored.salt),
+                    )
+                },
             ),
         )
         val calculation = calculator.calculate(draftFood, amount, measure.unit, measure.name)

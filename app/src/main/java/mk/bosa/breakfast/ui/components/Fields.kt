@@ -55,7 +55,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import mk.bosa.breakfast.domain.decimalInput
 import mk.bosa.breakfast.ui.label
-import mk.bosa.breakfast.ui.theme.Macro
+import mk.bosa.breakfast.ui.theme.Mark
 import mk.bosa.breakfast.ui.theme.BreakfastType
 import mk.bosa.breakfast.ui.theme.FieldMinHeight
 import mk.bosa.breakfast.ui.theme.FieldShape
@@ -90,11 +90,11 @@ fun Field(
     required: Boolean = false,
     /** What TalkBack says for an [error] that shows only the red ring; a visible [errorMessage] is said instead. */
     errorDescription: String? = null,
-    /** The macro this field holds: its dot goes before the label. */
-    labelMacro: Macro? = null,
+    /** The macro (or fibre) this field holds: its dot goes before the label. */
+    labelMark: Mark? = null,
 ) {
     val colors = LocalBreakfastColors.current
-    LabelledField(label, modifier, labelVisible, error, errorMessage, hint, fieldModifier, trailing, required, errorDescription, labelMacro) { textModifier ->
+    LabelledField(label, modifier, labelVisible, error, errorMessage, hint, fieldModifier, trailing, required, errorDescription, labelMark) { textModifier ->
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
@@ -130,7 +130,7 @@ fun Field(
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val colors = LocalBreakfastColors.current
-    LabelledField(label, modifier, labelVisible = true, error = false, errorMessage = null, hint = null, fieldModifier, trailing, required = false, errorDescription = null, labelMacro = null) { textModifier ->
+    LabelledField(label, modifier, labelVisible = true, error = false, errorMessage = null, hint = null, fieldModifier, trailing, required = false, errorDescription = null, labelMark = null) { textModifier ->
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
@@ -159,14 +159,14 @@ private fun LabelledField(
     trailing: (@Composable () -> Unit)?,
     required: Boolean,
     errorDescription: String?,
-    labelMacro: Macro?,
+    labelMark: Mark?,
     input: @Composable (textModifier: Modifier) -> Unit,
 ) {
     val colors = LocalBreakfastColors.current
     val spokenError = errorMessage ?: errorDescription?.takeIf { error }
     Column(modifier.fillMaxWidth()) {
         if (labelVisible) Row(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
-            MacroLabel(label, labelMacro, colors.soft, BreakfastType.Meta, Modifier.weight(1f))
+            MacroLabel(label, labelMark, colors.soft, BreakfastType.Meta, Modifier.weight(1f))
             if (required) Text("required", color = colors.soft, style = BreakfastType.Meta)
         }
         FieldFrame(error = error, modifier = Modifier.fillMaxWidth()) { onFocus ->
@@ -219,18 +219,18 @@ fun DecimalField(
     amountStyle: Boolean = false,
     imeAction: ImeAction = ImeAction.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
-    /** The macro this field holds: its dot goes before the label. */
-    labelMacro: Macro? = null,
+    /** The macro (or fibre) this field holds: its dot goes before the label. */
+    labelMark: Mark? = null,
 ) = Field(
     label, value, { onValueChange(it.decimalInput()) }, modifier,
     labelVisible = labelVisible, error = error, errorMessage = errorMessage, required = required, hint = hint, amountStyle = amountStyle,
     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = imeAction),
     keyboardActions = keyboardActions,
     fieldModifier = fieldModifier,
-    labelMacro = labelMacro,
+    labelMark = labelMark,
 )
 
-/** One of [NutrientFields]: a [DecimalField]'s label, value and, when it has them, error, focus and macro dot. */
+/** One of [NutrientFields]: a [DecimalField]'s label, value and, when it has them, error, focus and macro (or fibre) dot. */
 internal class NutrientField(
     val label: String,
     val value: String,
@@ -239,8 +239,31 @@ internal class NutrientField(
     val errorMessage: String? = null,
     val required: Boolean = false,
     val fieldModifier: Modifier = Modifier,
-    val macro: Macro? = null,
+    val mark: Mark? = null,
 )
+
+/**
+ * Saturated fat, sugars, fibre and salt, as the food forms put them after the macros: sugars first, so two by two it sits
+ * under Carbs and saturated fat under Fat, then fibre and salt; fibre always has its dot. Each pair is a
+ * field's value and what typing does; [fieldModifiers], when given, go to saturated fat, sugars, fibre and salt in that
+ * order (a FocusRequester each).
+ */
+@Composable
+internal fun otherNutrientFields(
+    saturatedFat: Pair<String, (String) -> Unit>,
+    sugars: Pair<String, (String) -> Unit>,
+    fibre: Pair<String, (String) -> Unit>,
+    salt: Pair<String, (String) -> Unit>,
+    fieldModifiers: List<Modifier> = emptyList(),
+): List<NutrientField> {
+    fun modifier(index: Int) = fieldModifiers.getOrElse(index) { Modifier }
+    return listOf(
+        NutrientField("Sugars, g", sugars.first, sugars.second, fieldModifier = modifier(1)),
+        NutrientField("Saturated fat, g", saturatedFat.first, saturatedFat.second, fieldModifier = modifier(0)),
+        NutrientField("Fibre, g", fibre.first, fibre.second, fieldModifier = modifier(2), mark = Mark.Fibre),
+        NutrientField("Salt, g", salt.first, salt.second, fieldModifier = modifier(3)),
+    )
+}
 
 /**
  * Number fields in [columns] per row (a food's four, two by two), [gap] apart as each mock draws them; with
@@ -250,17 +273,21 @@ internal class NutrientField(
 @Composable
 internal fun NutrientFields(fields: List<NutrientField>, gap: Dp, oneRowWhenItFits: Boolean = false, columns: Int = 2, oneColumnWhenLabelsWrap: Boolean = false) {
     val cell: @Composable (NutrientField, Modifier) -> Unit = { field, modifier ->
-        DecimalField(field.label, field.value, field.onValueChange, modifier, error = field.error, errorMessage = field.errorMessage, required = field.required, fieldModifier = field.fieldModifier, labelMacro = field.macro)
+        DecimalField(field.label, field.value, field.onValueChange, modifier, error = field.error, errorMessage = field.errorMessage, required = field.required, fieldModifier = field.fieldModifier, labelMark = field.mark)
     }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         // The label sits above the box; the number inside it, within its 16dp padding.
-        val labelMark = if (fields.any { it.macro != null }) MacroDotSize + MacroDotGap else 0.dp
+        val labelMark = if (fields.any { it.mark != null }) MacroDotSize + MacroDotGap else 0.dp
         val fits = oneRowWhenItFits && fitsAQuarter(fields.map { it.label }, BreakfastType.Meta, labelMark, maxWidth, gap) &&
             fitsAQuarter(listOf(NUTRIENT_SAMPLE), BreakfastType.Body, 32.dp, maxWidth, gap)
         val labelsFit = !oneColumnWhenLabelsWrap || fitsAColumn(fields.map { it.label }, BreakfastType.Meta, labelMark, maxWidth, gap, columns)
         if (fits) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                fields.forEach { cell(it, Modifier.weight(1f)) }
+            Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+                fourAcross(fields).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                        row.forEach { cell(it, Modifier.weight(1f)) }
+                    }
+                }
             }
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(gap)) {
@@ -273,6 +300,13 @@ internal fun NutrientFields(fields: List<NutrientField>, gap: Dp, oneRowWhenItFi
         }
     }
 }
+
+/**
+ * [fields] four to a row; each row after the first puts its second pair first, so a pair that two by two sits under the
+ * first row's second pair (sugars under Carbs, saturated fat under Fat) sits under it four across too.
+ */
+internal fun <T> fourAcross(fields: List<T>): List<List<T>> =
+    fields.chunked(4).mapIndexed { index, row -> if (index == 0 || row.size < 4) row else row.drop(2) + row.take(2) }
 
 /** A number as wide as a nutrient field must hold. */
 private const val NUTRIENT_SAMPLE = "000.0"

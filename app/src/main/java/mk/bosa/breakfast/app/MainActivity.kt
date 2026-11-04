@@ -27,6 +27,8 @@ import mk.bosa.breakfast.ui.theme.DarkBreakfastColors
 import mk.bosa.breakfast.ui.components.LocalMotionForcedReduced
 import mk.bosa.breakfast.settings.MotionChoice
 import mk.bosa.breakfast.ui.components.LocalHaptics
+import mk.bosa.breakfast.ui.components.LocalFibreShown
+import mk.bosa.breakfast.domain.fibreShown
 import mk.bosa.breakfast.ui.theme.BreakfastTheme
 import mk.bosa.breakfast.settings.darkThemeOf
 
@@ -65,7 +67,11 @@ class MainActivity : ComponentActivity() {
             val vm: BreakfastViewModel = viewModel()
             LaunchedEffect(vm.settings.theme) { applyTheme(vm.settings.theme) }
             LaunchedEffect(vm.settings.textSize) { applyTextSize(vm.settings.textSize) }
-            CompositionLocalProvider(LocalMotionForcedReduced provides (vm.settings.motion == MotionChoice.REDUCED), LocalHaptics provides vm.settings.haptics) {
+            CompositionLocalProvider(
+                LocalMotionForcedReduced provides (vm.settings.motion == MotionChoice.REDUCED),
+                LocalHaptics provides vm.settings.haptics,
+                LocalFibreShown provides fibreShown(vm.profile.values),
+            ) {
                 BreakfastTheme(dark = darkThemeOf(vm.settings.theme, isSystemInDarkTheme()), macroPalette = vm.settings.macroColors) { BreakfastApp(vm) }
             }
         }

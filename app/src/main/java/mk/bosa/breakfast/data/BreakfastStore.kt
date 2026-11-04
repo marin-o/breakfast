@@ -41,7 +41,7 @@ private data class StoreSnapshot(
 internal fun openBreakfastDatabase(context: Context, name: String, damaged: DamagedDiaries): BreakfastDatabase =
     Room.databaseBuilder(context.applicationContext, BreakfastDatabase::class.java, name)
         .openHelperFactory(DamageSafeOpenHelperFactory(damaged))
-        .addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6, ROOM_MIGRATION_6_7, ROOM_MIGRATION_7_8, ROOM_MIGRATION_8_9, ROOM_MIGRATION_9_10, ROOM_MIGRATION_10_11, ROOM_MIGRATION_11_12)
+        .addMigrations(ROOM_MIGRATION_1_2, ROOM_MIGRATION_2_3, ROOM_MIGRATION_3_4, ROOM_MIGRATION_4_5, ROOM_MIGRATION_5_6, ROOM_MIGRATION_6_7, ROOM_MIGRATION_7_8, ROOM_MIGRATION_8_9, ROOM_MIGRATION_9_10, ROOM_MIGRATION_10_11, ROOM_MIGRATION_11_12, ROOM_MIGRATION_12_13)
         .build()
 
 /** A write refused because the diary was found damaged and the fresh one is not open yet (see [BreakfastStore]). */

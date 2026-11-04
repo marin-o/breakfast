@@ -1,6 +1,7 @@
 package mk.bosa.breakfast.recipes
 
 import mk.bosa.breakfast.ui.components.PageSection
+import mk.bosa.breakfast.ui.components.LocalFibreShown
 import mk.bosa.breakfast.ui.components.FoodRowWithAdd
 import mk.bosa.breakfast.ui.components.listRowMotion
 import mk.bosa.breakfast.ui.components.TabList
@@ -94,6 +95,7 @@ internal fun RecipePageScreen(recipes: RecipeBook, recipe: Recipe, onEdit: (Reci
             fat = macros?.let { macroFact(it.fat, noneIsUnknown = true) },
             carbs = macros?.let { macroFact(it.carbohydrates, noneIsUnknown = true) },
             protein = macros?.let { macroFact(it.protein, noneIsUnknown = true) },
+            fibre = nutrition?.fibre?.takeIf { LocalFibreShown.current }?.let { macroFact(it, noneIsUnknown = true) },
         )
         DestructiveButton("Delete recipe", { recipes.askDelete(recipe) }, Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 8.dp), outlined = true)
     }

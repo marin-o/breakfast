@@ -17,7 +17,7 @@ import java.io.IOException
 import java.io.InputStream
 
 /** The file's version: raise it whenever the file's content changes, with `CATALOGUE_VERSION` in `tools/build_usda_catalogue.py`. */
-internal const val USDA_CATALOGUE_VERSION = 7
+internal const val USDA_CATALOGUE_VERSION = 8
 
 private const val USDA_FILE_NAME = "fndds-2021-2023-v$USDA_CATALOGUE_VERSION.sqlite"
 
@@ -117,7 +117,7 @@ class UsdaCatalogueReader internal constructor(
     }
 
     private fun readRow(db: SQLiteDatabase, fdcId: Long): UsdaFoodRow? = db.rawQuery(
-        "SELECT food_code, description, additional, kcal, protein, fat, carbs FROM food WHERE fdc_id = ?",
+        "SELECT food_code, description, additional, kcal, protein, fat, carbs, saturated_fat, sugars, fibre, salt FROM food WHERE fdc_id = ?",
         arrayOf(fdcId.toString()),
     ).use { cursor ->
         if (!cursor.moveToFirst()) return null
@@ -130,6 +130,10 @@ class UsdaCatalogueReader internal constructor(
             protein = cursor.doubleOrNull(4),
             fat = cursor.doubleOrNull(5),
             carbs = cursor.doubleOrNull(6),
+            saturatedFat = cursor.doubleOrNull(7),
+            sugars = cursor.doubleOrNull(8),
+            fibre = cursor.doubleOrNull(9),
+            salt = cursor.doubleOrNull(10),
             portions = readPortions(db, fdcId),
         )
     }

@@ -35,10 +35,18 @@ class FoodDraft {
     var protein by mutableStateOf("")
     var carbs by mutableStateOf("")
     var fat by mutableStateOf("")
+    var saturatedFat by mutableStateOf("")
+    var sugars by mutableStateOf("")
+    var fibre by mutableStateOf("")
+    var salt by mutableStateOf("")
     var caloriesEdited by mutableStateOf(false)
     var proteinEdited by mutableStateOf(false)
     var carbsEdited by mutableStateOf(false)
     var fatEdited by mutableStateOf(false)
+    var saturatedFatEdited by mutableStateOf(false)
+    var sugarsEdited by mutableStateOf(false)
+    var fibreEdited by mutableStateOf(false)
+    var saltEdited by mutableStateOf(false)
     var basisEdited by mutableStateOf(false)
     var basisAmount by mutableStateOf("100")
     var basisUnit by mutableStateOf("g")
@@ -72,6 +80,8 @@ class FoodDraft {
             fieldText(calories, stored?.values?.calories), fieldText(protein, stored?.values?.protein),
             fieldText(carbs, stored?.values?.carbohydrates), fieldText(fat, stored?.values?.fat),
             fieldText(basisAmount, stored?.amount), basisUnit,
+            fieldText(saturatedFat, stored?.values?.saturatedFat), fieldText(sugars, stored?.values?.sugars),
+            fieldText(fibre, stored?.values?.fibre), fieldText(salt, stored?.values?.salt),
         )
     }
 
@@ -82,10 +92,15 @@ class FoodDraft {
         protein = food?.nutrition?.values?.protein.let(::editableNumber)
         carbs = food?.nutrition?.values?.carbohydrates.let(::editableNumber)
         fat = food?.nutrition?.values?.fat.let(::editableNumber)
+        saturatedFat = food?.nutrition?.values?.saturatedFat.let(::editableNumber)
+        sugars = food?.nutrition?.values?.sugars.let(::editableNumber)
+        fibre = food?.nutrition?.values?.fibre.let(::editableNumber)
+        salt = food?.nutrition?.values?.salt.let(::editableNumber)
         basisAmount = food?.nutrition?.amount?.let(::editableNumber) ?: "100"
         basisUnit = food?.nutrition?.unit?.label ?: "g"
         fromOff = false; barcodeFromScan = false
         caloriesEdited = false; proteinEdited = false; carbsEdited = false; fatEdited = false; basisEdited = false
+        saturatedFatEdited = false; sugarsEdited = false; fibreEdited = false; saltEdited = false
         aliases = food?.aliases.orEmpty(); aliasInput = ""; aliasFieldOpen = false
         servings = food?.householdServings().orEmpty()
         density = food?.density.let(::editableNumber)
@@ -204,6 +219,7 @@ class FoodDraft {
     fun fields() = FoodDraftFields(
         name, brand, barcode, shorthand, calories, protein, carbs, fat, basisAmount, basisUnit,
         aliases, aliasInput, servings, servingUnit, servingAmount, servingLabel, density,
+        saturatedFat, sugars, fibre, salt,
     )
 
     /**
@@ -221,12 +237,14 @@ class FoodDraft {
     fun state() = FoodDraftState(
         fields(), barcodeFromScan, fromOff, caloriesEdited, proteinEdited, carbsEdited, fatEdited, basisEdited,
         aliasFieldOpen, servingFormOpen, servingOpenedWith, servingsBasis, nameSplit, splitUndone,
+        saturatedFatEdited, sugarsEdited, fibreEdited, saltEdited,
     )
 
     fun restore(state: FoodDraftState) {
         val f = state.fields
         name = f.name; brand = f.brand; barcode = f.barcode; shorthand = f.shorthand
         calories = f.calories; protein = f.protein; carbs = f.carbs; fat = f.fat
+        saturatedFat = f.saturatedFat; sugars = f.sugars; fibre = f.fibre; salt = f.salt
         basisAmount = f.basisAmount; basisUnit = f.basisUnit
         aliases = f.aliases; aliasInput = f.aliasInput
         servings = f.servings; servingUnit = f.servingUnit; servingAmount = f.servingAmount; servingLabel = f.servingLabel
@@ -234,6 +252,7 @@ class FoodDraft {
         barcodeFromScan = state.barcodeFromScan; fromOff = state.fromOff
         caloriesEdited = state.caloriesEdited; proteinEdited = state.proteinEdited; carbsEdited = state.carbsEdited
         fatEdited = state.fatEdited; basisEdited = state.basisEdited
+        saturatedFatEdited = state.saturatedFatEdited; sugarsEdited = state.sugarsEdited; fibreEdited = state.fibreEdited; saltEdited = state.saltEdited
         aliasFieldOpen = state.aliasFieldOpen; servingFormOpen = state.servingFormOpen; servingOpenedWith = state.servingOpenedWith
         servingsBasis = state.servingsBasis
         nameSplit = state.nameSplit; splitUndone = state.splitUndone
@@ -270,6 +289,10 @@ data class FoodDraftFields(
     val servingAmount: String = "",
     val servingLabel: String = "",
     val density: String = "",
+    val saturatedFat: String = "",
+    val sugars: String = "",
+    val fibre: String = "",
+    val salt: String = "",
 )
 
 /**
@@ -300,4 +323,8 @@ data class FoodDraftState(
     val servingsBasis: MeasureUnit? = null,
     val nameSplit: NameSplit? = null,
     val splitUndone: NameSplit? = null,
+    val saturatedFatEdited: Boolean = false,
+    val sugarsEdited: Boolean = false,
+    val fibreEdited: Boolean = false,
+    val saltEdited: Boolean = false,
 )

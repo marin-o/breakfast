@@ -6,6 +6,7 @@ import mk.bosa.breakfast.ui.components.MacroLine
 import mk.bosa.breakfast.ui.components.MealField
 import mk.bosa.breakfast.ui.components.NutrientFields
 import mk.bosa.breakfast.ui.components.NutrientField
+import mk.bosa.breakfast.ui.components.otherNutrientFields
 import mk.bosa.breakfast.ui.components.SubScreen
 import mk.bosa.breakfast.ui.components.ToastFloorMark
 import mk.bosa.breakfast.ui.screens.kcalLabel
@@ -440,9 +441,12 @@ private fun amountFieldText(review: ProductReview): String =
                     NutrientFields(
                         listOf(
                             NutrientField("kcal", review.calories, review::onCalories),
-                            NutrientField("Protein, g", review.protein, review::onProtein, macro = Macro.PROTEIN),
-                            NutrientField("Carbs, g", review.carbs, review::onCarbs, macro = Macro.CARBS),
-                            NutrientField("Fat, g", review.fat, review::onFat, macro = Macro.FAT),
+                            NutrientField("Protein, g", review.protein, review::onProtein, mark = Macro.PROTEIN.mark),
+                            NutrientField("Carbs, g", review.carbs, review::onCarbs, mark = Macro.CARBS.mark),
+                            NutrientField("Fat, g", review.fat, review::onFat, mark = Macro.FAT.mark),
+                        ) + otherNutrientFields(
+                            review.saturatedFat to review::onSaturatedFat, review.sugars to review::onSugars,
+                            review.fibre to review::onFibre, review.salt to review::onSalt,
                         ),
                         gap = 8.dp,
                         oneRowWhenItFits = true,

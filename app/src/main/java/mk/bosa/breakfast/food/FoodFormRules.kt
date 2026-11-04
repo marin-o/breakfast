@@ -12,14 +12,15 @@ import mk.bosa.breakfast.domain.resolveNutrition
 // The food form's pure decisions, unit-tested: what a refused save points at, and what Back does.
 
 /** A personal-food form field that a refused save points at. */
-internal enum class FoodFormField { NAME, BARCODE, BASIS, KCAL, PROTEIN, CARBS, FAT }
+internal enum class FoodFormField { NAME, BARCODE, BASIS, KCAL, PROTEIN, CARBS, FAT, SATURATED_FAT, SUGARS, FIBRE, SALT }
 
 /** Why a personal-food save is refused: the notice, and the field to move focus to. */
 internal data class FoodSaveRefusal(val message: String, val field: FoodFormField)
 
 /**
  * The personal-food save checks, in order: a structured number that is not a number, name and kcal, the barcode,
- * the local bounds (kcal 0 to 10000, macros 0 to 1000 per basis), then a positive basis. Null when the food may save.
+ * the local bounds (kcal 0 to 10000, macros and the other four 0 to 1000 per basis), then a positive basis. Null when the
+ * food may save.
  */
 internal fun foodSaveRefusal(name: String, input: NutritionInput, resolved: ResolvedNutrition, barcodeError: String?): FoodSaveRefusal? {
     val invalidNumbers = "Nutrition values must be finite and nonnegative."
@@ -27,6 +28,8 @@ internal fun foodSaveRefusal(name: String, input: NutritionInput, resolved: Reso
         val field = listOf(
             FoodFormField.KCAL to input.calories, FoodFormField.PROTEIN to input.protein, FoodFormField.CARBS to input.carbs,
             FoodFormField.FAT to input.fat, FoodFormField.BASIS to input.basisAmount,
+            FoodFormField.SATURATED_FAT to input.saturatedFat, FoodFormField.SUGARS to input.sugars,
+            FoodFormField.FIBRE to input.fibre, FoodFormField.SALT to input.salt,
         ).firstOrNull { (_, text) -> text.isNotBlank() && parseDecimal(text) == null }?.first ?: FoodFormField.KCAL
         return FoodSaveRefusal(invalidNumbers, field)
     }
@@ -34,8 +37,11 @@ internal fun foodSaveRefusal(name: String, input: NutritionInput, resolved: Reso
     val kcal = resolved.calories ?: return FoodSaveRefusal("Name and calories are required.", FoodFormField.KCAL)
     if (barcodeError != null) return FoodSaveRefusal(barcodeError, FoodFormField.BARCODE)
     if (!kcal.isFinite() || kcal < 0.0 || kcal > 10000.0) return FoodSaveRefusal(invalidNumbers, FoodFormField.KCAL)
-    listOf(FoodFormField.PROTEIN to resolved.protein, FoodFormField.CARBS to resolved.carbohydrates, FoodFormField.FAT to resolved.fat)
-        .firstOrNull { (_, value) -> value != null && (!value.isFinite() || value < 0.0 || value > 1000.0) }
+    listOf(
+        FoodFormField.PROTEIN to resolved.protein, FoodFormField.CARBS to resolved.carbohydrates, FoodFormField.FAT to resolved.fat,
+        FoodFormField.SATURATED_FAT to resolved.saturatedFat, FoodFormField.SUGARS to resolved.sugars,
+        FoodFormField.FIBRE to resolved.fibre, FoodFormField.SALT to resolved.salt,
+    ).firstOrNull { (_, value) -> value != null && (!value.isFinite() || value < 0.0 || value > 1000.0) }
         ?.let { return FoodSaveRefusal(invalidNumbers, it.first) }
     if (!resolved.basisAmount.isFinite() || resolved.basisAmount <= 0.0) return FoodSaveRefusal("Enter a positive nutrition basis.", FoodFormField.BASIS)
     return null
@@ -53,7 +59,7 @@ internal data class CreateFoodState(
 internal fun createFoodState(input: NutritionInput, name: String, barcodeError: String?): CreateFoodState {
     val nutrition = resolveNutrition(input)
     val missing = nutrition.calories == null
-    val touched = listOf(input.shorthand, input.calories, input.protein, input.carbs, input.fat).any { it.isNotBlank() }
+    val touched = listOf(input.shorthand, input.calories, input.protein, input.carbs, input.fat, input.saturatedFat, input.sugars, input.fibre, input.salt).any { it.isNotBlank() }
     return CreateFoodState(nutrition, missing, showRequired = missing && touched, canSave = !missing && name.isNotBlank() && barcodeError == null)
 }
 

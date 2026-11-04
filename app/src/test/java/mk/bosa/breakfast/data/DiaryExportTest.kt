@@ -187,7 +187,7 @@ class DiaryExportTest {
     @Test fun twoPointsOnADayAreRefusedOnlyInFormatsOfOneADay() {
         refused(file().copy(formatVersion = 3, schemaVersion = 10, weightPoints = twoOnADay))
         refused(file().copy(formatVersion = 2, schemaVersion = 9, weightPoints = twoOnADay))
-        assertEquals(5, DIARY_FORMAT_VERSION)
+        assertEquals(6, DIARY_FORMAT_VERSION)
         val imported = valid(encodeDiary(file().copy(weightPoints = twoOnADay)))
         assertEquals(listOf(1L, 2L), imported.rows.weightPoints?.map { it.savedAtEpochMs })
     }
@@ -231,7 +231,7 @@ class DiaryExportTest {
 
     @Test fun theFileNamesItsVersionsAndFields() {
         val text = encodeDiary(file())
-        assertTrue(text.startsWith("{\"format\":\"breakfast-diary\",\"formatVersion\":5,\"schemaVersion\":12,\"exportedAtEpochMs\":5000,"))
+        assertTrue(text.startsWith("{\"format\":\"breakfast-diary\",\"formatVersion\":6,\"schemaVersion\":13,\"exportedAtEpochMs\":5000,"))
         assertTrue("\"foodName\":\"Snapshot name e-1\"" in text)
         assertTrue("\"settings\":{\"dayStartHour\":4,\"longDraft\":\"TWO_LINES\"}" in text)
         assertTrue("\"snapshotCarbohydrates\":null" in text)

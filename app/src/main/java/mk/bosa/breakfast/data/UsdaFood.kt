@@ -12,7 +12,7 @@ import java.util.Locale
 /** A kept portion of a USDA food: its printed label ("1 cup, cooked, diced") and its grams. */
 internal data class UsdaPortionRow(val label: String, val grams: Double)
 
-/** A food as the USDA catalogue file holds it, per 100 g. A null macro is unknown. */
+/** A food as the USDA catalogue file holds it, per 100 g. A null macro or nutrient is unknown; salt is in g, from sodium. */
 internal data class UsdaFoodRow(
     val fdcId: Long,
     val foodCode: String,
@@ -23,6 +23,10 @@ internal data class UsdaFoodRow(
     val fat: Double?,
     val carbs: Double?,
     val portions: List<UsdaPortionRow>,
+    val saturatedFat: Double? = null,
+    val sugars: Double? = null,
+    val fibre: Double? = null,
+    val salt: Double? = null,
 )
 
 /**
@@ -36,8 +40,9 @@ internal data class UsdaFoodRow(
  * Once stored it is the user's: the catalogue is never written back to it.
  */
 internal fun UsdaFoodRow.toFoodRecord(): FoodRecord? {
-    val values = NutritionValues(kcal, protein, carbs, fat)
-    if (!plausibleNutrition(values)) return null
+    val macros = NutritionValues(kcal, protein, carbs, fat)
+    if (!plausibleNutrition(macros)) return null
+    val values = macros.copy(saturatedFat = plausibleExtra(saturatedFat), sugars = plausibleExtra(sugars), fibre = plausibleExtra(fibre), salt = plausibleExtra(salt))
     val units = USDA_PORTION_UNITS.mapNotNull { (word, unit) ->
         portions.firstOrNull { it.isOne(word) }?.let { ServingConversion(unit, it.grams, USDA_PORTION_PROVENANCE, approximate = true) }
     }

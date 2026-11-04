@@ -28,7 +28,7 @@ ARCHIVE_SHA256 = "dfb06ae7ddc397ccd570b91c14b75438ab2ba39f64f22d321f61d4a52a77f3
 ARCHIVE_MEMBER = "surveyDownload.json"
 
 # Raise it whenever the file's content changes, with USDA_CATALOGUE_VERSION in UsdaCatalogueReader.kt.
-CATALOGUE_VERSION = 7
+CATALOGUE_VERSION = 8
 # Not ".gz": the Android Gradle plugin unpacks a .gz asset when it merges assets and drops the extension.
 DEFAULT_OUTPUT = (
     Path(__file__).resolve().parent.parent / "app/src/main/assets/usda" / f"fndds-2021-2023-v{CATALOGUE_VERSION}.sqlite.gzip"
@@ -43,6 +43,9 @@ EXPECTED_ADDITIONAL_IN = 9647
 
 ADDITIONAL_DESCRIPTION = 1001
 KCAL, PROTEIN, FAT, CARBS = 1008, 1003, 1004, 1005
+# Saturated fat, total sugars and fibre in g; sodium in mg, kept only as salt (mg x 2.5 / 1000, in g): the catalogue's own
+# conversion, as labels list salt. There is no sodium column.
+SATURATED_FAT, SUGARS, FIBRE, SODIUM = 1258, 2000, 1079, 1093
 UNSPECIFIED_MODIFIER = "90000"
 DROPPED_LABEL_WORDS = ("guideline amount", "yield", "surface")
 
@@ -127,6 +130,10 @@ CREATE TABLE food (
     protein REAL,
     fat REAL,
     carbs REAL,
+    saturated_fat REAL,
+    sugars REAL,
+    fibre REAL,
+    salt REAL,
     search_name TEXT NOT NULL,
     search_extra TEXT NOT NULL,
     bump INTEGER NOT NULL
@@ -206,6 +213,11 @@ def search_text(text):
     return text.replace("'", "").replace("’", "")
 
 
+def salt_of(sodium_mg):
+    """Salt in g from sodium in mg, as labels print it; None stays unknown. Rounded so the bytes do not hang on float noise."""
+    return None if sodium_mg is None else round(sodium_mg * 2.5 / 1000, 4)
+
+
 def build_database(foods, path):
     report = Counter()
     dropped_foods = []
@@ -230,10 +242,11 @@ def build_database(foods, path):
             additional = additional_descriptions(food)
             report["additional descriptions kept"] += len(additional)
             db.execute(
-                "INSERT INTO food VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO food VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     food["fdcId"], food["foodCode"], food["description"], "; ".join(additional) or None,
                     amounts[KCAL], amounts.get(PROTEIN), amounts.get(FAT), amounts.get(CARBS),
+                    amounts.get(SATURATED_FAT), amounts.get(SUGARS), amounts.get(FIBRE), salt_of(amounts.get(SODIUM)),
                     search_text(food["description"]),
                     search_text(" ".join(additional + [EXTRA_SEARCH_WORDS.get(food["description"], "")]).strip()),
                     COMMON_BUMP if food["description"] in COMMON_FOODS else 0,
@@ -243,6 +256,9 @@ def build_database(foods, path):
             for macro in (PROTEIN, FAT, CARBS):
                 if amounts.get(macro) is None:
                     report["unknown macros"] += 1
+            for nutrient in (SATURATED_FAT, SUGARS, FIBRE, SODIUM):
+                if amounts.get(nutrient) is None:
+                    report["unknown saturated fat, sugars, fibre or sodium"] += 1
             position = 0
             for portion in sorted(food["foodPortions"], key=lambda p: (p["sequenceNumber"], p["id"])):
                 reason = portion_drop_reason(portion)
@@ -298,6 +314,10 @@ def check_contents(db, report):
     print(f"FDC 2705975: {food[0]} kcal, {food[1]} g protein, {food[2]} g fat, {food[3]} g carbs; 165 g is {round(food[0] * 1.65, 2)} kcal")
     if food != (219.0, 24.6, 9.99, 6.01) or round(food[0] * 1.65, 2) != 361.35:
         fail("FDC 2705975's values")
+    extras = db.execute("SELECT saturated_fat, sugars, fibre, salt FROM food WHERE fdc_id = 2705975").fetchone()
+    print(f"FDC 2705975: {extras[0]} g saturated fat, {extras[1]} g sugars, {extras[2]} g fibre, {extras[3]} g salt")
+    if extras != (1.58, 0.1, 0.2, 0.795):
+        fail("FDC 2705975's saturated fat, sugars, fibre or salt")
 
     coated = ids_for(db, '"chicken" "breast" "coated*"')
     breaded = ids_for(db, '"breaded" "chicken" "breast*"') | ids_for(db, '"coated" "chicken" "breast*"')

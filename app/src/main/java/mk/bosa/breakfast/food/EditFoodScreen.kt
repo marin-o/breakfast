@@ -3,6 +3,7 @@ package mk.bosa.breakfast.food
 import mk.bosa.breakfast.ui.components.FormFields
 import mk.bosa.breakfast.ui.components.NutrientFields
 import mk.bosa.breakfast.ui.components.NutrientField
+import mk.bosa.breakfast.ui.components.otherNutrientFields
 import mk.bosa.breakfast.ui.components.SubScreen
 import mk.bosa.breakfast.ui.theme.*
 import androidx.compose.foundation.layout.Arrangement
@@ -47,9 +48,12 @@ internal fun EditFoodScreen(form: FoodForm, session: DiarySession, library: Libr
             NutrientFields(
                 listOf(
                     NutrientField("kcal", draft.calories, { draft.calories = it }, required = true),
-                    NutrientField("Protein, g", draft.protein, { draft.protein = it }, macro = Macro.PROTEIN),
-                    NutrientField("Carbs, g", draft.carbs, { draft.carbs = it }, macro = Macro.CARBS),
-                    NutrientField("Fat, g", draft.fat, { draft.fat = it }, macro = Macro.FAT),
+                    NutrientField("Protein, g", draft.protein, { draft.protein = it }, mark = Macro.PROTEIN.mark),
+                    NutrientField("Carbs, g", draft.carbs, { draft.carbs = it }, mark = Macro.CARBS.mark),
+                    NutrientField("Fat, g", draft.fat, { draft.fat = it }, mark = Macro.FAT.mark),
+                ) + otherNutrientFields(
+                    draft.saturatedFat to { draft.saturatedFat = it }, draft.sugars to { draft.sugars = it },
+                    draft.fibre to { draft.fibre = it }, draft.salt to { draft.salt = it },
                 ),
                 gap = 16.dp,
             )

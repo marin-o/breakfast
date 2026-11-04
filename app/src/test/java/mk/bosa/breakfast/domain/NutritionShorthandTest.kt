@@ -54,12 +54,96 @@ class NutritionShorthandTest {
 
     @Test
     fun aLabelIsAWholeWord() {
-        val parsed = parseNutritionShorthand("2 cups, 3 fiber, 4 pieces, 5 calories")
+        val text = "2 cups, 3 fiber, 4 pieces, 5 calories, 6 salty, 7 sugary"
+        val parsed = parseNutritionShorthand(text)
         assertNull(parsed.carbohydrates)
         assertNull(parsed.fat)
         assertNull(parsed.protein)
         assertNull(parsed.calories)
+        assertNull(parsed.salt)
+        assertNull(parsed.sugars)
+        // "3 fiber" is fibre, never fat.
+        assertEquals(3.0, parsed.fibre!!.value, 0.0)
+        assertEquals(listOf("3"), parsed.recognisedRanges.map { text.substring(it) })
+    }
+
+    private fun saturatedFatOf(text: String) = parseNutritionShorthand(text).saturatedFat?.value
+
+    @Test
+    fun readsSaturatedFatInEveryWordingWithoutFillingFat() {
+        listOf(
+            "2 sat fat", "2g sat fat", "2 SAT FAT", "2 satfat", "2satfat", "2 Satfat", "2 sat f", "2satf", "2 SATF", "2 sat F",
+            "2g saturated", "2 saturated fat", "2 Saturates", "2g saturates", "2,0 sat fat",
+        ).forEach { text ->
+            assertEquals(text, 2.0, saturatedFatOf(text)!!, 0.0)
+            assertNull(text, parseNutritionShorthand(text).fat)
+        }
+    }
+
+    @Test
+    fun readsSatFatsAsSaturatedFat() {
+        listOf("2 sat fats", "2g sat fats", "2 Sat Fats", "2 sat  fats").forEach { text ->
+            assertEquals(text, 2.0, saturatedFatOf(text)!!, 0.0)
+            assertNull(text, parseNutritionShorthand(text).fat)
+        }
+        val text = "8f 2 sat fats 12p 20c"
+        val parsed = parseNutritionShorthand(text)
+        assertEquals(8.0, parsed.fat!!.value, 0.0)
+        assertEquals(2.0, parsed.saturatedFat!!.value, 0.0)
+        assertEquals(12.0, parsed.protein!!.value, 0.0)
+        assertEquals(20.0, parsed.carbohydrates!!.value, 0.0)
+        assertNull(saturatedFatOf("2 sat fatsy"))
+    }
+
+    @Test
+    fun saturatedFatIsAWholeWord() {
+        listOf("2 satfats", "2 sat fatty", "2 satfx", "2 saturateds", "2 sa", "2 s").forEach { assertNull(it, saturatedFatOf(it)) }
+    }
+
+    @Test
+    fun fatAndSaturatedFatTogether() {
+        listOf("8f 2 sat f", "8f 2satf", "2 sat fat 8f", "8 g fat, 2 g satfat", "2 saturates 8 fat").forEach { text ->
+            val parsed = parseNutritionShorthand(text)
+            assertEquals(text, 8.0, parsed.fat!!.value, 0.0)
+            assertEquals(text, 2.0, parsed.saturatedFat!!.value, 0.0)
+        }
+    }
+
+    @Test
+    fun readsSugarsFibreAndSalt() {
+        val text = "450 kcal 12p 20c 8f 2 sat fat 5 sugars 3 fibre 1 salt"
+        val parsed = parseNutritionShorthand(text)
+        assertEquals(450.0, parsed.calories!!.value, 0.0)
+        assertEquals(12.0, parsed.protein!!.value, 0.0)
+        assertEquals(20.0, parsed.carbohydrates!!.value, 0.0)
+        assertEquals(8.0, parsed.fat!!.value, 0.0)
+        assertEquals(2.0, parsed.saturatedFat!!.value, 0.0)
+        assertEquals(5.0, parsed.sugars!!.value, 0.0)
+        assertEquals(3.0, parsed.fibre!!.value, 0.0)
+        assertEquals(1.0, parsed.salt!!.value, 0.0)
+        assertEquals(listOf("450", "12", "20", "8", "2", "5", "3", "1"), parsed.recognisedRanges.map { text.substring(it) })
+        assertEquals(5.0, parseNutritionShorthand("5 sugar").sugars!!.value, 0.0)
+        assertEquals(5.0, parseNutritionShorthand("5g Sugars").sugars!!.value, 0.0)
+        assertEquals(3.0, parseNutritionShorthand("3 fiber").fibre!!.value, 0.0)
+        assertEquals(3.0, parseNutritionShorthand("3g FIBRE").fibre!!.value, 0.0)
+        assertEquals(1.5, parseNutritionShorthand("1,5 g salt").salt!!.value, 0.0)
+    }
+
+    @Test
+    fun sodiumIsNotRead() {
+        val parsed = parseNutritionShorthand("400 sodium, 400 mg sodium")
+        assertNull(parsed.salt)
         assertEquals(emptyList<IntRange>(), parsed.recognisedRanges)
+    }
+
+    @Test
+    fun theFourResolveAndAFieldWins() {
+        val resolved = resolveNutrition(NutritionInput(shorthand = "100 kcal 2 sat fat 5 sugars 3 fibre 1 salt", fibre = "4"))
+        assertEquals(NutritionValues(100.0, null, null, null, 2.0, 5.0, 4.0, 1.0), resolved.values())
+        val unknown = resolveNutrition(NutritionInput(shorthand = "100 kcal"))
+        assertEquals(NutritionValues(100.0, null, null, null), unknown.values())
+        assertNull(resolveNutrition(NutritionInput(shorthand = "3 fibre")).values())
+        assertEquals(true, resolveNutrition(NutritionInput(shorthand = "100 kcal", salt = "a lot")).invalid)
     }
 
     @Test

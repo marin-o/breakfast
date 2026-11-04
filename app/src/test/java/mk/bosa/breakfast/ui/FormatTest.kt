@@ -8,6 +8,7 @@ import mk.bosa.breakfast.domain.editableNumber
 import mk.bosa.breakfast.ui.screens.macroStats
 import mk.bosa.breakfast.ui.screens.previewQuantityLine
 import mk.bosa.breakfast.ui.theme.Macro
+import mk.bosa.breakfast.ui.theme.Mark
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.time.ZoneOffset
@@ -24,15 +25,25 @@ class FormatTest {
         val words = macroLineParts(partly)
         assertEquals(listOf("Protein 8 g", "carbs — g", "fat 4.5 g"), words.map { it.text })
         assertEquals("Protein 8 g, carbs — g, fat 4.5 g", words.lineText())
-        assertEquals(listOf(Macro.PROTEIN, Macro.CARBS, Macro.FAT), words.map { it.macro })
+        assertEquals(listOf(Macro.PROTEIN, Macro.CARBS, Macro.FAT).map(Mark::OfMacro), words.map { it.mark })
         val letters = listOf(MacroPart("Per 100 g: 233 kcal")) + macroLetterParts(partly)
         assertEquals(listOf("Per 100 g: 233 kcal", "P 8", "C —", "F 4.5"), letters.map { it.text })
         assertEquals("Per 100 g: 233 kcal, P 8, C —, F 4.5", letters.lineText())
-        assertEquals(listOf(null, Macro.PROTEIN, Macro.CARBS, Macro.FAT), letters.map { it.macro })
+        assertEquals(listOf(null) + listOf(Macro.PROTEIN, Macro.CARBS, Macro.FAT).map(Mark::OfMacro), letters.map { it.mark })
+    }
+
+    @Test fun withFibreShownTheMacroLineEndsWithFibre() {
+        val withFibre = NutritionValues(233.0, 8.0, null, 4.5, fibre = 3.0)
+        val words = macroLineParts(withFibre, fibre = true)
+        assertEquals("Protein 8 g, carbs — g, fat 4.5 g, fibre 3 g", words.lineText())
+        assertEquals(Mark.Fibre, words.last().mark)
+        assertEquals("fibre — g", macroLineParts(partly, fibre = true).last().text)
+        // Not shown: the three macros only, whatever the food knows.
+        assertEquals(listOf("Protein 8 g", "carbs — g", "fat 4.5 g"), macroLineParts(withFibre).map { it.text })
     }
 
     @Test fun eachMacroColumnKnowsItsMacro() {
-        assertEquals(listOf(Macro.PROTEIN, Macro.CARBS, Macro.FAT), macroStats(233.0, macroTotalsOf(listOf(partly))).map { it.kind })
+        assertEquals(listOf(Macro.PROTEIN, Macro.CARBS, Macro.FAT).map(Mark::OfMacro), macroStats(233.0, macroTotalsOf(listOf(partly))).map { it.kind })
     }
 
     @Test fun oneEntrysMacrosReadAsADaysDo() {

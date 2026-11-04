@@ -51,6 +51,8 @@ import mk.bosa.breakfast.domain.MealEntry
 import mk.bosa.breakfast.domain.MealSlot
 import mk.bosa.breakfast.domain.nutritionTotalOf
 import mk.bosa.breakfast.domain.macroTotalsOf
+import mk.bosa.breakfast.domain.macroTotalOf
+import mk.bosa.breakfast.ui.components.LocalFibreShown
 import mk.bosa.breakfast.ui.label
 import mk.bosa.breakfast.ui.components.LocalScreenBody
 import mk.bosa.breakfast.ui.components.ChoiceOption
@@ -122,11 +124,13 @@ internal fun DailyScreen(
                     onTitleClick = { pickerOpen = true },
                 )
                 val macros = macroTotalsOf(selected.map { it.nutritionSnapshot })
+                // Fibre shows with Track fibre on: then its total is summed as the macros are.
+                val fibre = if (LocalFibreShown.current) macroTotalOf(selected.map { it.nutritionSnapshot.fibre }) else null
                 DayTotal(
                     formatKcal(total.calories),
-                    if (settings.showMacros) macroStats(total.calories, macros, profile) else emptyList(),
+                    if (settings.showMacros) macroStats(total.calories, macros, profile, fibre, showFibre = fibre != null) else emptyList(),
                     Modifier.padding(top = 18.dp),
-                    note = dailyMacroNote(macros, showMacros = settings.showMacros, showNote = settings.showMissingNote),
+                    note = dailyMacroNote(macros, showMacros = settings.showMacros, showNote = settings.showMissingNote, fibre = fibre),
                     target = kcalTargetLine(profile),
                 )
             }

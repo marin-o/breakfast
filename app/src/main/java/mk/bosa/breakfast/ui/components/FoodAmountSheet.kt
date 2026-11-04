@@ -80,7 +80,7 @@ internal fun FoodAmountSheet(
             Hairline()
             Text(calc?.let { kcalLabel(it.nutrition.calories) } ?: POSITIVE_AMOUNT_MESSAGE, color = colors.ink, style = BreakfastType.Section)
             // No amount, no macros: the empty line keeps the sheet's height.
-            if (calc != null) MacroLine(macroLineParts(calc.nutrition), BreakfastType.Secondary) else Text("", style = BreakfastType.Secondary)
+            if (calc != null) MacroLine(macroLineParts(calc.nutrition, fibre = LocalFibreShown.current), BreakfastType.Secondary) else Text("", style = BreakfastType.Secondary)
             PrimaryButton(
                 chosenMeal?.let { "Add to ${it.label()}" } ?: "Add",
                 onClick = { exactAmount?.let { onAdd(it, measure, chosenMeal) } },

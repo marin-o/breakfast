@@ -64,13 +64,15 @@ internal fun validYield(value: Double?): Boolean = value != null && value.isFini
 
 /**
  * A recipe's nutrition: the values summed as entries are ([NutritionValues.plus]), and each macro's known and unknown
- * parts as the day total keeps them ([macroTotalsOf]), so a macro some ingredient has no value for shows "?".
+ * parts as the day total keeps them ([macroTotalsOf]), so a macro some ingredient has no value for shows "?"; [fibre]
+ * the same way, for the page while fibre is shown.
  */
-data class RecipeNutrition(val values: NutritionValues, val macros: MacroTotals) {
+data class RecipeNutrition(val values: NutritionValues, val macros: MacroTotals, val fibre: MacroTotal = macroTotalOf(emptyList())) {
     /** The same nutrition for [factor] of the amount: the parts known and unknown stay as they are. */
     fun scaled(factor: Double) = RecipeNutrition(
         values * factor,
         MacroTotals(macros.protein.scaled(factor), macros.carbohydrates.scaled(factor), macros.fat.scaled(factor)),
+        fibre.scaled(factor),
     )
 }
 
@@ -81,7 +83,7 @@ private fun MacroTotal.scaled(factor: Double) = copy(sum = sum * factor)
  * (null, never zero), so an entry logged from the recipe does not record it as zero.
  */
 fun Recipe.total(): RecipeNutrition = ingredients.map { it.nutritionSnapshot }.let { values ->
-    RecipeNutrition(values.reduceOrNull { sum, it -> sum + it } ?: NutritionValues.ZERO, macroTotalsOf(values))
+    RecipeNutrition(values.reduceOrNull { sum, it -> sum + it } ?: NutritionValues.ZERO, macroTotalsOf(values), macroTotalOf(values.map { it.fibre }))
 }
 
 /** The recipe's yields that are given, by unit: portions, grams of the dish, ml of the dish, in that order. */

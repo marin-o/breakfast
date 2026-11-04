@@ -29,20 +29,36 @@ data class NutritionValues(
     val calories: Double,
     val protein: Double?,
     val carbohydrates: Double?,
-    val fat: Double?
+    val fat: Double?,
+    /** Of the fat, grams; null is unknown. */
+    val saturatedFat: Double? = null,
+    /** Of the carbohydrates, grams; null is unknown. */
+    val sugars: Double? = null,
+    /** Grams; null is unknown. Not part of the kcal split. */
+    val fibre: Double? = null,
+    /** Grams of salt (never sodium); null is unknown. */
+    val salt: Double? = null,
 ) {
     operator fun times(factor: Double) = NutritionValues(
         calories * factor,
         protein?.times(factor),
         carbohydrates?.times(factor),
-        fat?.times(factor)
+        fat?.times(factor),
+        saturatedFat?.times(factor),
+        sugars?.times(factor),
+        fibre?.times(factor),
+        salt?.times(factor),
     )
 
     operator fun plus(other: NutritionValues) = NutritionValues(
         calories + other.calories,
         protein.sumIfSupplied(other.protein),
         carbohydrates.sumIfSupplied(other.carbohydrates),
-        fat.sumIfSupplied(other.fat)
+        fat.sumIfSupplied(other.fat),
+        saturatedFat.sumIfSupplied(other.saturatedFat),
+        sugars.sumIfSupplied(other.sugars),
+        fibre.sumIfSupplied(other.fibre),
+        salt.sumIfSupplied(other.salt),
     )
 
     companion object {

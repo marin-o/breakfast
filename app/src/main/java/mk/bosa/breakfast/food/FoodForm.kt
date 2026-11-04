@@ -213,7 +213,7 @@ internal class FoodForm(
             if (editingId == null) focus = FoodFormFocus(refusal.field, ++focusSerial)
             return
         }
-        val kcal = resolved.calories ?: return
+        val nutrition = resolved.values() ?: return
         // A serving still in its form goes with the save; one that doesn't read stops it, so no wrong value is stored.
         draft.commitPendingServing()?.let { notices.show(it); return }
         // "100 ml =" a number that is not a positive one: the field shows it, and nothing is saved.
@@ -225,7 +225,6 @@ internal class FoodForm(
         val storedBarcode = storedBarcodeFor(barcode, foods, editingId)
         val basisAmount = resolved.basisAmount
         val basisUnit = resolved.basisUnit
-        val nutrition = NutritionValues(kcal, resolved.protein, resolved.carbohydrates, resolved.fat)
         val forPart = editingId == null && resolvingPart()
         val fromOff = draft.fromOff
         val candidate = if (fromOff) normalizeBarcode(barcode)?.let {

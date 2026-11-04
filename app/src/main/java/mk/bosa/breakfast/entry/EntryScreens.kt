@@ -23,6 +23,8 @@ import mk.bosa.breakfast.domain.editableNumber
 import mk.bosa.breakfast.ui.components.DayTotal
 import mk.bosa.breakfast.ui.shortDateLabel
 import mk.bosa.breakfast.ui.components.MacroLine
+import mk.bosa.breakfast.ui.components.LocalFibreShown
+import mk.bosa.breakfast.domain.macroTotalOf
 import mk.bosa.breakfast.ui.macroLineParts
 import mk.bosa.breakfast.ui.clockLabel
 import mk.bosa.breakfast.ui.theme.*
@@ -100,7 +102,10 @@ internal fun EntryDetailScreen(entryEdit: EntryEdit, session: DiarySession, surf
         Text(quantity.plainLine(), color = colors.soft, style = BreakfastType.Secondary)
         DayTotal(
             formatKcal(entry.nutritionSnapshot.calories),
-            macroStats(entry.nutritionSnapshot.calories, macroTotalsOf(listOf(entry.nutritionSnapshot))),
+            macroStats(
+                entry.nutritionSnapshot.calories, macroTotalsOf(listOf(entry.nutritionSnapshot)),
+                fibre = macroTotalOf(listOf(entry.nutritionSnapshot.fibre)), showFibre = LocalFibreShown.current,
+            ),
             Modifier.padding(top = 22.dp),
             caption = "kilocalories",
         )
@@ -212,7 +217,7 @@ internal fun EntryFullEditScreen(entryEdit: EntryEdit, session: DiarySession, da
         val shown = preview?.nutrition ?: entry.nutritionSnapshot
         Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.End) {
             Text(kcalLabel(shown.calories), style = BreakfastType.Section, color = colors.ink)
-            MacroLine(macroLineParts(shown), BreakfastType.Secondary, alignment = Alignment.End)
+            MacroLine(macroLineParts(shown, fibre = LocalFibreShown.current), BreakfastType.Secondary, alignment = Alignment.End)
         }
         PrimaryButton("Save", { entryEdit.saveFull(foodId, fieldText(amount, entry.enteredAmount), unit, meal, dayKey, servingName) }, enabled = !session.busy)
         entryEdit.error?.let { Text(it, Modifier.padding(top = 12.dp), color = colors.bad, style = BreakfastType.Meta) }

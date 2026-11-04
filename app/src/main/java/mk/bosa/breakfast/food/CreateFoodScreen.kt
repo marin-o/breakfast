@@ -6,6 +6,7 @@ import mk.bosa.breakfast.ui.components.SaveButton
 import mk.bosa.breakfast.domain.MeasureUnit
 import mk.bosa.breakfast.ui.components.NutrientFields
 import mk.bosa.breakfast.ui.components.NutrientField
+import mk.bosa.breakfast.ui.components.otherNutrientFields
 import mk.bosa.breakfast.ui.components.SubScreen
 import mk.bosa.breakfast.ui.theme.*
 import androidx.compose.runtime.Composable
@@ -69,10 +70,11 @@ import mk.bosa.breakfast.domain.editableNumber
             // A field typed into keeps its own value; the others follow the shorthand.
             val basisAmount = if (draft.basisEdited) draft.basisAmount else editableNumber(state.nutrition.basisAmount)
             val basisUnit = if (draft.basisEdited) draft.basisUnit else state.nutrition.basisUnit.label
-            val calories = if (draft.caloriesEdited) draft.calories else state.nutrition.calories?.let(::editableNumber).orEmpty()
-            val protein = if (draft.proteinEdited) draft.protein else state.nutrition.protein?.let(::editableNumber).orEmpty()
-            val carbs = if (draft.carbsEdited) draft.carbs else state.nutrition.carbohydrates?.let(::editableNumber).orEmpty()
-            val fat = if (draft.fatEdited) draft.fat else state.nutrition.fat?.let(::editableNumber).orEmpty()
+            fun follows(edited: Boolean, typed: String, read: Double?) = if (edited) typed else read?.let(::editableNumber).orEmpty()
+            val calories = follows(draft.caloriesEdited, draft.calories, state.nutrition.calories)
+            val protein = follows(draft.proteinEdited, draft.protein, state.nutrition.protein)
+            val carbs = follows(draft.carbsEdited, draft.carbs, state.nutrition.carbohydrates)
+            val fat = follows(draft.fatEdited, draft.fat, state.nutrition.fat)
             AmountWithUnit("Basis", MeasureUnit.entries.firstOrNull { it.label == basisUnit }, { draft.basisEdited = true; draft.basisUnit = it.label }) { amountModifier ->
                 DecimalField("Basis", basisAmount, { draft.basisEdited = true; draft.basisAmount = it }, amountModifier, labelVisible = false, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.BASIS)))
             }
@@ -85,9 +87,16 @@ import mk.bosa.breakfast.domain.editableNumber
                         required = true,
                         fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.KCAL)),
                     ),
-                    NutrientField("Protein, g", protein, { draft.proteinEdited = true; draft.protein = it }, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.PROTEIN)), macro = Macro.PROTEIN),
-                    NutrientField("Carbs, g", carbs, { draft.carbsEdited = true; draft.carbs = it }, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.CARBS)), macro = Macro.CARBS),
-                    NutrientField("Fat, g", fat, { draft.fatEdited = true; draft.fat = it }, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.FAT)), macro = Macro.FAT),
+                    NutrientField("Protein, g", protein, { draft.proteinEdited = true; draft.protein = it }, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.PROTEIN)), mark = Macro.PROTEIN.mark),
+                    NutrientField("Carbs, g", carbs, { draft.carbsEdited = true; draft.carbs = it }, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.CARBS)), mark = Macro.CARBS.mark),
+                    NutrientField("Fat, g", fat, { draft.fatEdited = true; draft.fat = it }, fieldModifier = Modifier.focusRequester(focus.getValue(FoodFormField.FAT)), mark = Macro.FAT.mark),
+                ) + otherNutrientFields(
+                    follows(draft.saturatedFatEdited, draft.saturatedFat, state.nutrition.saturatedFat) to { draft.saturatedFatEdited = true; draft.saturatedFat = it },
+                    follows(draft.sugarsEdited, draft.sugars, state.nutrition.sugars) to { draft.sugarsEdited = true; draft.sugars = it },
+                    follows(draft.fibreEdited, draft.fibre, state.nutrition.fibre) to { draft.fibreEdited = true; draft.fibre = it },
+                    follows(draft.saltEdited, draft.salt, state.nutrition.salt) to { draft.saltEdited = true; draft.salt = it },
+                    fieldModifiers = listOf(FoodFormField.SATURATED_FAT, FoodFormField.SUGARS, FoodFormField.FIBRE, FoodFormField.SALT)
+                        .map { Modifier.focusRequester(focus.getValue(it)) },
                 ),
                 gap = 12.dp,
             )

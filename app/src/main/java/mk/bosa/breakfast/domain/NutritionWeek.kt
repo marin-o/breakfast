@@ -20,7 +20,7 @@ data class DayBar(
     val targetKcal: Double?,
 )
 
-/** [start] is its Monday; the averages are over [loggedDays] only, and null with none. */
+/** [start] is its Monday; the averages are over [loggedDays] only, and null with none. Fibre's is no part of the bars. */
 data class NutritionWeek(
     val start: LocalDate,
     val end: LocalDate,
@@ -30,6 +30,7 @@ data class NutritionWeek(
     val averageProtein: Double?,
     val averageCarbs: Double?,
     val averageFat: Double?,
+    val averageFibre: Double?,
 )
 
 /** The Monday of [dayKey]'s week; null for a key that is no date. */
@@ -74,5 +75,6 @@ fun nutritionWeek(start: LocalDate, entries: List<MealEntry>, history: List<Targ
         macro { it.protein },
         macro { it.carbohydrates },
         macro { it.fat },
+        macro { it.fibre },
     )
 }

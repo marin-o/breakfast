@@ -134,7 +134,13 @@ fun ProfileValues.burnBody(): BurnBody? {
 
 /** These values as Meals reads them: tracking only hides the targets, and keeps them. */
 fun ProfileValues.targetsShown(): ProfileValues =
-    if (trackingOnly) copy(kcalTarget = null, proteinTarget = null, carbsTarget = null, fatTarget = null) else this
+    if (trackingOnly) copy(kcalTarget = null, proteinTarget = null, carbsTarget = null, fatTarget = null, fibreTarget = null) else this
+
+/**
+ * Fibre is shown beside the macros (its Meals column, its part of the macro lines, the missing values note) with Profile,
+ * Goals, "Track fibre" on, also under Tracking only; a stored target alone shows nothing.
+ */
+fun fibreShown(profile: ProfileValues): Boolean = profile.trackFibre
 
 /** "1500 kcal is the lowest here. That's about 0.4 kg a week."; null when the lowest did not apply or claims no pace. */
 fun lowestLine(result: GoalKcal): String? {

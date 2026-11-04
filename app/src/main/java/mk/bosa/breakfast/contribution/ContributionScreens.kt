@@ -6,7 +6,6 @@ import mk.bosa.breakfast.ui.components.NutritionFacts
 import mk.bosa.breakfast.ui.components.FactRow
 import mk.bosa.breakfast.ui.components.StatusBlock
 import mk.bosa.breakfast.ui.components.SubScreen
-import mk.bosa.breakfast.ui.macroText
 import mk.bosa.breakfast.ui.screens.basisLabel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.widthIn
@@ -72,13 +71,7 @@ import mk.bosa.breakfast.ui.components.TertiaryButton
                 }
                 FactRow("Barcode", draft.barcode)
                 Text(basisLabel(100.0, draft.basisUnit), color = colors.soft, style = BreakfastType.Meta, modifier = Modifier.padding(top = 10.dp))
-                NutritionFacts(
-                    normalized.calories.pretty(),
-                    fat = macroText(normalized.fat) to "g",
-                    carbs = macroText(normalized.carbohydrates) to "g",
-                    protein = macroText(normalized.protein) to "g",
-                    marked = false,
-                )
+                NutritionFacts(normalized.calories.pretty(), normalized, marked = false)
                 if (!draft.createNewProduct) Text("Existing product: only nutrition changes.", color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 16.dp))
             }
             if (draft.createNewProduct) {

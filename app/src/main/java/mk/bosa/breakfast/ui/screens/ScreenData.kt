@@ -1,6 +1,7 @@
 package mk.bosa.breakfast.ui.screens
 
 import mk.bosa.breakfast.domain.defaultServingCalculation
+import mk.bosa.breakfast.domain.fibreShown
 import mk.bosa.breakfast.domain.ProfileValues
 import mk.bosa.breakfast.domain.SegmentResolution
 import mk.bosa.breakfast.domain.KCAL_PER_GRAM_CARBS
@@ -14,6 +15,7 @@ import mk.bosa.breakfast.domain.sourceLetter
 import mk.bosa.breakfast.ui.clockLabel
 import mk.bosa.breakfast.ui.components.MacroStat
 import mk.bosa.breakfast.ui.theme.Macro
+import mk.bosa.breakfast.ui.theme.Mark
 import mk.bosa.breakfast.domain.FoodRecord
 import mk.bosa.breakfast.domain.MealEntry
 import mk.bosa.breakfast.domain.Measure
@@ -248,9 +250,17 @@ internal fun macroFact(total: MacroTotal, noneIsUnknown: Boolean = false): Pair<
 
 /**
  * The three macro columns under a kcal figure ([macros] of [kcal]), each with its known share of the kcal: a day's total
- * and one entry's. A macro nothing has reads "—"; a sum that leaves some out reads "12 g ?".
+ * and one entry's. A macro nothing has reads "—"; a sum that leaves some out reads "12 g ?". While fibre is shown
+ * ([showFibre]) and with its total ([fibre]), fibre follows as a fourth column: toward its target with one, else its
+ * total only over an empty track, since it is no share of the kcal.
  */
-internal fun macroStats(kcal: Double, macros: MacroTotals, targets: ProfileValues = ProfileValues()): List<MacroStat> {
+internal fun macroStats(
+    kcal: Double,
+    macros: MacroTotals,
+    targets: ProfileValues = ProfileValues(),
+    fibre: MacroTotal? = null,
+    showFibre: Boolean = fibreShown(targets),
+): List<MacroStat> {
     fun stat(kind: Macro, label: String, total: MacroTotal, kcalPerGram: Double, target: Double?): MacroStat {
         val (value, unit) = macroFact(total)
         // With a target the bar fills toward it, full at most: going over changes no colour and scolds nothing.
@@ -261,18 +271,25 @@ internal fun macroStats(kcal: Double, macros: MacroTotals, targets: ProfileValue
         stat(Macro.PROTEIN, "Protein", macros.protein, KCAL_PER_GRAM_PROTEIN, targets.proteinTarget),
         stat(Macro.CARBS, "Carbs", macros.carbohydrates, KCAL_PER_GRAM_CARBS, targets.carbsTarget),
         stat(Macro.FAT, "Fat", macros.fat, KCAL_PER_GRAM_FAT, targets.fatTarget),
-    )
+    ) + listOfNotNull(fibre?.takeIf { showFibre }?.let { fibreStat(it, targets.fibreTarget) })
+}
+
+/** Fibre's column: with a target the bar fills toward it, full at most, as a macro's does; with none it stays empty. */
+private fun fibreStat(total: MacroTotal, target: Double?): MacroStat {
+    val (value, unit) = macroFact(total)
+    if (target == null) return MacroStat(Mark.Fibre, "Fibre", value, unit, 0f)
+    return MacroStat(Mark.Fibre, "Fibre", value, unit, (total.sum / target).toFloat().coerceIn(0f, 1f), "/ ${target.pretty()} g")
 }
 
 /** "/ 2000 kcal" beside a day's total, as a macro reads "/ 120 g"; null with no target. */
 internal fun kcalTargetLine(profile: ProfileValues): String? = profile.kcalTarget?.let { "/ ${kcalLabel(it)}" }
 
 /**
- * The one line under the macros when any of them shows "?". Never drawn when the macros are hidden ("Macros on today"
+ * The one line under the macros when any of them, or the [fibre] shown, shows "?". Never drawn when the macros are hidden ("Macros on today"
  * Hide) or the note is ("Missing values note" Hide).
  */
-internal fun dailyMacroNote(macros: MacroTotals, showMacros: Boolean = true, showNote: Boolean = true): String? =
-    if (showMacros && showNote && macros.anyPartial) "? some foods have no value" else null
+internal fun dailyMacroNote(macros: MacroTotals, showMacros: Boolean = true, showNote: Boolean = true, fibre: MacroTotal? = null): String? =
+    if (showMacros && showNote && (macros.anyPartial || fibre?.partial == true)) "? some foods have no value" else null
 
 /** What a recipe makes: "4 portions", "1600 g", "1500 ml", or what it has of them, "4 portions, 1600 g, 1500 ml". */
 internal fun yieldLine(recipe: Recipe): String = recipe.yields().joinToString(", ") { (unit, amount) -> previewQuantityLine(amount, unit) }

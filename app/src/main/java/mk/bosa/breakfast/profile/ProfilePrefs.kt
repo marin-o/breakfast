@@ -21,6 +21,7 @@ internal class ProfilePrefs(private val store: SettingsStore) {
         number(HEIGHT), store.getString(AGE, null)?.toIntOrNull(), named<Sex>(SEX), named<Activity>(ACTIVITY), named<Goal>(GOAL), number(PACE), store.getBoolean(TRACKING_ONLY, false),
         number(PROTEIN_PERCENT), number(CARBS_PERCENT), number(FAT_PERCENT),
         store.getString(FOLLOWING, null).orEmpty().split(',').mapNotNullTo(LinkedHashSet()) { name -> Macro.entries.firstOrNull { it.name == name } },
+        number(FIBRE), store.getBoolean(TRACK_FIBRE, false),
     )
 
     /** The page's Save: applied in the background, as settings are. */
@@ -35,10 +36,11 @@ internal class ProfilePrefs(private val store: SettingsStore) {
     private fun SettingsStore.Editor.fill(values: ProfileValues) {
         clear()
         putString(NAME, values.name)
-        listOf(PROTEIN to values.proteinTarget, CARBS to values.carbsTarget, FAT to values.fatTarget, CURRENT to values.currentWeight, TARGET to values.targetWeight, KCAL to values.kcalTarget, HEIGHT to values.heightCm, PACE to values.paceKgPerWeek, PROTEIN_PERCENT to values.proteinPercent, CARBS_PERCENT to values.carbsPercent, FAT_PERCENT to values.fatPercent)
+        listOf(PROTEIN to values.proteinTarget, CARBS to values.carbsTarget, FAT to values.fatTarget, CURRENT to values.currentWeight, TARGET to values.targetWeight, KCAL to values.kcalTarget, HEIGHT to values.heightCm, PACE to values.paceKgPerWeek, PROTEIN_PERCENT to values.proteinPercent, CARBS_PERCENT to values.carbsPercent, FAT_PERCENT to values.fatPercent, FIBRE to values.fibreTarget)
             .forEach { (key, value) -> if (value != null) putString(key, value.toString()) }
         putBoolean(SEVERAL_WEIGHTS, values.severalWeights)
         putBoolean(TRACKING_ONLY, values.trackingOnly)
+        putBoolean(TRACK_FIBRE, values.trackFibre)
         listOf(AGE to values.age?.toString(), SEX to values.sex?.name, ACTIVITY to values.activity?.name, GOAL to values.goal?.name)
             .forEach { (key, value) -> if (value != null) putString(key, value) }
         if (values.followingMacros.isNotEmpty()) putString(FOLLOWING, values.followingMacros.joinToString(",") { it.name })
@@ -70,5 +72,7 @@ internal class ProfilePrefs(private val store: SettingsStore) {
         const val CARBS_PERCENT = "carbs_percent"
         const val FAT_PERCENT = "fat_percent"
         const val FOLLOWING = "following_macros"
+        const val FIBRE = "fibre_target"
+        const val TRACK_FIBRE = "track_fibre"
     }
 }

@@ -64,6 +64,7 @@ import mk.bosa.breakfast.domain.macroPercentTextValid
 import mk.bosa.breakfast.domain.macroTargetTextValid
 import mk.bosa.breakfast.domain.paceTextValid
 import mk.bosa.breakfast.domain.paceShown
+import mk.bosa.breakfast.domain.fibreTargetShown
 import mk.bosa.breakfast.domain.percentShown
 import mk.bosa.breakfast.domain.percentsShown
 import mk.bosa.breakfast.domain.positiveAmountOf
@@ -104,6 +105,9 @@ import mk.bosa.breakfast.ui.theme.Gutter
 import mk.bosa.breakfast.ui.theme.IconTarget
 import mk.bosa.breakfast.ui.theme.LocalBreakfastColors
 import mk.bosa.breakfast.ui.theme.Macro
+import mk.bosa.breakfast.ui.theme.Mark
+import mk.bosa.breakfast.ui.theme.mark
+import mk.bosa.breakfast.ui.components.LocalFibreShown
 import mk.bosa.breakfast.ui.theme.PrimaryShape
 import mk.bosa.breakfast.ui.weekLabel
 import kotlin.math.roundToInt
@@ -187,6 +191,9 @@ private fun ProfilePageFields(profile: ProfileState, scroll: ScrollState) {
                 KcalField(profile)
                 MacroFields(profile)
             }
+            // Also under Tracking only, where it decides whether fibre shows; unticking hides the target and keeps it.
+            CheckboxRow("Track fibre", draft.trackFibre, { profile.edit(draft.copy(trackFibre = !draft.trackFibre)) })
+            if (draft.fibreTargetShown) FibreField(profile)
         }
     }
 }
@@ -243,6 +250,17 @@ private fun KcalField(profile: ProfileState) {
     DecimalField("Daily kcal", draft.kcal, profile::editKcal, error = !valid, errorMessage = KCAL_RANGE_MESSAGE.takeUnless { valid })
 }
 
+/** The fibre target, under Track fibre: no part of the kcal split, the percents or Apply. Empty is no target. */
+@Composable
+private fun FibreField(profile: ProfileState) {
+    val draft = profile.draft
+    val valid = macroTargetTextValid(draft.fibre)
+    DecimalField(
+        "Fibre, g", draft.fibre, { profile.edit(draft.copy(fibre = it)) },
+        error = !valid, errorMessage = MACRO_TARGET_RANGE_MESSAGE.takeUnless { valid }, labelMark = Mark.Fibre,
+    )
+}
+
 /** Each macro's % beside its g, the dot on the first; with no valid Daily kcal, only the g. */
 @Composable
 private fun MacroFields(profile: ProfileState) {
@@ -264,7 +282,7 @@ private fun MacroFields(profile: ProfileState) {
 private fun percentField(profile: ProfileState, macro: Macro, name: String): NutrientField {
     val shown = profile.draft.percentShown(macro)
     val valid = macroPercentTextValid(shown)
-    return NutrientField("$name, %", shown, { profile.editMacro(macro, it, byPercent = true) }, error = !valid, errorMessage = PERCENT_RANGE_MESSAGE.takeUnless { valid }, macro = macro)
+    return NutrientField("$name, %", shown, { profile.editMacro(macro, it, byPercent = true) }, error = !valid, errorMessage = PERCENT_RANGE_MESSAGE.takeUnless { valid }, mark = macro.mark)
 }
 
 private fun gramsField(profile: ProfileState, macro: Macro, name: String, dotted: Boolean): NutrientField {
@@ -272,7 +290,7 @@ private fun gramsField(profile: ProfileState, macro: Macro, name: String, dotted
     val valid = macroTargetTextValid(grams)
     return NutrientField(
         "$name, g", grams, { profile.editMacro(macro, it, byPercent = false) },
-        error = !valid, errorMessage = MACRO_TARGET_RANGE_MESSAGE.takeUnless { valid }, macro = macro.takeIf { dotted },
+        error = !valid, errorMessage = MACRO_TARGET_RANGE_MESSAGE.takeUnless { valid }, mark = macro.mark.takeIf { dotted },
     )
 }
 
@@ -391,7 +409,7 @@ private fun NutritionPage(profile: ProfileState, scroll: ScrollState) {
                     MacroPart("Protein ${week.averageProtein?.roundToInt() ?: 0} g", Macro.PROTEIN),
                     MacroPart("Carbs ${week.averageCarbs?.roundToInt() ?: 0} g", Macro.CARBS),
                     MacroPart("Fat ${week.averageFat?.roundToInt() ?: 0} g", Macro.FAT),
-                ),
+                ) + listOfNotNull(MacroPart("Fibre ${week.averageFibre?.roundToInt() ?: 0} g", Mark.Fibre).takeIf { LocalFibreShown.current }),
                 BreakfastType.Secondary,
                 Modifier.padding(top = 8.dp),
                 color = colors.ink,
