@@ -41,14 +41,16 @@ data class ParsedShorthand(
 private const val NumberPattern = "([0-9]+(?:[.,][0-9]+)?)"
 
 private fun labelledNumber(shorthand: String, label: String): ShorthandMatch? {
-    val match = Regex("(?iu)$NumberPattern(\\s*g)?\\s*$label").find(shorthand) ?: return null
+    // The label is a whole word, so "2 cups" is not carbs and "3 fiber" is not fat.
+    val match = Regex("(?iu)$NumberPattern(\\s*g)?\\s*(?:$label)(?!\\p{L})").find(shorthand) ?: return null
     val value = match.groupValues[1].replace(',', '.').toDoubleOrNull() ?: return null
     val end = (match.groups[2] ?: match.groups[1])!!.range.last
     return ShorthandMatch(value, match.groups[1]!!.range.first..end)
 }
 
 /**
- * Reads "per 100g: 120 kcal, 2g protein, 20g carbs, 8g fat". Labels may come in any order and every
+ * Reads "per 100g: 120 kcal, 2g protein, 20g carbs, 8g fat", or the same with p, c and f ("2p 20c 8f"). Labels may come
+ * in any order and every
  * part is optional. The labelled-number rule is the one the personal-food form always used; the
  * optional "per 100 g / per 250 ml" basis is the only addition.
  */
@@ -58,10 +60,10 @@ fun parseNutritionShorthand(shorthand: String): ParsedShorthand {
         match.groupValues[1].replace(',', '.').toDoubleOrNull()?.let { ShorthandMatch(it, match.groups[1]!!.range.first..match.groups[2]!!.range.last) }
     }
     return ParsedShorthand(
-        calories = labelledNumber(shorthand, "kcal"),
-        protein = labelledNumber(shorthand, "protein"),
-        carbohydrates = labelledNumber(shorthand, "(?:carb|carbs)"),
-        fat = labelledNumber(shorthand, "fat"),
+        calories = labelledNumber(shorthand, "kcals?"),
+        protein = labelledNumber(shorthand, "p|proteins?"),
+        carbohydrates = labelledNumber(shorthand, "c|carbs?|carbohydrates?"),
+        fat = labelledNumber(shorthand, "f|fats?"),
         basisAmount = basisAmount,
         basisUnit = basis?.takeIf { basisAmount != null }?.let { if (it.groupValues[2].lowercase() == "ml") MeasureUnit.MILLILITER else MeasureUnit.GRAM },
     )

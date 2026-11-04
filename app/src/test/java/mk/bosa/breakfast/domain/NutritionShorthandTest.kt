@@ -29,6 +29,40 @@ class NutritionShorthandTest {
     }
 
     @Test
+    fun readsSingleLetterLabels() {
+        val glued = parseNutritionShorthand("450 kcal 12p 20c 1,5f")
+        assertEquals(12.0, glued.protein!!.value, 0.0)
+        assertEquals(20.0, glued.carbohydrates!!.value, 0.0)
+        assertEquals(1.5, glued.fat!!.value, 0.0)
+        val spaced = parseNutritionShorthand("per 100g: 450 kcal, 12 P, 20g C, 8 g F")
+        assertEquals(12.0, spaced.protein!!.value, 0.0)
+        assertEquals(20.0, spaced.carbohydrates!!.value, 0.0)
+        assertEquals(8.0, spaced.fat!!.value, 0.0)
+        assertEquals(100.0, spaced.basisAmount!!.value, 0.0)
+        val text = "8f 3p"
+        assertEquals("8", text.substring(parseNutritionShorthand(text).fat!!.range))
+    }
+
+    @Test
+    fun readsPluralAndLongLabels() {
+        val parsed = parseNutritionShorthand("120 kcals, 2g proteins, 20g carbohydrates, 8g fats")
+        assertEquals(120.0, parsed.calories!!.value, 0.0)
+        assertEquals(2.0, parsed.protein!!.value, 0.0)
+        assertEquals(20.0, parsed.carbohydrates!!.value, 0.0)
+        assertEquals(8.0, parsed.fat!!.value, 0.0)
+    }
+
+    @Test
+    fun aLabelIsAWholeWord() {
+        val parsed = parseNutritionShorthand("2 cups, 3 fiber, 4 pieces, 5 calories")
+        assertNull(parsed.carbohydrates)
+        assertNull(parsed.fat)
+        assertNull(parsed.protein)
+        assertNull(parsed.calories)
+        assertEquals(emptyList<IntRange>(), parsed.recognisedRanges)
+    }
+
+    @Test
     fun basisDefaultsToStructuredFieldsAndShorthandPerWins() {
         assertEquals(ResolvedNutrition(120.0, null, null, null, 100.0, MeasureUnit.GRAM), resolveNutrition(NutritionInput(shorthand = "120 kcal")))
         val ml = resolveNutrition(NutritionInput(shorthand = "per 250 ml: 90 kcal", basisAmount = "100", basisUnit = "g"))
