@@ -355,6 +355,42 @@ fun FoodRecord.measures(): List<Measure> {
         named.map { Measure(MeasureUnit.SERVING, it) }
 }
 
+/** A measure that counts items, not an amount of the food: a named serving, a piece, a portion. */
+private fun Measure.isCount(): Boolean = unit == MeasureUnit.SERVING || unit == MeasureUnit.PIECE || unit == MeasureUnit.PORTION
+
+/**
+ * The amount to show when what it counts changes from [from] to [to] ([amount] is what was shown, null when it is no
+ * number). A count (a serving such as "bar", a piece, a portion) starts at 1. Any other unit keeps the same quantity of
+ * food, converted through the food's basis (1 bar of 50 g is 50 g, 100 g with a density is so many ml) and rounded as a
+ * field shows it ([editableNumber]). With no conversion it falls back to the food's own default when that is in [to]'s
+ * unit, else 100 for g and ml and 1 for the rest. Choosing the measure already shown leaves the amount as it is.
+ */
+fun FoodRecord.amountAfterSwitch(amount: Double?, from: Measure?, to: Measure): Double {
+    val valid = amount?.takeIf(::isPositiveAmount)
+    if (valid != null && from == to) return valid
+    if (to.isCount()) return 1.0
+    if (valid != null && from != null) {
+        val calculator = NutritionCalculator()
+        val perFrom = calculator.baseUnitsPer(this, from)
+        val perTo = calculator.baseUnitsPer(this, to)
+        if (perFrom != null && perTo != null && perTo > 0.0) {
+            editableNumber(valid * perFrom / perTo).toDoubleOrNull()?.takeIf(::isPositiveAmount)?.let { return it }
+        }
+    }
+    return when {
+        to.unit == defaultUnit && to.name == null && isPositiveAmount(defaultAmount) -> defaultAmount
+        to.unit == MeasureUnit.GRAM || to.unit == MeasureUnit.MILLILITER -> 100.0
+        else -> 1.0
+    }
+}
+
+/**
+ * The text of an amount field after its measure changes from [from] to [to] ([amountAfterSwitch]): [text] stands for [exact]
+ * while it still reads as it was filled ([fieldNumber]). Without a food (deleted) there is nothing to convert by: [text] stays.
+ */
+fun FoodRecord?.amountTextAfterSwitch(text: String, exact: Double?, from: Measure?, to: Measure): String =
+    if (this == null) text else editableNumber(amountAfterSwitch(fieldNumber(text, exact), from, to))
+
 /** [unit] is g on a food on ml, or ml on one on g: only its density crosses that, never a serving row. */
 internal fun crossesFamily(food: FoodRecord, unit: MeasureUnit): Boolean = otherFamily(food.nutrition.unit) == unit
 

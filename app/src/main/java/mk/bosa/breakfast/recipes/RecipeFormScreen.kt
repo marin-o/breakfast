@@ -14,6 +14,7 @@ import mk.bosa.breakfast.ui.components.SaveButton
 import mk.bosa.breakfast.ui.components.rememberDraftField
 import mk.bosa.breakfast.app.rememberDraftView
 import mk.bosa.breakfast.ui.components.FoodAmountSheet
+import mk.bosa.breakfast.ui.components.focusOnOpen
 import mk.bosa.breakfast.ui.components.DecimalField
 import mk.bosa.breakfast.ui.components.SubScreen
 import mk.bosa.breakfast.domain.POSITIVE_AMOUNT_MESSAGE
@@ -31,13 +32,9 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import mk.bosa.breakfast.app.DiarySession
@@ -142,14 +139,12 @@ private fun IngredientsField(form: RecipeForm) {
 @Composable
 internal fun RecipeIngredientSearch(form: RecipeForm, search: OffSearch, foodForm: FoodForm, usda: UsdaPartSearch) {
     val motion = rememberMotion()
-    val focus = remember { FocusRequester() }
     val usdaQuery = form.catalogueQuery
     val usdaRows = rememberUsdaRows(usda, usdaQuery, except = form.results)
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     SubScreen("Search", form::closeSearch, scroll = false) {
         SearchField(
             form.query, form::onQuery, onClear = { form.onQuery("") }, label = "Search foods",
-            modifier = Modifier.padding(top = 6.dp), fieldModifier = Modifier.focusRequester(focus),
+            modifier = Modifier.padding(top = 6.dp), fieldModifier = Modifier.focusOnOpen(),
         )
         Hairline(Modifier.padding(top = 12.dp))
         // What it finds goes into the recipe, so its review has no meal to log to, as a part of the Log's draft has none.

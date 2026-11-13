@@ -1,6 +1,7 @@
 package mk.bosa.breakfast.scan
 
 import kotlinx.serialization.Serializable
+import mk.bosa.breakfast.domain.amountAfterSwitch
 import mk.bosa.breakfast.domain.isPositiveAmount
 import mk.bosa.breakfast.domain.fieldNumber
 import mk.bosa.breakfast.domain.presetMeal
@@ -341,8 +342,18 @@ internal class ProductReview(
     /** What [amount] counts now. */
     fun measure(): Measure? = servingName?.let { Measure(MeasureUnit.SERVING, it) } ?: parseProductUnit(unit)?.let { Measure(it) }
 
-    /** A measure's chip was tapped. */
+    /** A measure's chip was tapped: [amount] changes with it ([amountAfterSwitch]). */
     fun onMeasure(measure: Measure) {
+        product?.let { food ->
+            val next = withServings(food).amountAfterSwitch(fieldNumber(amount, filledAmount), measure(), measure)
+            filledAmount = next
+            amount = editableNumber(next)
+        }
+        onTypedMeasure(measure)
+    }
+
+    /** A measure the typed amount names ("2 bar"): the amount stays as typed. */
+    fun onTypedMeasure(measure: Measure) {
         unit = if (measure.unit == MeasureUnit.SERVING) "" else measure.unit.displayLabel()
         servingName = measure.name.takeIf { measure.unit == MeasureUnit.SERVING }
     }

@@ -25,6 +25,7 @@ import mk.bosa.breakfast.domain.Measure
 import mk.bosa.breakfast.domain.MeasureUnit
 import mk.bosa.breakfast.domain.NutritionCalculator
 import mk.bosa.breakfast.domain.POSITIVE_AMOUNT_MESSAGE
+import mk.bosa.breakfast.domain.amountTextAfterSwitch
 import mk.bosa.breakfast.domain.measures
 import mk.bosa.breakfast.ui.label
 import mk.bosa.breakfast.ui.macroLineParts
@@ -34,12 +35,23 @@ import mk.bosa.breakfast.ui.screens.kcalLabel
 import mk.bosa.breakfast.ui.theme.BreakfastType
 import mk.bosa.breakfast.ui.theme.LocalBreakfastColors
 
-/** What an amount counts, as a wrapping row of chips: the food's [measures]. [detail] is a chip's second line. */
+/**
+ * What an amount counts, as a wrapping row of chips: the food's [measures], or [fallback] when it has no food (its entry
+ * only has its own measure). [detail] is a chip's second line. The caller changes its amount with the measure
+ * ([amountTextAfterSwitch]).
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun MeasureChoices(food: FoodRecord, selected: Measure?, onSelect: (Measure) -> Unit, modifier: Modifier = Modifier, detail: (Measure) -> String? = { null }) {
+internal fun MeasureChoices(
+    food: FoodRecord?,
+    selected: Measure?,
+    onSelect: (Measure) -> Unit,
+    modifier: Modifier = Modifier,
+    fallback: List<Measure> = emptyList(),
+    detail: (Measure) -> String? = { null },
+) {
     FlowRow(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        food.measures().forEach { candidate ->
+        food?.measures().orEmpty().ifEmpty { fallback }.forEach { candidate ->
             ChoiceOption(candidate.label, selected == candidate, { onSelect(candidate) }, detail = detail(candidate))
         }
     }
@@ -75,7 +87,11 @@ internal fun FoodAmountSheet(
             Text(entrySourceLabel(food), color = colors.soft, style = BreakfastType.Secondary)
             // The field fills its row, so the units take their own line under it, as on the entry's quick edit.
             DecimalField("Amount", amountText, { amountText = it })
-            MeasureChoices(food, measure, { unit = it.unit; servingName = it.name })
+            MeasureChoices(food, measure, {
+                amountText = food.amountTextAfterSwitch(amountText, startAmount, measure, it)
+                unit = it.unit
+                servingName = it.name
+            })
             chosenMeal?.let { meal -> MealField(meal, { chosenMeal = it }) }
             Hairline()
             Text(calc?.let { kcalLabel(it.nutrition.calories) } ?: POSITIVE_AMOUNT_MESSAGE, color = colors.ink, style = BreakfastType.Section)

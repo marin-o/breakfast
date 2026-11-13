@@ -70,8 +70,9 @@ internal fun List<MacroPart>.lineText(): String = joinToString(", ") { it.text }
 internal fun macroLineParts(values: NutritionValues, fibre: Boolean = false): List<MacroPart> =
     macroParts(values, "Protein", "carbs", "fat", " g") + listOfNotNull(MacroPart("fibre ${macroText(values.fibre)} g", Mark.Fibre).takeIf { fibre })
 
-/** "P 2", "C 9", "F 8", inside the scan review's line. */
-internal fun macroLetterParts(values: NutritionValues): List<MacroPart> = macroParts(values, "P", "C", "F", "")
+/** "P 2", "C 9", "F 8", inside the scan review's line and under a meal's heading; with [fibre] (fibre is shown) "Fi 8" after fat, "—" when unknown. */
+internal fun macroLetterParts(values: NutritionValues, fibre: Boolean = false): List<MacroPart> =
+    macroParts(values, "P", "C", "F", "") + listOfNotNull(MacroPart("Fi ${macroText(values.fibre)}", Mark.Fibre).takeIf { fibre })
 
 private fun macroParts(values: NutritionValues, protein: String, carbs: String, fat: String, unit: String): List<MacroPart> = listOf(
     MacroPart("$protein ${macroText(values.protein)}$unit", Macro.PROTEIN),

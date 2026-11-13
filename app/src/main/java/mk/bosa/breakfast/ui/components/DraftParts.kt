@@ -9,14 +9,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import mk.bosa.breakfast.domain.DraftRow
@@ -96,16 +90,6 @@ internal fun NotInYourFoodsRow(text: String, modifier: Modifier = Modifier, onCl
     )
 }
 
-/**
- * The field after the text changed from outside the field (a tapped suggestion or choice): the caret goes to the end
- * of the new text. When the text is what the field already shows (the user typed it), the field keeps its caret.
- */
-internal fun syncedInputField(field: TextFieldValue, text: String): TextFieldValue =
-    if (field.text == text) field else inputFieldFor(text)
-
-/** The Log field for [text] with the caret at the end: a page that opens again starts there, not at the start. */
-internal fun inputFieldFor(text: String): TextFieldValue = TextFieldValue(text, TextRange(text.length))
-
 /** The typed line and the line under it, with [trailing] at its end. [text] takes the modifier that places it. */
 @Composable
 internal fun DraftLine(trailing: @Composable () -> Unit = {}, text: @Composable (Modifier) -> Unit) {
@@ -120,16 +104,11 @@ internal fun DraftLine(trailing: @Composable () -> Unit = {}, text: @Composable 
 internal class DraftField(val value: TextFieldValue, val onChange: (TextFieldValue) -> Unit)
 
 /**
- * The field for draft [text]. It keeps its own caret, and a change made from outside (a tapped choice) moves the caret
- * to the end. One logical line: Done finishes it, so a newline is never typed; each change goes to [onText].
+ * The field for draft [text], with the one caret rule ([CaretField]): a change made from outside (a tapped choice) moves
+ * the caret to the end. One logical line: Done finishes it, so a newline is never typed; each change goes to [onText].
  */
 @Composable
 internal fun rememberDraftField(text: String, onText: (String) -> Unit): DraftField {
-    var field by remember { mutableStateOf(inputFieldFor(text)) }
-    LaunchedEffect(text) { field = syncedInputField(field, text) }
-    return DraftField(field) { next ->
-        val typed = next.text.replace("\n", " ")
-        field = next.copy(text = typed)
-        onText(typed)
-    }
+    val caret = rememberCaretField(text)
+    return DraftField(caret.value) { next -> caret.onChange(next.copy(text = next.text.replace("\n", " ")), onText) }
 }

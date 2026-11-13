@@ -49,11 +49,13 @@ import mk.bosa.breakfast.settings.SettingsState
 import mk.bosa.breakfast.contribution.ContributionAction
 import mk.bosa.breakfast.domain.MealEntry
 import mk.bosa.breakfast.domain.MealSlot
+import mk.bosa.breakfast.domain.NutritionValues
 import mk.bosa.breakfast.domain.nutritionTotalOf
 import mk.bosa.breakfast.domain.macroTotalsOf
 import mk.bosa.breakfast.domain.macroTotalOf
 import mk.bosa.breakfast.ui.components.LocalFibreShown
 import mk.bosa.breakfast.ui.label
+import mk.bosa.breakfast.ui.macroLetterParts
 import mk.bosa.breakfast.ui.components.LocalScreenBody
 import mk.bosa.breakfast.ui.components.ChoiceOption
 import mk.bosa.breakfast.ui.components.DayHeader
@@ -171,6 +173,16 @@ private fun rememberDaySlide(day: String, motion: Motion): DaySlide {
     return slide
 }
 
+/** A meal's [total] with each macro no entry knows left unknown, not 0. */
+private fun shownMacros(total: NutritionValues, entries: List<MealEntry>): NutritionValues {
+    val snapshots = entries.map { it.nutritionSnapshot }
+    fun known(pick: (NutritionValues) -> Double?, sum: Double?): Double? = if (macroTotalOf(snapshots.map(pick)).allUnknown) null else sum
+    return total.copy(
+        protein = known({ it.protein }, total.protein), carbohydrates = known({ it.carbohydrates }, total.carbohydrates),
+        fat = known({ it.fat }, total.fat), fibre = known({ it.fibre }, total.fibre),
+    )
+}
+
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun DailyMealSection(
@@ -191,6 +203,7 @@ private fun DailyMealSection(
         addDescription = "Add food to ${slot.label()}",
         time = earliestMealTime(entries),
         emptyText = if (entries.isEmpty()) "Nothing yet" else null,
+        macros = if (entries.isEmpty()) null else macroLetterParts(shownMacros(total, entries), fibre = LocalFibreShown.current),
         modifier = Modifier.clickable(role = Role.Button) { surfaces.openMeal(slot) },
     )
     // Rows fade in and collapse out; another day (or the first load) shows its rows at once.

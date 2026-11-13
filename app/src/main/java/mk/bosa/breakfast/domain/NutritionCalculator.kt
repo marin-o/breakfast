@@ -39,6 +39,9 @@ class NutritionCalculator {
     /** One of a unit in the food's basis units, where that figure came from, and whether it is a guess. */
     private class PerUnit(val baseUnits: Double, val provenance: String, val approximate: Boolean)
 
+    /** How many of the food's basis units one of [measure] is; null when the food has no figure for it ([calculate] would call it unsupported). */
+    internal fun baseUnitsPer(food: FoodRecord, measure: Measure): Double? = perUnit(food, measure.unit, measure.name)?.baseUnits
+
     private fun perUnit(food: FoodRecord, unit: MeasureUnit, servingName: String?): PerUnit? {
         val basis = food.nutrition
         if (unit == MeasureUnit.SERVING) {

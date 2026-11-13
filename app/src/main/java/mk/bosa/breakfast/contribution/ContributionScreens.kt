@@ -19,12 +19,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -39,6 +35,7 @@ import mk.bosa.breakfast.ui.pretty
 import mk.bosa.breakfast.ui.components.ChoiceOption
 import mk.bosa.breakfast.domain.MeasureUnit
 import mk.bosa.breakfast.ui.components.Field
+import mk.bosa.breakfast.ui.components.focusOnOpen
 import mk.bosa.breakfast.ui.components.PrimaryButton
 import mk.bosa.breakfast.ui.components.ButtonKind
 import mk.bosa.breakfast.ui.components.TertiaryButton
@@ -94,14 +91,12 @@ import mk.bosa.breakfast.ui.components.TertiaryButton
 
 @Composable internal fun ContributionSignInScreen(contribution: ContributionFlow) {
     val colors = LocalBreakfastColors.current
-    val passwordFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { passwordFocus.requestFocus() }
     SubScreen("Sign in", contribution::dismissAuth) {
         Text("Open Food Facts account", color = colors.ink, style = BreakfastType.Section, modifier = Modifier.padding(top = 16.dp))
         Field("Username", contribution.username, contribution::onUsername, Modifier.padding(top = 16.dp))
         Field(
             "Password", contribution.password, contribution::onPassword, Modifier.padding(top = 16.dp),
-            fieldModifier = Modifier.focusRequester(passwordFocus),
+            fieldModifier = Modifier.focusOnOpen(),
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { contribution.submit() }),

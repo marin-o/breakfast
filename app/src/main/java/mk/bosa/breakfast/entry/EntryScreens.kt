@@ -46,13 +46,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
@@ -68,9 +65,9 @@ import mk.bosa.breakfast.ui.label
 import mk.bosa.breakfast.ui.pretty
 import mk.bosa.breakfast.ui.components.foodText
 import mk.bosa.breakfast.ui.components.AddCircle
-import mk.bosa.breakfast.ui.components.ChoiceOption
 import mk.bosa.breakfast.ui.components.DestructiveButton
 import mk.bosa.breakfast.ui.components.Field
+import mk.bosa.breakfast.ui.components.focusOnOpen
 import mk.bosa.breakfast.ui.components.Hairline
 import mk.bosa.breakfast.ui.components.PrimaryButton
 import mk.bosa.breakfast.ui.components.SecondaryButton
@@ -83,8 +80,9 @@ import java.util.Locale
 import mk.bosa.breakfast.ui.screens.quantityRateDisplay
 import mk.bosa.breakfast.ui.screens.labelFor
 import mk.bosa.breakfast.domain.Measure
+import mk.bosa.breakfast.domain.amountTextAfterSwitch
 import mk.bosa.breakfast.domain.measures
-import androidx.compose.foundation.layout.FlowRow
+import mk.bosa.breakfast.ui.components.MeasureChoices
 import mk.bosa.breakfast.ui.screens.plainLine
 import mk.bosa.breakfast.ui.screens.formatKcal
 import mk.bosa.breakfast.ui.screens.entrySourceLabel
@@ -124,7 +122,7 @@ internal fun EntryDetailScreen(entryEdit: EntryEdit, session: DiarySession, surf
     }
 }
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 internal fun EntryQuickEditSheet(entryEdit: EntryEdit, session: DiarySession, entry: MealEntry) {
     val colors = LocalBreakfastColors.current
@@ -134,14 +132,11 @@ internal fun EntryQuickEditSheet(entryEdit: EntryEdit, session: DiarySession, en
     var servingName by rememberSaveable(entry.id) { mutableStateOf(entry.measure().name) }
     val measure = Measure(unit, servingName)
     val food = entryEdit.foodOf(entry.foodId)
-    val units = food?.measures().orEmpty().ifEmpty { listOf(entry.measure()) }
     val preview = fieldNumber(amount, entry.enteredAmount)?.takeIf(::isPositiveAmount)?.let { entryEdit.preview(entry, entry.foodId, it, unit, servingName) }
     val changed = entryDraftNutritionChanged(entry, amount, measure, entry.foodId)
     // A save error stays until the amount or unit changes.
     LaunchedEffect(amount, unit, servingName) { entryEdit.inputChanged() }
-    val requester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    LaunchedEffect(Unit) { requester.requestFocus() }
     Sheet(onDismissRequest = { entryEdit.cancel() }, skipPartiallyExpanded = true) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(foodText(entry.foodName), style = BreakfastType.Section, color = colors.ink)
@@ -152,13 +147,15 @@ internal fun EntryQuickEditSheet(entryEdit: EntryEdit, session: DiarySession, en
                     labelVisible = false, amountStyle = true,
                     imeAction = ImeAction.Done,
                     keyboardActions = KeyboardActions(onDone = { keyboard?.hide(); entryEdit.saveQuick("${fieldText(amount.trim(), entry.enteredAmount)} ${measure.label}") }),
-                    fieldModifier = Modifier.focusRequester(requester),
+                    fieldModifier = Modifier.focusOnOpen(),
                 )
                 AddCircle("Increase amount", { amount = adjustAmount(amount, 1.0) })
             }
-            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                units.forEach { candidate -> ChoiceOption(candidate.label, measure == candidate, { unit = candidate.unit; servingName = candidate.name }) }
-            }
+            MeasureChoices(food, measure, {
+                amount = food.amountTextAfterSwitch(amount, entry.enteredAmount, measure, it)
+                unit = it.unit
+                servingName = it.name
+            }, fallback = listOf(entry.measure()))
             Hairline(Modifier.padding(top = 2.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 if (preview != null) {
@@ -181,7 +178,6 @@ internal fun EntryQuickEditSheet(entryEdit: EntryEdit, session: DiarySession, en
 private fun adjustAmount(value: String, delta: Double): String = (parseDecimal(value)?.plus(delta)?.coerceAtLeast(0.1) ?: 1.0).let { if (it % 1.0 == 0.0) it.toInt().toString() else "%.1f".format(Locale.ROOT, it) }
 internal fun entryDraftNutritionChanged(entry: MealEntry, amount: String, measure: Measure, foodId: String?): Boolean = foodId != entry.foodId || fieldNumber(amount, entry.enteredAmount)?.let { it != entry.enteredAmount } != false || measure != entry.measure()
 
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun EntryFullEditScreen(entryEdit: EntryEdit, session: DiarySession, dayState: DayState, entry: MealEntry) {
     val colors = LocalBreakfastColors.current
@@ -198,7 +194,13 @@ internal fun EntryFullEditScreen(entryEdit: EntryEdit, session: DiarySession, da
     // With the entry's food deleted and no other chosen, the entry itself: its amount in its own unit, scaled.
     val foodId = selectedFood?.id ?: entry.foodId
     val preview = fieldNumber(amount, entry.enteredAmount)?.takeIf(::isPositiveAmount)?.let { entryEdit.preview(entry, foodId, it, unit, servingName) }
-    LaunchedEffect(selectedFood?.id) { if (measure !in units) units.first().let { unit = it.unit; servingName = it.name } }
+    LaunchedEffect(selectedFood?.id) {
+        if (measure !in units) units.first().let {
+            amount = selectedFood.amountTextAfterSwitch(amount, entry.enteredAmount, measure, it)
+            unit = it.unit
+            servingName = it.name
+        }
+    }
     // A save error stays until something being edited changes.
     LaunchedEffect(selectedFood?.id, amount, unit, servingName, meal, dayKey) { entryEdit.inputChanged() }
     SubScreen("Edit entry", { entryEdit.cancel() }) {
@@ -208,9 +210,11 @@ internal fun EntryFullEditScreen(entryEdit: EntryEdit, session: DiarySession, da
                 SecondaryButton("Replace", entryEdit::openFoodPicker, modifier = Modifier.widthIn(min = 96.dp * fontScale), fillWidth = false)
             }
             DecimalField("Amount", amount, { amount = it }, Modifier.widthIn(min = 140.dp))
-            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                units.forEach { candidate -> ChoiceOption(candidate.label, measure == candidate, { unit = candidate.unit; servingName = candidate.name }) }
-            }
+            MeasureChoices(selectedFood, measure, {
+                amount = selectedFood.amountTextAfterSwitch(amount, entry.enteredAmount, measure, it)
+                unit = it.unit
+                servingName = it.name
+            }, fallback = units)
             MealField(meal, { meal = it })
             ValueField("Date", shortDateLabel(dayKey), { datePickerOpen = true }, Icons.Default.CalendarMonth, "Change date")
         }

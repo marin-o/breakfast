@@ -592,6 +592,22 @@ class ProductReviewTest {
         assertEquals(20.0, diary.foods.single().servingNamed("bar")!!.baseUnitsPerServing, 0.0)
     }
 
+    @Test fun aMeasureChipChangesTheAmountWithIt() {
+        review.choose(nutella, fromScan = true, origin = ProductReviewOrigin.LIBRARY)
+        addBar()
+        assertTrue(review.servingForm.commitServing())
+        assertEquals("100", review.amount)
+        review.onMeasure(mk.bosa.breakfast.domain.Measure(MeasureUnit.SERVING, "bar"))
+        assertEquals("1", review.amount)
+        review.onAmount("3")
+        review.onMeasure(mk.bosa.breakfast.domain.Measure(MeasureUnit.GRAM))
+        assertEquals("60", review.amount)
+        // A typed "2 bar" keeps its number.
+        review.onAmount("2")
+        review.onTypedMeasure(mk.bosa.breakfast.domain.Measure(MeasureUnit.SERVING, "bar"))
+        assertEquals("2", review.amount)
+    }
+
     @Test fun aServingStillInItsFormGoesWithAddAndOneThatDoesNotReadStopsIt() {
         var stored: FoodRecord? = null
         val logged = object : ProductStore by store {

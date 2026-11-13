@@ -95,8 +95,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -133,6 +131,7 @@ import mk.bosa.breakfast.ui.screens.productApproxLabel
 import mk.bosa.breakfast.domain.MeasureUnit
 import mk.bosa.breakfast.domain.isUsdaFoodId
 import mk.bosa.breakfast.ui.components.MeasureChoices
+import mk.bosa.breakfast.ui.components.focusOnOpen
 import mk.bosa.breakfast.ui.screens.measureWeightDetail
 import mk.bosa.breakfast.ui.screens.basisLabel
 import mk.bosa.breakfast.ui.screens.formatKcal
@@ -369,15 +368,13 @@ private fun LookupProgress(code: String, onCancel: () -> Unit, modifier: Modifie
     val colors = LocalBreakfastColors.current
     var text by rememberSaveable { mutableStateOf("") }
     val barcode = normalizeBarcode(text)
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() }
     Sheet(onDismissRequest = onDismiss, skipPartiallyExpanded = true) {
         Column(Modifier.fillMaxWidth().imePadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Field(
                 label = "Barcode",
                 value = text,
                 onValueChange = { text = it.asciiDigits() },
-                fieldModifier = Modifier.focusRequester(focus),
+                fieldModifier = Modifier.focusOnOpen(),
                 error = barcode == null && text.length > 7,
                 errorMessage = if (barcode == null && text.length > 7) "Enter an 8, 12, 13 or 14 digit barcode." else null,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -463,7 +460,7 @@ private fun amountFieldText(review: ProductReview): String =
                     review.onAmount(editableNumber(next?.amount))
                     if (next != null && next.unit != MeasureUnit.SERVING) review.onUnit(next.unit.displayLabel())
                     // "1 bar" counts that serving; a word the food has no serving for leaves the measure as it is.
-                    next?.word?.takeIf { next.unit == MeasureUnit.SERVING }?.let(reviewed::servingNamed)?.name?.let { review.onMeasure(Measure(MeasureUnit.SERVING, it)) }
+                    next?.word?.takeIf { next.unit == MeasureUnit.SERVING }?.let(reviewed::servingNamed)?.name?.let { review.onTypedMeasure(Measure(MeasureUnit.SERVING, it)) }
                 },
                 modifier = Modifier.padding(top = 16.dp),
                 error = amountText.isNotBlank() && calculation == null,

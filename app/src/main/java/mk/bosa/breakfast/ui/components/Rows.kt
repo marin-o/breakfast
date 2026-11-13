@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import mk.bosa.breakfast.ui.label
 import mk.bosa.breakfast.ui.theme.Macro
+import mk.bosa.breakfast.ui.MacroPart
 import mk.bosa.breakfast.ui.theme.Mark
 import mk.bosa.breakfast.ui.theme.mark
 import mk.bosa.breakfast.ui.theme.PartInset
@@ -74,9 +75,9 @@ fun FoodRow(
     }
 }
 
-/** Section heading row: hairline, heading, time, total and the add circle. [emptyText] shows under an empty meal. */
+/** Section heading row: hairline, heading, time, total and the add circle. [emptyText] shows under an empty meal, [macros] the meal's macros under one with foods. */
 @Composable
-fun MealHeader(
+internal fun MealHeader(
     name: String,
     total: String,
     onAdd: () -> Unit,
@@ -84,6 +85,7 @@ fun MealHeader(
     modifier: Modifier = Modifier,
     time: String? = null,
     emptyText: String? = null,
+    macros: List<MacroPart>? = null,
 ) {
     val colors = LocalBreakfastColors.current
     val timeBelow = isLargeFont(LocalDensity.current.fontScale)
@@ -105,6 +107,7 @@ fun MealHeader(
             AddCircle(addDescription, onAdd)
         }
         if (emptyText != null) Text(emptyText, color = colors.soft, style = BreakfastType.Secondary, modifier = Modifier.padding(top = 4.dp))
+        if (macros != null) MacroLine(macros, BreakfastType.Secondary, Modifier.padding(top = 4.dp))
     }
 }
 

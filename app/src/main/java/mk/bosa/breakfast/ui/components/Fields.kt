@@ -62,7 +62,11 @@ import mk.bosa.breakfast.ui.theme.FieldShape
 import mk.bosa.breakfast.ui.theme.IconTarget
 import mk.bosa.breakfast.ui.theme.LocalBreakfastColors
 
-/** Labelled 1dp `line` box: focus is a 1.5dp ink outline, error a 1.5dp `bad` outline with the message below. */
+/**
+ * Labelled 1dp `line` box: focus is a 1.5dp ink outline, error a 1.5dp `bad` outline with the message below. Its text is
+ * the owner's [value]; text set from code shows with the caret at its end, typing and tapping keep the user's caret
+ * ([CaretField]).
+ */
 @Composable
 fun Field(
     label: String,
@@ -93,6 +97,42 @@ fun Field(
     /** The macro (or fibre) this field holds: its dot goes before the label. */
     labelMark: Mark? = null,
 ) {
+    val caret = rememberCaretField(value)
+    Field(
+        label, caret.value, { caret.onChange(it, onValueChange) }, modifier, labelVisible, error, errorMessage, readOnly, amountStyle,
+        singleLine, minLines, placeholder, keyboardOptions, keyboardActions, visualTransformation, hint, fieldModifier, trailing,
+        required, errorDescription, labelMark,
+    )
+}
+
+/**
+ * The same [Field] over a [TextFieldValue], for text whose caret its owner places (the Log's draft, the recipe's
+ * ingredients: [rememberDraftField]); the [String] one is this over a [CaretField].
+ */
+@Composable
+fun Field(
+    label: String,
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    modifier: Modifier = Modifier,
+    labelVisible: Boolean = true,
+    error: Boolean = false,
+    errorMessage: String? = null,
+    readOnly: Boolean = false,
+    amountStyle: Boolean = false,
+    singleLine: Boolean = true,
+    minLines: Int = 1,
+    placeholder: String? = null,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    hint: String? = null,
+    fieldModifier: Modifier = Modifier,
+    trailing: (@Composable () -> Unit)? = null,
+    required: Boolean = false,
+    errorDescription: String? = null,
+    labelMark: Mark? = null,
+) {
     val colors = LocalBreakfastColors.current
     LabelledField(label, modifier, labelVisible, error, errorMessage, hint, fieldModifier, trailing, required, errorDescription, labelMark) { textModifier ->
         BasicTextField(
@@ -107,41 +147,7 @@ fun Field(
             keyboardOptions = keyboardOptions,
             keyboardActions = keyboardActions,
             visualTransformation = visualTransformation,
-            decorationBox = { inner -> FieldText(inner, value.isEmpty(), placeholder, centred = amountStyle) },
-        )
-    }
-}
-
-/**
- * The same [Field] over a [TextFieldValue], for text that also changes from outside the field (a tapped choice) and
- * needs its caret placed: the recipe's ingredients.
- */
-@Composable
-fun Field(
-    label: String,
-    value: TextFieldValue,
-    onValueChange: (TextFieldValue) -> Unit,
-    modifier: Modifier = Modifier,
-    singleLine: Boolean = true,
-    minLines: Int = 1,
-    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
-    keyboardActions: KeyboardActions = KeyboardActions.Default,
-    fieldModifier: Modifier = Modifier,
-    trailing: (@Composable () -> Unit)? = null,
-) {
-    val colors = LocalBreakfastColors.current
-    LabelledField(label, modifier, labelVisible = true, error = false, errorMessage = null, hint = null, fieldModifier, trailing, required = false, errorDescription = null, labelMark = null) { textModifier ->
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = textModifier,
-            singleLine = singleLine,
-            minLines = minLines,
-            textStyle = BreakfastType.Body.copy(color = colors.ink),
-            cursorBrush = SolidColor(colors.ink),
-            keyboardOptions = keyboardOptions,
-            keyboardActions = keyboardActions,
-            decorationBox = { inner -> FieldText(inner, empty = false, placeholder = null, centred = false) },
+            decorationBox = { inner -> FieldText(inner, value.text.isEmpty(), placeholder, centred = amountStyle) },
         )
     }
 }
@@ -369,9 +375,10 @@ internal fun RowScope.SearchText(
     clearTint: Color,
     fieldModifier: Modifier = Modifier,
 ) {
+    val caret = rememberCaretField(value)
     BasicTextField(
-        value = value,
-        onValueChange = onValueChange,
+        value = caret.value,
+        onValueChange = { caret.onChange(it, onValueChange) },
         modifier = Modifier.weight(1f).then(fieldModifier).semantics { contentDescription = label },
         singleLine = true,
         textStyle = BreakfastType.Body.copy(color = textColor),
