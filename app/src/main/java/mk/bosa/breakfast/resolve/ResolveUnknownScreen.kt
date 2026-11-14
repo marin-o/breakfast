@@ -76,7 +76,7 @@ import mk.bosa.breakfast.ui.screens.matchDisplay
                 }
             }
             Column(Modifier.padding(top = 30.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SearchOrCreateButtons({ search.open(resolve.currentName(), fromResolver = true) }, { foodForm.open(resolve.currentName(), fromResolver = true) })
+                SearchOrCreateButtons({ search.openAndSearch(resolve.currentName(), fromResolver = true) }, { foodForm.open(resolve.currentName(), fromResolver = true) })
                 SkipButton(resolve::skip)
             }
         }

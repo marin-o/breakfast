@@ -52,12 +52,13 @@ class UsdaCatalogueReaderTest {
     @Test fun theFileHoldsWhatTheImporterCounted() = openUnpacked().use { db ->
         assertEquals(USDA_CATALOGUE_VERSION, db.version)
         fun count(sql: String) = db.rawQuery(sql, null).use { it.moveToFirst(); it.getInt(0) }
-        assertEquals(5431, count("SELECT count(*) FROM food"))
-        assertEquals(15777, count("SELECT count(*) FROM portion"))
+        assertEquals(5431, count("SELECT count(*) FROM food WHERE release = 'FNDDS 2021-2023'"))
+        assertEquals(1814, count("SELECT count(*) FROM food WHERE release = 'SR Legacy 2018-04'"))
+        assertEquals(19319, count("SELECT count(*) FROM portion"))
         assertEquals(0, count("SELECT count(*) FROM portion WHERE grams <= 0"))
         assertEquals(1, count("SELECT count(*) FROM alias"))
-        assertEquals(155, count("SELECT count(*) FROM translation"))
-        assertEquals(61, count("SELECT count(*) FROM food WHERE bump > 0"))
+        assertEquals(160, count("SELECT count(*) FROM translation"))
+        assertEquals(76, count("SELECT count(*) FROM food WHERE bump > 0"))
         db.rawQuery("PRAGMA integrity_check", null).use {
             it.moveToFirst()
             assertEquals("ok", it.getString(0))
@@ -135,6 +136,25 @@ class UsdaCatalogueReaderTest {
         assertEquals("Peppers, raw, NFS", search("pepper").first().name)
         assertTrue(search("strawberry").any { it.name == "Strawberries, raw" })
         assertTrue(search("cherry").any { it.name == "Cherries, raw" })
+    }
+
+    @Test fun aHomeStapleIsFoundFirstInEnglishAndMacedonian() {
+        listOf(
+            "flour" to "Wheat flour, white, all-purpose, enriched, bleached", "брашно" to "Wheat flour, white, all-purpose, enriched, bleached",
+            "corn flour" to "Corn flour, whole-grain, yellow", "пченкарно брашно" to "Corn flour, whole-grain, yellow",
+            "cornmeal" to "Cornmeal, whole-grain, yellow", "salt" to "Salt, table", "сол" to "Salt, table",
+            "baking powder" to "Leavening agents, baking powder, double-acting, sodium aluminum sulfate",
+            "прашок за пециво" to "Leavening agents, baking powder, double-acting, sodium aluminum sulfate",
+            "baking soda" to "Leavening agents, baking soda", "сода бикарбона" to "Leavening agents, baking soda",
+            "semolina" to "Semolina, unenriched", "гриз" to "Semolina, unenriched",
+        ).forEach { (typed, name) -> assertEquals(typed, name, search(typed).first().name) }
+    }
+
+    @Test fun anSrLegacyFoodSaysSoAndKeepsTheFnddsId() {
+        val salt = search("salt").first()
+        assertEquals("SR Legacy 2018-04", salt.sourceRelease)
+        assertTrue(salt.id.startsWith("fndds_"))
+        assertEquals("FNDDS 2021-2023", reader().food(coatedBreast)!!.sourceRelease)
     }
 
     @Test fun aBumpPutsTheCommonFoodFirst() {

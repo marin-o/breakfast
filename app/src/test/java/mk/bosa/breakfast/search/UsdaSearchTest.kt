@@ -183,6 +183,54 @@ class UsdaSearchTest {
         assertNull(asked("јајцe"))
     }
 
+    @Test fun `plain flour is the all-purpose wheat flour, whatever other flours and tortillas are called`() {
+        val query = usdaQuery("flour", aliases)!!
+        val ranked = query.rank(
+            listOf(
+                UsdaCandidate(1, "Tortilla, flour"),
+                UsdaCandidate(2, "Rye flour, medium"),
+                UsdaCandidate(3, "Corn flour, whole-grain, yellow", bump = 1),
+                UsdaCandidate(4, "Wheat flour, white, all-purpose, enriched, bleached", bump = 2),
+            ),
+        )
+        assertEquals(listOf(4L, 3L), ranked.take(2).map { it.fdcId })
+    }
+
+    @Test fun `each home staple finds its own food first`() {
+        fun first(text: String, vararg found: UsdaCandidate) = usdaQuery(text, aliases)!!.rank(found.toList()).first().name
+        assertEquals("Salt, table", first("salt", UsdaCandidate(1, "Butter, without salt"), UsdaCandidate(2, "Salt, table", bump = 1), UsdaCandidate(3, "Salt substitute")))
+        assertEquals(
+            "Corn flour, whole-grain, yellow",
+            first("corn flour", UsdaCandidate(1, "Corn flour patty or tart, fried"), UsdaCandidate(2, "Corn flour, whole-grain, yellow", bump = 1)),
+        )
+        assertEquals(
+            "Leavening agents, baking powder, double-acting, sodium aluminum sulfate",
+            first(
+                "baking powder",
+                UsdaCandidate(1, "Leavening agents, baking powder, low-sodium"),
+                UsdaCandidate(2, "Leavening agents, baking powder, double-acting, sodium aluminum sulfate", bump = 1),
+            ),
+        )
+        assertEquals("Semolina, unenriched", first("semolina", UsdaCandidate(1, "Semolina, enriched"), UsdaCandidate(2, "Semolina, unenriched", bump = 1)))
+    }
+
+    private val staples = mapOf(
+        "брашно" to listOf("flour"), "пченкарно брашно" to listOf("corn flour"), "сол" to listOf("salt"),
+        "прашок за пециво" to listOf("baking powder"), "сода бикарбона" to listOf("baking soda"), "гриз" to listOf("semolina"),
+    )
+
+    @Test fun `a home staple typed in Macedonian asks its English words, up to three words held together`() {
+        fun staple(text: String) = usdaQuery(text, aliases, staples)?.matchExpressions()
+        assertEquals(listOf("\"flour*\""), staple("брашно"))
+        assertEquals(listOf("\"corn\" \"flour*\""), staple("пченкарно брашно"))
+        assertEquals(listOf("\"salt*\""), staple("сол"))
+        assertEquals(listOf("\"baking\" \"powder*\""), staple("прашок за пециво"))
+        assertEquals(listOf("\"baking\" \"soda*\""), staple("сода бикарбона"))
+        assertEquals(listOf("\"semolina*\""), staple("гриз"))
+        assertEquals(listOf("\"baking\" \"powder\" \"salt*\""), staple("прашок за пециво сол"))
+        assertNull(staple("прашок за"))
+    }
+
     @Test fun `equal names keep one order`() {
         val query = usdaQuery("egg", aliases)!!
         val first = UsdaCandidate(1, "Egg")

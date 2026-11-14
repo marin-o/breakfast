@@ -25,6 +25,9 @@ internal const val USDA_MAX_RESULTS = 10
 /** The last word also counts as a prefix once it has this many letters. */
 private const val PREFIX_MIN_LETTERS = 3
 
+/** The longest run of typed words the translation table may hold as one entry. */
+private const val MAX_PHRASE_WORDS = 3
+
 /** At most this many MATCH expressions answer a text, however many words have other forms: each one is a query. */
 private const val MAX_EXPRESSIONS = 64
 
@@ -77,7 +80,7 @@ internal data class UsdaQuery(val words: List<String>, val aliases: Map<String, 
 /**
  * What [text] asks the catalogue, or null when it can't ask. The catalogue's text is Latin. A Cyrillic word is asked as
  * its English words in [translations], any of which may answer, hidden from the user: the one exception to the script
- * rule, and only for this catalogue. Two words the table holds together ("црн дроб") are read as one first. A Cyrillic
+ * rule, and only for this catalogue. Two or three words the table holds together ("црн дроб", "прашок за пециво") are read as one first. A Cyrillic
  * word the table lacks, a word that mixes scripts, or a word in another script finds nothing, and a text with no word
  * has nothing to ask. The words are [matchWords] cut to letters and digits, so nothing typed can reach the index as its
  * syntax.
@@ -87,10 +90,12 @@ internal fun usdaQuery(text: String, aliases: Map<String, List<String>>, transla
     val english = buildList {
         var at = 0
         while (at < typed.size) {
-            val pair = typed.getOrNull(at + 1)?.let { translations["${typed[at]} $it"] }
+            val phrase = (MAX_PHRASE_WORDS downTo 2).firstNotNullOfOrNull { size ->
+                typed.drop(at).take(size).takeIf { it.size == size }?.let { translations[it.joinToString(" ")] }?.let { size to it }
+            }
             val word = typed[at]
-            add(pair ?: if (scriptOf(word) == TextScript.CYRILLIC) translations[word] ?: return null else listOf(word))
-            at += if (pair != null) 2 else 1
+            add(phrase?.second ?: if (scriptOf(word) == TextScript.CYRILLIC) translations[word] ?: return null else listOf(word))
+            at += phrase?.first ?: 1
         }
     }
     if (english.any { !sameScript(scriptOf(it.first()), TextScript.LATIN) }) return null

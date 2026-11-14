@@ -216,6 +216,9 @@ private val USER_AGENT = "Breakfast/${BuildConfig.VERSION_NAME} (daily food logg
 /** Open Food Facts answered, but with an HTTP error (a 503, a 429) or data that cannot be read. No connection is [OffResult.Unavailable]. */
 internal const val OFF_NOT_RESPONDING = "Open Food Facts is not responding. Add the product manually."
 
+/** Products asked of a search: the most scanned first, and enough that a word used mostly as an ingredient still leaves the products named for it ([mk.bosa.breakfast.search.rankOffResults]). */
+private const val OFF_SEARCH_PAGE_SIZE = 40
+
 /**
  * Adapter for what the user asked: a search they submitted, the typed names of unmatched foods when Add is tapped, the
  * part being typed on "Find more matches" or, only with "Search Open Food Facts as I type" on, once the typing rests (see
@@ -243,7 +246,7 @@ class OpenFoodFactsClient(
     override fun takeSearchSlot(): Boolean = searchLimit.tryTake()
 
     override suspend fun searchWithSlot(query: String): OffSearchResult {
-        val legacyUrl = URL("https://world.openfoodfacts.org/cgi/search.pl?search_terms=" + URLEncoder.encode(query, "UTF-8") + "&search_simple=1&action=process&json=1&page_size=20&fields=code,product_name,brands,nutriments,nutrition_data_per,product_quantity,product_quantity_unit,quantity,serving_size,serving_quantity_unit")
+        val legacyUrl = URL("https://world.openfoodfacts.org/cgi/search.pl?search_terms=" + URLEncoder.encode(query, "UTF-8") + "&search_simple=1&action=process&json=1&page_size=$OFF_SEARCH_PAGE_SIZE&sort_by=unique_scans_n&fields=code,product_name,brands,nutriments,nutrition_data_per,product_quantity,product_quantity_unit,quantity,serving_size,serving_quantity_unit")
         val legacy = requestSearch(legacyUrl, ::parseSearchResponse)
         if (legacy is OffSearchResult.Success) return legacy
         // A search the user changed or left while search.pl answered is not sent to the fallback.
@@ -253,9 +256,9 @@ class OpenFoodFactsClient(
         return if (fallback is OffSearchResult.Unavailable && legacy is OffSearchResult.Error) legacy else fallback
     }
 
-    /** The newer search service (search.openfoodfacts.org, results under "hits"), asked only when search.pl fails. */
+    /** The newer search service (search.openfoodfacts.org, results under "hits"), asked only when search.pl fails. Same page size as search.pl, but no sort: this service supports `sort_by=-unique_scans_n`, yet that replaces its relevance order with scans alone and "olive oil" then answers "Sésame" first; [rankOffResults] orders what it returns. */
     private suspend fun searchFallback(query: String): OffSearchResult {
-        val url = URL("https://search.openfoodfacts.org/search?q=" + URLEncoder.encode(query, "UTF-8") + "&page=1&page_size=20&fields=" + URLEncoder.encode("code,product_name,brands,nutriments,quantity,serving_size,serving_quantity_unit", "UTF-8"))
+        val url = URL("https://search.openfoodfacts.org/search?q=" + URLEncoder.encode(query, "UTF-8") + "&page=1&page_size=$OFF_SEARCH_PAGE_SIZE&fields=" + URLEncoder.encode("code,product_name,brands,nutriments,quantity,serving_size,serving_quantity_unit", "UTF-8"))
         return requestSearch(url, ::parseFallbackSearchResponse)
     }
 

@@ -48,6 +48,20 @@ class UsdaFoodTest {
         assertEquals(MeasureUnit.GRAM, food.defaultUnit)
     }
 
+    @Test fun `an SR Legacy row says so, and keeps the id of the foods users already stored`() {
+        val flour = UsdaFoodRow(
+            fdcId = 168894, foodCode = "20081", description = "Wheat flour, white, all-purpose, enriched, bleached", additional = null,
+            kcal = 364.0, protein = 10.33, fat = 0.98, carbs = 76.31, portions = listOf(UsdaPortionRow("1 cup", 125.0)),
+            release = "SR Legacy 2018-04",
+        ).toFoodRecord()!!
+        assertEquals("fndds_168894", flour.id)
+        assertEquals("USDA FoodData Central", flour.sourceName)
+        assertEquals("SR Legacy 2018-04", flour.sourceRelease)
+        assertEquals("SR Legacy 20081", flour.sourceDescription)
+        assertEquals(125.0, flour.grams(MeasureUnit.CUP).resolvedBaseAmount, 0.0)
+        assertEquals("USDA SR Legacy 2018-04 portion", flour.conversions.single { it.unit == MeasureUnit.CUP }.provenance)
+    }
+
     @Test fun `its values are per 100 g, each in its own place`() {
         val nutrition = row.toFoodRecord()!!.nutrition
         assertEquals(100.0, nutrition.amount, 0.0)

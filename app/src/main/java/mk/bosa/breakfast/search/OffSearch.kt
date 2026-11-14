@@ -81,6 +81,16 @@ internal class OffSearch(
         leftForReview = false
     }
 
+    /**
+     * [open] on [prefill] and search it at once: the tap on "Search Open Food Facts" already is the user's go, so the
+     * screen doesn't ask for a second one. Once, here; coming back to the screen ([returnFromReview]) or recomposing it
+     * searches nothing, and typing another query still waits for Search.
+     */
+    fun openAndSearch(prefill: String, fromResolver: Boolean = false, reviewOrigin: ProductReviewOrigin? = null) {
+        open(prefill, fromResolver, reviewOrigin)
+        submit()
+    }
+
     /** The arrow, Back or Cancel: the search running stops. */
     fun close() {
         drop()
@@ -141,7 +151,7 @@ internal class OffSearch(
             if (shouldApplyOffSearchResult(mine, generation, captured, query, open)) {
                 when (result) {
                     is OffSearchResult.Success -> {
-                        results = foodsInScript(captured, result.foods).filterNot(::leavesOut)
+                        results = rankOffResults(captured, foodsInScript(captured, result.foods)).filterNot(::leavesOut)
                         message = if (results.isEmpty()) "No usable result for \"$captured\"." else null
                     }
                     OffSearchResult.Unavailable -> {

@@ -188,7 +188,7 @@ private fun UnmatchedRow(row: DraftRow.Unresolved, parts: UnmatchedParts, open: 
         OffPartRows(parts.results.stateOf(name), name) { food -> onFocus(); parts.review.choose(food, origin = ProductReviewOrigin.QUEUE) }
         Column(Modifier.fillMaxWidth().padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SearchOrCreateButtons(
-                onSearch = { onFocus(); parts.search.open(name, fromResolver = true); parts.search.submit() },
+                onSearch = { onFocus(); parts.search.openAndSearch(name, fromResolver = true) },
                 onCreate = { onFocus(); parts.foodForm.open(name, fromResolver = true) },
             )
             SearchYourFoodsButton({ parts.log.resolveNotInFoods(row) }, Modifier.fillMaxWidth())

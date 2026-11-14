@@ -69,7 +69,7 @@ import mk.bosa.breakfast.ui.screens.formatKcal
 /** A local search found nothing for [query]: it says so, and the way on is Open Food Facts or a personal food, which takes the amount [typed] with it. */
 @Composable internal fun NoLocalMatch(query: String, search: OffSearch, foodForm: FoodForm, reviewOrigin: ProductReviewOrigin? = null, typed: TypedPart? = null) {
     StatusBlock("No local match", listOf("Nothing in your foods matches \"$query\"."), top = 48.dp) {
-        SearchOrCreateButtons({ search.open(query.trim(), reviewOrigin = reviewOrigin) }, { foodForm.open(query.trim(), typed = typed) })
+        SearchOrCreateButtons({ search.openAndSearch(query.trim(), reviewOrigin = reviewOrigin) }, { foodForm.open(query.trim(), typed = typed) })
     }
 }
 
@@ -84,7 +84,8 @@ import mk.bosa.breakfast.ui.screens.formatKcal
 }
 
 /**
- * Explicit Open Food Facts search: nothing is sent until a Search (or the keyboard's search key) is used. From "Not right?"
+ * Open Food Facts search: nothing is sent until the user asks, by "Search Open Food Facts" on a food nothing local matches
+ * (which searches the prefilled query at once), or by Search or the keyboard's search key. From "Not right?"
  * the USDA foods for the query are over its results, so it isn't titled for Open Food Facts alone.
  */
 @Composable internal fun OffSearchScreen(search: OffSearch, foodForm: FoodForm, resolve: ResolveFlow, usda: UsdaPartSearch) {

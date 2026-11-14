@@ -34,7 +34,7 @@ Builds:
     #   - update-java-alternatives -a
     # Only if the scanner flags the bundled database, generated from CC0 data by tools/build_usda_catalogue.py.
     # scanignore:
-    #   - app/src/main/assets/usda/fndds-2021-2023-v7.sqlite.gzip
+    #   - app/src/main/assets/usda/usda-v9.sqlite.gzip
 
 # Tags reads versionName and versionCode from app/build.gradle.kts at each tagged commit. They are plain literals there,
 # as the Quick Start Guide requires. Tag only real releases, because the highest versionCode among the tags wins.

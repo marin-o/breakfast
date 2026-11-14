@@ -17,9 +17,9 @@ import java.io.IOException
 import java.io.InputStream
 
 /** The file's version: raise it whenever the file's content changes, with `CATALOGUE_VERSION` in `tools/build_usda_catalogue.py`. */
-internal const val USDA_CATALOGUE_VERSION = 8
+internal const val USDA_CATALOGUE_VERSION = 9
 
-private const val USDA_FILE_NAME = "fndds-2021-2023-v$USDA_CATALOGUE_VERSION.sqlite"
+private const val USDA_FILE_NAME = "usda-v$USDA_CATALOGUE_VERSION.sqlite"
 
 /** Built by `tools/build_usda_catalogue.py`. Not ".gz": the Android Gradle plugin unpacks those when it merges assets. */
 internal const val USDA_ASSET_PATH = "usda/$USDA_FILE_NAME.gzip"
@@ -117,7 +117,7 @@ class UsdaCatalogueReader internal constructor(
     }
 
     private fun readRow(db: SQLiteDatabase, fdcId: Long): UsdaFoodRow? = db.rawQuery(
-        "SELECT food_code, description, additional, kcal, protein, fat, carbs, saturated_fat, sugars, fibre, salt FROM food WHERE fdc_id = ?",
+        "SELECT food_code, description, additional, kcal, protein, fat, carbs, saturated_fat, sugars, fibre, salt, release FROM food WHERE fdc_id = ?",
         arrayOf(fdcId.toString()),
     ).use { cursor ->
         if (!cursor.moveToFirst()) return null
@@ -134,6 +134,7 @@ class UsdaCatalogueReader internal constructor(
             sugars = cursor.doubleOrNull(8),
             fibre = cursor.doubleOrNull(9),
             salt = cursor.doubleOrNull(10),
+            release = cursor.getString(11),
             portions = readPortions(db, fdcId),
         )
     }

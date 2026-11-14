@@ -1,11 +1,7 @@
 package mk.bosa.breakfast.search
 
 import mk.bosa.breakfast.data.OffSearchResult
-import mk.bosa.breakfast.domain.FoodOrigin
 import mk.bosa.breakfast.domain.FoodRecord
-import mk.bosa.breakfast.domain.MeasureUnit
-import mk.bosa.breakfast.domain.NutritionBasis
-import mk.bosa.breakfast.domain.NutritionValues
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -40,8 +36,6 @@ class OffSearchTest {
         onOpen = { events += "open fromResolver=$it" }, onClose = { events += "close" }, onChoose = { food, _ -> chosen += food },
     )
 
-    private fun product(name: String) = FoodRecord(name, name, emptyList(), "off", FoodOrigin.GENERIC, NutritionBasis(100.0, MeasureUnit.GRAM, NutritionValues(50.0, null, null, null)))
-
     @Test fun theSearchScreenKeepsToTheScriptTyped() {
         search.open("млеко")
         search.submit()
@@ -66,6 +60,30 @@ class OffSearchTest {
         assertEquals(listOf("open fromResolver=true", "close"), events)
     }
 
+    @Test fun openingAndSearchingAsksTheQueryAtOnceAndOnlyOnce() {
+        search.openAndSearch("kefir", fromResolver = true)
+        assertEquals(listOf("kefir"), off.asked)
+        assertTrue(search.busy)
+        assertEquals(listOf("open fromResolver=true"), events)
+        off.answer("kefir", OffSearchResult.Success(listOf(product("Kefir 1%"))))
+        assertEquals(listOf("Kefir 1%"), search.results.map { it.name })
+        // Hidden and shown again, as after a review: the results stay and nothing is asked again.
+        search.hide()
+        search.returnFromReview()
+        assertEquals(listOf("kefir"), off.asked)
+        // Typing another query waits for Search.
+        search.onQuery("ayran")
+        assertEquals(listOf("kefir"), off.asked)
+        search.submit()
+        assertEquals(listOf("kefir", "ayran"), off.asked)
+    }
+
+    @Test fun openingAndSearchingKeepsTheScriptRuleAndANameWithNothingToAsk() {
+        search.openAndSearch("mлeko")
+        assertEquals("No usable result for \"mлeko\".", search.message)
+        assertTrue(off.asked.isEmpty())
+    }
+
     @Test fun aResultShowsForTheQueryItWasFor() {
         search.open("kefir")
         search.submit()
@@ -74,6 +92,13 @@ class OffSearchTest {
         assertFalse(search.busy)
         assertEquals(listOf("Kefir 1%"), search.results.map { it.name })
         assertNull(search.message)
+    }
+
+    @Test fun theProductsNamedForTheQueryComeFirst() {
+        search.open("flour")
+        search.submit()
+        off.answer("flour", OffSearchResult.Success(listOf(product("White Sourdough"), product("Plain Flour"))))
+        assertEquals(listOf("Plain Flour", "White Sourdough"), search.results.map { it.name })
     }
 
     @Test fun noResultUnavailableAndErrorEachSaySo() {

@@ -45,7 +45,7 @@ The APK lands in `app/build/outputs/apk/debug/`. Install it with `adb install -r
 
 Device tests are in `app/src/androidTest`. Don't run `connectedDebugAndroidTest` on a phone with a diary you care about, because it uninstalls the app afterwards and takes the data with it. [`docs/architecture.md`](docs/architecture.md) has the safe way to run them, and explains how the app is put together.
 
-The USDA database is rebuilt with `tools/build_usda_catalogue.py`, as described in [`docs/usda-catalogue-spec.md`](docs/usda-catalogue-spec.md).
+The USDA database (FNDDS 2021-2023, plus the raw and home-cooking foods of SR Legacy 2018-04) is rebuilt with `tools/build_usda_catalogue.py`, as described in [`docs/usda-catalogue-spec.md`](docs/usda-catalogue-spec.md).
 
 ## Licence
 

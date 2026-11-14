@@ -7,6 +7,7 @@ Owner's request, 2026-10-31: generic foods the built-in list and Open Food Facts
 - Foods already stored on a phone stay as that person's foods, and log entries keep their own values. A new install starts with no foods of its own. Every stored food can be deleted; entries keep their own values.
 - No change to the diary schema, unless building this shows one is needed: ask the owner first. No new dependency.
 - No second dataset until a real gap shows up. CAPNUTRA is out: no licence to redistribute.
+- The gap showed up (2026-11-14): FNDDS has no raw cooking ingredients, so "flour", "salt" or "baking powder" found nothing plain. File version 9 adds the raw and home-ingredient groups of USDA SR Legacy 2018-04 (1,814 foods, 7,245 with the 5,431 of FNDDS: grains, flours and pasta, spices, leavening, oils, plain sugars and syrups, dairy and eggs, legumes, nuts and seeds, raw vegetables, fruits, meat and fish). Restaurant, fast, baby and branded foods, meals, snacks and drinks stay out, and so do frozen, canned, imitation and formulated variants and mixtures (only the plain canned tomatoes, tomato paste, puree and plain sauce stay); cooked vegetables are kept only fresh, boiled or baked without salt. An SR food that FNDDS has under the same words is dropped: FNDDS is the newer release. Each row has a `release` column; an SR food keeps the id `fndds_<fdcId>` (its FDC ID never meets an FNDDS one) and its source release reads "SR Legacy 2018-04".
 - Open Food Facts stays behind the Find matches button, for packaged products.
 
 ## The file (built; commit 7ff3f61)
@@ -45,10 +46,10 @@ The same rows show in Library search, under a no-match part and in recipe ingred
 
 ## Wording (owner: as USDA asks)
 - Source in a food's details: "USDA FoodData Central".
-- Settings, Licences, through `NOTICE`: USDA's suggested citation word for word, "U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, 2019. fdc.nal.usda.gov.", then on its own line "FNDDS 2021-2023. CC0 1.0." USDA doesn't endorse the app, and nothing may imply it.
+- Settings, Licences, through `NOTICE`: USDA's suggested citation word for word, "U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, 2019. fdc.nal.usda.gov.", then on its own line "FNDDS 2021-2023 and SR Legacy 2018-04. CC0 1.0." USDA doesn't endorse the app, and nothing may imply it.
 
 ## Checks
-- Importer: 5,432 foods and 22,194 portions in, 9,647 additional descriptions, drops reported. FDC 2705975: 219 kcal, 24.6 g protein, 9.99 g fat, 6.01 g carbs; 165 g gives 361.35 kcal.
+- Importer: 5,432 FNDDS foods and 22,194 portions in, 9,647 additional descriptions, and 7,793 SR Legacy foods of which 1,814 are kept (3,542 portions kept); drops reported. The built file is 2,650,112 bytes, 686,265 gzipped. The check also asks the real file for "flour", "corn flour", "cornmeal", "salt", "baking powder", "baking soda", "semolina" and their Macedonian words, and each must rank the plain staple first. FDC 2705975: 219 kcal, 24.6 g protein, 9.99 g fat, 6.01 g carbs; 165 g gives 361.35 kcal.
 - "chicken breast coated" and "breaded chicken breast" both answer with 2705975. "egg" doesn't put eggplant first. "јајце" finds egg foods; a Cyrillic word outside the table finds nothing.
 - A tap adds +1; a green log with no tap adds nothing.
 - The app with no built-in list: a new install works, onboarding examples still draw, existing diaries and exports are untouched.
