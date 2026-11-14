@@ -76,8 +76,8 @@ internal class DraftPins {
             var seen = 0
             while (from >= 0) {
                 val end = from + text.length
-                val starts = draft.substring(0, from).trimEnd().let { it.isEmpty() || it.last() in HARD_SEPARATORS }
-                val ends = draft.substring(end).trimStart().let { it.isEmpty() || it.first() in HARD_SEPARATORS }
+                val starts = endsPart(draft.substring(0, from))
+                val ends = startsPart(draft.substring(end))
                 if (starts && ends) {
                     if (only == null || only == seen) add(draft, text, food, from)
                     seen++
@@ -134,6 +134,18 @@ internal class DraftPins {
             val which = same.indexOfFirst { it.start <= pin.nameStart && pin.nameStart < it.end }
             (if (same.size > 1 && which >= 0) "${part.text}$PIN_OCCURRENCE$which" else part.text) to pin.food
         }
+    }
+
+    /** Whether [before], the text ahead of a part, ends at a separator: a comma, a semicolon, or a line break among the blanks. */
+    private fun endsPart(before: String): Boolean {
+        val head = before.trimEnd()
+        return head.isEmpty() || head.last() in HARD_SEPARATORS || '\n' in before.substring(head.length)
+    }
+
+    /** Whether [after], the text behind a part, begins at a separator, as [endsPart]. */
+    private fun startsPart(after: String): Boolean {
+        val tail = after.trimStart()
+        return tail.isEmpty() || tail.first() in HARD_SEPARATORS || '\n' in after.substring(0, after.length - tail.length)
     }
 
     private class Part(val text: String, val left: String, val right: String)

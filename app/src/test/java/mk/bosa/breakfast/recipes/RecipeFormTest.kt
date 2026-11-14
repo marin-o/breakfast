@@ -259,7 +259,7 @@ class RecipeFormTest {
         assertEquals("4", form.fields.portions)
         assertEquals("1600", form.fields.total)
         assertEquals("чили", form.fields.aliases)
-        assertEquals("2 piece ${egg.name}, 500 g Old mince", form.fields.ingredients)
+        assertEquals("2 piece ${egg.name}\n500 g Old mince", form.fields.ingredients)
         assertTrue(form.ingredientsView().complete)
         form.leave()
         assertFalse("unchanged: it closes", form.open)

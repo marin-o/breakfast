@@ -71,7 +71,7 @@ class RecipeRulesTest {
         val gone = mince.copy(foodId = "custom-gone", foodName = "Old mince")
         val recipe = chili.copy(ingredients = listOf(mince.copy(foodId = egg.id, foodName = egg.name, enteredAmount = 2.0, enteredUnit = MeasureUnit.PIECE), gone))
         val edit = recipeEdit(recipe, TestFoods.fixtures, planner)
-        assertEquals("2 piece ${egg.name}, 500 g Old mince", edit.fields.ingredients)
+        assertEquals("2 piece ${egg.name}\n500 g Old mince", edit.fields.ingredients)
         assertEquals(setOf(egg.id, "custom-gone"), edit.pins.values.map { it.id }.toSet())
         val plan = LogPlanner(FoodMatcher(TestFoods.fixtures), pins = edit.pins).plan(edit.fields.ingredients)
         assertTrue(ingredientsComplete(plan))

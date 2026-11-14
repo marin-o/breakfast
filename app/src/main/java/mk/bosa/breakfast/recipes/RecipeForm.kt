@@ -134,7 +134,7 @@ internal class RecipeForm(
         if (value.isBlank()) pins.clear()
     }
 
-    /** The keyboard's Done on the ingredients: their last word is no longer being typed. */
+    /** The ingredients box losing focus: their last word is no longer being typed. */
     fun commitIngredients() { committed = true }
 
     /** The pins as they are now, for a view computed off the main thread. */

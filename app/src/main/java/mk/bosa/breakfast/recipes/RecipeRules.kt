@@ -130,7 +130,7 @@ internal fun recipeEdit(recipe: Recipe, foods: List<FoodRecord>, planner: LogPla
         total = editableNumber(recipe.totalWeight ?: recipe.totalVolume),
         totalUnit = if (recipe.totalWeight == null && recipe.totalVolume != null) MeasureUnit.MILLILITER else MeasureUnit.GRAM,
         aliases = recipe.aliases.joinToString(", "),
-        ingredients = parts.joinToString(", "),
+        ingredients = parts.joinToString("\n"),
     )
     return RecipeEdit(fields, pins)
 }

@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
@@ -35,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import mk.bosa.breakfast.app.DiarySession
@@ -108,20 +108,23 @@ private fun PortionsField(form: RecipeForm) {
 }
 
 /**
- * The ingredients, typed like the Log bar: Done finishes the last part, and the magnifier opens the ingredient search.
+ * The ingredients, typed like the Log bar, a part after a comma or on a line of its own (Enter), and the magnifier opens
+ * the ingredient search.
  */
 @Composable
 private fun IngredientsField(form: RecipeForm) {
     val colors = LocalBreakfastColors.current
-    val field = rememberDraftField(form.fields.ingredients, form::onIngredients)
+    val field = rememberDraftField(form.fields.ingredients, form::onIngredients, multiline = true)
     Field(
         label = "Ingredients",
         value = field.value,
         onValueChange = field.onChange,
         singleLine = false,
         minLines = 2,
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { form.commitIngredients() }),
+        // Enter starts the next ingredient: no Done, so the keyboard keeps its new-line key.
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+        // With no Done, leaving the box is what finishes its last ingredient.
+        fieldModifier = Modifier.onFocusChanged { if (!it.isFocused) form.commitIngredients() },
         trailing = {
             IconButton(onClick = form::openSearch, modifier = Modifier.size(IconTarget)) {
                 Icon(Icons.Outlined.Search, contentDescription = "Search foods", tint = colors.ink, modifier = Modifier.size(20.dp))

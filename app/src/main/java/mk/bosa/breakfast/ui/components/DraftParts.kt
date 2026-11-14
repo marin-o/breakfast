@@ -105,10 +105,15 @@ internal class DraftField(val value: TextFieldValue, val onChange: (TextFieldVal
 
 /**
  * The field for draft [text], with the one caret rule ([CaretField]): a change made from outside (a tapped choice) moves
- * the caret to the end. One logical line: Done finishes it, so a newline is never typed; each change goes to [onText].
+ * the caret to the end; each change goes to [onText]. By default one logical line: Done finishes it, so a newline is
+ * never typed and becomes a space (the Log bar). With [multiline] a newline stays, so each line can be a part (a recipe's
+ * ingredients); line endings are normalised to a single line feed.
  */
 @Composable
-internal fun rememberDraftField(text: String, onText: (String) -> Unit): DraftField {
+internal fun rememberDraftField(text: String, onText: (String) -> Unit, multiline: Boolean = false): DraftField {
     val caret = rememberCaretField(text)
-    return DraftField(caret.value) { next -> caret.onChange(next.copy(text = next.text.replace("\n", " ")), onText) }
+    return DraftField(caret.value) { next ->
+        val flat = if (multiline) next.text.replace("\r\n", "\n").replace('\r', '\n') else next.text.replace("\n", " ")
+        caret.onChange(next.copy(text = flat), onText)
+    }
 }
