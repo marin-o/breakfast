@@ -22,22 +22,35 @@ android {
         minSdk = 26
         targetSdk = 35
         // Bump versionCode by 1 for every build installed on the phone; versionName stays 0.x until a release.
-        versionCode = 61
+        versionCode = 62
+        // A literal, as F-Droid reads it from this file; the release workflow checks that the tag (v0.1) matches it.
         versionName = "0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
 
+    // The release key comes from the environment (the GitHub release workflow's secrets); without it a release APK is
+    // unsigned, as F-Droid builds and signs its own. The keystore never enters the repository.
+    val releaseKeystore = System.getenv("BREAKFAST_KEYSTORE")?.let(::file)?.also { check(it.isFile) { "BREAKFAST_KEYSTORE: no file at $it" } }
+    signingConfigs {
+        if (releaseKeystore != null) create("release") {
+            storeFile = releaseKeystore
+            storePassword = System.getenv("BREAKFAST_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("BREAKFAST_KEY_ALIAS")
+            keyPassword = System.getenv("BREAKFAST_KEY_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
         }
+        // The release build signed with the debug key, so it installs over the phone's debug-signed app.
         create("perf") {
             initWith(getByName("release"))
-            isDebuggable = false
-            isMinifyEnabled = true
             signingConfig = signingConfigs.getByName("debug")
         }
     }
