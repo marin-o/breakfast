@@ -124,15 +124,18 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
         }
     }
     val tick = rememberTick()
-    FollowTypedPartForOff(unmatched.results, log.draft, draft.catalogueQuery, settings.searchOffTyping)
+    // The part being typed may be the rest of a name across a comma: the catalogue says whether, and then it, not the last part, is searched.
+    val typedUsda = rememberTypedUsda(unmatched.usda, draft.catalogueQuery, session.foods, draft.catalogueJoins, log::runsOn)
+    val usdaRows = typedUsda.rows
+    val typedQuery = typedUsda.join?.phrase ?: draft.catalogueQuery
+    FollowTypedPartForOff(unmatched.results, log.draft, typedQuery, settings.searchOffTyping)
     // Open for each new part, and whenever the button asks for it.
-    var offRowsOpen by remember(draft.catalogueQuery) { mutableStateOf(true) }
+    var offRowsOpen by remember(typedQuery) { mutableStateOf(true) }
     val list = rememberScrollState()
-    val usdaRows = rememberUsdaRows(unmatched.usda, draft.catalogueQuery, except = session.foods)
     // Where "From Open Food Facts" sits in the list, and the presses that asked to see it for this part.
     var offRowTop by remember { mutableIntStateOf(0) }
     var offRowHeight by remember { mutableIntStateOf(0) }
-    var offPresses by remember(draft.catalogueQuery) { mutableIntStateOf(0) }
+    var offPresses by remember(typedQuery) { mutableIntStateOf(0) }
     // After a frame: the row of a first press has only just been composed.
     suspend fun showOffRow() {
         withFrameNanos { }
@@ -141,7 +144,7 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
     LaunchedEffect(offPresses) { if (offPresses > 0) showOffRow() }
     // While the pressed search runs, USDA rows arriving above or the searching line opening must not hide it again.
     LaunchedEffect(usdaRows.size, offRowHeight) {
-        if (offPresses > 0 && unmatched.results.stateOf(draft.catalogueQuery) == OffPartState.Searching) showOffRow()
+        if (offPresses > 0 && unmatched.results.stateOf(typedQuery) == OffPartState.Searching) showOffRow()
     }
 
     Column(
@@ -195,9 +198,9 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
             }
             log.error?.let { Text(it, color = colors.bad, style = BreakfastType.Meta, modifier = Modifier.padding(top = 8.dp)) }
             DraftParts(draft, onChoose = log::chooseSuggestion, onResolve = log::resolveNotInFoods, queued = unmatched.resolve.parts.takeIf { unmatched.resolve.queueActive }.orEmpty(), queuedRow = rememberUnmatchedRows(unmatched))
-            UsdaRows(usdaRows, draft.catalogueQuery, Modifier.padding(top = 8.dp)) { unmatched.pickForTypedPart(draft.catalogueQuery, it) }
+            UsdaRows(usdaRows, typedQuery, Modifier.padding(top = 8.dp)) { unmatched.pickForTypedPart(typedQuery, it, typedUsda.join) }
             Box(Modifier.onGloballyPositioned { offRowTop = it.positionInParent().y.roundToInt(); offRowHeight = it.size.height }) {
-                TypedPartOffRows(unmatched.results, draft.catalogueQuery, offRowsOpen, { offRowsOpen = !offRowsOpen }) { unmatched.pickForTypedPart(draft.catalogueQuery, it) }
+                TypedPartOffRows(unmatched.results, typedQuery, offRowsOpen, { offRowsOpen = !offRowsOpen }) { unmatched.pickForTypedPart(typedQuery, it, typedUsda.join) }
             }
         }
         // While its unmatched foods are worked through, the batch that just logged and each part say so here.
@@ -232,7 +235,7 @@ internal fun LogScreen(log: LogComposer, session: DiarySession, settings: Settin
                 keyboardKeptDown = true
                 focusManager.clearFocus()
                 keyboard?.hide()
-                unmatched.results.press(draft.catalogueQuery)
+                unmatched.results.press(typedQuery)
                 offPresses++
             })
         }

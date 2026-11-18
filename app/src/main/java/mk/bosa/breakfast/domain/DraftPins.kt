@@ -21,6 +21,9 @@ internal class DraftPins {
 
     private val pins = mutableStateListOf<Pin>()
 
+    /** Where a part begins and ends is the parser's say ([ShorthandParser.breakIndexes]): quoted names and decimal commas included. */
+    private val parser = ShorthandParser()
+
     fun clear() = pins.clear()
     fun current(): List<Pin> = pins.toList()
     fun forget(used: List<Pin>) {
@@ -69,6 +72,7 @@ internal class DraftPins {
     /** Back from [keys] as they were saved, or as an edit types its parts back: each part with that text in [draft]. */
     fun restore(draft: String, keys: Map<String, FoodRecord>) {
         pins.clear()
+        val breaks = parser.breakIndexes(draft)
         keys.forEach { (key, food) ->
             val text = key.substringBefore(PIN_OCCURRENCE)
             val only = key.substringAfter(PIN_OCCURRENCE, "").toIntOrNull()
@@ -76,8 +80,8 @@ internal class DraftPins {
             var seen = 0
             while (from >= 0) {
                 val end = from + text.length
-                val starts = endsPart(draft.substring(0, from))
-                val ends = startsPart(draft.substring(end))
+                val starts = endsPart(draft, from, breaks)
+                val ends = startsPart(draft, end, breaks)
                 if (starts && ends) {
                     if (only == null || only == seen) add(draft, text, food, from)
                     seen++
@@ -120,8 +124,9 @@ internal class DraftPins {
     fun keys(draft: String, planner: (Map<String, FoodRecord>) -> LogPlanner): Map<String, FoodRecord> {
         if (pins.isEmpty()) return emptyMap()
         val checking = planner(emptyMap())
+        val breaks = parser.breakIndexes(draft)
         val standing = pins.mapNotNull { pin ->
-            val part = partAround(draft, pin.nameStart, pin.food)
+            val part = partAround(draft, pin.nameStart, pin.food, breaks)
             (part to pin).takeIf { part.text == pin.madeFor || checking.pinFits(part.text, part.left, part.right, pin.food) }
         }
         val plain = standing.associate { (part, pin) -> part.text to pin.food }
@@ -136,16 +141,16 @@ internal class DraftPins {
         }
     }
 
-    /** Whether [before], the text ahead of a part, ends at a separator: a comma, a semicolon, or a line break among the blanks. */
-    private fun endsPart(before: String): Boolean {
-        val head = before.trimEnd()
-        return head.isEmpty() || head.last() in HARD_SEPARATORS || '\n' in before.substring(head.length)
+    /** Whether the text of [draft] ahead of [from] ends at a break of [breaks]: only blanks sit between the two. */
+    private fun endsPart(draft: String, from: Int, breaks: List<Int>): Boolean {
+        val head = draft.substring(0, from).trimEnd().length
+        return head == 0 || breaks.any { it in head - 1 until from }
     }
 
-    /** Whether [after], the text behind a part, begins at a separator, as [endsPart]. */
-    private fun startsPart(after: String): Boolean {
-        val tail = after.trimStart()
-        return tail.isEmpty() || tail.first() in HARD_SEPARATORS || '\n' in after.substring(0, after.length - tail.length)
+    /** Whether the text of [draft] from [end] on begins at a break of [breaks], as [endsPart]. */
+    private fun startsPart(draft: String, end: Int, breaks: List<Int>): Boolean {
+        val tail = end + (draft.length - end - draft.substring(end).trimStart().length)
+        return tail == draft.length || breaks.any { it in end..tail }
     }
 
     private class Part(val text: String, val left: String, val right: String)
@@ -154,25 +159,19 @@ internal class DraftPins {
      * The part around a food's name: back to the separator before it, or past the commas of a serving of that food
      * written before it ("2 cups, cooked Rice"), on to the separator after it.
      */
-    private fun partAround(draft: String, nameStart: Int, food: FoodRecord): Part {
+    private fun partAround(draft: String, nameStart: Int, food: FoodRecord, breaks: List<Int>): Part {
         val nameEnd = nameStart + food.name.length
         val before = draft.substring(0, nameStart)
-        val after = draft.substring(nameEnd)
-        val left = servingBefore(before, food) ?: before.substring(before.indexOfLast { it in HARD_SEPARATORS } + 1)
-        val right = WORD_SEPARATOR.find(after)?.let { after.substring(0, it.range.first) } ?: after
+        val left = servingBefore(before, food, breaks) ?: before.substring((breaks.lastOrNull { it < nameStart } ?: -1) + 1)
+        val right = draft.substring(nameEnd, parser.partEndFrom(draft, nameEnd))
         val text = (left + draft.substring(nameStart, nameEnd) + right).trim()
         return Part(text, left.trim(), right.trim())
     }
 
     /** The amount and comma-holding serving of [food] that [before] ends in, or null. A cut at each comma, nearest last. */
-    private fun servingBefore(before: String, food: FoodRecord): String? {
+    private fun servingBefore(before: String, food: FoodRecord, breaks: List<Int>): String? {
         if (food.conversions.none { it.name?.contains(',') == true }) return null
-        val starts = before.indices.filter { before[it] in HARD_SEPARATORS }.map { it + 1 }
+        val starts = breaks.filter { it < before.length }.map { it + 1 }
         return (listOf(0) + starts).map(before::substring).firstOrNull { food.writtenServing(it) != null }
-    }
-
-    private companion object {
-        const val HARD_SEPARATORS = ",;\n"
-        val WORD_SEPARATOR = Regex("[,;\\n+&]|\\s(?:and|и)\\s", RegexOption.IGNORE_CASE)
     }
 }

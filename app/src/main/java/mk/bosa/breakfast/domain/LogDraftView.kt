@@ -28,6 +28,8 @@ internal data class LogDraftView(
     val needsMatchParts: List<String> = emptyList(),
     /** What the USDA catalogue is asked for the part being typed; blank for nothing. */
     val catalogueQuery: String = "",
+    /** The names the part being typed may be the rest of, for the catalogue to ask in turn ([DraftView.catalogueJoins]). */
+    val catalogueJoins: List<CatalogueJoin> = emptyList(),
 )
 
 /**
@@ -51,6 +53,7 @@ internal fun logDraftViewOf(planner: LogPlanner, text: String, committed: Boolea
         firstIsAddPick = view.addPick != null && view.choices.firstOrNull()?.food?.id == view.addPick.food.id,
         needsMatchParts = view.needsMatchParts,
         catalogueQuery = view.catalogueQuery,
+        catalogueJoins = view.catalogueJoins,
         choiceCalculations = view.choices.map { planner.calculationFor(view.activeText, it.food) },
     )
 }

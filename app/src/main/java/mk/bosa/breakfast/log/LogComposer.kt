@@ -8,6 +8,7 @@ import mk.bosa.breakfast.ui.screens.previewQuantityLine
 import mk.bosa.breakfast.search.foodsInScript
 import mk.bosa.breakfast.domain.DraftPins
 import mk.bosa.breakfast.domain.Measure
+import mk.bosa.breakfast.domain.CatalogueJoin
 import mk.bosa.breakfast.domain.SegmentSpan
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -225,6 +226,13 @@ internal class LogComposer(
 
     /** The part a food picked now would take the place of: the one being typed. */
     fun partBeingTyped(): SegmentSpan? = store.planner(pinsSnapshot()).partBeingTyped(draft)
+
+    /** The part of the draft that [join] spans while the draft still holds it, else null. */
+    fun joinedPart(join: CatalogueJoin): SegmentSpan? =
+        if (join.end <= draft.length) SegmentSpan(draft.substring(join.start, join.end), join.start, join.end) else null
+
+    /** Whether a name runs on [phrase], a join's, as the library's foods are read. */
+    fun runsOn(phrase: String): (String) -> Boolean = store.planner(pinsSnapshot()).runsOn(phrase)
 
     /** [part] as the planner reads it: its food text, and the amount and unit typed. */
     fun typedOf(part: SegmentSpan) = store.planner(pinsSnapshot()).typed(part.text)

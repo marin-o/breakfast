@@ -57,6 +57,10 @@ sealed interface DraftRow {
     ) : DraftRow
 }
 
+/** A [phrase] ("yogurt gre") for the catalogue, from the draft's parts at [start] until [end], which a pick of it replaces. */
+data class CatalogueJoin(val phrase: String, val start: Int, val end: Int)
+
+
 /**
  * What the Log page shows for one draft. [rows] are the entries and unresolved parts in typed order. The part being
  * typed may add a choice group ([choices], from [active]) or suggestions ([suggestions], the foods its word starts).
@@ -74,6 +78,11 @@ data class DraftView(
     val suggestions: List<RankedFood> = emptyList(),
     /** What the USDA catalogue is asked while typing ([LogPlanner.partBeingTyped] without its amount); blank for nothing. */
     val catalogueQuery: String = "",
+    /**
+     * The names the part being typed may be the rest of, longest first, when no food of the library is: the USDA catalogue
+     * is asked each, and the first with names that run on ([LogPlanner.runsOn]) replaces its span.
+     */
+    val catalogueJoins: List<CatalogueJoin> = emptyList(),
     /** The part being typed as Add saves it (the last of [logged]); null when Add does not save it. */
     val counted: SegmentResolution? = null,
     /** What the finished draft logs for the part being typed, whatever the add bar counts: the chip that goes green. */
@@ -459,8 +468,10 @@ class LogPlanner(
         // Nor does a leading article: "a bananna" picked as Banana is Banana.
         val reading = reading(raw)
         if (reading.wholeName || reading.parsed.articleQuantity) return food.name
-        val query = libraryQueryFor(raw)
-        val amountText = if (query.isBlank()) "" else raw.replaceFirst(query, "", ignoreCase = true).trim()
+        // The amount as typed, by where the parser found it: the food text may drop what the raw keeps (a name's quotes).
+        val parsed = reading.parsed
+        val amountText = if (libraryQueryFor(raw).isBlank() || parsed.quantityStart == null || parsed.quantityEnd == null) ""
+        else parsed.raw.substring(parsed.quantityStart, parsed.quantityEnd).trim()
         return listOf(food.name, amountText).filter { it.isNotBlank() }.joinToString(" ")
     }
 
@@ -477,8 +488,11 @@ class LogPlanner(
      */
     fun choose(input: String, food: FoodRecord, typing: Boolean = true): ChosenDraft {
         if (!typing || endsOpen(input)) return ChosenDraft(input, null)
-        val span = segments(input).lastOrNull() ?: return ChosenDraft(input, null)
-        if (ShorthandLexicon.mealSlotOf(span.text) != null) return ChosenDraft(input, null)
+        val parts = segments(input)
+        val last = parts.lastOrNull() ?: return ChosenDraft(input, null)
+        if (ShorthandLexicon.mealSlotOf(last.text) != null) return ChosenDraft(input, null)
+        // A food that runs on across the comma before the part replaces both, keeping the amount typed before the comma.
+        val span = acrossComma(input, parts)?.takeIf { across -> across.matches.any { it.food.id == food.id } }?.local?.let { spanOf(input, it) } ?: last
         val before = input.substring(0, span.start)
         if (statesAmount(span.text, food)) chosenText(span.text, food).let { return ChosenDraft(joinBefore(before, it), it) }
         // No amount was typed, so none is written for the user to go back and edit: the name, then room to type one.
@@ -545,8 +559,70 @@ class LogPlanner(
     fun partBeingTyped(input: String): SegmentSpan? {
         val typed = input.trimEnd()
         if (typed.isEmpty() || endsOpen(typed)) return null
-        return segments(typed).lastOrNull()?.takeUnless { ShorthandLexicon.mealSlotOf(it.text) != null }
+        val parts = segments(typed)
+        return typedSpan(typed, parts, acrossComma(typed, parts))
     }
+
+    /** The span of the part being typed: with a food of the library running on across the comma, the span of that whole name. */
+    private fun typedSpan(typed: String, parts: List<SegmentSpan>, across: Across?): SegmentSpan? {
+        val last = parts.lastOrNull()?.takeUnless { ShorthandLexicon.mealSlotOf(it.text) != null } ?: return null
+        return across?.local?.let { spanOf(typed, it) } ?: last
+    }
+
+    private fun spanOf(input: String, join: Join) = SegmentSpan(input.substring(join.start, join.end), join.start, join.end)
+
+    /** A name that may run on across commas: the [phrase] it starts with (the head parts without their amount, then the fragment) and the span it would replace. */
+    private class Join(val start: Int, val end: Int, val phrase: String)
+
+    /**
+     * What the part being typed may continue: every join the parts before allow, longest first, and for the first of them
+     * a food of the library runs on across ([local], with its [matches]).
+     */
+    private class Across(val joins: List<Join>, val local: Join?, val matches: List<RankedFood>)
+
+    /** Whether a name (a USDA one, say) runs on [phrase], a [CatalogueJoin]'s, as the library's foods are read. */
+    fun runsOn(phrase: String): (String) -> Boolean = matcher.runsOn(phrase) ?: { false }
+
+    /**
+     * The foods a part typed after a comma may be the rest of a name with ("200g yogurt, gre" and "Yogurt, Greek, plain"):
+     * only a part with no amount of its own, joined to the part before it by a comma alone (not ";" or a line break), where
+     * the parts before are not picked foods and only the first of them states an amount. Null when no part can be joined;
+     * [Across.local] is null when no food of the library runs on (the USDA catalogue may, see [DraftView.catalogueJoins]).
+     * Nothing is joined for the user: "2 eggs, banana" stays two foods.
+     */
+    private fun acrossComma(input: String, parts: List<SegmentSpan>): Across? {
+        val fragment = parts.lastOrNull() ?: return null
+        if (parts.size < 2 || !isPlainPart(fragment.text) || hasOwnAmount(fragment.text)) return null
+        val fragmentPhrase = parser.parse(fragment.text, probe).foodPhrase
+        if (fragmentPhrase.isBlank() || matcher.runsOn(fragmentPhrase) == null) return null
+        // How far back the name may begin: each part back to it follows a lone comma, and all but the first have no amount.
+        val starts = mutableListOf<Int>()
+        var at = parts.lastIndex - 1
+        while (at >= 0 && parts.lastIndex - at <= MAX_PARTS_IN_A_NAME) {
+            val head = parts[at]
+            if (input.substring(head.end, parts[at + 1].start).trim() != "," || !isPlainPart(head.text)) break
+            starts += at
+            if (hasOwnAmount(head.text)) break
+            at--
+        }
+        val joins = starts.asReversed().map { first ->
+            val head = parser.parse(input.substring(parts[first].start, parts[parts.lastIndex - 1].end), probe).foodPhrase
+            Join(parts[first].start, fragment.end, "$head $fragmentPhrase")
+        }
+        if (joins.isEmpty()) return null
+        // One library scan for each head, until a food runs on.
+        joins.forEach { join ->
+            val matches = matcher.startingAs(join.phrase, preferences, SUGGESTION_LIMIT)
+            if (matches.isNotEmpty()) return Across(joins, join, matches)
+        }
+        return Across(joins, null, emptyList())
+    }
+
+    /** A part that is not a meal word and not a picked food: one that can be the start or the rest of a name. */
+    private fun isPlainPart(text: String): Boolean = ShorthandLexicon.mealSlotOf(text) == null && !isPinned(text)
+
+    /** The part states an amount of its own: a number, a number word or an article. */
+    private fun hasOwnAmount(text: String): Boolean = parser.parse(text, probe).let { it.amount != null || it.articleQuantity }
 
     /** True when the input ends with a separator (or a space), so the last part is finished and nothing is being typed. */
     fun endsOpen(input: String): Boolean = parser.endsOpen(input)
@@ -604,12 +680,21 @@ class LogPlanner(
         val finished = (if (open) counted0.dropLast(1) else counted0).filter { ShorthandLexicon.mealSlotOf(it.first.text) == null }
         val rows = finished.map { (span, occurrence) -> rowFor(span, occurrence) }.toMutableList()
         val activeOccurrence = counted0.lastOrNull()?.second ?: 0
+        // The catalogue follows the part a space does not finish ([partBeingTyped]); the suggestions, only one still open.
+        val searching = typing && !endsOpen(input.trimEnd())
+        val across = if (searching) acrossComma(input.trimEnd(), parts) else null
 
         var active: SegmentResolution? = null
         var suggestions: List<RankedFood> = emptyList()
         var counted: SegmentResolution? = null
         var addPick: SegmentResolution? = null
+        // A quoted name is searched by the text inside the quotes, from the start of a name; one still open leads whatever
+        // the part resolves to, as its commas are no break.
+        var quotedStarting: List<RankedFood>? = null
         if (activeText.isNotBlank() && ShorthandLexicon.mealSlotOf(activeText) == null) {
+            quotedStarting = QuotedNames.trailingInner(activeText)?.let { inner ->
+                matcher.startingAs(inner, preferences, SUGGESTION_LIMIT).ifEmpty { matcher.startingWith(inner, preferences, SUGGESTION_LIMIT) }
+            }
             val resolution = resolvePart(activeText, activeOccurrence)
             // Add saves the part being typed by the same rule as every other part (see [plan]), unless it is held back
             // until it is finished or picked ("Count what I'm typing" off).
@@ -622,7 +707,7 @@ class LogPlanner(
                 // Nothing matches the word being typed, only a prefix of a longer word does, or a bare word names
                 // several foods: suggest the foods it starts. When Add saves the word, the food it saves leads.
                 resolution == null || (isBareWord(activeText) && (!resolution.ranked.first().wholeMatch || resolution.ranked.size > 1)) -> {
-                    val starting = matcher.startingWith(activeText, preferences, SUGGESTION_LIMIT)
+                    val starting = quotedStarting ?: matcher.startingWith(activeText, preferences, SUGGESTION_LIMIT)
                     suggestions = addPick?.let { saved ->
                         (listOf(saved.ranked.first()) + starting.filterNot { it.food.id == saved.food.id }).take(SUGGESTION_LIMIT)
                     } ?: starting
@@ -645,6 +730,9 @@ class LogPlanner(
                 else -> active = resolution
             }
         }
+        // The foods that run on across the comma lead: the part is, or may be, the rest of one name.
+        if (quotedStarting != null && QuotedNames.isOpenAtEnd(activeText)) suggestions = (quotedStarting + suggestions).distinctBy { it.food.id }.take(SUGGESTION_LIMIT)
+        if (open && across?.local != null) suggestions = (across.matches + suggestions).distinctBy { it.food.id }.take(SUGGESTION_LIMIT)
         val attention = counted0.filter { ShorthandLexicon.mealSlotOf(it.first.text) == null }.map { (span, occurrence) -> span.text to resolvePart(span.text, occurrence) }
         // The part being typed asks for nothing while it still has something to show.
         val activeShows = suggestions.isNotEmpty() || active != null
@@ -656,7 +744,8 @@ class LogPlanner(
             logged = plan(input, typing).entries,
             activePhrase = if (activeText.isBlank()) "" else stripArticle(phraseOf(activeText)),
             suggestions = suggestions,
-            catalogueQuery = if (!typing) "" else partBeingTyped(input)?.takeUnless { isPinned(it.text) }?.let { stripArticle(phraseOf(it.text)) }.orEmpty(),
+            catalogueQuery = (if (searching) typedSpan(input.trimEnd(), parts, across) else null)?.takeUnless { isPinned(it.text) }?.let { stripArticle(phraseOf(it.text)) }.orEmpty(),
+            catalogueJoins = if (searching && across?.local == null) across?.joins?.map { CatalogueJoin(it.phrase, it.start, it.end) }.orEmpty() else emptyList(),
             counted = counted,
             addLogs = plan(input).entries.isNotEmpty(),
             addPick = addPick,
@@ -682,6 +771,8 @@ class LogPlanner(
     companion object {
         /** How many matches the Log page offers as choices or suggestions. The preselected one is always the first. */
         const val SUGGESTION_LIMIT = 4
+        /** How many parts at most a name that runs on across commas is joined from: the fragment and the heads before it. */
+        private const val MAX_PARTS_IN_A_NAME = 6
         private val WHITESPACE = Regex("\\s+")
         private val LEADING_ARTICLE = Regex("(?iu)^(?:a|an)\\s+")
         /** "portion chili", "portions of chili": the food text of a part that may name a recipe's portions. */

@@ -35,6 +35,7 @@ import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import mk.bosa.breakfast.domain.CatalogueJoin
 import mk.bosa.breakfast.domain.DraftRow
 import mk.bosa.breakfast.food.FoodForm
 import mk.bosa.breakfast.resolve.ResolveFlow
@@ -73,9 +74,11 @@ internal class UnmatchedParts(
      * A USDA row for [query] under the part being typed: its review, with the amount typed, and Add puts the food in that
      * part's place. The rows may still be a frame behind the typing: a tap on one for older text does nothing.
      */
-    fun pickForTypedPart(query: String, food: FoodRecord) {
-        if (log.draftView().catalogueQuery != query) return
-        val part = log.partBeingTyped()
+    fun pickForTypedPart(query: String, food: FoodRecord, join: CatalogueJoin? = null) {
+        val view = log.draftView()
+        // A join takes the place of the whole name it was read from, as a library food that runs on does.
+        val part = if (join != null) join.takeIf { it in view.catalogueJoins }?.let(log::joinedPart) ?: return
+        else if (view.catalogueQuery != query) return else log.partBeingTyped()
         review.choose(food, origin = ProductReviewOrigin.LOG_PART, typed = part?.let(log::typedOf), replaces = part)
     }
 }
@@ -197,12 +200,30 @@ private fun UnmatchedRow(row: DraftRow.Unresolved, parts: UnmatchedParts, open: 
     }
 }
 
-/** Asks [search] for [query] as it is typed; the USDA foods to draw for it, those in [except] (already listed there) left out. */
+/** The USDA foods to draw for the text being typed, and the [join] they run on when they are the rest of a name across a comma. */
+internal class TypedUsda(val rows: List<FoodRecord>, val join: CatalogueJoin?)
+
+/**
+ * Asks [search] for [query] as it is typed, or for what [joins] say it continues when names run on ([runsOn], for a join's
+ * phrase); the USDA foods to draw for it, those in [except] (already listed there) left out.
+ */
 @Composable
-internal fun rememberUsdaRows(search: UsdaPartSearch, query: String, except: List<FoodRecord> = emptyList()): List<FoodRecord> {
-    LaunchedEffect(query) { search.typed(query) }
-    return search.rowsFor(query).filterNot { row -> except.any { it.id == row.id } }
+internal fun rememberTypedUsda(
+    search: UsdaPartSearch,
+    query: String,
+    except: List<FoodRecord> = emptyList(),
+    joins: List<CatalogueJoin> = emptyList(),
+    runsOn: (String) -> (String) -> Boolean = { { true } },
+): TypedUsda {
+    val tests = remember(joins) { joins.map { runsOn(it.phrase) } }
+    LaunchedEffect(query, joins) { search.typed(query, joins, tests) }
+    return TypedUsda(search.rowsFor(query, joins).filterNot { row -> except.any { it.id == row.id } }, search.joinFor(query, joins))
 }
+
+/** [rememberTypedUsda] for the text alone: the Library's and the recipe search's. */
+@Composable
+internal fun rememberUsdaRows(search: UsdaPartSearch, query: String, except: List<FoodRecord> = emptyList()): List<FoodRecord> =
+    rememberTypedUsda(search, query, except).rows
 
 /** USDA foods as plain rows: long names don't fit a chip, and arriving they change no selection. */
 @Composable

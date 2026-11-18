@@ -51,12 +51,36 @@ class ShorthandParser {
     }
 
     /** True when [text] has an explicit word separator ("and", "&", "+", "и") as a whole word. */
-    fun hasWordSeparator(text: String): Boolean =
-        WORD.findAll(text).any { it.value.lowercase(Locale.ROOT) in ShorthandLexicon.explicitSeparators }
+    fun hasWordSeparator(text: String): Boolean {
+        val quoted = QuotedNames.ranges(text)
+        return WORD.findAll(text).any { it.value.lowercase(Locale.ROOT) in ShorthandLexicon.explicitSeparators && quoted.none { range -> it.range.first in range } }
+    }
+
+    /**
+     * Where each character that ends a part sits in [input]: a comma (not a decimal one), ";" or a newline, outside a
+     * quoted name. The one place that says it, for the parts and for the pins that follow them.
+     */
+    fun breakIndexes(input: String): List<Int> = breakIndexes(input, QuotedNames.ranges(input))
+
+    private fun breakIndexes(input: String, quoted: List<QuotedRange>): List<Int> =
+        HARD_BREAK.findAll(input).map { it.range.first }.filter { at -> quoted.none { at in it } }.toList()
+
+    /**
+     * Where the part that holds [from] ends: at the first break ([breakIndexes]) or explicit word separator ("+", "&",
+     * " and ", " и ") at or after it outside a quoted name, else the end of [input].
+     */
+    fun partEndFrom(input: String, from: Int): Int {
+        val quoted = QuotedNames.ranges(input)
+        val hard = breakIndexes(input, quoted).firstOrNull { it >= from }
+        val word = WORD_SEPARATOR.findAll(input, from).map { it.range.first }.firstOrNull { at -> quoted.none { at in it } }
+        return listOfNotNull(hard, word, input.length).min()
+    }
 
     /** True when the input ends with a separator, so nothing is being typed after it yet. */
     fun endsOpen(input: String): Boolean {
         if (input.isEmpty()) return false
+        // Inside a quote that is still open the name goes on: its commas and spaces end nothing.
+        if (QuotedNames.isOpenAtEnd(input)) return false
         // Any trailing space, comma, semicolon or newline ends the last part; so do + & and и.
         if (input.last().isWhitespace() || input.last() in OPEN_TAIL_CHARS) return true
         return END_SEPARATOR_WORD.containsMatchIn(input)
@@ -73,8 +97,9 @@ class ShorthandParser {
     fun parts(input: String, probe: FoodProbe? = null): List<SegmentSpan> {
         val spans = mutableListOf<SegmentSpan>()
         var start = 0
-        (HARD_BREAK.findAll(input).map { it.range.first } + input.length).forEach { end ->
-            val segment = partsOfSegment(input, start, end, probe)
+        val quoted = QuotedNames.ranges(input)
+        (breakIndexes(input, quoted) + input.length).forEach { end ->
+            val segment = partsOfSegment(input, start, end, probe, quoted)
             val first = segment.firstOrNull()
             val breakBefore = if (start > 0) input[start - 1] else null
             val joinFrom = if (probe != null && breakBefore == ',' && first != null) nameJoinStart(input, spans, first.end, probe) else null
@@ -88,7 +113,7 @@ class ShorthandParser {
             }
             start = end + 1
         }
-        return if (probe == null) spans else splitTrailingFragments(input, joinPinned(input, spans, probe), probe)
+        return if (probe == null) spans else splitTrailingFragments(input, joinPinned(input, spans, probe), probe, quoted)
     }
 
     /**
@@ -109,12 +134,14 @@ class ShorthandParser {
         return out
     }
 
-    private fun splitTrailingFragments(input: String, spans: List<SegmentSpan>, probe: FoodProbe): List<SegmentSpan> {
+    private fun splitTrailingFragments(input: String, spans: List<SegmentSpan>, probe: FoodProbe, quoted: List<QuotedRange>): List<SegmentSpan> {
         val out = mutableListOf<SegmentSpan>()
         for (span in spans) {
             val words = WORD.findAll(span.text).toList()
             val last = words.lastOrNull()
-            if (words.size >= 2 && last != null && ShorthandLexicon.mealSlotOf(span.text) == null) {
+            // A word inside a quoted name is part of it, never a fragment being typed.
+            val quotedLast = last != null && quoted.any { span.start + last.range.last >= it.start && span.start + last.range.first < it.end }
+            if (words.size >= 2 && last != null && !quotedLast && ShorthandLexicon.mealSlotOf(span.text) == null) {
                 val word = last.value
                 val head = spanOf(input, span.start, span.start + words[words.size - 2].range.last + 1)
                 // Only a plain word is a fragment: "150ml" and "60g" are quantities, never a word being typed.
@@ -146,7 +173,7 @@ class ShorthandParser {
     private fun isWholeFoodName(text: String, probe: FoodProbe): Boolean =
         probe.isExactName(text) || probe.isExactName(parse(text, probe).foodPhrase)
 
-    private fun partsOfSegment(input: String, from: Int, to: Int, probe: FoodProbe?): List<SegmentSpan> {
+    private fun partsOfSegment(input: String, from: Int, to: Int, probe: FoodProbe?, quoted: List<QuotedRange>): List<SegmentSpan> {
         // A food word with its quantity glued on ("oats60g") is read as its two words ("oats 60g").
         val words = WORD.findAll(input.substring(from, to)).flatMap { match ->
             val first = from + match.range.first
@@ -156,6 +183,9 @@ class ShorthandParser {
         }.toList()
         if (words.isEmpty()) return emptyList()
         val texts = words.map { input.substring(it.first, it.last + 1) }
+        // A word of a quoted name is a plain word of that name: never a separator or a quantity.
+        val inQuote = words.map { word -> quoted.any { word.last >= it.start && word.first < it.end } }
+        val quoteStarts = words.map { word -> quoted.any { word.first <= it.start && it.start <= word.last } }
         val groups = mutableListOf<List<Int>>()
         // For each group: whether the break before it is a word separator (true) or a quantity boundary (false).
         val wordBreaks = mutableListOf<Boolean>()
@@ -179,6 +209,13 @@ class ShorthandParser {
         var i = 0
         while (i < texts.size) {
             val word = texts[i]
+            if (inQuote[i]) {
+                // A quoted name after a trailing quantity starts the next food: `oats 60g "greek yogurt"`.
+                if (trailingQuantity && quoteStarts[i]) flush(nextWordBreak = false)
+                current += i
+                i++
+                continue
+            }
             if (word.lowercase(Locale.ROOT) in ShorthandLexicon.explicitSeparators) {
                 flush(nextWordBreak = true)
                 i++
@@ -402,10 +439,15 @@ class ShorthandParser {
         }
         if (raw.isEmpty()) return ParsedSegment(raw, "", null, null, null, null)
 
-        val quantity = findQuantity(raw) ?: return ParsedSegment(raw, raw, null, null, null, null)
-        val foodPhrase = (raw.removeRange(quantity.range)).replace(WHITESPACE, " ").trim()
+        // Quote marks stay in the raw text and leave the food text; a quantity inside a quoted name is part of the name.
+        val quoted = QuotedNames.ranges(raw)
+        val marks = QuotedNames.markers(quoted)
+        val unquoted = QuotedNames.strip(raw, quoted)
+        val quantity = findQuantity(raw, quoted) ?: return ParsedSegment(raw, unquoted, null, null, null, null, spaced = unquoted)
+        val foodPhrase = buildString { raw.forEachIndexed { i, c -> if (i !in quantity.range && i !in marks) append(c) } }
+            .replace(WHITESPACE, " ").trim()
         return ParsedSegment(
-            raw, foodPhrase, quantity.amount, quantity.unit, quantity.range.first, quantity.range.last + 1,
+            raw, foodPhrase, quantity.amount, quantity.unit, quantity.range.first, quantity.range.last + 1, spaced = unquoted,
             wordQuantity = quantity.fromWord, articleQuantity = quantity.article,
             unitWord = quantity.unitWord, unitLabel = quantity.unitLabel,
         )
@@ -426,19 +468,20 @@ class ShorthandParser {
     )
 
     /** The amount a segment states. Priority: half words, then digits, then number words, then "2x" or "x2". */
-    private fun findQuantity(raw: String): Quantity? {
-        halfPattern.find(raw)?.let { match ->
+    private fun findQuantity(raw: String, quoted: List<QuotedRange>): Quantity? {
+        fun free(range: IntRange) = quoted.none { range.last >= it.start && range.first < it.end }
+        halfPattern.findAll(raw).firstOrNull { free(it.range) }?.let { match ->
             return quantityWithUnit(ShorthandLexicon.wordAmount(match.groupValues[1]) ?: 0.5, match.groupValues[2], match.range, fromWord = true)
         }
         numberPattern.findAll(raw).firstOrNull { candidate ->
-            !isCompositionRatio(candidate, raw) || candidate.groupValues.getOrNull(2).orEmpty().isNotBlank()
+            free(candidate.range) && (!isCompositionRatio(candidate, raw) || candidate.groupValues.getOrNull(2).orEmpty().isNotBlank())
         }?.let { match ->
             val amount = parseAmount(match.groupValues[1])
             return quantityWithUnit(if (isNegated(raw, match.range.first)) -amount else amount, match.groupValues[2], match.range)
         }
         // An article counts only at the very start of a part: mid-part it is words of the name ("chicken a la king").
         wordPattern.findAll(raw).firstOrNull { match ->
-            match.range.first == 0 || match.groupValues[1].lowercase(Locale.ROOT) !in ARTICLES || match.groupValues[2].isNotBlank()
+            free(match.range) && (match.range.first == 0 || match.groupValues[1].lowercase(Locale.ROOT) !in ARTICLES || match.groupValues[2].isNotBlank())
         }?.let { match ->
             val unitText = match.groupValues[2]
             if (match.groupValues[1].lowercase(Locale.ROOT) in ARTICLES && unitText.isBlank()) {
@@ -446,7 +489,7 @@ class ShorthandParser {
             }
             return quantityWithUnit(ShorthandLexicon.wordAmount(match.groupValues[1]) ?: 0.0, unitText, match.range, fromWord = true)
         }
-        return multiplierPattern.find(raw)?.let { match ->
+        return multiplierPattern.findAll(raw).firstOrNull { free(it.range) }?.let { match ->
             val count = match.groupValues[1].ifEmpty { match.groupValues[2] }.toDoubleOrNull() ?: 0.0
             Quantity(count, null, match.range)
         }
@@ -530,6 +573,10 @@ class ShorthandParser {
         private val SEPARATOR_SYMBOLS = ShorthandLexicon.explicitSeparators.filterNot { word -> word.any(Char::isLetter) }
         private val SEPARATOR_WORDS = ShorthandLexicon.explicitSeparators - SEPARATOR_SYMBOLS.toSet()
         val OPEN_TAIL_CHARS = setOf(',') + BREAK_CHARS.toSet() + SEPARATOR_SYMBOLS.map { it.single() }
+        /** A word separator ends the part a pin sits in, as it ends a part ([partEndFrom]): the symbols anywhere, the words between spaces. */
+        val WORD_SEPARATOR = Regex(
+            (SEPARATOR_SYMBOLS.map { Regex.escape(it) } + SEPARATOR_WORDS.map { "\\s" + Regex.escape(it) + "\\s" }).joinToString("|", "(?iu)(?:", ")")
+        )
         val END_SEPARATOR_WORD = Regex("(?iu)(?:^|\\s)(?:${SEPARATOR_WORDS.joinToString("|") { Regex.escape(it) }})$")
     }
 }

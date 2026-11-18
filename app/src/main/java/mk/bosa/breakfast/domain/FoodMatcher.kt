@@ -33,7 +33,9 @@ class FoodMatcher(
         /** The name words by script. A token is matched only against the words in its own script. */
         val byScript: Map<TextScript, NameWords>,
         val normalizedNames: Set<String>,
-        val normalizedAliases: Set<String>
+        val normalizedAliases: Set<String>,
+        /** The words of each name and alias in order, for the suggestions that follow a name's start. */
+        val nameWords: List<List<String>>,
     ) {
         /** The name words [sameScript] lets [query] match, kept by script so one call per food stays cheap. */
         fun inScriptOf(query: QueryToken): NameWords? = when (query.script) {
@@ -51,7 +53,8 @@ class FoodMatcher(
             unmixed = NameWords(words.filterTo(mutableSetOf()) { sameScript(TextScript.NONE, scriptOf(it)) }),
             byScript = words.groupBy(::scriptOf).mapValues { NameWords(it.value.toSet()) },
             normalizedNames = food.allNames().mapTo(mutableSetOf(), ::normalize),
-            normalizedAliases = food.aliases.mapTo(mutableSetOf(), ::normalize)
+            normalizedAliases = food.aliases.mapTo(mutableSetOf(), ::normalize),
+            nameWords = food.allNames().map(::tokens),
         )
     }
 
@@ -210,21 +213,66 @@ class FoodMatcher(
         val script = scriptOf(word)
         if (script == TextScript.MIXED) return emptyList()
         val folded = foldDiacritics(word)
-        val now = nowMs()
         // Scripts never cross, word by word: a fragment matches only the name words in its own script, so "Протеин bar"
         // is found by "про" and by "bar", and a food with no word in that script is not suggested at all.
         val starts = { nameWord: String -> sameScript(script, scriptOf(nameWord)) && foldDiacritics(nameWord).startsWith(folded) }
-        return catalog.mapNotNull { food ->
-            val names = food.allNames().map(::tokens)
-            if (names.none { words -> words.any(starts) }) return@mapNotNull null
-            val namesStart = names.any { words -> words.firstOrNull()?.let(starts) == true }
+        return rankedStarting("starts with $word", preferences, limit, { words -> words.any(starts) }) { words -> words.firstOrNull()?.let(starts) == true }
+    }
+
+    /**
+     * The foods whose name starts with [phrase]: its words in order from the name's first word, each whole but the last,
+     * which is the fragment still being typed ("yogurt, gre" finds "Yogurt, Greek, plain"). A word of the name that is the
+     * plural or singular of a typed one counts as it. Scripts never cross, word by word, as in [startingWith].
+     */
+    fun startingAs(phrase: String, preferences: Map<String, Preference> = emptyMap(), limit: Int = 4): List<RankedFood> {
+        val starts = runOn(phrase) ?: return emptyList()
+        return rankedStarting("starts as ${phrase.trim()}", preferences, limit, starts, starts)
+    }
+
+    /** Whether a name (a USDA one, say) runs on [phrase] as [startingAs] reads it; null when no name can ([runOn]). */
+    fun runsOn(phrase: String): ((String) -> Boolean)? {
+        val starts = runOn(phrase) ?: return null
+        return { name -> starts(tokens(name)) }
+    }
+
+    /**
+     * The test of a name's words for [startingAs]: null when [phrase] has no words, mixes scripts, or ends in a stop word
+     * (tokens drop those, so "yogurt, with" would otherwise ask for every "Yogurt" name).
+     */
+    private fun runOn(phrase: String): ((List<String>) -> Boolean)? {
+        if (matchWords(phrase).lastOrNull() in STOP_WORDS) return null
+        val words = tokens(expandAbbreviations(phrase)).map(::foldDiacritics)
+        if (words.isEmpty()) return null
+        val scripts = words.map(::scriptOf)
+        if (TextScript.MIXED in scripts) return null
+        val last = words.lastIndex
+        val typedStems = words.map(::stems)
+        return { name ->
+            name.size >= words.size && words.indices.all { i ->
+                sameScript(scripts[i], scriptOf(name[i])) && when {
+                    i == last -> foldDiacritics(name[i]).startsWith(words[i])
+                    else -> name[i] == words[i] || name[i] in typedStems[i] || words[i] in stems(name[i])
+                }
+            }
+        }
+    }
+
+    /** The foods with a name that [qualifies] (as words), the saved preference first, then a name that [leads], then the name. */
+    private fun rankedStarting(
+        reason: String,
+        preferences: Map<String, Preference>,
+        limit: Int,
+        qualifies: (List<String>) -> Boolean,
+        leads: (List<String>) -> Boolean,
+    ): List<RankedFood> {
+        val now = nowMs()
+        return indexedCatalog.mapNotNull { indexed ->
+            val food = indexed.food
+            val names = indexed.nameWords
+            if (names.none(qualifies)) return@mapNotNull null
             Triple(
-                RankedFood(
-                    food = food,
-                    score = (preferences[food.id]?.score(now) ?: 0.0) * 3.0,
-                    reasons = listOf("starts with $word"),
-                ),
-                namesStart,
+                RankedFood(food = food, score = (preferences[food.id]?.score(now) ?: 0.0) * 3.0, reasons = listOf(reason)),
+                names.any(leads),
                 food.name,
             )
         }.sortedWith(
