@@ -12,7 +12,7 @@ Nothing here has been done yet: no tag, no fork, no merge request. The docs were
 ### Must be finished before submitting
 
 3. **Screenshots: done.** Five from the emulator with made-up sample data, in `images/phoneScreenshots/`.
-4. **No release tag exists.** The Quick Start Guide requires a tag on each release commit that matches `versionName`, so `0.1` needs `v0.1`.
+4. **Release tags.** The Quick Start Guide requires a tag on each release commit that matches `versionName`, so `1.0` needs `v1.0`; the release workflow checks this.
 5. **The changelog is named for today's versionCode.** `changelogs/53.txt` must match the released `versionCode` exactly. The code goes up with every phone build, so rename the file if the release ends up above 53.
 6. **Wording needs the owner's approval.** All text in `fastlane/` is a draft. See "Metadata notes".
 
@@ -84,8 +84,8 @@ None is proposed. The call on network services is a judgement that a reviewer co
 
 ### Versions
 
-- `versionCode = 53` and `versionName = "0.1"` are plain literals inside `android { defaultConfig }`, which the Quick Start Guide says is the normal location, read by regex. `fdroid checkupdates` should confirm it.
-- The tag convention from the Quick Start Guide is `v<versionName>`, which gives `v0.1`.
+- `versionCode = 64` and `versionName = "1.0"` are plain literals inside `android { defaultConfig }`, which the Quick Start Guide says is the normal location, read by regex. `fdroid checkupdates` should confirm it.
+- The tag convention from the Quick Start Guide is `v<versionName>`, which gives `v1.0`.
 
 ### Signing block
 

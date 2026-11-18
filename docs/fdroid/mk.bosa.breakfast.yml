@@ -15,12 +15,12 @@ Repo: https://github.com/marin-o/breakfast.git
 
 Builds:
   # versionName and versionCode must equal app/build.gradle.kts at the tagged commit. These are today's values.
-  # Tag per the Quick Start Guide: versionName '0.1' needs the tag v0.1. The tag does not exist yet.
-  - versionName: '0.1'
-    versionCode: 53
+  # Tag per the Quick Start Guide: versionName '1.0' needs the tag v1.0.
+  - versionName: '1.0'
+    versionCode: 64
     # OWNER: replace with the full 40-character hash of the commit the release tag points at. The Build Metadata
     # Reference asks for a hash, not a tag or branch name.
-    commit: REPLACE_WITH_FULL_HASH_OF_TAG_v0.1
+    commit: REPLACE_WITH_FULL_HASH_OF_TAG_v1.0
     subdir: app
     # The project has no flavours, so this builds the release variant unsigned, for F-Droid to sign.
     # The wrapper pins Gradle 9.8.2, with distributionSha256Sum set, in gradle/wrapper/gradle-wrapper.properties.
@@ -40,6 +40,6 @@ Builds:
 # as the Quick Start Guide requires. Tag only real releases, because the highest versionCode among the tags wins.
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-# OWNER: change these two with the release if it is not v0.1 at versionCode 53.
-CurrentVersion: '0.1'
-CurrentVersionCode: 53
+# OWNER: change these two with the release if it is not v1.0 at versionCode 64.
+CurrentVersion: '1.0'
+CurrentVersionCode: 64

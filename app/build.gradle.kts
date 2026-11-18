@@ -22,9 +22,9 @@ android {
         minSdk = 26
         targetSdk = 35
         // Bump versionCode by 1 for every build installed on the phone; versionName stays 0.x until a release.
-        versionCode = 63
-        // A literal, as F-Droid reads it from this file; the release workflow checks that the tag (v0.1) matches it.
-        versionName = "0.1"
+        versionCode = 64
+        // A literal, as F-Droid reads it from this file; the release workflow checks that the tag (v1.0) matches it.
+        versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
